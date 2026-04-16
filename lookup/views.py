@@ -57,7 +57,7 @@ def get_dvla_data(registration):
     payload = {'registrationNumber': registration}
 
     try:
-        response = requests.post(url, json=payload, headers=headers)
+        response = requests.post(url, json=payload, headers=headers, timeout=10)
         if response.status_code == 200:
             return response.json()
     except requests.exceptions.RequestException:
@@ -80,7 +80,7 @@ def get_mot_access_token():
     }
 
     try:
-        response = requests.post(token_url, data=data)
+        response = requests.post(token_url, data=data, timeout=10)
         if response.status_code == 200:
             return response.json().get('access_token')
     except requests.exceptions.RequestException:
@@ -104,7 +104,7 @@ def get_mot_data(registration):
     }
 
     try:
-        response = requests.get(url, headers=headers)
+        response = requests.get(url, headers=headers, timeout=10)
         if response.status_code == 200:
             return response.json()
     except requests.exceptions.RequestException:
@@ -416,11 +416,18 @@ def results(request):
             normalized_model=norm_model, **filters)
 
         # Partial match — DVSA returns 'ID3 FAMILY', db has 'id3'
+        # Check if any db model is the start of the DVSA model
         if not colors.exists():
-            colors = PaintColor.objects.filter(
-                normalized_model__startswith=norm_model[:3],
+            db_models = PaintColor.objects.filter(
                 **filters
-            )
+            ).values_list(
+                'normalized_model', flat=True
+            ).distinct()
+            for db_model in db_models:
+                if norm_model.startswith(db_model):
+                    colors = PaintColor.objects.filter(
+                        normalized_model=db_model, **filters)
+                    break
 
         # Fall back to no model filter
         if not colors.exists():

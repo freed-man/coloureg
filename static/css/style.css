@@ -17,11 +17,3 @@
 .navbar-brand .brand-text {
     vertical-align: baseline;
 }
-
-.navbar-transparent {
-    background: transparent !important;
-}
-
-.footer-transparent {
-    background: transparent !important;
-}
