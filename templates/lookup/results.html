@@ -1,0 +1,202 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block extra_title %} - Results for {{ registration }}{% endblock %}
+
+{% block content %}
+<div class="container mt-2">
+    <div class="row justify-content-center">
+        <div class="col-lg-10 col-md-12">
+            <a href="{% url 'index' %}" class="btn btn-outline-dark mb-3">
+                <i class="fas fa-arrow-left"></i> Look Up Another Vehicle
+            </a>
+            <h2 class="mb-4 text-center text-md-start">Vehicle Details</h2>
+            <div class="card">
+                <div class="card-body">
+                    <div class="d-flex align-items-center mb-2">
+                        <img src="{% static 'images/logos/' %}{{ make_logo }}.png"
+                            alt="{{ make }}" height="50" class="me-3"
+                            onerror="this.style.display='none'">
+                        <h4 class="card-title mb-0">
+                            {{ dvla.yearOfManufacture }} {{ dvla.make }}{% if model %} {{ model }}{% endif %}
+                        </h4>
+                    </div>
+                    <hr>
+                    <div class="row">
+                        <div class="col-md-6">
+                            <p><strong>Registration:</strong> {{ dvla.registrationNumber }}</p>
+                            <p><strong>Colour:</strong> {{ dvla.colour }}</p>
+                            <p><strong>Fuel Type:</strong> {{ fuel_display }}</p>
+                            {% if dvla.engineCapacity %}
+                            <p><strong>Engine Size:</strong> {{ dvla.engineCapacity }}cc</p>
+                            {% endif %}
+                            <p>
+                                <strong>Year:</strong> {{ dvla.yearOfManufacture }}
+                                {% if vehicle_age_text %}
+                                <br><small class="text-muted">({{ vehicle_age_text }})</small>
+                                {% endif %}
+                            </p>
+                        </div>
+                        <div class="col-md-6">
+                            <p>
+                                <strong>MOT:</strong>
+                                {% if dvla.motStatus == "Valid" %}
+                                <i class="fas fa-check-circle text-success"></i>
+                                <span class="text-success">Valid</span>
+                                {% if dvla.motExpiryDateFormatted %}
+                                <br><small class="text-muted">(expires {{ dvla.motExpiryDateFormatted }} — {{ mot_days_text }})</small>
+                                {% endif %}
+                                {% elif dvla.motStatus == "No details held by DVLA" and new_car_mot %}
+                                {% if "overdue" in new_car_mot_days %}
+                                <i class="fas fa-times-circle text-danger"></i>
+                                <span class="text-danger">Not valid</span>
+                                <br><small class="text-muted">(expired {{ new_car_mot_date }} — {{ new_car_mot_days }})</small>
+                                {% else %}
+                                <i class="fas fa-check-circle text-success"></i>
+                                <span class="text-success">Exempt (new vehicle)</span>
+                                <br><small class="text-muted">(first MOT due {{ new_car_mot_date }} — {{ new_car_mot_days }})</small>
+                                {% endif %}
+                                {% elif dvla.motStatus == "No details held by DVLA" %}
+                                <i class="fas fa-info-circle text-muted"></i>
+                                <span class="text-muted">No details held</span>
+                                {% else %}
+                                <i class="fas fa-times-circle text-danger"></i>
+                                <span class="text-danger">{{ dvla.motStatus|default:"No details held" }}</span>
+                                {% if dvla.motExpiryDateFormatted %}
+                                <br><small class="text-muted">(expired {{ dvla.motExpiryDateFormatted }} — {{ mot_days_text }})</small>
+                                {% endif %}
+                                {% endif %}
+                            </p>
+                            <p>
+                                <strong>Tax:</strong>
+                                {% if dvla.taxStatus == "Taxed" %}
+                                <i class="fas fa-check-circle text-success"></i>
+                                <span class="text-success">Taxed</span>
+                                {% if dvla.taxDueDateFormatted %}
+                                <br><small class="text-muted">(due {{ dvla.taxDueDateFormatted }} — {{ tax_days_text }})</small>
+                                {% endif %}
+                                {% else %}
+                                <i class="fas fa-times-circle text-danger"></i>
+                                <span class="text-danger">{{ dvla.taxStatus|default:"No details held" }}</span>
+                                {% if dvla.taxDueDateFormatted %}
+                                <br><small class="text-muted">(expired {{ dvla.taxDueDateFormatted }} — {{ tax_days_text }})</small>
+                                {% endif %}
+                                {% endif %}
+                                {% if tax_estimate.annual_rate %}
+                                <br><small class="text-muted">
+                                    (est. annual tax: £{{ tax_estimate.annual_rate }}{% if tax_estimate.six_month_rate %} / 6 months: £{{ tax_estimate.six_month_rate }}{% endif %})
+                                </small>
+                                {% endif %}
+                            </p>
+                            {% if dvla.v5cDateFormatted %}
+                            <p>
+                                <strong>V5C Issued:</strong> {{ dvla.v5cDateFormatted }}
+                                <br><small class="text-muted">(current keeper for approx. {{ v5c_days_text }})</small>
+                            </p>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <h2 class="mt-5 mb-3">Matching Paint Colours ({{ colors|length }})</h2>
+
+            {% if colors %}
+            <div class="table-responsive">
+                <table class="table table-striped">
+                    <thead class="table-dark">
+                        <tr>
+                            <th>Swatch</th>
+                            <th>Colour Name</th>
+                            <th>Code(s)</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for color in colors %}
+                        <tr>
+                            <td>
+                                {% if color.color_hex %}
+                                <div style="width: 40px; height: 40px; background-color: {{ color.color_hex }}; border: 1px solid #ccc; border-radius: 4px;"></div>
+                                {% else %}
+                                <div style="width: 40px; height: 40px; background-color: #f8f9fa; border: 1px solid #ccc; border-radius: 4px; display: flex; align-items: center; justify-content: center;">
+                                    <small class="text-muted" style="font-size: 0.6rem;">N/A</small>
+                                </div>
+                                {% endif %}
+                            </td>
+                            <td>{{ color.color_name }}</td>
+                            <td><code>{{ color.color_codes }}</code></td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <div class="alert alert-warning">
+                No matching paint colours found for this vehicle.
+            </div>
+            {% endif %}
+
+            <h3 class="mt-4 mb-3">
+                <a class="text-decoration-none text-dark" data-bs-toggle="collapse" href="#motHistory" role="button" aria-expanded="false" aria-controls="motHistory">
+                    MOT History ({{ mot_tests|length }}) <i class="fas fa-chevron-down small"></i>
+                </a>
+            </h3>
+            <div class="collapse" id="motHistory">
+                {% if mot_tests %}
+                {% for test in mot_tests %}
+                <div class="card mb-2">
+                    <div class="card-body">
+                        {% if test.testResult == "PASSED" %}
+                        <span class="badge bg-success mb-2">PASSED</span>
+                        {% else %}
+                        <span class="badge bg-danger mb-2">FAILED</span>
+                        {% endif %}
+                        <div class="mb-2">
+                            <strong>{{ test.completedDateFormatted }}</strong>
+                            {% if test.mileageFormatted %}
+                            <span class="ms-2 text-muted">— {{ test.mileageFormatted }} {{ test.odometerUnit }}</span>
+                            {% if test.mileage_diff is not None %}
+                            {% if test.mileage_diff >= 0 %}
+                            <span class="ms-1 text-muted"><small>(+{{ test.mileage_diff_formatted }})</small></span>
+                            {% else %}
+                            <span class="ms-1 text-danger"><small><i class="fas fa-exclamation-triangle"></i> -{{ test.mileage_diff_formatted }} — mileage discrepancy</small></span>
+                            {% endif %}
+                            {% endif %}
+                            {% endif %}
+                        </div>
+                        {% if test.majors %}
+                        <div class="mb-1">
+                            <span class="badge bg-danger">Major</span>
+                        </div>
+                        {% for defect in test.majors %}
+                        <div class="ms-3 mb-1">
+                            <i class="fas fa-times-circle text-danger"></i>
+                            <span class="text-danger">{{ defect.text }}</span>
+                        </div>
+                        {% endfor %}
+                        {% endif %}
+                        {% if test.advisories %}
+                        <div class="mb-1">
+                            <span class="badge bg-warning text-dark">Advisory</span>
+                        </div>
+                        {% for defect in test.advisories %}
+                        <div class="ms-3 mb-1">
+                            <i class="fas fa-exclamation-circle text-warning"></i>
+                            <span>{{ defect.text }}</span>
+                        </div>
+                        {% endfor %}
+                        {% endif %}
+                    </div>
+                </div>
+                {% endfor %}
+                {% else %}
+                <div class="alert alert-info">
+                    No MOT history available for this vehicle.
+                </div>
+                {% endif %}
+            </div>
+
+        </div>
+    </div>
+</div>
+{% endblock %}

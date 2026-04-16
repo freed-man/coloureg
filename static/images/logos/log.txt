@@ -1,0 +1,392 @@
+Car Logo Collection - 2026-04-15 10:59:40
+==================================================
+Source: https://www.carlogos.org/car-brands-a-z/
+Brands found: 384
+Downloaded OK: 384
+Failed: 0
+
+ALL BRANDS:
+  Abadal                         → abadal.png                               OK
+  Abarth                         → abarth.png                               OK
+  Abbott-Detroit                 → abbott_detroit.png                       OK
+  ABT                            → abt_sportsline.png                       OK
+  AC                             → ac.png                                   OK
+  Acura                          → acura.png                                OK
+  Aiways                         → aiways.png                               OK
+  Aixam                          → aixam.png                                OK
+  Alfa Romeo                     → alfa_romeo.png                           OK
+  Alpina                         → alpina.png                               OK
+  Alpine                         → alpine.png                               OK
+  Alta                           → alta.png                                 OK
+  Alvis                          → alvis.png                                OK
+  AMC                            → american_motors.png                      OK
+  Apollo                         → apollo.png                               OK
+  Arash                          → arash.png                                OK
+  Arcfox                         → arcfox.png                               OK
+  Ariel                          → ariel.png                                OK
+  ARO                            → aro.png                                  OK
+  Arrival                        → arrival.png                              OK
+  Arrinera                       → arrinera.png                             OK
+  Artega                         → artega.png                               OK
+  Ascari                         → ascari.png                               OK
+  Askam                          → askam.png                                OK
+  Aspark                         → aspark.png                               OK
+  Aston Martin                   → aston_martin.png                         OK
+  Atalanta                       → atalanta_motors.png                      OK
+  Auburn                         → auburn.png                               OK
+  Audi                           → audi.png                                 OK
+  Audi Sport                     → audi_sport.png                           OK
+  Austin                         → austin.png                               OK
+  Autobacs                       → autobacs.png                             OK
+  Autobianchi                    → autobianchi.png                          OK
+  Axon                           → axon.png                                 OK
+  BAC                            → bac.png                                  OK
+  BAIC Motor                     → baic.png                                 OK
+  Baojun                         → baojun.png                               OK
+  BeiBen                         → beiben.png                               OK
+  Bentley                        → bentley.png                              OK
+  Berkeley                       → berkeley.png                             OK
+  Berliet                        → berliet.png                              OK
+  Bertone                        → bertone.png                              OK
+  Bestune                        → bestune.png                              OK
+  BharatBenz                     → bharatbenz.png                           OK
+  Bitter                         → bitter.png                               OK
+  Bizzarrini                     → bizzarrini.png                           OK
+  BMW                            → bmw.png                                  OK
+  BMW M                          → bmw_m.png                                OK
+  Borgward                       → borgward.png                             OK
+  Bowler                         → bowler.png                               OK
+  Brabus                         → brabus.png                               OK
+  Brammo                         → brammo.png                               OK
+  Brilliance                     → brilliance.png                           OK
+  Bristol                        → bristol.png                              OK
+  Brooke                         → brooke.png                               OK
+  Bufori                         → bufori.png                               OK
+  Bugatti                        → bugatti.png                              OK
+  Buick                          → buick.png                                OK
+  BYD                            → byd.png                                  OK
+  Byton                          → byton.png                                OK
+  Cadillac                       → cadillac.png                             OK
+  CAMC                           → camc.png                                 OK
+  Canoo                          → canoo.png                                OK
+  Caparo                         → caparo.png                               OK
+  Carlsson                       → carlsson.png                             OK
+  Caterham                       → caterham.png                             OK
+  Changan                        → changan.png                              OK
+  Changfeng                      → changfeng.png                            OK
+  Chery                          → chery.png                                OK
+  Chevrolet Corvette             → chevrolet_corvette.png                   OK
+  Chevrolet                      → chevrolet.png                            OK
+  Chrysler                       → chrysler.png                             OK
+  Cisitalia                      → cisitalia.png                            OK
+  CitroÃ«n                       → citroen.png                              OK
+  Cizeta                         → cizeta.png                               OK
+  Cole                           → cole.png                                 OK
+  Corre La Licorne               → corre_la_licorne.png                     OK
+  Dacia                          → dacia.png                                OK
+  Daewoo                         → daewoo.png                               OK
+  DAF                            → daf.png                                  OK
+  Daihatsu                       → daihatsu.png                             OK
+  Daimler                        → daimler.png                              OK
+  Dartz                          → dartz.png                                OK
+  Datsun                         → datsun.png                               OK
+  David Brown                    → david_brown.png                          OK
+  Dayun                          → dayun.png                                OK
+  De Tomaso                      → de_tomaso.png                            OK
+  Delage                         → delage.png                               OK
+  DeSoto                         → desoto.png                               OK
+  Detroit Electric               → detroit_electric.png                     OK
+  Devel Sixteen                  → devel_sixteen.png                        OK
+  Diatto                         → diatto.png                               OK
+  DINA                           → dina.png                                 OK
+  DKW                            → dkw.png                                  OK
+  DMC                            → delorean.png                             OK
+  Dodge                          → dodge.png                                OK
+  Dodge Viper                    → dodge_viper.png                          OK
+  Dongfeng                       → dongfeng.png                             OK
+  Donkervoort                    → donkervoort.png                          OK
+  Drako                          → drako.png                                OK
+  DS                             → ds.png                                   OK
+  Duesenberg logo                → duesenberg.png                           OK
+  Eagle                          → eagle.png                                OK
+  EDAG                           → edag.png                                 OK
+  Edsel                          → edsel.png                                OK
+  Eicher                         → eicher.png                               OK
+  Elemental                      → elemental.png                            OK
+  Elfin                          → elfin.png                                OK
+  Elva                           → elva.png                                 OK
+  Englon                         → englon.png                               OK
+  ERF                            → erf.png                                  OK
+  Eterniti                       → eterniti.png                             OK
+  Exeed                          → exeed.png                                OK
+  9ff                            → 9ff.png                                  OK
+  Facel Vega                     → facel_vega.png                           OK
+  Faraday Future                 → faraday_future.png                       OK
+  FAW                            → faw.png                                  OK
+  FAW Jiefang                    → faw_jiefang.png                          OK
+  Ferrari                        → ferrari.png                              OK
+  Fiat                           → fiat.png                                 OK
+  Fioravanti                     → fioravanti.png                           OK
+  Fisker                         → fisker.png                               OK
+  Foden                          → foden.png                                OK
+  Force                          → force.png                                OK
+  Ford                           → ford.png                                 OK
+  Ford Mustang                   → ford_mustang.png                         OK
+  Foton                          → foton.png                                OK
+  FPV                            → fpv.png                                  OK
+  Franklin                       → franklin.png                             OK
+  Freightliner                   → freightliner.png                         OK
+  FSO                            → fso.png                                  OK
+  GAC Group                      → gac.png                                  OK
+  Gardner Douglas                → gardner_douglas.png                      OK
+  GAZ                            → gaz.png                                  OK
+  Geely                          → geely.png                                OK
+  General Motors                 → general_motors.png                       OK
+  Genesis                        → genesis.png                              OK
+  Geo                            → geo.png                                  OK
+  Geometry                       → geometry.png                             OK
+  Gilbern                        → gilbern.png                              OK
+  Gillet                         → gillet.png                               OK
+  Ginetta                        → ginetta.png                              OK
+  GMC                            → gmc.png                                  OK
+  Golden Dragon                  → golden_dragon.png                        OK
+  Gonow                          → gonow.png                                OK
+  Great Wall                     → great_wall.png                           OK
+  Grinnall                       → grinnall.png                             OK
+  Gumpert                        → gumpert.png                              OK
+  Hafei                          → hafei.png                                OK
+  Haima                          → haima.png                                OK
+  Haval                          → haval.png                                OK
+  Hawtai                         → hawtai.png                               OK
+  Hennessey                      → hennessey.png                            OK
+  Hillman                        → hillman.png                              OK
+  Hindustan Motors               → hindustan.png                            OK
+  Higer                          → higer.png                                OK
+  Hino                           → hino.png                                 OK
+  HiPhi                          → hiphi.png                                OK
+  Hispano-Suiza                  → hispano_suiza.png                        OK
+  Holden                         → holden.png                               OK
+  Hommell                        → hommell.png                              OK
+  Honda                          → honda.png                                OK
+  Hongqi                         → hongqi.png                               OK
+  Hongyan                        → hongyan.png                              OK
+  Horch                          → horch.png                                OK
+  HSV                            → hsv.png                                  OK
+  Hudson                         → hudson.png                               OK
+  Hummer                         → hummer.png                               OK
+  Hupmobile                      → hupmobile.png                            OK
+  Hyundai                        → hyundai.png                              OK
+  IC Bus                         → ic_bus.png                               OK
+  Infiniti                       → infiniti.png                             OK
+  Innocenti                      → innocenti.png                            OK
+  Intermeccanica                 → intermeccanica.png                       OK
+  IH                             → international_harvester.png              OK
+  International                  → international.png                        OK
+  IKCO                           → iran_khodro.png                          OK
+  Irizar                         → irizar.png                               OK
+  Isdera                         → isdera.png                               OK
+  Iso                            → iso.png                                  OK
+  Isuzu                          → isuzu.png                                OK
+  Iveco                          → iveco.png                                OK
+  JAC                            → jac.png                                  OK
+  Jaguar                         → jaguar.png                               OK
+  Jawa                           → jawa.png                                 OK
+  JBA Motors                     → jba_motors.png                           OK
+  Jeep                           → jeep.png                                 OK
+  Jensen                         → jensen.png                               OK
+  Jetta                          → jetta.png                                OK
+  JMC                            → jiangling.png                            OK
+  Kaiser                         → kaiser.png                               OK
+  Kamaz                          → kamaz.png                                OK
+  Karlmann King                  → karlmann_king.png                        OK
+  Karma                          → karma.png                                OK
+  Keating  Supercars             → keating.png                              OK
+  Kenworth                       → kenworth.png                             OK
+  Kia                            → kia.png                                  OK
+  King Long                      → king_long.png                            OK
+  Koenigsegg                     → koenigsegg.png                           OK
+  KTM                            → ktm.png                                  OK
+  Lada                           → lada.png                                 OK
+  Lagonda                        → lagonda.png                              OK
+  Lamborghini                    → lamborghini.png                          OK
+  Lancia                         → lancia.png                               OK
+  Land Rover                     → land_rover.png                           OK
+  Landwind                       → landwind.png                             OK
+  Laraki                         → laraki.png                               OK
+  Leapmotor                      → leapmotor.png                            OK
+  Lexus                          → lexus.png                                OK
+  Leyland                        → leyland.png                              OK
+  Li Auto                        → lixiang.png                              OK
+  Lifan                          → lifan.png                                OK
+  Ligier                         → ligier.png                               OK
+  Lincoln                        → lincoln.png                              OK
+  Lister                         → lister.png                               OK
+  Lloyd                          → lloyd.png                                OK
+  Lobini                         → lobini.png                               OK
+  London EV Company (LEVC)       → london_ev_company.png                    OK
+  Lordstown                      → lordstown.png                            OK
+  Lotus                          → lotus.png                                OK
+  Lucid                          → lucid.png                                OK
+  Luxgen                         → luxgen.png                               OK
+  Lynk & Co                      → lynkco.png                               OK
+  Mack                           → mack.png                                 OK
+  Mahindra                       → mahindra.png                             OK
+  MAN                            → man.png                                  OK
+  Mansory                        → mansory.png                              OK
+  Marcos                         → marcos.png                               OK
+  Marlin                         → marlin.png                               OK
+  Maserati                       → maserati.png                             OK
+  Mastretta                      → mastretta.png                            OK
+  Maxus                          → maxus.png                                OK
+  Maybach                        → maybach.png                              OK
+  MAZ                            → maz.png                                  OK
+  Mazda                          → mazda.png                                OK
+  Mazzanti                       → mazzanti.png                             OK
+  McLaren                        → mclaren.png                              OK
+  Melkus                         → melkus.png                               OK
+  Mercedes-AMG                   → mercedes_amg.png                         OK
+  Mercedes-Benz                  → mercedes_benz.png                        OK
+  Mercury                        → mercury.png                              OK
+  Merkur                         → merkur.png                               OK
+  MEV                            → mev.png                                  OK
+  MG                             → mg.png                                   OK
+  Microcar                       → microcar.png                             OK
+  Mini                           → mini.png                                 OK
+  Mitsubishi                     → mitsubishi.png                           OK
+  Mitsuoka                       → mitsuoka.png                             OK
+  MK                             → mk_sportscars.png                        OK
+  Morgan                         → morgan.png                               OK
+  Morris                         → morris.png                               OK
+  Mosler                         → mosler.png                               OK
+  Navistar                       → navistar.png                             OK
+  NEVS                           → nevs.png                                 OK
+  NIO                            → nio.png                                  OK
+  Nikola                         → nikola.png                               OK
+  Nissan GT-R                    → nissan_gt_r.png                          OK
+  Nissan                         → nissan.png                               OK
+  Nissan Nismo                   → nissan_nismo.png                         OK
+  Noble                          → noble.png                                OK
+  Oldsmobile                     → oldsmobile.png                           OK
+  Oltcit                         → oltcit.png                               OK
+  Opel                           → opel.png                                 OK
+  OSCA                           → osca.png                                 OK
+  Paccar                         → paccar.png                               OK
+  Packard                        → packard.png                              OK
+  Pagani                         → pagani.png                               OK
+  Panhard                        → panhard.png                              OK
+  Panoz                          → panoz.png                                OK
+  Pegaso                         → pegaso.png                               OK
+  Perodua                        → perodua.png                              OK
+  Peterbilt                      → peterbilt.png                            OK
+  Peugeot                        → peugeot.png                              OK
+  PGO                            → pgo.png                                  OK
+  Pierce-Arrow                   → pierce_arrow.png                         OK
+  Pininfarina                    → pininfarina.png                          OK
+  Plymouth                       → plymouth.png                             OK
+  Polestar                       → polestar.png                             OK
+  Pontiac                        → pontiac.png                              OK
+  Porsche                        → porsche.png                              OK
+  Praga                          → praga.png                                OK
+  Premier                        → premier.png                              OK
+  Prodrive                       → prodrive.png                             OK
+  Proton                         → proton.png                               OK
+  Qoros                          → qoros.png                                OK
+  Radical                        → radical.png                              OK
+  RAM                            → ram.png                                  OK
+  Rambler                        → rambler.png                              OK
+  Ranz                           → ranz.png                                 OK
+  Renault                        → renault.png                              OK
+  Renault Samsung                → renault_samsung.png                      OK
+  Rezvani                        → rezvani.png                              OK
+  Riley                          → riley.png                                OK
+  Rimac                          → rimac.png                                OK
+  Rinspeed                       → rinspeed.png                             OK
+  Rivian                         → rivian.png                               OK
+  Roewe                          → roewe.png                                OK
+  Rolls-Royce                    → rolls_royce.png                          OK
+  Ronart                         → ronart.png                               OK
+  Rossion                        → rossion.png                              OK
+  Rover                          → rover.png                                OK
+  RUF                            → ruf.png                                  OK
+  Saab                           → saab.png                                 OK
+  SAIC Motor                     → saic_motor.png                           OK
+  Saipa                          → saipa.png                                OK
+  Saleen                         → saleen.png                               OK
+  Saturn                         → saturn.png                               OK
+  Scania                         → scania.png                               OK
+  Scion                          → scion.png                                OK
+  SEAT                           → seat.png                                 OK
+  Setra                          → setra.png                                OK
+  Shacman                        → shacman.png                              OK
+  Simca                          → simca.png                                OK
+  Singer                         → singer.png                               OK
+  Singulato                      → singulato.png                            OK
+  Sinotruk                       → sinotruk.png                             OK
+  Sisu Auto                      → sisu.png                                 OK
+  Å koda                         → skoda.png                                OK
+  Smart                          → smart.png                                OK
+  Soueast                        → soueast.png                              OK
+  Spania GTA                     → spania_gta.png                           OK
+  Spirra                         → spirra.png                               OK
+  Spyker                         → spyker.png                               OK
+  SsangYong                      → ssangyong.png                            OK
+  SSC                            → ssc.png                                  OK
+  Sterling                       → sterling.png                             OK
+  Studebaker                     → studebaker.png                           OK
+  Stutz logo                     → stutz.png                                OK
+  Subaru                         → subaru.png                               OK
+  Suffolk                        → suffolk.png                              OK
+  Suzuki                         → suzuki.png                               OK
+  Talbot                         → talbot.png                               OK
+  Tata                           → tata.png                                 OK
+  Tatra                          → tatra.png                                OK
+  Tauro Sport                    → tauro_sport_auto.png                     OK
+  TechArt                        → techart.png                              OK
+  Tesla                          → tesla.png                                OK
+  Toyota Alphard                 → toyota_alphard.png                       OK
+  Toyota Century                 → toyota_century.png                       OK
+  Toyota Crown                   → toyota_crown.png                         OK
+  Toyota                         → toyota.png                               OK
+  Tramontana                     → tramontana.png                           OK
+  Trion                          → trion.png                                OK
+  Triumph                        → triumph.png                              OK
+  Troller                        → troller.png                              OK
+  Tucker logo                    → tucker.png                               OK
+  TVR                            → tvr.png                                  OK
+  UAZ                            → uaz.png                                  OK
+  UD                             → ud_trucks.png                            OK
+  Ultima                         → ultima.png                               OK
+  Vandenbrink                    → vandenbrink.png                          OK
+  Vauxhall                       → vauxhall.png                             OK
+  Vector Motors                  → vector.png                               OK
+  Vencer                         → vencer.png                               OK
+  Venturi                        → venturi.png                              OK
+  Venucia                        → venucia.png                              OK
+  VinFast                        → vinfast.png                              OK
+  VLF Automotive                 → vlf.png                                  OK
+  Volkswagen                     → volkswagen.png                           OK
+  Volvo                          → volvo.png                                OK
+  Wanderer                       → wanderer.png                             OK
+  W Motors                       → w_motors.png                             OK
+  Wartburg                       → wartburg.png                             OK
+  Weltmeister                    → weltmeister.png                          OK
+  Western Star                   → western_star.png                         OK
+  Westfield                      → westfield.png                            OK
+  WEY                            → wey.png                                  OK
+  Wiesmann                       → wiesmann.png                             OK
+  Willys-Overland                → willys_overland.png                      OK
+  Workhorse                      → workhorse.png                            OK
+  Wuling                         → wuling.png                               OK
+  XPeng                          → xpeng.png                                OK
+  Yulon                          → yulon.png                                OK
+  Yutong                         → yutong.png                               OK
+  Zarooq Motors                  → zarooq.png                               OK
+  Zastava                        → zastava.png                              OK
+  ZAZ                            → zaz.png                                  OK
+  Zeekr                          → zeekr.png                                OK
+  Zenos                          → zenos.png                                OK
+  Zenvo                          → zenvo.png                                OK
+  Zhongtong                      → zhongtong.png                            OK
+  Zinoro                         → zhinuo.png                               OK
+  Zotye                          → zotye.png                                OK
+  Stellantis                     → stellantis.png                           OK

@@ -1,0 +1,9 @@
+venv/
+__pycache__/
+*.pyc
+db.sqlite3
+*.env
+env.py
+merged_database.json
+staticfiles/
+*.sqlite3

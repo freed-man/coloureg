@@ -1,0 +1,248 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block extra_title %} - Paint Code Finder{% endblock %}
+
+{% block extra_css %}
+<style>
+    #particles-js {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        z-index: 0;
+        background: #111;
+    }
+    #particles-js canvas {
+        display: block;
+        vertical-align: bottom;
+    }
+    .navbar {
+        background: transparent !important;
+        position: relative;
+        z-index: 2;
+        pointer-events: none;
+    }
+    .navbar a {
+        pointer-events: auto;
+    }
+    .content-wrapper {
+        position: relative;
+        z-index: 1;
+        pointer-events: none;
+    }
+    .content-wrapper form,
+    .content-wrapper a,
+    .content-wrapper input,
+    .content-wrapper button {
+        pointer-events: auto;
+    }
+    .hero-container {
+        position: relative;
+        display: inline-block;
+        max-width: 650px;
+        width: 100%;
+        container-type: inline-size;
+    }
+    .hero-container img {
+        width: 100%;
+        height: auto;
+    }
+    .plate-input-wrapper {
+        position: absolute;
+        top: 64.5%;
+        left: 39%;
+        width: 28%;
+        height: 8.3%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        overflow: hidden;
+        cursor: text;
+    }
+    .plate-display {
+        display: flex;
+        align-items: center;
+        white-space: nowrap;
+        pointer-events: none;
+        position: absolute;
+        left: 6px;
+    }
+    .plate-text {
+        font-family: 'Arial Black', sans-serif;
+        font-weight: 900;
+        text-transform: uppercase;
+    }
+    .plate-text.hint {
+        font-size: 2.5cqi;
+        color: #333;
+    }
+    .plate-input {
+        width: 100%;
+        height: 100%;
+        border: none;
+        background: transparent;
+        font-family: 'Arial Black', sans-serif;
+        font-size: 4cqi;
+        font-weight: 900;
+        letter-spacing: 0.4cqi;
+        text-transform: uppercase;
+        text-align: center;
+        outline: none;
+        color: #000;
+        padding: 0;
+        line-height: 1;
+        position: absolute;
+        top: 0;
+        left: 0;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div id="particles-js"></div>
+<div class="content-wrapper">
+    <div class="container mt-1">
+        <div class="row justify-content-center text-center">
+            <div class="col-md-8">
+                <h1 class="d-flex align-items-center justify-content-center gap-2">
+                    <span style="display:inline-flex; border: 2px solid #333; border-radius: 6px; overflow:hidden;">
+                        <span style="background:#003399; padding: 4px 5px; display:flex; align-items:center; justify-content:center;">
+                            <small style="color:#fff; font-size:0.3em; font-weight:700;">GB</small>
+                        </span>
+                        <span style="background:#fff; color:#000; padding: 4px 12px; font-weight:900; letter-spacing:2px;">PAINT</span>
+                    </span>
+                    <span style="display:inline-flex; border: 2px solid #333; border-radius: 6px; overflow:hidden;">
+                        <span style="background:#003399; padding: 4px 5px; display:flex; align-items:center; justify-content:center;">
+                            <small style="color:#fff; font-size:0.3em; font-weight:700;">GB</small>
+                        </span>
+                        <span style="background:#f5c518; color:#000; padding: 4px 12px; font-weight:900; letter-spacing:2px;">CODE</span>
+                    </span>
+                    <em style="color:#ccc; font-weight:300;">finder</em>
+                </h1>
+            </div>
+        </div>
+        <div class="row justify-content-center mt-3">
+            <div class="col-md-8 text-center">
+                <form method="POST" action="{% url 'index' %}" id="lookup-form">
+                    {% csrf_token %}
+                    <div class="hero-container mx-auto">
+                        <img src="{% static 'images/car.png' %}" alt="Enter your registration">
+                        <div class="plate-input-wrapper" id="plate-wrapper">
+                            <div class="plate-display" id="hint-display">
+                                <span id="hint-text" class="plate-text hint"></span>
+                            </div>
+                            <input type="text" class="plate-input" id="reg-input"
+                                name="registration" maxlength="8" autocomplete="off">
+                        </div>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="{% static 'js/particles.min.js' %}"></script>
+<script>
+    particlesJS("particles-js", {
+        particles: {
+            number: { value: 100, density: { enable: true, value_area: 800 } },
+            color: { value: "#ffffff" },
+            shape: { type: "circle", stroke: { width: 0, color: "#000000" } },
+            opacity: { value: 0.5, random: false, anim: { enable: false, speed: 1, opacity_min: 0.1, sync: false } },
+            size: { value: 3, random: true, anim: { enable: false, speed: 40, size_min: 0.1, sync: false } },
+            line_linked: { enable: true, distance: 150, color: "#ffffff", opacity: 0.4, width: 1 },
+            move: { enable: true, speed: 6, direction: "none", random: false, straight: false, out_mode: "out", bounce: false, attract: { enable: false, rotateX: 600, rotateY: 1200 } }
+        },
+        interactivity: {
+            detect_on: "canvas",
+            events: {
+                onhover: { enable: true, mode: "grab" },
+                onclick: { enable: true, mode: "push" },
+                resize: true
+            },
+            modes: {
+                grab: { distance: 140, line_linked: { opacity: 1 } },
+                bubble: { distance: 400, size: 40, duration: 2, opacity: 8, speed: 3 },
+                repulse: { distance: 200, duration: 0.4 },
+                push: { particles_nb: 4 },
+                remove: { particles_nb: 2 }
+            }
+        },
+        retina_detect: true
+    });
+</script>
+<script>
+    var hintDisplay = document.getElementById('hint-display');
+    var hintText = document.getElementById('hint-text');
+    var regInput = document.getElementById('reg-input');
+    var lookupForm = document.getElementById('lookup-form');
+
+    var text = 'TYPE YOUR REGISTRATION HERE...';
+    var pi = 0;
+    var pDeleting = false;
+    var plateActive = true;
+
+    function scrollHint() {
+        var wrapperWidth = document.getElementById('plate-wrapper').offsetWidth;
+        var displayWidth = hintDisplay.offsetWidth;
+        if (displayWidth > wrapperWidth - 12) {
+            hintDisplay.style.left = (wrapperWidth - displayWidth - 6) + 'px';
+        } else {
+            hintDisplay.style.left = '6px';
+        }
+    }
+
+    function typePlate() {
+        if (!plateActive) return;
+        if (!pDeleting) {
+            hintText.textContent = text.substring(0, pi);
+            pi++;
+            scrollHint();
+            if (pi > text.length) {
+                setTimeout(function() { pDeleting = true; typePlate(); }, 2000);
+                return;
+            }
+            setTimeout(typePlate, 100);
+        } else {
+            hintText.textContent = text.substring(0, pi);
+            pi--;
+            scrollHint();
+            if (pi < 0) {
+                pDeleting = false;
+                pi = 0;
+                setTimeout(typePlate, 500);
+                return;
+            }
+            setTimeout(typePlate, 40);
+        }
+    }
+    typePlate();
+
+    regInput.addEventListener('focus', function() {
+        plateActive = false;
+        hintDisplay.style.display = 'none';
+    });
+
+    regInput.addEventListener('blur', function() {
+        if (regInput.value === '') {
+            hintDisplay.style.display = '';
+            hintDisplay.style.left = '6px';
+            plateActive = true;
+            pi = 0;
+            pDeleting = false;
+            typePlate();
+        }
+    });
+
+    lookupForm.addEventListener('submit', function(e) {
+        if (regInput.value.trim() === '') {
+            e.preventDefault();
+            regInput.focus();
+        }
+    });
+</script>
+{% endblock %}
