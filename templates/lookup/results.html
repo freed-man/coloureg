@@ -10,7 +10,9 @@
             <a href="{% url 'index' %}" class="btn btn-outline-dark mb-3">
                 <i class="fas fa-arrow-left"></i> Look Up Another Vehicle
             </a>
-            <h2 class="mb-4 text-center text-md-start">Vehicle Details</h2>
+            <h2 class="mb-4 text-center text-md-start d-flex align-items-center">
+                <img src="{% static 'images/information.png' %}" alt="" height="40" class="me-2">Vehicle Details
+            </h2>
             <div class="card">
                 <div class="card-body">
                     <div class="d-flex align-items-center mb-2">
@@ -88,6 +90,12 @@
                                 </small>
                                 {% endif %}
                             </p>
+                            <p>
+                                <strong>Insurance:</strong>
+                                <a href="https://enquiry.navigate.mib.org.uk/checkyourvehicle" target="_blank" rel="noopener noreferrer" class="text-decoration-none">
+                                    Check on askMID <i class="fas fa-external-link-alt small"></i>
+                                </a>
+                            </p>
                             {% if dvla.v5cDateFormatted %}
                             <p>
                                 <strong>V5C Issued:</strong> {{ dvla.v5cDateFormatted }}
@@ -99,7 +107,9 @@
                 </div>
             </div>
 
-            <h2 class="mt-5 mb-3">Matching Paint Colours ({{ colors|length }})</h2>
+            <h2 class="mt-5 mb-3 d-flex align-items-center">
+                <img src="{% static 'images/palette.png' %}" alt="" height="40" class="me-2">Matching Paint Colours ({{ colors|length }})
+            </h2>
 
             {% if colors %}
             <div class="table-responsive">
@@ -137,8 +147,8 @@
             {% endif %}
 
             <h3 class="mt-4 mb-3">
-                <a class="text-decoration-none text-dark" data-bs-toggle="collapse" href="#motHistory" role="button" aria-expanded="false" aria-controls="motHistory">
-                    MOT History ({{ mot_tests|length }}) <i class="fas fa-chevron-down small"></i>
+                <a class="text-decoration-none text-dark d-flex align-items-center" data-bs-toggle="collapse" href="#motHistory" role="button" aria-expanded="false" aria-controls="motHistory">
+                    <img src="{% static 'images/mot.png' %}" alt="" height="40" class="me-2">MOT History ({{ mot_tests|length }}) <i class="fas fa-chevron-down small ms-2"></i>
                 </a>
             </h3>
             <div class="collapse" id="motHistory">

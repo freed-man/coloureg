@@ -7,3 +7,4 @@ env.py
 merged_database.json
 staticfiles/
 *.sqlite3
+etc/
