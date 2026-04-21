@@ -51,23 +51,20 @@
     }
     .plate-input-wrapper {
         position: absolute;
-        top: 64.5%;
+        top: 66.5%;
         left: 39%;
-        width: 28%;
-        height: 8.3%;
-        display: flex;
-        align-items: center;
-        justify-content: center;
+        width: 32.1%;
+        height: 14.7%;
         overflow: hidden;
         cursor: text;
     }
     .plate-display {
-        display: flex;
-        align-items: center;
         white-space: nowrap;
         pointer-events: none;
         position: absolute;
-        left: 6px;
+        left: 2%;
+        top: 50%;
+        transform: translateY(-50%);
     }
     .plate-text {
         font-family: 'Arial Black', sans-serif;
@@ -75,7 +72,7 @@
         text-transform: uppercase;
     }
     .plate-text.hint {
-        font-size: 2.5cqi;
+        font-size: 3cqi;
         color: #333;
     }
     .plate-input {
@@ -84,18 +81,25 @@
         border: none;
         background: transparent;
         font-family: 'Arial Black', sans-serif;
-        font-size: 4cqi;
+        font-size: 5cqi;
         font-weight: 900;
         letter-spacing: 0.4cqi;
         text-transform: uppercase;
         text-align: center;
         outline: none;
         color: #000;
-        padding: 0;
+        padding: 0 2%;
         line-height: 1;
         position: absolute;
         top: 0;
         left: 0;
+        box-sizing: border-box;
+    }
+    .plate-input:-webkit-autofill,
+    .plate-input:-webkit-autofill:hover,
+    .plate-input:-webkit-autofill:focus {
+        -webkit-box-shadow: 0 0 0 1000px white inset !important;
+        -webkit-text-fill-color: #000 !important;
     }
 </style>
 {% endblock %}
@@ -108,16 +112,16 @@
             <div class="col-md-8">
                 <h1 class="d-flex align-items-center justify-content-center gap-2">
                     <span style="display:inline-flex; border: 2px solid #333; border-radius: 6px; overflow:hidden;">
-                        <span style="background:#003399; padding: 4px 5px; display:flex; align-items:center; justify-content:center;">
+                        <span style="background:#003399; padding: 2px 5px; display:flex; align-items:center; justify-content:center;">
                             <small style="color:#fff; font-size:0.3em; font-weight:700;">GB</small>
                         </span>
-                        <span style="background:#fff; color:#000; padding: 4px 12px; font-weight:900; letter-spacing:2px;">PAINT</span>
+                        <span style="background:#fff; color:#000; padding: 2px 12px; font-weight:900; letter-spacing:2px;">PAINT</span>
                     </span>
                     <span style="display:inline-flex; border: 2px solid #333; border-radius: 6px; overflow:hidden;">
-                        <span style="background:#003399; padding: 4px 5px; display:flex; align-items:center; justify-content:center;">
+                        <span style="background:#003399; padding: 2px 5px; display:flex; align-items:center; justify-content:center;">
                             <small style="color:#fff; font-size:0.3em; font-weight:700;">GB</small>
                         </span>
-                        <span style="background:#f5c518; color:#000; padding: 4px 12px; font-weight:900; letter-spacing:2px;">CODE</span>
+                        <span style="background:#f5c518; color:#000; padding: 2px 12px; font-weight:900; letter-spacing:2px;">CODE</span>
                     </span>
                     <em style="color:#ccc; font-weight:300;">finder</em>
                 </h1>
@@ -134,7 +138,7 @@
                                 <span id="hint-text" class="plate-text hint"></span>
                             </div>
                             <input type="text" class="plate-input" id="reg-input"
-                                name="registration" maxlength="8" autocomplete="off">
+                                name="registration" maxlength="7" autocomplete="off">
                         </div>
                     </div>
                 </form>
@@ -189,10 +193,11 @@
     function scrollHint() {
         var wrapperWidth = document.getElementById('plate-wrapper').offsetWidth;
         var displayWidth = hintDisplay.offsetWidth;
-        if (displayWidth > wrapperWidth - 12) {
-            hintDisplay.style.left = (wrapperWidth - displayWidth - 6) + 'px';
+        var padding = wrapperWidth * 0.02;
+        if (displayWidth > wrapperWidth - (padding * 2)) {
+            hintDisplay.style.left = (wrapperWidth - displayWidth - padding) + 'px';
         } else {
-            hintDisplay.style.left = '6px';
+            hintDisplay.style.left = padding + 'px';
         }
     }
 
@@ -230,7 +235,6 @@
     regInput.addEventListener('blur', function() {
         if (regInput.value === '') {
             hintDisplay.style.display = '';
-            hintDisplay.style.left = '6px';
             plateActive = true;
             pi = 0;
             pDeleting = false;
