@@ -1,8 +1,6 @@
 from django.shortcuts import render, redirect
 from django.contrib import messages
-from datetime import datetime, date
 from .models import PaintColor
-from .tax_rates import get_annual_tax
 from .services.vdg import get_vin, VdgError, VdgNotFoundError
 import requests
 import os
@@ -12,30 +10,6 @@ def normalize(text):
     """Normalize text for database matching."""
     return text.strip().lower().replace(
         "-", "").replace(" ", "").replace(".", "")
-
-
-def format_date(date_string):
-    """Convert API date strings to dd/mm/yyyy format."""
-    if not date_string:
-        return None
-    try:
-        if 'T' in date_string:
-            dt = datetime.strptime(date_string[:10], '%Y-%m-%d')
-        else:
-            dt = datetime.strptime(date_string, '%Y-%m-%d')
-        return dt.strftime('%d/%m/%Y')
-    except ValueError:
-        return date_string
-
-
-def format_mileage(value):
-    """Format mileage with commas e.g. 103449 -> 103,449"""
-    if not value:
-        return None
-    try:
-        return f"{int(value):,}"
-    except (ValueError, TypeError):
-        return value
 
 
 def extract_mot_field(mot_data, field_name):
@@ -90,7 +64,7 @@ def get_mot_access_token():
 
 
 def get_mot_data(registration):
-    """Fetch MOT history from the DVSA API using OAuth2 token."""
+    """Fetch MOT data from the DVSA API — used only to get the model name."""
     access_token = get_mot_access_token()
     if not access_token:
         return None
@@ -132,7 +106,7 @@ def index(request):
             )
             return redirect('index')
 
-        # Call DVSA MOT API for model name and MOT history
+        # Call DVSA MOT API for model name
         mot = get_mot_data(registration)
 
         # Call VDG for VIN (internal use only — not displayed)
@@ -168,9 +142,8 @@ def results(request):
     mot = vehicle_data.get('mot')
     registration = vehicle_data.get('registration', '')
 
-    # Extract model and MOT tests
+    # Extract model from MOT data
     model = extract_mot_field(mot, 'model') or ''
-    mot_tests = extract_mot_field(mot, 'motTests') or []
 
     # Make logo filename
     make_raw = dvla.get(
@@ -182,213 +155,6 @@ def results(request):
         'alfaromeo': 'alfa_romeo',
     }
     make_logo = make_logo_map.get(make_raw, make_raw)
-
-    # Clean up fuel type display
-    fuel_display = dvla.get('fuelType', '')
-    if fuel_display.upper() == 'ELECTRICITY':
-        fuel_display = 'ELECTRIC'
-
-    # Vehicle age
-    vehicle_age_text = ''
-    reg_date_raw = extract_mot_field(mot, 'registrationDate')
-    if reg_date_raw:
-        try:
-            manufacture_date = datetime.strptime(
-                reg_date_raw[:10], '%Y-%m-%d').date()
-            delta = (date.today() - manufacture_date).days
-            years = delta // 365
-            months = (delta % 365) // 30
-            if years > 0 and months > 0:
-                vehicle_age_text = (
-                    f"{years} year{'s' if years != 1 else ''}, "
-                    f"{months} month{'s' if months != 1 else ''} old"
-                )
-            elif years > 0:
-                vehicle_age_text = (
-                    f"{years} year{'s' if years != 1 else ''} old"
-                )
-            else:
-                vehicle_age_text = (
-                    f"{months} month{'s' if months != 1 else ''} old"
-                )
-        except (ValueError, TypeError):
-            pass
-    if not vehicle_age_text:
-        year_of_manufacture = dvla.get('yearOfManufacture')
-        if year_of_manufacture:
-            try:
-                manufacture_date = date(int(year_of_manufacture), 1, 1)
-                delta = (date.today() - manufacture_date).days
-                years = delta // 365
-                months = (delta % 365) // 30
-                if years > 0 and months > 0:
-                    vehicle_age_text = (
-                        f"{years} year{'s' if years != 1 else ''}, "
-                        f"{months} month{'s' if months != 1 else ''} old"
-                    )
-                elif years > 0:
-                    vehicle_age_text = (
-                        f"{years} year{'s' if years != 1 else ''} old"
-                    )
-                else:
-                    vehicle_age_text = (
-                        f"{months} month{'s' if months != 1 else ''} old"
-                    )
-            except (ValueError, TypeError):
-                pass
-
-    # MOT days remaining/overdue
-    mot_days_text = ''
-    mot_expiry = dvla.get('motExpiryDate')
-    if mot_expiry:
-        try:
-            expiry_date = datetime.strptime(
-                mot_expiry, '%Y-%m-%d').date()
-            delta = (expiry_date - date.today()).days
-            if delta > 0:
-                mot_days_text = f"{delta} days remaining"
-            elif delta == 0:
-                mot_days_text = "expires today"
-            else:
-                mot_days_text = f"{abs(delta)} days overdue"
-        except ValueError:
-            pass
-
-    # New car MOT handling
-    new_car_mot = False
-    new_car_mot_date = ''
-    new_car_mot_days = ''
-    if dvla.get('motStatus') == 'No details held by DVLA':
-        mot_due_raw = extract_mot_field(mot, 'motTestDueDate')
-        if mot_due_raw:
-            try:
-                mot_due = datetime.strptime(
-                    mot_due_raw[:10], '%Y-%m-%d').date()
-                new_car_mot_date = mot_due.strftime('%d/%m/%Y')
-                delta = (mot_due - date.today()).days
-                if delta > 0:
-                    new_car_mot_days = f"{delta} days remaining"
-                else:
-                    new_car_mot_days = f"{abs(delta)} days overdue"
-                new_car_mot = True
-            except (ValueError, TypeError):
-                pass
-
-    # Tax days remaining/overdue
-    tax_days_text = ''
-    tax_due = dvla.get('taxDueDate')
-    if tax_due:
-        try:
-            due_date = datetime.strptime(tax_due, '%Y-%m-%d').date()
-            delta = (due_date - date.today()).days
-            if delta > 0:
-                tax_days_text = f"{delta} days remaining"
-            elif delta == 0:
-                tax_days_text = "due today"
-            else:
-                tax_days_text = f"{abs(delta)} days overdue"
-        except ValueError:
-            pass
-
-    # V5C keeper duration
-    v5c_days_text = ''
-    v5c_date = dvla.get('dateOfLastV5CIssued')
-    if v5c_date:
-        try:
-            issued_date = datetime.strptime(
-                v5c_date, '%Y-%m-%d').date()
-            delta = (date.today() - issued_date).days
-            years = delta // 365
-            months = (delta % 365) // 30
-            if years > 0 and months > 0:
-                v5c_days_text = (
-                    f"{years} year{'s' if years != 1 else ''}, "
-                    f"{months} month{'s' if months != 1 else ''}"
-                )
-            elif years > 0:
-                v5c_days_text = (
-                    f"{years} year{'s' if years != 1 else ''}"
-                )
-            else:
-                v5c_days_text = (
-                    f"{months} month{'s' if months != 1 else ''}"
-                )
-        except ValueError:
-            pass
-
-    # Tax estimate
-    co2 = dvla.get('co2Emissions')
-    reg_month_raw = dvla.get('monthOfFirstRegistration', '')
-    reg_year = None
-    reg_month = None
-    if reg_month_raw:
-        try:
-            parts = reg_month_raw.split('-')
-            reg_year = int(parts[0])
-            reg_month = int(parts[1])
-        except (ValueError, IndexError):
-            reg_year = dvla.get('yearOfManufacture')
-    else:
-        reg_year = dvla.get('yearOfManufacture')
-
-    tax_estimate = get_annual_tax(
-        co2, dvla.get('fuelType', ''), reg_year, reg_month,
-        dvla.get('engineCapacity')
-    )
-
-    # Format dates for display
-    if dvla.get('motExpiryDate'):
-        dvla['motExpiryDateFormatted'] = format_date(
-            dvla['motExpiryDate'])
-    if dvla.get('taxDueDate'):
-        dvla['taxDueDateFormatted'] = format_date(dvla['taxDueDate'])
-    if dvla.get('dateOfLastV5CIssued'):
-        dvla['v5cDateFormatted'] = format_date(
-            dvla['dateOfLastV5CIssued'])
-
-    # Format MOT tests
-    for test in mot_tests:
-        test['completedDateFormatted'] = format_date(
-            test.get('completedDate', ''))
-        if test.get('odometerValue'):
-            test['mileageFormatted'] = format_mileage(
-                test['odometerValue'])
-        if test.get('odometerUnit'):
-            if test['odometerUnit'].upper() == 'MI':
-                test['odometerUnit'] = 'miles'
-        if test.get('defects'):
-            major_types = ['DANGEROUS', 'MAJOR', 'FAIL', 'PRS']
-            test['majors'] = [
-                d for d in test['defects']
-                if d.get('type') in major_types
-            ]
-            test['advisories'] = [
-                d for d in test['defects']
-                if d.get('type') not in major_types
-            ]
-            for d in test['majors']:
-                if d.get('text'):
-                    d['text'] = d['text'][0].upper() + d['text'][1:]
-            for d in test['advisories']:
-                if d.get('text'):
-                    d['text'] = d['text'][0].upper() + d['text'][1:]
-
-    # Mileage differences between tests
-    for i in range(len(mot_tests)):
-        if (mot_tests[i].get('odometerValue')
-                and i < len(mot_tests) - 1):
-            next_test = mot_tests[i + 1]
-            if next_test.get('odometerValue'):
-                try:
-                    current = int(mot_tests[i]['odometerValue'])
-                    previous = int(next_test['odometerValue'])
-                    diff = current - previous
-                    mot_tests[i]['mileage_diff'] = diff
-                    mot_tests[i]['mileage_diff_formatted'] = (
-                        f"{abs(diff):,}"
-                    )
-                except (ValueError, TypeError):
-                    pass
 
     # Query paint database
     make = dvla.get('make', '')
@@ -424,7 +190,6 @@ def results(request):
             normalized_model=norm_model, **filters)
 
         # Partial match — DVSA returns 'ID3 FAMILY', db has 'id3'
-        # Check if any db model is the start of the DVSA model
         if not colors.exists():
             db_models = PaintColor.objects.filter(
                 **filters
@@ -451,16 +216,6 @@ def results(request):
         'make': make,
         'year': year,
         'colour': colour,
-        'fuel_display': fuel_display,
-        'vehicle_age_text': vehicle_age_text,
-        'mot_tests': mot_tests,
-        'mot_days_text': mot_days_text,
-        'tax_days_text': tax_days_text,
-        'v5c_days_text': v5c_days_text,
-        'new_car_mot': new_car_mot,
-        'new_car_mot_date': new_car_mot_date,
-        'new_car_mot_days': new_car_mot_days,
-        'tax_estimate': tax_estimate,
         'colors': colors,
     }
 
