@@ -3,6 +3,7 @@ from django.contrib import messages
 from datetime import datetime, date
 from .models import PaintColor
 from .tax_rates import get_annual_tax
+from .services.vdg import get_vin, VdgError, VdgNotFoundError
 import requests
 import os
 
@@ -134,10 +135,17 @@ def index(request):
         # Call DVSA MOT API for model name and MOT history
         mot = get_mot_data(registration)
 
+        # Call VDG for VIN (internal use only — not displayed)
+        try:
+            vin = get_vin(registration)
+        except (VdgError, VdgNotFoundError):
+            vin = None
+
         # Store in session for the results page
         request.session['vehicle_data'] = {
             'dvla': dvla,
             'mot': mot,
+            'vin': vin,
             'registration': registration,
         }
 
