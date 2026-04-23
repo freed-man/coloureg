@@ -1,0 +1,130 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block extra_title %} ❤️{% endblock %}
+
+{% block extra_css %}
+<link href="https://fonts.googleapis.com/css2?family=Great+Vibes&family=Playfair+Display:ital,wght@1,400&display=swap" rel="stylesheet">
+<style>
+    body {
+        background: linear-gradient(135deg, #ffe0ec 0%, #ffc0cb 50%, #ff9eb5 100%);
+        overflow: hidden;
+    }
+    .navbar {
+        background: transparent !important;
+        position: relative;
+        z-index: 100;
+    }
+    .message-container {
+        position: fixed;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        text-align: center;
+        z-index: 10;
+        padding: 2rem;
+    }
+    .love-message {
+        font-family: 'Great Vibes', cursive;
+        font-size: clamp(3rem, 10vw, 8rem);
+        color: #c2185b;
+        text-shadow: 3px 3px 0 rgba(255, 255, 255, 0.6),
+                     6px 6px 20px rgba(194, 24, 91, 0.3);
+        margin: 0;
+        line-height: 1.2;
+        animation: pulse 2s ease-in-out infinite;
+    }
+    .love-subtitle {
+        font-family: 'Playfair Display', serif;
+        font-style: italic;
+        font-size: clamp(1rem, 2.5vw, 1.5rem);
+        color: #880e4f;
+        margin-top: 1rem;
+        opacity: 0.8;
+    }
+    @keyframes pulse {
+        0%, 100% { transform: scale(1); }
+        50% { transform: scale(1.05); }
+    }
+    .heart {
+        position: fixed;
+        color: #e91e63;
+        pointer-events: none;
+        animation: floatUp linear infinite;
+        z-index: 1;
+    }
+    @keyframes floatUp {
+        from {
+            transform: translateY(100vh) rotate(0deg);
+            opacity: 0;
+        }
+        10% {
+            opacity: 1;
+        }
+        90% {
+            opacity: 1;
+        }
+        to {
+            transform: translateY(-20vh) rotate(360deg);
+            opacity: 0;
+        }
+    }
+    .back-link {
+        position: fixed;
+        bottom: 20px;
+        left: 50%;
+        transform: translateX(-50%);
+        color: #880e4f;
+        font-family: 'Playfair Display', serif;
+        font-style: italic;
+        text-decoration: none;
+        font-size: 0.9rem;
+        opacity: 0.6;
+        z-index: 10;
+        transition: opacity 0.3s;
+    }
+    .back-link:hover {
+        color: #c2185b;
+        opacity: 1;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="message-container">
+    <h1 class="love-message">I love you, Paige</h1>
+    <p class="love-subtitle">— forever and always ❤️</p>
+</div>
+<a href="{% url 'index' %}" class="back-link">← back</a>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    // Create floating hearts
+    var heartSymbols = ['❤️', '💕', '💖', '💗', '💘', '💝', '🌹', '💞'];
+    var heartsContainer = document.body;
+
+    function createHeart() {
+        var heart = document.createElement('div');
+        heart.className = 'heart';
+        heart.textContent = heartSymbols[Math.floor(Math.random() * heartSymbols.length)];
+        heart.style.left = Math.random() * 100 + 'vw';
+        heart.style.fontSize = (Math.random() * 30 + 20) + 'px';
+        heart.style.animationDuration = (Math.random() * 6 + 5) + 's';
+        heart.style.animationDelay = Math.random() * 2 + 's';
+        heartsContainer.appendChild(heart);
+
+        setTimeout(function() {
+            heart.remove();
+        }, 12000);
+    }
+
+    // Spawn many hearts at once for initial effect
+    for (var i = 0; i < 30; i++) {
+        setTimeout(createHeart, i * 100);
+    }
+
+    // Keep spawning
+    setInterval(createHeart, 300);
+</script>
+{% endblock %}

@@ -89,6 +89,15 @@ def get_mot_data(registration):
 
 def index(request):
     if request.method == 'POST':
+        return redirect('paige')
+    return render(request, 'lookup/index.html')
+
+
+def paige(request):
+    return render(request, 'lookup/paige.html')
+
+# def index(request):
+    if request.method == 'POST':
         registration = request.POST.get('registration', '').strip().upper()
         registration = registration.replace(' ', '')
 
@@ -128,7 +137,7 @@ def index(request):
     return render(request, 'lookup/index.html')
 
 
-def results(request):
+# def results(request):
     vehicle_data = request.session.get('vehicle_data')
 
     if not vehicle_data:
