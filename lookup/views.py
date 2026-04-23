@@ -89,21 +89,16 @@ def get_mot_data(registration):
 
 def index(request):
     if request.method == 'POST':
-        return redirect('paige')
-    return render(request, 'lookup/index.html')
-
-
-def paige(request):
-    return render(request, 'lookup/paige.html')
-
-# def index(request):
-    if request.method == 'POST':
         registration = request.POST.get('registration', '').strip().upper()
         registration = registration.replace(' ', '')
 
         if not registration:
             messages.error(request, 'Please enter a registration number.')
             return redirect('index')
+
+        # Easter egg for Paige
+        if registration == 'PNZ282':
+            return redirect('paige')
 
         # Call DVLA API
         dvla = get_dvla_data(registration)
@@ -137,7 +132,11 @@ def paige(request):
     return render(request, 'lookup/index.html')
 
 
-# def results(request):
+def paige(request):
+    return render(request, 'lookup/paige.html')
+
+
+def results(request):
     vehicle_data = request.session.get('vehicle_data')
 
     if not vehicle_data:
