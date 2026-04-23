@@ -8,8 +8,8 @@ merged_database.json
 staticfiles/
 *.sqlite3
 etc/
+partslink24.py
 partslink24_auth.json
 pl24_browser_profile/
-lookup/services/
 setup_partslink24.py
 test_playwright.py
