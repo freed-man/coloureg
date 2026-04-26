@@ -18,7 +18,7 @@ SECRET_KEY = os.environ.get('SECRET_KEY')
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = os.environ.get('DEVELOPMENT', '') == 'True'
 
-ALLOWED_HOSTS = ['127.0.0.1', 'localhost', '.herokuapp.com', '.coloureg.com', '.coloureg.co.uk']
+ALLOWED_HOSTS = ['127.0.0.1', 'localhost', '.herokuapp.com', '.coloureg.com',]
 
 # Application definition
 
@@ -62,7 +62,6 @@ TEMPLATES = [
 
 WSGI_APPLICATION = 'coloureg.wsgi.application'
 
-
 # Database
 # https://docs.djangoproject.com/en/6.0/ref/settings/#databases
 
@@ -72,7 +71,6 @@ DATABASES = {
         conn_max_age=600,
     )
 }
-
 
 # Password validation
 # https://docs.djangoproject.com/en/6.0/ref/settings/#auth-password-validators
