@@ -1,4 +1,5 @@
 from pathlib import Path
+from django.contrib.messages import constants as messages_constants
 import dj_database_url
 import os
 
@@ -7,7 +8,6 @@ if os.path.isfile('env.py'):
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
-
 
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/6.0/howto/deployment/checklist/
@@ -67,10 +67,10 @@ WSGI_APPLICATION = 'coloureg.wsgi.application'
 # https://docs.djangoproject.com/en/6.0/ref/settings/#databases
 
 DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
-    }
+    'default': dj_database_url.config(
+        default=f'sqlite:///{BASE_DIR}/db.sqlite3',
+        conn_max_age=600,
+    )
 }
 
 
@@ -124,11 +124,24 @@ if not DEBUG:
     SECURE_HSTS_PRELOAD = True
     SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
 
-# Heroku PostgreSQL
-if os.environ.get('DATABASE_URL'):
-    DATABASES = {
-        'default': dj_database_url.config(conn_max_age=600, ssl_require=True)
-    }
-
 # Whitenoise compression for static files
 STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
+
+# Email configuration (Resend)
+RESEND_API_KEY = os.environ.get('RESEND_API_KEY', '')
+DEFAULT_FROM_EMAIL = os.environ.get('DEFAULT_FROM_EMAIL', 'hello@coloureg.com')
+ADMIN_EMAIL = os.environ.get('ADMIN_EMAIL', 'hello@coloureg.com')
+
+CACHES = {
+    'default': {
+        'BACKEND': 'django.core.cache.backends.db.DatabaseCache',
+        'LOCATION': 'rate_limit_cache',
+    }
+}
+
+MESSAGE_TAGS = {
+    messages_constants.ERROR: 'alert-danger',
+    messages_constants.SUCCESS: 'alert-success',
+    messages_constants.WARNING: 'alert-warning',
+    messages_constants.INFO: 'alert-info',
+}

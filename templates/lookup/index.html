@@ -33,6 +33,12 @@
         position: relative;
         z-index: 1;
         pointer-events: none;
+        min-height: calc(100vh - 80px);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 100%;
+        padding-bottom: 15vh;
     }
     .content-wrapper form,
     .content-wrapper a,
@@ -101,7 +107,7 @@
         text-align: center;
     }
     .search-input::placeholder {
-        color: #555;
+        color: #222;
         font-weight: 400;
         font-size: 22px;
         letter-spacing: 1px;
@@ -139,6 +145,12 @@
         .search-btn {
             padding: 0 14px;
             font-size: 16px;
+        }
+        .content-wrapper {
+            min-height: auto;
+            padding-top: 2rem;
+            padding-bottom: 2rem;
+            align-items: flex-start;
         }
     }
 
@@ -184,10 +196,10 @@
 {% block content %}
 <div id="particles-js"></div>
 <div class="content-wrapper">
-    <div class="container mt-5">
+    <div class="container">
         <div class="row justify-content-center text-center">
             <div class="col-md-8">
-                <h1 class="main-title title-row d-flex align-items-center justify-content-center gap-2 mb-5">
+                <h1 class="main-title title-row d-flex align-items-center justify-content-center gap-2" style="margin-bottom: 5rem;">
                     <span class="plate-badge paint">
                         <span class="gb-strip"><small style="color:#fff; font-size:0.3em; font-weight:700;">GB</small></span>
                         <span class="plate-text">PAINT</span>
@@ -265,15 +277,58 @@
     var regInput = document.getElementById('reg-input');
     var lookupForm = document.getElementById('lookup-form');
 
-    var text = 'enter your reg...';
+    var text = 'enter your reg to find your paint code...';
     var pi = 0;
     var pDeleting = false;
     var plateActive = true;
 
+    // Measure helper: given a string of placeholder text, returns rendered width in px
+    var measurer = document.createElement('span');
+    measurer.style.visibility = 'hidden';
+    measurer.style.position = 'absolute';
+    measurer.style.whiteSpace = 'pre';
+    document.body.appendChild(measurer);
+
+    function copyPlaceholderStyle() {
+        // Match placeholder styling (size, font, letter-spacing)
+        measurer.style.fontFamily = "'Playfair Display', Georgia, serif";
+        measurer.style.fontStyle = 'italic';
+        measurer.style.fontWeight = '400';
+        measurer.style.letterSpacing = '1px';
+        // Use placeholder-equivalent size based on viewport
+        var vw = window.innerWidth;
+        if (vw <= 360) measurer.style.fontSize = '16px';
+        else if (vw <= 480) measurer.style.fontSize = '16px';
+        else if (vw <= 768) measurer.style.fontSize = '18px';
+        else measurer.style.fontSize = '22px';
+    }
+
+    function getVisibleSubstring(fullText) {
+        // Returns substring that fits from the right, scrolling left characters off
+        copyPlaceholderStyle();
+        var inputWidth = regInput.clientWidth - 16;  // minus padding
+
+        // Try full text first
+        measurer.textContent = fullText;
+        if (measurer.offsetWidth <= inputWidth) {
+            return fullText;
+        }
+
+        // Trim from left until it fits
+        for (var i = 1; i < fullText.length; i++) {
+            measurer.textContent = fullText.substring(i);
+            if (measurer.offsetWidth <= inputWidth) {
+                return fullText.substring(i);
+            }
+        }
+        return '';
+    }
+
     function typePlaceholder() {
         if (!plateActive) return;
         if (!pDeleting) {
-            regInput.placeholder = text.substring(0, pi);
+            var current = text.substring(0, pi);
+            regInput.placeholder = getVisibleSubstring(current);
             pi++;
             if (pi > text.length) {
                 setTimeout(function() { pDeleting = true; typePlaceholder(); }, 2000);
@@ -281,7 +336,8 @@
             }
             setTimeout(typePlaceholder, 100);
         } else {
-            regInput.placeholder = text.substring(0, pi);
+            var current = text.substring(0, pi);
+            regInput.placeholder = getVisibleSubstring(current);
             pi--;
             if (pi < 0) {
                 pDeleting = false;

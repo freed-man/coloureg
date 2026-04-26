@@ -20,55 +20,103 @@
                             alt="{{ make }}" height="50" class="me-3"
                             onerror="this.style.display='none'">
                         <h4 class="card-title mb-0">
-                            {{ dvla.yearOfManufacture }} {{ dvla.make }}{% if model %} {{ model }}{% endif %}
+                            {{ dvla.yearOfManufacture }} {{ dvla.make|title }}{% if model %} {{ model|title }}{% endif %}
                         </h4>
                     </div>
                     <hr>
-                    <p><strong>Registration:</strong> {{ dvla.registrationNumber }}</p>
-                    <p><strong>Colour:</strong> {{ dvla.colour }}</p>
+                    <p style="font-size: 1.1rem; margin-bottom: 0.5rem;"><strong>Registration:</strong> {{ dvla.registrationNumber }}</p>
+                    <p style="font-size: 1.1rem; margin-bottom: 0;"><strong>Colour:</strong> {{ dvla.colour|title }}</p>
                 </div>
             </div>
 
             <h2 class="mt-5 mb-3 d-flex align-items-center">
-                <img src="{% static 'images/palette.png' %}" alt="" height="40" class="me-2">Matching Paint Colours ({{ colors|length }})
+                <img src="{% static 'images/palette.png' %}" alt="" height="40" class="me-2">Paint Code
             </h2>
 
-            {% if colors %}
-            <div class="table-responsive">
-                <table class="table table-striped">
-                    <thead class="table-dark">
-                        <tr>
-                            <th>Swatch</th>
-                            <th>Colour Name</th>
-                            <th>Code(s)</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {% for color in colors %}
-                        <tr>
-                            <td>
-                                {% if color.color_hex %}
-                                <div style="width: 40px; height: 40px; background-color: {{ color.color_hex }}; border: 1px solid #ccc; border-radius: 4px;"></div>
-                                {% else %}
-                                <div style="width: 40px; height: 40px; background-color: #f8f9fa; border: 1px solid #ccc; border-radius: 4px; display: flex; align-items: center; justify-content: center;">
-                                    <small class="text-muted" style="font-size: 0.6rem;">N/A</small>
-                                </div>
-                                {% endif %}
-                            </td>
-                            <td>{{ color.color_name }}</td>
-                            <td><code>{{ color.color_codes }}</code></td>
-                        </tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
+            <div class="card">
+                <div class="card-body">
+                    {% if paint_code %}
+                    <div class="text-center py-3">
+                        <h1 class="display-4 mb-2" style="font-family: 'Courier New', monospace; letter-spacing: 2px;">
+                            {{ paint_code }}
+                        </h1>
+                        {% if paint_description %}
+                        <p class="text-muted mb-0">{{ paint_description }}</p>
+                        {% endif %}
+                    </div>
+                    {% else %}
+                    <div class="d-flex align-items-center justify-content-center py-4" style="gap: 16px;">
+                        <div style="font-size: 2.5rem; color: #C8102E; line-height: 1;">⚠</div>
+                        <div>
+                            <p class="mb-1" style="font-size: 1.1rem; color: #333;">
+                                {{ make|title }} servers timed out
+                            </p>
+                            <p class="mb-0" style="color: #888; font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.5px;">
+                                (request a manual lookup below)
+                            </p>
+                        </div>
+                    </div>
+                    {% endif %}
+                </div>
             </div>
-            {% else %}
-            <div class="alert alert-warning">
-                No matching paint colours found for this vehicle.
+
+            {% if search_id %}
+            <div id="email-section" class="mx-auto mt-4" style="max-width: 540px;">
+                {% if email_submitted %}
+                <div class="card" style="border: 2px solid #22c55e; background: #f0fdf4;">
+                    <div class="card-body text-center py-4">
+                        <div style="width: 48px; height: 48px; border-radius: 50%; background: #22c55e; display: inline-flex; align-items: center; justify-content: center; margin-bottom: 12px;">
+                            <i class="fas fa-check" style="color: white; font-size: 20px;"></i>
+                        </div>
+                        <h6 class="mb-1" style="color: #166534;">
+                            {% if paint_code %}Email sent{% else %}Request received{% endif %}
+                        </h6>
+                        <p class="mb-0 small text-muted">
+                            {% if paint_code %}
+                            Paint code sent to <strong>{{ email_submitted }}</strong>
+                            {% else %}
+                            We'll email <strong>{{ email_submitted }}</strong> within 12 hours
+                            {% endif %}
+                        </p>
+                    </div>
+                </div>
+                {% else %}
+                <div class="card">
+                    <div class="card-body p-4">
+                        {% if paint_code %}
+                        <h5 class="mb-2 fw-semibold">✉️ Email me this code</h5>
+                        {% else %}
+                        <h5 class="mb-2 fw-semibold">✉️ Retrieve from manufacturer database</h5>
+                        <p class="mb-3" style="font-size: 0.95rem; color: #555;">
+                            Sorry for the inconvenience, we'll query {{ make|title }}'s database directly and email you the code within 12 hours.
+                        </p>
+                        {% endif %}
+                        <form method="POST" action="{% url 'submit_email' %}#email-section" class="d-flex gap-2">
+                            {% csrf_token %}
+                            <input type="hidden" name="search_id" value="{{ search_id }}">
+                            <input type="email" name="email" class="form-control" placeholder="your@email.com" required>
+                            <button type="submit" class="btn btn-dark text-nowrap">
+                                {% if paint_code %}Email me{% else %}Request code{% endif %}
+                            </button>
+                        </form>
+                    </div>
+                </div>
+                {% endif %}
             </div>
             {% endif %}
 
         </div>
     </div>
 </div>
+
+{% if email_submitted %}
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        var el = document.getElementById('email-section');
+        if (el) {
+            el.scrollIntoView({ behavior: 'instant', block: 'center' });
+        }
+    });
+</script>
+{% endif %}
 {% endblock %}
