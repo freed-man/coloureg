@@ -211,3 +211,90 @@ def send_user_pending_notification(to_email, registration, make):
         return True
     except Exception:
         return False
+
+def send_admin_contact_message(contact_type, user_email, message):
+    """Send contact form message to admin."""
+    client = _client()
+    type_label = contact_type.title()
+
+    html = f"""
+    <div style="background: #f8f9fa; padding: 40px 20px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;">
+        <div style="max-width: 560px; margin: 0 auto; background: #fff; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.04);">
+            {_brand_header()}
+            <div style="background: #003399; padding: 16px; text-align: center;">
+                <span style="color: #fff; font-size: 14px; font-weight: 600; letter-spacing: 1px; text-transform: uppercase;">New {type_label} Message</span>
+            </div>
+            <div style="padding: 32px;">
+                <table style="width: 100%; border-collapse: collapse; margin-bottom: 24px;">
+                    <tr style="border-bottom: 1px solid #eee;">
+                        <td style="padding: 10px 0; color: #666; font-size: 13px; width: 80px;">Type</td>
+                        <td style="padding: 10px 0; color: #1a1a1a; font-size: 14px;">{type_label}</td>
+                    </tr>
+                    <tr style="border-bottom: 1px solid #eee;">
+                        <td style="padding: 10px 0; color: #666; font-size: 13px;">From</td>
+                        <td style="padding: 10px 0;"><a href="mailto:{user_email}" style="color: #003399; font-size: 14px;">{user_email}</a></td>
+                    </tr>
+                </table>
+
+                <div style="background: #f8f9fa; padding: 20px; border-radius: 8px; margin-bottom: 16px;">
+                    <p style="margin: 0; color: #1a1a1a; font-size: 14px; line-height: 1.6; white-space: pre-wrap;">{message}</p>
+                </div>
+
+                <p style="margin: 0; color: #999; font-size: 12px;">
+                    Reply to this email to respond directly.
+                </p>
+            </div>
+        </div>
+        {FOOTER}
+    </div>
+    """
+
+    try:
+        client.Emails.send({
+            "from": settings.DEFAULT_FROM_EMAIL,
+            "to": settings.ADMIN_EMAIL,
+            "reply_to": user_email,
+            "subject": f"[{type_label}] Message from {user_email}",
+            "html": html,
+            "attachments": _attachments(),
+        })
+        return True
+    except Exception:
+        return False
+
+
+def send_user_contact_confirmation(to_email):
+    """Confirm to user that their message was received."""
+    client = _client()
+
+    html = f"""
+    <div style="background: #f8f9fa; padding: 40px 20px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;">
+        <div style="max-width: 560px; margin: 0 auto; background: #fff; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.04);">
+            {_brand_header()}
+            <div style="padding: 40px 32px;">
+                <h1 style="margin: 0 0 12px; font-size: 22px; color: #1a1a1a; font-weight: 600;">Thanks for getting in touch</h1>
+                <p style="margin: 0 0 16px; color: #4a4a4a; font-size: 15px; line-height: 1.6;">
+                    We've received your message and will get back to you within 12 hours.
+                </p>
+                <div style="background: #f0f4ff; border-left: 3px solid #003399; padding: 16px 20px; border-radius: 4px;">
+                    <p style="margin: 0; color: #003399; font-size: 13px;">
+                        Need to add something? Just reply to this email.
+                    </p>
+                </div>
+            </div>
+        </div>
+        {FOOTER}
+    </div>
+    """
+
+    try:
+        client.Emails.send({
+            "from": settings.DEFAULT_FROM_EMAIL,
+            "to": to_email,
+            "subject": "We've received your message",
+            "html": html,
+            "attachments": _attachments(),
+        })
+        return True
+    except Exception:
+        return False

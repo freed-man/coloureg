@@ -11,6 +11,8 @@ from .services.email import (
     send_user_paint_code,
     send_admin_failure_notification,
     send_user_pending_notification,
+    send_admin_contact_message,
+    send_user_contact_confirmation,
 )
 
 
@@ -334,3 +336,48 @@ def submit_email(request):
     request.session['email_submitted'] = email
 
     return redirect('results')
+
+def info(request):
+    """Info/about page with contact form."""
+    contact_submitted = request.session.pop('contact_submitted', None)
+    return render(request, 'lookup/info.html', {
+        'contact_submitted': contact_submitted,
+    })
+
+
+@require_POST
+def submit_contact(request):
+    """Handle contact form submission from info page."""
+    contact_type = request.POST.get('type', 'general').strip()
+    email = request.POST.get('email', '').strip()
+    message = request.POST.get('message', '').strip()
+
+    if not email or not message:
+        messages.error(request, 'Email and message are required.')
+        return redirect('info')
+
+    # Rate limit: 3 per hour per IP
+    was_limited = is_ratelimited(
+        request,
+        group='contact',
+        key='ip',
+        rate='3/h',
+        method='POST',
+        increment=True,
+    )
+    if was_limited:
+        messages.error(
+            request,
+            'Too many messages. Please wait an hour before trying again.'
+        )
+        return redirect('info')
+
+    # Send admin notification
+    from .services.email import send_admin_contact_message, send_user_contact_confirmation
+    admin_sent = send_admin_contact_message(contact_type, email, message)
+    user_sent = send_user_contact_confirmation(email)
+
+    if admin_sent and user_sent:
+        request.session['contact_submitted'] = email
+
+    return redirect('info')
