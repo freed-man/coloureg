@@ -1,7 +1,7 @@
 """VDG (Vehicle Data Global) API client.
 
 Handles calls to VDG for:
-- VIN lookup (VehicleDetails package)
+- Vehicle details (VehicleDetails package) — make, model, year, colour, VIN
 - Paint code lookup (Paint Package — launches May 2026)
 """
 import os
@@ -10,7 +10,7 @@ import requests
 
 VDG_BASE_URL = 'https://uk.api.vehicledataglobal.com/r2'
 VDG_VEHICLE_ENDPOINT = f'{VDG_BASE_URL}/lookup'
-VDG_PAINT_ENDPOINT = f'{VDG_BASE_URL}/lookup'  # same endpoint, different package
+VDG_PAINT_ENDPOINT = f'{VDG_BASE_URL}/lookup'
 
 
 class VdgError(Exception):
@@ -22,7 +22,7 @@ class VdgNotFoundError(VdgError):
 
 
 def _make_request(endpoint, package_name, registration):
-    """Shared VDG API request handler."""
+    """Shared VDG API request handler. Returns the parsed JSON response."""
     api_key = os.environ.get('VDG_API_KEY')
     if not api_key:
         raise VdgError('VDG_API_KEY not configured')
@@ -46,29 +46,70 @@ def _make_request(endpoint, package_name, registration):
     except ValueError:
         raise VdgError('VDG returned invalid JSON')
 
-    # Check response status
-    response_data = data.get('Response', {})
-    status_code = response_data.get('StatusCode', '')
-    if status_code == 'KeyInvalid':
-        raise VdgError('VDG API key invalid')
-    if status_code == 'ItemNotFound':
-        raise VdgNotFoundError(f'Vehicle not found: {registration}')
-    if status_code != 'Success':
-        raise VdgError(f'VDG status: {status_code}')
+    # Check ResponseInformation for status
+    response_info = data.get('ResponseInformation', {})
+    is_success = response_info.get('IsSuccessStatusCode', False)
+    status_message = response_info.get('StatusMessage', '')
 
-    return response_data.get('DataItems', {})
+    if not is_success:
+        if 'NotFound' in status_message or 'not found' in status_message.lower():
+            raise VdgNotFoundError(f'Vehicle not found: {registration}')
+        if 'Invalid' in status_message and 'Key' in status_message:
+            raise VdgError('VDG API key invalid')
+        raise VdgError(f'VDG status: {status_message}')
+
+    return data
+
+
+def get_vehicle_details(registration):
+    """Fetch full vehicle details from VDG VehicleDetails package.
+
+    Returns dict with: make, model, year, colour, vin
+    Or None if vehicle not found.
+    """
+    try:
+        data = _make_request(
+            VDG_VEHICLE_ENDPOINT,
+            'VehicleDetails',
+            registration,
+        )
+    except VdgNotFoundError:
+        return None
+
+    results = data.get('Results', {})
+    vehicle_details = results.get('VehicleDetails', {})
+
+    # Vehicle identification (VIN, year, basic info)
+    identification = vehicle_details.get('VehicleIdentification', {}) or {}
+    vin = identification.get('Vin', '')
+    year = identification.get('YearOfManufacture')
+
+    # Model details (cleaner make/model than DVLA all-caps)
+    model_details = vehicle_details.get('ModelDetails', {}) or {}
+    model_identification = model_details.get('ModelIdentification', {}) or {}
+    make = model_identification.get('Make', '') or identification.get('DvlaMake', '')
+    model = model_identification.get('Model', '') or identification.get('DvlaModel', '')
+
+    # Colour from VehicleHistory
+    vehicle_history = vehicle_details.get('VehicleHistory', {}) or {}
+    colour_details = vehicle_history.get('ColourDetails', {}) or {}
+    colour = colour_details.get('CurrentColour', '')
+
+    return {
+        'make': make,
+        'model': model,
+        'year': year,
+        'colour': colour,
+        'vin': vin,
+    }
 
 
 def get_vin(registration):
-    """Fetch VIN from VDG VehicleDetails package."""
-    data_items = _make_request(
-        VDG_VEHICLE_ENDPOINT,
-        'VehicleDetails',
-        registration,
-    )
-    vehicle_details = data_items.get('VehicleDetails', {})
-    vin = vehicle_details.get('VehicleIdentification', {}).get('VIN')
-    return vin
+    """Fetch just the VIN. Compatibility wrapper around get_vehicle_details."""
+    details = get_vehicle_details(registration)
+    if details:
+        return details.get('vin')
+    return None
 
 
 def get_paint_code(registration):
@@ -77,11 +118,11 @@ def get_paint_code(registration):
     Returns dict with 'code' and 'description', or None if no paint code found.
     Example: {'code': '775U', 'description': 'IRIDIUM SILVER - METALLIC FINISH'}
 
-    The Paint Package launches May 2026. Until then this will return None
-    (VDG will respond with ItemNotFound or similar for unknown packages).
+    The Paint Package launches May 2026. Until then this will fail
+    (VDG will respond with NotFound or similar for unknown packages).
     """
     try:
-        data_items = _make_request(
+        data = _make_request(
             VDG_PAINT_ENDPOINT,
             'PaintCodeDetails',
             registration,
@@ -89,13 +130,13 @@ def get_paint_code(registration):
     except VdgNotFoundError:
         return None
 
-    paint_details = data_items.get('PaintCodeDetails', {})
+    results = data.get('Results', {})
+    paint_details = results.get('PaintCodeDetails', {})
     paint_list = paint_details.get('PaintCodeList', [])
 
     if not paint_list:
         return None
 
-    # Take the first paint code (usually the primary colour)
     first = paint_list[0]
     return {
         'code': first.get('Code', ''),

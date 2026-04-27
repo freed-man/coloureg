@@ -3,6 +3,8 @@
 
 {% block extra_title %} ❤️{% endblock %}
 
+{% block about_link %}{% endblock %}
+
 {% block extra_css %}
 <link href="https://fonts.googleapis.com/css2?family=Great+Vibes&family=Playfair+Display:ital,wght@1,400&display=swap" rel="stylesheet">
 <style>
@@ -100,7 +102,6 @@
 
 {% block extra_js %}
 <script>
-    // Create floating hearts
     var heartSymbols = ['❤️', '💕', '💖', '💗', '💘', '💝', '🌹', '💞'];
     var heartsContainer = document.body;
 
@@ -119,12 +120,10 @@
         }, 12000);
     }
 
-    // Spawn many hearts at once for initial effect
     for (var i = 0; i < 30; i++) {
         setTimeout(createHeart, i * 100);
     }
 
-    // Keep spawning
     setInterval(createHeart, 300);
 </script>
 {% endblock %}

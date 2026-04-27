@@ -97,14 +97,14 @@
 
     {% block about_link %}
     <a href="{% url 'about' %}" 
-       style="position: fixed; bottom: 20px; right: 20px; z-index: 100; 
-              font-size: 0.9rem; letter-spacing: 2px; 
-              color: #333; text-decoration: none; 
-              text-transform: uppercase; font-weight: 600;
-              transition: color 0.2s;"
-       onmouseover="this.style.color='#C8102E'"
-       onmouseout="this.style.color='#333'">
-        About
+    style="position: fixed; bottom: 20px; right: 20px; z-index: 100; 
+            font-size: 0.9rem; letter-spacing: 2px; 
+            color: #333; text-decoration: none; 
+            font-weight: 600;
+            transition: color 0.2s;"
+    onmouseover="this.style.color='#C8102E'"
+    onmouseout="this.style.color='#333'">
+        about
     </a>
     {% endblock %}
 

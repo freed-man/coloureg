@@ -6,7 +6,13 @@ from django.contrib import messages
 from django.views.decorators.http import require_POST
 from django_ratelimit.core import is_ratelimited
 from .models import Search
-from .services.vdg import get_vin, get_paint_code, VdgError, VdgNotFoundError
+from .services.vdg import (
+    get_vehicle_details,
+    get_vin,
+    get_paint_code,
+    VdgError,
+    VdgNotFoundError,
+)
 from .services.email import (
     send_user_paint_code,
     send_admin_failure_notification,
@@ -76,7 +82,7 @@ def get_mot_access_token():
 
 
 def get_mot_data(registration):
-    """Fetch MOT data from the DVSA API — used only to get the model name."""
+    """Fetch MOT data from the DVSA API — used only as fallback to get the model name."""
     access_token = get_mot_access_token()
     if not access_token:
         return None
@@ -97,6 +103,13 @@ def get_mot_data(registration):
     except requests.exceptions.RequestException:
         return None
     return None
+
+
+def mask_vin(vin):
+    """Censor middle of VIN for display: WAU***********456"""
+    if not vin or len(vin) < 6:
+        return vin or ''
+    return vin[:3] + '*' * (len(vin) - 6) + vin[-3:]
 
 
 def index(request):
@@ -136,31 +149,64 @@ def index(request):
             user_agent=request.META.get('HTTP_USER_AGENT', ''),
         )
 
-        # Call DVLA API
-        dvla = get_dvla_data(registration)
-        if not dvla:
-            search.success = False
-            search.error_message = 'DVLA API: vehicle not found'
-            search.lookup_duration_ms = int((time.time() - start_time) * 1000)
-            search.save()
-            messages.error(
-                request,
-                'Vehicle not found. Please check the registration '
-                'number is correct and try again.'
-            )
-            return redirect('index')
+        # --- VDG VehicleDetails (PRIMARY) ---
+        vdg_details = None
+        try:
+            vdg_details = get_vehicle_details(registration)
+            search.vdg_vehicle_called = True
+        except (VdgError, VdgNotFoundError) as e:
+            search.vdg_vehicle_called = True
+            search.error_message = f'VDG Vehicle: {str(e)[:200]}'
 
-        # Populate vehicle data from DVLA
-        search.make = dvla.get('make', '')
-        search.year = dvla.get('yearOfManufacture')
-        search.colour = dvla.get('colour', '')
+        make = ''
+        model = ''
+        year = None
+        colour = ''
+        vin = None
 
-        # Call DVSA MOT API for model name
-        mot = get_mot_data(registration)
-        model = extract_mot_field(mot, 'model') or ''
+        if vdg_details:
+            # Trust VDG's casing
+            make = vdg_details.get('make', '')
+            model = vdg_details.get('model', '')
+            year = vdg_details.get('year')
+            colour = vdg_details.get('colour', '').title()  # VDG returns colour all-caps
+            vin = vdg_details.get('vin', '')
+        else:
+            # --- FALLBACK: DVLA + MOT ---
+            dvla = get_dvla_data(registration)
+            if not dvla:
+                search.success = False
+                search.lookup_duration_ms = int((time.time() - start_time) * 1000)
+                if not search.error_message:
+                    search.error_message = 'DVLA + VDG: vehicle not found'
+                else:
+                    search.error_message += ' | DVLA: not found'
+                search.save()
+                messages.error(
+                    request,
+                    'Vehicle not found. Please check the registration '
+                    'number is correct and try again.'
+                )
+                return redirect('index')
+
+            # Title-case fallback values (DVLA returns all-caps)
+            make = dvla.get('make', '').title()
+            year = dvla.get('yearOfManufacture')
+            colour = dvla.get('colour', '').title()
+
+            # Get model from MOT
+            mot = get_mot_data(registration)
+            mot_model = extract_mot_field(mot, 'model') or ''
+            model = mot_model.title()
+
+        # Save vehicle data to Search log
+        search.make = make
         search.model = model
+        search.year = year
+        search.colour = colour
+        search.vin = vin or ''
 
-        # --- VDG Paint Package (PRIMARY) ---
+        # --- VDG Paint Package (PRIMARY paint lookup) ---
         paint_code = None
         paint_description = None
         try:
@@ -174,33 +220,36 @@ def index(request):
                 search.provider = Search.PROVIDER_VDG
         except (VdgError, VdgNotFoundError) as e:
             search.vdg_paint_called = True
-            search.error_message = f'VDG Paint: {str(e)[:200]}'
-
-        # --- VDG VehicleDetails for VIN (FALLBACK only if no paint code) ---
-        vin = None
-        if not paint_code:
-            try:
-                vin = get_vin(registration)
-                search.vdg_vehicle_called = True
-                search.vin = vin or ''
-            except (VdgError, VdgNotFoundError) as e:
-                search.vdg_vehicle_called = True
-                existing = search.error_message or ''
-                search.error_message = f'{existing} | VDG Vehicle: {str(e)[:200]}'.strip(' |')
+            existing = search.error_message or ''
+            search.error_message = f'{existing} | VDG Paint: {str(e)[:200]}'.strip(' |')
 
         # Mark successful (vehicle found, even if paint code didn't come through)
         search.success = True
         search.lookup_duration_ms = int((time.time() - start_time) * 1000)
         search.save()
 
+        # Make logo filename (lowercase, normalized)
+        make_raw = make.lower().replace('-', '_').replace(' ', '_')
+        make_logo_map = {
+            'mercedes': 'mercedes_benz',
+            'vw': 'volkswagen',
+            'landrover': 'land_rover',
+            'alfaromeo': 'alfa_romeo',
+        }
+        make_logo = make_logo_map.get(make_raw, make_raw)
+
         # Store in session for the results page
         request.session['vehicle_data'] = {
-            'dvla': dvla,
-            'mot': mot,
+            'make': make,
+            'model': model,
+            'year': year,
+            'colour': colour,
+            'registration': registration,
             'vin': vin,
+            'vin_masked': mask_vin(vin),
             'paint_code': paint_code,
             'paint_description': paint_description,
-            'registration': registration,
+            'make_logo': make_logo,
             'search_id': search.id,
         }
 
@@ -223,39 +272,19 @@ def results(request):
         )
         return redirect('index')
 
-    dvla = vehicle_data.get('dvla', {})
-    mot = vehicle_data.get('mot')
-    registration = vehicle_data.get('registration', '')
-    paint_code = vehicle_data.get('paint_code')
-    paint_description = vehicle_data.get('paint_description')
-
-    # Extract model from MOT data
-    model = extract_mot_field(mot, 'model') or ''
-
-    # Make logo filename
-    make_raw = dvla.get(
-        'make', '').lower().replace('-', '_').replace(' ', '_')
-    make_logo_map = {
-        'mercedes': 'mercedes_benz',
-        'vw': 'volkswagen',
-        'landrover': 'land_rover',
-        'alfaromeo': 'alfa_romeo',
-    }
-    make_logo = make_logo_map.get(make_raw, make_raw)
-
     # Check if email was already submitted for this search
     email_submitted = request.session.pop('email_submitted', None)
 
     context = {
-        'registration': registration,
-        'dvla': dvla,
-        'model': model,
-        'make_logo': make_logo,
-        'make': dvla.get('make', ''),
-        'year': dvla.get('yearOfManufacture'),
-        'colour': dvla.get('colour', ''),
-        'paint_code': paint_code,
-        'paint_description': paint_description,
+        'registration': vehicle_data.get('registration', ''),
+        'make': vehicle_data.get('make', ''),
+        'model': vehicle_data.get('model', ''),
+        'year': vehicle_data.get('year'),
+        'colour': vehicle_data.get('colour', ''),
+        'vin_masked': vehicle_data.get('vin_masked', ''),
+        'make_logo': vehicle_data.get('make_logo', ''),
+        'paint_code': vehicle_data.get('paint_code'),
+        'paint_description': vehicle_data.get('paint_description'),
         'search_id': vehicle_data.get('search_id'),
         'email_submitted': email_submitted,
     }
@@ -332,10 +361,9 @@ def submit_email(request):
             search.email_sent = True
             search.save()
 
-    # Store confirmation in session so results page knows to hide form
     request.session['email_submitted'] = email
-
     return redirect('results')
+
 
 def about(request):
     """About page with contact form."""
@@ -356,7 +384,6 @@ def submit_contact(request):
         messages.error(request, 'Email and message are required.')
         return redirect('about')
 
-    # Rate limit: 3 per hour per IP
     was_limited = is_ratelimited(
         request,
         group='contact',
@@ -372,8 +399,6 @@ def submit_contact(request):
         )
         return redirect('about')
 
-    # Send admin notification
-    from .services.email import send_admin_contact_message, send_user_contact_confirmation
     admin_sent = send_admin_contact_message(contact_type, email, message)
     user_sent = send_user_contact_confirmation(email)
 
