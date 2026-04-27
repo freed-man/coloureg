@@ -122,9 +122,22 @@ def normalize_fuel_type(fuel):
 
 
 def mask_vin(vin):
+    """Censor middle of VIN for display: WAU***********456"""
     if not vin or len(vin) < 6:
         return vin or ''
     return vin[:3] + '*' * (len(vin) - 6) + vin[-3:]
+
+
+def build_vehicle_title(year, make, model):
+    """Build a vehicle title string: '2014 Volkswagen Golf SE BlueMotion Technology TDI'"""
+    parts = []
+    if year:
+        parts.append(str(year))
+    if make:
+        parts.append(make)
+    if model:
+        parts.append(model)
+    return ' '.join(parts).strip()
 
 
 def index(request):
@@ -215,11 +228,15 @@ def index(request):
             mot_model = extract_mot_field(mot, 'model') or ''
             model = mot_model.title()
 
+        # Build the vehicle title
+        vehicle_title = build_vehicle_title(year, make, model)
+
         search.make = make
         search.model = model
         search.year = year
         search.colour = colour
         search.vin = vin or ''
+        search.vehicle_title = vehicle_title
 
         # --- VDG Paint Package ---
         paint_code = None
@@ -262,6 +279,7 @@ def index(request):
             'registration': registration,
             'vin': vin,
             'vin_masked': mask_vin(vin),
+            'vehicle_title': vehicle_title,
             'paint_code': paint_code,
             'paint_description': paint_description,
             'make_logo': make_logo,
@@ -300,6 +318,7 @@ def results(request):
         'engine_description': vehicle_data.get('engine_description', ''),
         'vin_masked': vehicle_data.get('vin_masked', ''),
         'make_logo': vehicle_data.get('make_logo', ''),
+        'vehicle_title': vehicle_data.get('vehicle_title', ''),
         'paint_code': vehicle_data.get('paint_code'),
         'paint_description': vehicle_data.get('paint_description'),
         'search_id': vehicle_data.get('search_id'),
@@ -346,30 +365,36 @@ def submit_email(request):
     search.email = email
     search.save()
 
+    vin_masked = mask_vin(search.vin)
+
     if search.paint_code:
         sent = send_user_paint_code(
-            email,
-            search.registration,
-            search.make,
-            search.model,
-            search.year,
-            search.paint_code,
-            search.paint_description,
+            to_email=email,
+            registration=search.registration,
+            vehicle_title=search.vehicle_title,
+            vin_masked=vin_masked,
+            colour=search.colour,
+            paint_code=search.paint_code,
+            paint_description=search.paint_description,
         )
         if sent:
             search.email_sent = True
             search.save()
     else:
         admin_sent = send_admin_failure_notification(
-            search.registration,
-            search.make,
-            search.model,
-            search.year,
-            search.colour,
-            search.vin,
-            email,
+            registration=search.registration,
+            vehicle_title=search.vehicle_title,
+            vin_full=search.vin,
+            colour=search.colour,
+            user_email=email,
         )
-        user_sent = send_user_pending_notification(email, search.registration, search.make)
+        user_sent = send_user_pending_notification(
+            to_email=email,
+            registration=search.registration,
+            vehicle_title=search.vehicle_title,
+            vin_masked=vin_masked,
+            colour=search.colour,
+        )
         if admin_sent and user_sent:
             search.email_sent = True
             search.save()

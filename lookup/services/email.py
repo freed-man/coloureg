@@ -57,11 +57,9 @@ def _attachments():
     return []
 
 
-def send_user_paint_code(to_email, registration, make, model, year, paint_code, paint_description):
+def send_user_paint_code(to_email, registration, vehicle_title, vin_masked, colour, paint_code, paint_description):
+    """Email user the found paint code."""
     client = _client()
-    make_display = (make or '').title() if make else ''
-    model_display = (model or '').title() if model else ''
-    vehicle = f"{year or ''} {make_display} {model_display}".strip()
 
     html = f"""
     <div style="background: #f8f9fa; padding: 40px 20px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;">
@@ -70,7 +68,7 @@ def send_user_paint_code(to_email, registration, make, model, year, paint_code, 
             <div style="padding: 40px 32px;">
                 <h1 style="margin: 0 0 8px; font-size: 22px; color: #1a1a1a; font-weight: 600;">Your paint code</h1>
                 <p style="margin: 0 0 24px; color: #666; font-size: 15px; line-height: 1.5;">
-                    Here's the paint code for your {make_display or 'vehicle'}.
+                    Here's the paint code for your vehicle.
                 </p>
                 <div style="background: #f8f9fa; padding: 32px; border-radius: 8px; text-align: center; margin-bottom: 24px;">
                     <div style="font-family: 'SF Mono', Monaco, Consolas, monospace; font-size: 42px; font-weight: 700; letter-spacing: 3px; color: #1a1a1a;">
@@ -81,11 +79,19 @@ def send_user_paint_code(to_email, registration, make, model, year, paint_code, 
                 <table style="width: 100%; border-collapse: collapse;">
                     <tr>
                         <td style="padding: 12px 0; color: #666; font-size: 14px; width: 120px;">Vehicle</td>
-                        <td style="padding: 12px 0; color: #1a1a1a; font-size: 14px; font-weight: 500;">{vehicle}</td>
+                        <td style="padding: 12px 0; color: #1a1a1a; font-size: 14px; font-weight: 500;">{vehicle_title or '—'}</td>
                     </tr>
                     <tr style="border-top: 1px solid #eee;">
                         <td style="padding: 12px 0; color: #666; font-size: 14px;">Registration</td>
-                        <td style="padding: 12px 0; color: #1a1a1a; font-size: 16px; font-weight: 600;">{registration}</td>
+                        <td style="padding: 12px 0; color: #1a1a1a; font-size: 14px;">{registration}</td>
+                    </tr>
+                    <tr style="border-top: 1px solid #eee;">
+                        <td style="padding: 12px 0; color: #666; font-size: 14px;">VIN</td>
+                        <td style="padding: 12px 0; color: #1a1a1a; font-size: 14px;">{vin_masked or '—'}</td>
+                    </tr>
+                    <tr style="border-top: 1px solid #eee;">
+                        <td style="padding: 12px 0; color: #666; font-size: 14px;">Colour</td>
+                        <td style="padding: 12px 0; color: #1a1a1a; font-size: 14px;">{colour or '—'}</td>
                     </tr>
                 </table>
             </div>
@@ -107,12 +113,9 @@ def send_user_paint_code(to_email, registration, make, model, year, paint_code, 
         return False
 
 
-def send_admin_failure_notification(registration, make, model, year, colour, vin, user_email):
+def send_admin_failure_notification(registration, vehicle_title, vin_full, colour, user_email):
+    """Email admin when paint code wasn't found and user requested manual lookup."""
     client = _client()
-    make_display = (make or '').title() if make else ''
-    model_display = (model or '').title() if model else ''
-    colour_display = (colour or '').title() if colour else ''
-    vehicle = f"{year or ''} {make_display} {model_display}".strip()
 
     html = f"""
     <div style="background: #f8f9fa; padding: 40px 20px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;">
@@ -124,20 +127,20 @@ def send_admin_failure_notification(registration, make, model, year, colour, vin
             <div style="padding: 32px;">
                 <table style="width: 100%; border-collapse: collapse; margin-bottom: 24px;">
                     <tr style="border-bottom: 1px solid #eee;">
-                        <td style="padding: 10px 0; color: #666; font-size: 13px; width: 100px;">Reg</td>
+                        <td style="padding: 10px 0; color: #666; font-size: 13px; width: 100px;">Vehicle</td>
+                        <td style="padding: 10px 0; color: #1a1a1a; font-size: 14px;">{vehicle_title or '—'}</td>
+                    </tr>
+                    <tr style="border-bottom: 1px solid #eee;">
+                        <td style="padding: 10px 0; color: #666; font-size: 13px;">Registration</td>
                         <td style="padding: 10px 0; color: #1a1a1a; font-size: 14px;">{registration}</td>
                     </tr>
                     <tr style="border-bottom: 1px solid #eee;">
-                        <td style="padding: 10px 0; color: #666; font-size: 13px;">Vehicle</td>
-                        <td style="padding: 10px 0; color: #1a1a1a; font-size: 14px;">{vehicle}</td>
+                        <td style="padding: 10px 0; color: #666; font-size: 13px;">VIN</td>
+                        <td style="padding: 10px 0; color: #1a1a1a; font-size: 14px; font-family: 'SF Mono', Monaco, Consolas, monospace;">{vin_full or '—'}</td>
                     </tr>
                     <tr style="border-bottom: 1px solid #eee;">
                         <td style="padding: 10px 0; color: #666; font-size: 13px;">Colour</td>
-                        <td style="padding: 10px 0; color: #1a1a1a; font-size: 14px;">{colour_display or '—'}</td>
-                    </tr>
-                    <tr style="border-bottom: 1px solid #eee;">
-                        <td style="padding: 10px 0; color: #666; font-size: 13px;">VIN</td>
-                        <td style="padding: 10px 0; color: #1a1a1a; font-size: 14px;">{vin or '—'}</td>
+                        <td style="padding: 10px 0; color: #1a1a1a; font-size: 14px;">{colour or '—'}</td>
                     </tr>
                     <tr>
                         <td style="padding: 10px 0; color: #666; font-size: 13px;">User</td>
@@ -168,9 +171,9 @@ def send_admin_failure_notification(registration, make, model, year, colour, vin
         return False
 
 
-def send_user_pending_notification(to_email, registration, make):
+def send_user_pending_notification(to_email, registration, vehicle_title, vin_masked, colour):
+    """Email user confirming we'll do manual lookup."""
     client = _client()
-    make_display = (make or '').title() if make else ''
 
     html = f"""
     <div style="background: #f8f9fa; padding: 40px 20px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;">
@@ -178,17 +181,27 @@ def send_user_pending_notification(to_email, registration, make):
             {_brand_header()}
             <div style="padding: 40px 32px;">
                 <h1 style="margin: 0 0 12px; font-size: 22px; color: #1a1a1a; font-weight: 600;">Thanks — we're on it</h1>
-                <p style="margin: 0 0 16px; color: #4a4a4a; font-size: 15px; line-height: 1.6;">
-                    {make_display or "The manufacturer"}'s servers didn't respond in time for your lookup:
-                </p>
-                <div style="background: #f8f9fa; padding: 20px; border-radius: 8px; text-align: center; margin-bottom: 24px;">
-                    <div style="font-size: 24px; font-weight: 700; color: #1a1a1a; letter-spacing: 2px;">
-                        {registration}
-                    </div>
-                </div>
                 <p style="margin: 0 0 24px; color: #4a4a4a; font-size: 15px; line-height: 1.6;">
-                    We'll retrieve the paint code directly from the manufacturer database and email it to you within 12 hours.
+                    The manufacturer's servers didn't respond in time. We'll retrieve the paint code directly from the manufacturer database and email it to you within 12 hours.
                 </p>
+                <table style="width: 100%; border-collapse: collapse; margin-bottom: 24px;">
+                    <tr style="border-bottom: 1px solid #eee;">
+                        <td style="padding: 10px 0; color: #666; font-size: 13px; width: 100px;">Vehicle</td>
+                        <td style="padding: 10px 0; color: #1a1a1a; font-size: 14px;">{vehicle_title or '—'}</td>
+                    </tr>
+                    <tr style="border-bottom: 1px solid #eee;">
+                        <td style="padding: 10px 0; color: #666; font-size: 13px;">Registration</td>
+                        <td style="padding: 10px 0; color: #1a1a1a; font-size: 14px;">{registration}</td>
+                    </tr>
+                    <tr style="border-bottom: 1px solid #eee;">
+                        <td style="padding: 10px 0; color: #666; font-size: 13px;">VIN</td>
+                        <td style="padding: 10px 0; color: #1a1a1a; font-size: 14px;">{vin_masked or '—'}</td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 10px 0; color: #666; font-size: 13px;">Colour</td>
+                        <td style="padding: 10px 0; color: #1a1a1a; font-size: 14px;">{colour or '—'}</td>
+                    </tr>
+                </table>
                 <div style="background: #f0f4ff; border-left: 3px solid #003399; padding: 16px 20px; border-radius: 4px;">
                     <p style="margin: 0; color: #003399; font-size: 13px;">
                         Any questions? Just reply to this email.
@@ -211,6 +224,7 @@ def send_user_pending_notification(to_email, registration, make):
         return True
     except Exception:
         return False
+
 
 def send_admin_contact_message(contact_type, user_email, message):
     """Send contact form message to admin."""

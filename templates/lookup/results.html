@@ -5,6 +5,43 @@
 
 {% block about_link %}{% endblock %}
 
+{% block extra_css %}
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+    .vehicle-card {
+        font-family: 'IBM Plex Sans', sans-serif;
+    }
+    .vehicle-card-title {
+        font-size: 26px;
+        font-weight: 500;
+        margin: 0 0 14px;
+    }
+    .vehicle-row {
+        display: flex;
+        justify-content: space-between;
+        padding: 12px 0;
+        border-bottom: 0.5px solid rgba(0, 0, 0, 0.1);
+        font-size: 16px;
+        gap: 16px;
+    }
+    .vehicle-row:last-child {
+        border-bottom: none;
+    }
+    .vehicle-label {
+        color: #666;
+        font-weight: 600;
+        white-space: nowrap;
+    }
+    .vehicle-value {
+        font-weight: 700;
+        text-align: right;
+    }
+    .vehicle-divider {
+        border-top: 0.5px solid rgba(0, 0, 0, 0.1);
+    }
+</style>
+{% endblock %}
+
 {% block content %}
 <div class="container mt-2">
     <div class="row justify-content-center">
@@ -15,31 +52,50 @@
             <h2 class="mb-4 text-center text-md-start d-flex align-items-center">
                 <img src="{% static 'images/information.png' %}" alt="" height="40" class="me-2">Vehicle Details
             </h2>
-            <div class="card">
-                <div class="card-body">
+
+            <div class="card vehicle-card">
+                <div class="card-body" style="padding: 1.25rem 1.5rem;">
                     <div class="d-flex align-items-center mb-2">
                         <img src="{% static 'images/logos/' %}{{ make_logo }}.png"
                             alt="{{ make }}" height="50" class="me-3"
                             onerror="this.style.display='none'">
-                        <h4 class="card-title mb-0">
+                        <h4 class="vehicle-card-title">
                             {{ year }} {{ make }}{% if model %} {{ model }}{% endif %}
                         </h4>
                     </div>
-                    <hr>
+                    <div class="vehicle-divider"></div>
+                    <div class="vehicle-row">
+                        <span class="vehicle-label">Registration</span>
+                        <span class="vehicle-value">{{ registration }}</span>
+                    </div>
                     {% if vin_masked %}
-                    <p style="font-size: 1.1rem; margin-bottom: 0.5rem;"><strong>VIN:</strong> {{ vin_masked }}</p>
+                    <div class="vehicle-row">
+                        <span class="vehicle-label">VIN</span>
+                        <span class="vehicle-value">{{ vin_masked }}</span>
+                    </div>
                     {% endif %}
-                    <p style="font-size: 1.1rem; margin-bottom: 0.5rem;"><strong>Registration:</strong> {{ registration }}</p>
                     {% if engine_description %}
-                    <p style="font-size: 1.1rem; margin-bottom: 0.5rem;"><strong>Engine:</strong> {{ engine_description }}</p>
+                    <div class="vehicle-row">
+                        <span class="vehicle-label">Engine</span>
+                        <span class="vehicle-value">{{ engine_description }}</span>
+                    </div>
                     {% endif %}
                     {% if fuel_type %}
-                    <p style="font-size: 1.1rem; margin-bottom: 0.5rem;"><strong>Fuel:</strong> {{ fuel_type }}</p>
+                    <div class="vehicle-row">
+                        <span class="vehicle-label">Fuel</span>
+                        <span class="vehicle-value">{{ fuel_type }}</span>
+                    </div>
                     {% endif %}
                     {% if transmission %}
-                    <p style="font-size: 1.1rem; margin-bottom: 0.5rem;"><strong>Transmission:</strong> {{ transmission }}</p>
+                    <div class="vehicle-row">
+                        <span class="vehicle-label">Transmission</span>
+                        <span class="vehicle-value">{{ transmission }}</span>
+                    </div>
                     {% endif %}
-                    <p style="font-size: 1.1rem; margin-bottom: 0;"><strong>Colour:</strong> {{ colour }}</p>
+                    <div class="vehicle-row">
+                        <span class="vehicle-label">Colour</span>
+                        <span class="vehicle-value">{{ colour }}</span>
+                    </div>
                 </div>
             </div>
 

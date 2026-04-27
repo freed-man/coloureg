@@ -23,11 +23,12 @@ class Search(models.Model):
     # Search input
     registration = models.CharField(max_length=10, db_index=True)
 
-    # Vehicle data (from DVLA)
+    # Vehicle data (from DVLA / VDG)
     make = models.CharField(max_length=50, blank=True, default='')
     model = models.CharField(max_length=100, blank=True, default='')
     year = models.IntegerField(null=True, blank=True)
     colour = models.CharField(max_length=50, blank=True, default='')
+    vehicle_title = models.CharField(max_length=200, blank=True, default='')
 
     # From VDG
     vin = models.CharField(max_length=17, blank=True, default='')

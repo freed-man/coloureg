@@ -94,16 +94,22 @@ def get_vehicle_details(registration):
         return None
 
     results = data.get('Results', {})
-    vehicle_details = results.get('VehicleDetails', {})
 
-    # Vehicle identification
+    # VehicleDetails contains identification, status, history (DVLA-sourced)
+    vehicle_details = results.get('VehicleDetails', {}) or {}
     identification = vehicle_details.get('VehicleIdentification', {}) or {}
     vin = identification.get('Vin', '')
     year = identification.get('YearOfManufacture')
     dvla_fuel = identification.get('DvlaFuelType', '')
+    engine_number = (identification.get('EngineNumber', '') or '').strip()
 
-    # Model details
-    model_details = vehicle_details.get('ModelDetails', {}) or {}
+    # Colour from VehicleHistory inside VehicleDetails
+    vehicle_history = vehicle_details.get('VehicleHistory', {}) or {}
+    colour_details = vehicle_history.get('ColourDetails', {}) or {}
+    colour = (colour_details.get('CurrentColour', '') or '').title()
+
+    # ModelDetails is a SIBLING of VehicleDetails (at Results level)
+    model_details = results.get('ModelDetails', {}) or {}
     model_identification = model_details.get('ModelIdentification', {}) or {}
 
     make = model_identification.get('Make') or identification.get('DvlaMake', '')
@@ -116,20 +122,30 @@ def get_vehicle_details(registration):
     if model and model.isupper():
         model = model.title()
 
-    # Colour
-    vehicle_history = vehicle_details.get('VehicleHistory', {}) or {}
-    colour_details = vehicle_history.get('ColourDetails', {}) or {}
-    colour = (colour_details.get('CurrentColour', '') or '').title()
-
-    # Powertrain (fuel, transmission, engine)
+    # Powertrain (fuel, engine, transmission)
     powertrain = model_details.get('Powertrain', {}) or {}
     fuel_type = powertrain.get('FuelType') or dvla_fuel
     fuel_type = _normalize_fuel_type(fuel_type)
 
-    # Transmission — format as "Manual (6-speed)" / "Automatic (1-speed)"
-    transmission_data = powertrain.get('Transmission', {}) or {}
+    # Transmission — try Powertrain.Transmission first, then ModelDetails.Transmission,
+    # then EvDetails.TechnicalDetails.TransmissionDetailsList[0]
+    transmission_data = (
+        powertrain.get('Transmission')
+        or model_details.get('Transmission')
+        or {}
+    )
     transmission_type = transmission_data.get('TransmissionType', '') or ''
     number_of_gears = transmission_data.get('NumberOfGears')
+
+    if not transmission_type:
+        ev_details_check = powertrain.get('EvDetails') or {}
+        ev_tech_check = ev_details_check.get('TechnicalDetails', {}) or {}
+        trans_list = ev_tech_check.get('TransmissionDetailsList', []) or []
+        if trans_list:
+            first_trans = trans_list[0]
+            transmission_type = first_trans.get('TransmissionType', '') or ''
+            number_of_gears = first_trans.get('NumberOfGears')
+
     transmission = ''
     if transmission_type:
         if number_of_gears:
@@ -137,14 +153,12 @@ def get_vehicle_details(registration):
         else:
             transmission = transmission_type
 
-    # Engine description (ICE) or motor info (EV)
+    # Engine description (ICE) or motor info (EV) + append engine number in brackets
     engine_description = ''
     ice_details = powertrain.get('IceDetails')
     if ice_details:
-        # ICE vehicle — show engine description
         engine_description = ice_details.get('EngineDescription', '') or ''
     else:
-        # EV — show motor info
         ev_details = powertrain.get('EvDetails') or {}
         ev_tech = ev_details.get('TechnicalDetails', {}) or {}
         motor_list = ev_tech.get('MotorDetailsList', []) or []
@@ -155,6 +169,12 @@ def get_vehicle_details(registration):
                 engine_description = f'{int(power_kw)} kW Electric Motor'
             else:
                 engine_description = 'Electric Motor'
+
+    # Append engine number / engine code in brackets if available
+    if engine_description and engine_number:
+        engine_description = f'{engine_description} ({engine_number})'
+    elif not engine_description and engine_number:
+        engine_description = f'({engine_number})'
 
     return {
         'make': make,
