@@ -128,7 +128,7 @@
     /* Tablet and below */
     @media (max-width: 768px) {
         .main-title {
-            font-size: 1.6rem;
+            font-size: 2.2rem;
         }
         .plate-badge .plate-text {
             padding: 2px 10px;
@@ -157,7 +157,7 @@
     /* Mobile */
     @media (max-width: 480px) {
         .main-title {
-            font-size: 1.3rem;
+            font-size: 1.7rem;
             gap: 6px !important;
         }
         .plate-badge .plate-text {
@@ -183,7 +183,7 @@
     /* Tiny phones */
     @media (max-width: 360px) {
         .main-title {
-            font-size: 1.1rem;
+            font-size: 1.4rem;
         }
         .search-input {
             font-size: 20px;
@@ -262,7 +262,6 @@
     });
 </script>
 <script>
-    // Random hex colour cycling on search button
     var searchBtn = document.getElementById('search-btn');
 
     function cycleBtnColour() {
@@ -282,7 +281,6 @@
     var pDeleting = false;
     var plateActive = true;
 
-    // Measure helper: given a string of placeholder text, returns rendered width in px
     var measurer = document.createElement('span');
     measurer.style.visibility = 'hidden';
     measurer.style.position = 'absolute';
@@ -290,12 +288,10 @@
     document.body.appendChild(measurer);
 
     function copyPlaceholderStyle() {
-        // Match placeholder styling (size, font, letter-spacing)
         measurer.style.fontFamily = "'Playfair Display', Georgia, serif";
         measurer.style.fontStyle = 'italic';
         measurer.style.fontWeight = '400';
         measurer.style.letterSpacing = '1px';
-        // Use placeholder-equivalent size based on viewport
         var vw = window.innerWidth;
         if (vw <= 360) measurer.style.fontSize = '16px';
         else if (vw <= 480) measurer.style.fontSize = '16px';
@@ -304,17 +300,14 @@
     }
 
     function getVisibleSubstring(fullText) {
-        // Returns substring that fits from the right, scrolling left characters off
         copyPlaceholderStyle();
-        var inputWidth = regInput.clientWidth - 16;  // minus padding
+        var inputWidth = regInput.clientWidth - 16;
 
-        // Try full text first
         measurer.textContent = fullText;
         if (measurer.offsetWidth <= inputWidth) {
             return fullText;
         }
 
-        // Trim from left until it fits
         for (var i = 1; i < fullText.length; i++) {
             measurer.textContent = fullText.substring(i);
             if (measurer.offsetWidth <= inputWidth) {
