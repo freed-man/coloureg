@@ -1,0 +1,9 @@
+User-agent: *
+Allow: /
+Disallow: /admin/
+Disallow: /results/
+Disallow: /submit-email/
+Disallow: /submit-contact/
+Disallow: /paige/
+
+Sitemap: https://coloureg.com/sitemap.xml

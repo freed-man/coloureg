@@ -29,6 +29,8 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
+    'django.contrib.sites',
+    'django.contrib.sitemaps',
     'lookup',
 ]
 
@@ -143,3 +145,5 @@ MESSAGE_TAGS = {
     messages_constants.WARNING: 'alert-warning',
     messages_constants.INFO: 'alert-info',
 }
+
+SITE_ID = 1
