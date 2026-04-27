@@ -4,8 +4,6 @@ from django.urls import reverse
 
 class StaticViewSitemap(Sitemap):
     """Sitemap for static (non-database) pages."""
-    priority = 0.8
-    changefreq = 'monthly'
     protocol = 'https'
 
     def items(self):
@@ -13,3 +11,9 @@ class StaticViewSitemap(Sitemap):
 
     def location(self, item):
         return reverse(item)
+
+    def priority(self, item):
+        return 1.0 if item == 'index' else 0.6
+
+    def changefreq(self, item):
+        return 'weekly' if item == 'index' else 'monthly'

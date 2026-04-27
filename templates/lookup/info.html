@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% load static %}
 
-{% block extra_title %} - About{% endblock %}
+{% block extra_title %} - About | UK's Free Paint Code Finder{% endblock %}
 
 {% block content %}
 <div class="container mt-4 mb-5">
@@ -15,7 +15,7 @@
                 <span style="background: linear-gradient(90deg, #e74c3c, #f39c12, #f1c40f, #2ecc71, #3498db, #9b59b6); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; font-weight: 700;">hassle-free</span>.
             </h1>
 
-            <img src="{% static 'images/about.png' %}" alt="How coloureg works" 
+            <img src="{% static 'images/about.png' %}" alt="How coloureg works — paint code lookup process by registration" 
                  class="img-fluid mb-4" 
                  id="aboutImage"
                  style="width: 100%; border-radius: 8px; cursor: zoom-in;">
@@ -100,7 +100,7 @@
     var lightbox = document.getElementById('lightbox');
     var lightboxImage = document.getElementById('lightboxImage');
     var lightboxInner = document.getElementById('lightboxInner');
-    var zoomState = 0;  // 0 = closed, 1 = fit, 2 = actual size
+    var zoomState = 0;
 
     function setZoomFit() {
         lightboxImage.style.maxWidth = 'calc(100vw - 40px)';
@@ -119,9 +119,7 @@
         lightboxImage.style.width = 'auto';
         lightboxImage.style.height = 'auto';
         lightboxImage.style.cursor = 'zoom-out';
-        // Switch to block layout so scrolling reveals all of the image
         lightboxInner.style.display = 'block';
-        // Reset scroll to top-left
         lightbox.scrollLeft = 0;
         lightbox.scrollTop = 0;
     }
@@ -156,7 +154,6 @@
         });
     }
 
-    // Scroll to message form when collapse expands
     var contactForm = document.getElementById('contactForm');
     if (contactForm) {
         contactForm.addEventListener('shown.bs.collapse', function() {
