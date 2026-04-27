@@ -1,14 +1,24 @@
 {% extends "base.html" %}
 {% load static %}
 
-{% block extra_title %} - Info{% endblock %}
+{% block extra_title %} - About{% endblock %}
 
 {% block content %}
-<div class="container mt-4">
+<div class="container mt-4 mb-5">
     <div class="row justify-content-center">
-        <div class="col-lg-8 col-md-10">
+        <div class="col-lg-10 col-md-11">
 
-            <h2 class="mb-4">About</h2>
+            <h1 class="mb-4 text-center" style="font-size: 2rem; font-weight: 600; line-height: 1.4; color: #1a1a1a;">
+                We make finding your car's factory paint code<br>
+                <span style="background: linear-gradient(90deg, #e74c3c, #f39c12, #f1c40f, #2ecc71, #3498db, #9b59b6); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; font-weight: 700;">fast</span>, 
+                <span style="background: linear-gradient(90deg, #e74c3c, #f39c12, #f1c40f, #2ecc71, #3498db, #9b59b6); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; font-weight: 700;">accurate</span> and 
+                <span style="background: linear-gradient(90deg, #e74c3c, #f39c12, #f1c40f, #2ecc71, #3498db, #9b59b6); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; font-weight: 700;">hassle-free</span>.
+            </h1>
+
+            <img src="{% static 'images/about.png' %}" alt="How coloureg works" 
+                 class="img-fluid mb-4" 
+                 id="aboutImage"
+                 style="width: 100%; border-radius: 8px; cursor: zoom-in;">
 
             <p style="font-size: 1.05rem; line-height: 1.7; color: #333;">
                 <span style="background: linear-gradient(90deg, #e74c3c, #f39c12, #f1c40f, #2ecc71, #3498db, #9b59b6); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; font-weight: 600;">colou<strong>reg</strong></span>
@@ -37,7 +47,7 @@
             </div>
             {% else %}
             <div class="mt-3" style="max-width: 540px;">
-                <button class="btn btn-outline-dark" type="button" data-bs-toggle="collapse" data-bs-target="#contactForm" aria-expanded="false">
+                <button class="btn btn-outline-dark" id="sendMessageBtn" type="button" data-bs-toggle="collapse" data-bs-target="#contactForm" aria-expanded="false">
                     <i class="fas fa-envelope me-2"></i>Send a message
                 </button>
 
@@ -72,6 +82,88 @@
         </div>
     </div>
 </div>
+
+<!-- Lightbox overlay -->
+<div id="lightbox" 
+     style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; 
+            background: rgba(0,0,0,0.92); z-index: 9999;
+            overflow: auto;">
+    <div id="lightboxInner" 
+         style="min-height: 100%; min-width: 100%; display: flex; align-items: center; justify-content: center; padding: 20px;">
+        <img id="lightboxImage" src="" alt="" 
+             style="cursor: zoom-in; transition: max-width 0.2s, max-height 0.2s;">
+    </div>
+</div>
+
+<script>
+    var aboutImage = document.getElementById('aboutImage');
+    var lightbox = document.getElementById('lightbox');
+    var lightboxImage = document.getElementById('lightboxImage');
+    var lightboxInner = document.getElementById('lightboxInner');
+    var zoomState = 0;  // 0 = closed, 1 = fit, 2 = actual size
+
+    function setZoomFit() {
+        lightboxImage.style.maxWidth = 'calc(100vw - 40px)';
+        lightboxImage.style.maxHeight = 'calc(100vh - 40px)';
+        lightboxImage.style.width = 'auto';
+        lightboxImage.style.height = 'auto';
+        lightboxImage.style.cursor = 'zoom-in';
+        lightboxInner.style.display = 'flex';
+        lightboxInner.style.alignItems = 'center';
+        lightboxInner.style.justifyContent = 'center';
+    }
+
+    function setZoomActual() {
+        lightboxImage.style.maxWidth = 'none';
+        lightboxImage.style.maxHeight = 'none';
+        lightboxImage.style.width = 'auto';
+        lightboxImage.style.height = 'auto';
+        lightboxImage.style.cursor = 'zoom-out';
+        // Switch to block layout so scrolling reveals all of the image
+        lightboxInner.style.display = 'block';
+        // Reset scroll to top-left
+        lightbox.scrollLeft = 0;
+        lightbox.scrollTop = 0;
+    }
+
+    function closeLightbox() {
+        lightbox.style.display = 'none';
+        document.body.style.overflow = '';
+        zoomState = 0;
+    }
+
+    if (aboutImage && lightbox) {
+        aboutImage.addEventListener('click', function() {
+            lightboxImage.src = aboutImage.src;
+            setZoomFit();
+            lightbox.style.display = 'block';
+            document.body.style.overflow = 'hidden';
+            zoomState = 1;
+        });
+
+        lightboxImage.addEventListener('click', function(e) {
+            e.stopPropagation();
+            if (zoomState === 1) {
+                setZoomActual();
+                zoomState = 2;
+            } else if (zoomState === 2) {
+                closeLightbox();
+            }
+        });
+
+        lightbox.addEventListener('click', function() {
+            closeLightbox();
+        });
+    }
+
+    // Scroll to message form when collapse expands
+    var contactForm = document.getElementById('contactForm');
+    if (contactForm) {
+        contactForm.addEventListener('shown.bs.collapse', function() {
+            contactForm.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        });
+    }
+</script>
 
 {% if contact_submitted %}
 <script>
