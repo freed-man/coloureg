@@ -23,7 +23,6 @@ from .services.email import (
 
 
 def get_client_ip(request):
-    """Extract the client IP address, handling proxy headers."""
     x_forwarded_for = request.META.get('HTTP_X_FORWARDED_FOR')
     if x_forwarded_for:
         return x_forwarded_for.split(',')[0].strip()
@@ -31,7 +30,6 @@ def get_client_ip(request):
 
 
 def extract_mot_field(mot_data, field_name):
-    """Extract a field from MOT data which can be dict or list."""
     if mot_data and isinstance(mot_data, dict):
         return mot_data.get(field_name)
     elif mot_data and isinstance(mot_data, list) and len(mot_data) > 0:
@@ -40,7 +38,6 @@ def extract_mot_field(mot_data, field_name):
 
 
 def get_dvla_data(registration):
-    """Fetch vehicle data from the DVLA VES API."""
     url = os.environ.get('DVLA_API_URL')
     api_key = os.environ.get('DVLA_API_KEY')
     headers = {
@@ -59,7 +56,6 @@ def get_dvla_data(registration):
 
 
 def get_mot_access_token():
-    """Get an OAuth2 access token from the DVSA MOT API."""
     token_url = os.environ.get('MOT_TOKEN_URL')
     client_id = os.environ.get('MOT_CLIENT_ID')
     client_secret = os.environ.get('MOT_CLIENT_SECRET')
@@ -82,7 +78,6 @@ def get_mot_access_token():
 
 
 def get_mot_data(registration):
-    """Fetch MOT data from the DVSA API — used only as fallback to get the model name."""
     access_token = get_mot_access_token()
     if not access_token:
         return None
@@ -105,8 +100,28 @@ def get_mot_data(registration):
     return None
 
 
+def normalize_fuel_type(fuel):
+    if not fuel:
+        return ''
+    fuel = fuel.upper().strip()
+    mapping = {
+        'ELECTRICITY': 'Electric',
+        'ELECTRIC': 'Electric',
+        'PETROL': 'Petrol',
+        'GASOLINE': 'Petrol',
+        'DIESEL': 'Diesel',
+        'HEAVY OIL': 'Diesel',
+        'HYBRID ELECTRIC': 'Hybrid',
+        'HYBRID': 'Hybrid',
+        'PLUG-IN HYBRID': 'Plug-in Hybrid',
+        'LPG': 'LPG',
+        'CNG': 'CNG',
+        'HYDROGEN': 'Hydrogen',
+    }
+    return mapping.get(fuel, fuel.title())
+
+
 def mask_vin(vin):
-    """Censor middle of VIN for display: WAU***********456"""
     if not vin or len(vin) < 6:
         return vin or ''
     return vin[:3] + '*' * (len(vin) - 6) + vin[-3:]
@@ -114,7 +129,6 @@ def mask_vin(vin):
 
 def index(request):
     if request.method == 'POST':
-        # --- Rate limit check: 10 lookups per hour per IP ---
         was_limited = is_ratelimited(
             request,
             group='lookup',
@@ -138,11 +152,9 @@ def index(request):
             messages.error(request, 'Please enter a registration number.')
             return redirect('index')
 
-        # Easter egg for Paige
         if registration == 'PNZ282':
             return redirect('paige')
 
-        # Start a Search log entry
         search = Search(
             registration=registration,
             ip_address=get_client_ip(request),
@@ -163,14 +175,19 @@ def index(request):
         year = None
         colour = ''
         vin = None
+        fuel_type = ''
+        transmission = ''
+        engine_description = ''
 
         if vdg_details:
-            # Trust VDG's casing
             make = vdg_details.get('make', '')
             model = vdg_details.get('model', '')
             year = vdg_details.get('year')
-            colour = vdg_details.get('colour', '').title()  # VDG returns colour all-caps
+            colour = vdg_details.get('colour', '')
             vin = vdg_details.get('vin', '')
+            fuel_type = vdg_details.get('fuel_type', '')
+            transmission = vdg_details.get('transmission', '')
+            engine_description = vdg_details.get('engine_description', '')
         else:
             # --- FALLBACK: DVLA + MOT ---
             dvla = get_dvla_data(registration)
@@ -189,24 +206,22 @@ def index(request):
                 )
                 return redirect('index')
 
-            # Title-case fallback values (DVLA returns all-caps)
-            make = dvla.get('make', '').title()
+            make = (dvla.get('make', '') or '').title()
             year = dvla.get('yearOfManufacture')
-            colour = dvla.get('colour', '').title()
+            colour = (dvla.get('colour', '') or '').title()
+            fuel_type = normalize_fuel_type(dvla.get('fuelType', ''))
 
-            # Get model from MOT
             mot = get_mot_data(registration)
             mot_model = extract_mot_field(mot, 'model') or ''
             model = mot_model.title()
 
-        # Save vehicle data to Search log
         search.make = make
         search.model = model
         search.year = year
         search.colour = colour
         search.vin = vin or ''
 
-        # --- VDG Paint Package (PRIMARY paint lookup) ---
+        # --- VDG Paint Package ---
         paint_code = None
         paint_description = None
         try:
@@ -223,12 +238,10 @@ def index(request):
             existing = search.error_message or ''
             search.error_message = f'{existing} | VDG Paint: {str(e)[:200]}'.strip(' |')
 
-        # Mark successful (vehicle found, even if paint code didn't come through)
         search.success = True
         search.lookup_duration_ms = int((time.time() - start_time) * 1000)
         search.save()
 
-        # Make logo filename (lowercase, normalized)
         make_raw = make.lower().replace('-', '_').replace(' ', '_')
         make_logo_map = {
             'mercedes': 'mercedes_benz',
@@ -238,12 +251,14 @@ def index(request):
         }
         make_logo = make_logo_map.get(make_raw, make_raw)
 
-        # Store in session for the results page
         request.session['vehicle_data'] = {
             'make': make,
             'model': model,
             'year': year,
             'colour': colour,
+            'fuel_type': fuel_type,
+            'transmission': transmission,
+            'engine_description': engine_description,
             'registration': registration,
             'vin': vin,
             'vin_masked': mask_vin(vin),
@@ -272,7 +287,6 @@ def results(request):
         )
         return redirect('index')
 
-    # Check if email was already submitted for this search
     email_submitted = request.session.pop('email_submitted', None)
 
     context = {
@@ -281,6 +295,9 @@ def results(request):
         'model': vehicle_data.get('model', ''),
         'year': vehicle_data.get('year'),
         'colour': vehicle_data.get('colour', ''),
+        'fuel_type': vehicle_data.get('fuel_type', ''),
+        'transmission': vehicle_data.get('transmission', ''),
+        'engine_description': vehicle_data.get('engine_description', ''),
         'vin_masked': vehicle_data.get('vin_masked', ''),
         'make_logo': vehicle_data.get('make_logo', ''),
         'paint_code': vehicle_data.get('paint_code'),
@@ -294,7 +311,6 @@ def results(request):
 
 @require_POST
 def submit_email(request):
-    """Handle email submission from results page."""
     search_id = request.POST.get('search_id')
     email = request.POST.get('email', '').strip()
 
@@ -308,12 +324,10 @@ def submit_email(request):
         messages.error(request, 'Search record not found.')
         return redirect('index')
 
-    # Prevent duplicate submissions (refresh spam)
     if search.email_sent:
         request.session['email_submitted'] = search.email
         return redirect('results')
 
-    # Rate limit email submissions: 5 per hour per IP
     was_limited = is_ratelimited(
         request,
         group='email_submit',
@@ -329,7 +343,6 @@ def submit_email(request):
         )
         return redirect('results')
 
-    # Save email to Search log
     search.email = email
     search.save()
 
@@ -366,7 +379,6 @@ def submit_email(request):
 
 
 def about(request):
-    """About page with contact form."""
     contact_submitted = request.session.pop('contact_submitted', None)
     return render(request, 'lookup/about.html', {
         'contact_submitted': contact_submitted,
@@ -375,7 +387,6 @@ def about(request):
 
 @require_POST
 def submit_contact(request):
-    """Handle contact form submission from about page."""
     contact_type = request.POST.get('type', 'general').strip()
     email = request.POST.get('email', '').strip()
     message = request.POST.get('message', '').strip()

@@ -1,9 +1,4 @@
-"""VDG (Vehicle Data Global) API client.
-
-Handles calls to VDG for:
-- Vehicle details (VehicleDetails package) — make, model, year, colour, VIN
-- Paint code lookup (Paint Package — launches May 2026)
-"""
+"""VDG (Vehicle Data Global) API client."""
 import os
 import requests
 
@@ -14,15 +9,14 @@ VDG_PAINT_ENDPOINT = f'{VDG_BASE_URL}/lookup'
 
 
 class VdgError(Exception):
-    """Generic VDG API error."""
+    pass
 
 
 class VdgNotFoundError(VdgError):
-    """Vehicle not found in VDG."""
+    pass
 
 
 def _make_request(endpoint, package_name, registration):
-    """Shared VDG API request handler. Returns the parsed JSON response."""
     api_key = os.environ.get('VDG_API_KEY')
     if not api_key:
         raise VdgError('VDG_API_KEY not configured')
@@ -46,7 +40,6 @@ def _make_request(endpoint, package_name, registration):
     except ValueError:
         raise VdgError('VDG returned invalid JSON')
 
-    # Check ResponseInformation for status
     response_info = data.get('ResponseInformation', {})
     is_success = response_info.get('IsSuccessStatusCode', False)
     status_message = response_info.get('StatusMessage', '')
@@ -61,10 +54,34 @@ def _make_request(endpoint, package_name, registration):
     return data
 
 
+def _normalize_fuel_type(fuel):
+    """Normalize fuel type to consumer-friendly format."""
+    if not fuel:
+        return ''
+    fuel = fuel.upper().strip()
+    mapping = {
+        'ELECTRICITY': 'Electric',
+        'ELECTRIC': 'Electric',
+        'PETROL': 'Petrol',
+        'GASOLINE': 'Petrol',
+        'DIESEL': 'Diesel',
+        'HEAVY OIL': 'Diesel',
+        'HYBRID ELECTRIC': 'Hybrid',
+        'HYBRID': 'Hybrid',
+        'PLUG-IN HYBRID': 'Plug-in Hybrid',
+        'PLUG-IN HYBRID ELECTRIC': 'Plug-in Hybrid',
+        'LPG': 'LPG',
+        'CNG': 'CNG',
+        'HYDROGEN': 'Hydrogen',
+    }
+    return mapping.get(fuel, fuel.title())
+
+
 def get_vehicle_details(registration):
     """Fetch full vehicle details from VDG VehicleDetails package.
 
-    Returns dict with: make, model, year, colour, vin
+    Returns dict with: make, model, year, colour, vin, fuel_type,
+    transmission, engine_description.
     Or None if vehicle not found.
     """
     try:
@@ -79,21 +96,65 @@ def get_vehicle_details(registration):
     results = data.get('Results', {})
     vehicle_details = results.get('VehicleDetails', {})
 
-    # Vehicle identification (VIN, year, basic info)
+    # Vehicle identification
     identification = vehicle_details.get('VehicleIdentification', {}) or {}
     vin = identification.get('Vin', '')
     year = identification.get('YearOfManufacture')
+    dvla_fuel = identification.get('DvlaFuelType', '')
 
-    # Model details (cleaner make/model than DVLA all-caps)
+    # Model details
     model_details = vehicle_details.get('ModelDetails', {}) or {}
     model_identification = model_details.get('ModelIdentification', {}) or {}
-    make = model_identification.get('Make', '') or identification.get('DvlaMake', '')
-    model = model_identification.get('Model', '') or identification.get('DvlaModel', '')
 
-    # Colour from VehicleHistory
+    make = model_identification.get('Make') or identification.get('DvlaMake', '')
+    model = model_identification.get('Model') or identification.get('DvlaModel', '')
+
+    make = (make or '').strip()
+    if make and make.isupper():
+        make = make.title()
+    model = (model or '').strip()
+    if model and model.isupper():
+        model = model.title()
+
+    # Colour
     vehicle_history = vehicle_details.get('VehicleHistory', {}) or {}
     colour_details = vehicle_history.get('ColourDetails', {}) or {}
-    colour = colour_details.get('CurrentColour', '')
+    colour = (colour_details.get('CurrentColour', '') or '').title()
+
+    # Powertrain (fuel, transmission, engine)
+    powertrain = model_details.get('Powertrain', {}) or {}
+    fuel_type = powertrain.get('FuelType') or dvla_fuel
+    fuel_type = _normalize_fuel_type(fuel_type)
+
+    # Transmission — format as "Manual (6-speed)" / "Automatic (1-speed)"
+    transmission_data = powertrain.get('Transmission', {}) or {}
+    transmission_type = transmission_data.get('TransmissionType', '') or ''
+    number_of_gears = transmission_data.get('NumberOfGears')
+    transmission = ''
+    if transmission_type:
+        if number_of_gears:
+            transmission = f'{transmission_type} ({number_of_gears}-speed)'
+        else:
+            transmission = transmission_type
+
+    # Engine description (ICE) or motor info (EV)
+    engine_description = ''
+    ice_details = powertrain.get('IceDetails')
+    if ice_details:
+        # ICE vehicle — show engine description
+        engine_description = ice_details.get('EngineDescription', '') or ''
+    else:
+        # EV — show motor info
+        ev_details = powertrain.get('EvDetails') or {}
+        ev_tech = ev_details.get('TechnicalDetails', {}) or {}
+        motor_list = ev_tech.get('MotorDetailsList', []) or []
+        if motor_list:
+            motor = motor_list[0]
+            power_kw = motor.get('PowerKw')
+            if power_kw:
+                engine_description = f'{int(power_kw)} kW Electric Motor'
+            else:
+                engine_description = 'Electric Motor'
 
     return {
         'make': make,
@@ -101,11 +162,14 @@ def get_vehicle_details(registration):
         'year': year,
         'colour': colour,
         'vin': vin,
+        'fuel_type': fuel_type,
+        'transmission': transmission,
+        'engine_description': engine_description,
     }
 
 
 def get_vin(registration):
-    """Fetch just the VIN. Compatibility wrapper around get_vehicle_details."""
+    """Fetch just the VIN. Compatibility wrapper."""
     details = get_vehicle_details(registration)
     if details:
         return details.get('vin')
@@ -113,14 +177,7 @@ def get_vin(registration):
 
 
 def get_paint_code(registration):
-    """Fetch paint code from VDG Paint Package.
-
-    Returns dict with 'code' and 'description', or None if no paint code found.
-    Example: {'code': '775U', 'description': 'IRIDIUM SILVER - METALLIC FINISH'}
-
-    The Paint Package launches May 2026. Until then this will fail
-    (VDG will respond with NotFound or similar for unknown packages).
-    """
+    """Fetch paint code from VDG Paint Package (launches May 2026)."""
     try:
         data = _make_request(
             VDG_PAINT_ENDPOINT,

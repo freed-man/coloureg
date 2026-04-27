@@ -26,11 +26,18 @@
                         </h4>
                     </div>
                     <hr>
-                    <p style="font-size: 1.1rem; margin-bottom: 0.5rem;"><strong>Registration:</strong> {{ registration }}</p>
                     {% if vin_masked %}
-                    <p style="font-size: 0.95rem; margin-bottom: 0.5rem; color: #666; font-family: 'Courier New', monospace;">
-                        <strong style="font-family: inherit;">VIN:</strong> {{ vin_masked }}
-                    </p>
+                    <p style="font-size: 1.1rem; margin-bottom: 0.5rem;"><strong>VIN:</strong> {{ vin_masked }}</p>
+                    {% endif %}
+                    <p style="font-size: 1.1rem; margin-bottom: 0.5rem;"><strong>Registration:</strong> {{ registration }}</p>
+                    {% if engine_description %}
+                    <p style="font-size: 1.1rem; margin-bottom: 0.5rem;"><strong>Engine:</strong> {{ engine_description }}</p>
+                    {% endif %}
+                    {% if fuel_type %}
+                    <p style="font-size: 1.1rem; margin-bottom: 0.5rem;"><strong>Fuel:</strong> {{ fuel_type }}</p>
+                    {% endif %}
+                    {% if transmission %}
+                    <p style="font-size: 1.1rem; margin-bottom: 0.5rem;"><strong>Transmission:</strong> {{ transmission }}</p>
                     {% endif %}
                     <p style="font-size: 1.1rem; margin-bottom: 0;"><strong>Colour:</strong> {{ colour }}</p>
                 </div>
@@ -93,7 +100,7 @@
                         {% if paint_code %}
                         <h5 class="mb-2 fw-semibold">✉️ Email me this code</h5>
                         {% else %}
-                        <h5 class="mb-2 fw-semibold">✉️ Retrieve from manufacturer database</h5>
+                        <h5 class="mb-3 fw-semibold">✉️ Retrieve from manufacturer database</h5>
                         <p class="mb-3" style="font-size: 0.95rem; color: #555;">
                             Sorry for the inconvenience, we'll query {{ make }}'s database directly and email you the code within 12 hours.
                         </p>
