@@ -195,11 +195,22 @@
 
 {% block content %}
 <div id="particles-js"></div>
+
+<!-- SEO content (hidden but indexable) -->
+<h1 class="sr-only">UK Car Paint Code Lookup by Registration</h1>
+<p class="sr-only">
+    Find your car's factory paint code instantly using your UK number plate.
+    Free, fast, and accurate paint code finder for Ford, Audi, BMW, Volkswagen,
+    Vauxhall, Mercedes-Benz, Toyota, Kia, Hyundai, Skoda, SEAT, Peugeot, Renault,
+    Citroën, Mazda, Volvo, MINI, Land Rover, Jaguar, and more. Enter your
+    registration number to retrieve the manufacturer paint code straight from the source.
+</p>
+
 <div class="content-wrapper">
     <div class="container">
         <div class="row justify-content-center text-center">
             <div class="col-md-8">
-                <h1 class="main-title title-row d-flex align-items-center justify-content-center gap-2" style="margin-bottom: 5rem;">
+                <h2 class="main-title title-row d-flex align-items-center justify-content-center gap-2" style="margin-bottom: 5rem;" aria-hidden="true">
                     <span class="plate-badge paint">
                         <span class="gb-strip"><small style="color:#fff; font-size:0.3em; font-weight:700;">GB</small></span>
                         <span class="plate-text">PAINT</span>
@@ -209,7 +220,7 @@
                         <span class="plate-text">CODE</span>
                     </span>
                     <em style="color:#333; font-weight:300;">finder</em>
-                </h1>
+                </h2>
             </div>
         </div>
         <div class="row justify-content-center">
@@ -228,6 +239,32 @@
         </div>
     </div>
 </div>
+{% endblock %}
+
+{% block about_link %}
+<a href="{% url 'about' %}"
+style="position: fixed; bottom: 20px; left: 20px; z-index: 100;
+        font-size: 0.9rem; letter-spacing: 2px;
+        color: #333; text-decoration: none;
+        font-weight: 600;
+        transition: color 0.2s;"
+onmouseover="this.style.color='#C8102E'"
+onmouseout="this.style.color='#333'">
+    about
+</a>
+{% endblock %}
+
+{% block help_link %}
+<a href="{% url 'help' %}"
+style="position: fixed; bottom: 20px; right: 20px; z-index: 100;
+        font-size: 0.9rem; letter-spacing: 2px;
+        color: #333; text-decoration: none;
+        font-weight: 600;
+        transition: color 0.2s;"
+onmouseover="this.style.color='#C8102E'"
+onmouseout="this.style.color='#333'">
+    help
+</a>
 {% endblock %}
 
 {% block extra_js %}

@@ -7,13 +7,18 @@ class StaticViewSitemap(Sitemap):
     protocol = 'https'
 
     def items(self):
-        return ['index', 'about']
+        return ['index', 'about', 'help']
 
     def location(self, item):
         return reverse(item)
 
     def priority(self, item):
-        return 1.0 if item == 'index' else 0.6
+        priorities = {
+            'index': 1.0,
+            'help': 0.8,
+            'about': 0.6,
+        }
+        return priorities.get(item, 0.5)
 
     def changefreq(self, item):
         return 'weekly' if item == 'index' else 'monthly'

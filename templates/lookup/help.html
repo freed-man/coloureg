@@ -1,0 +1,313 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block extra_title %} - Help & FAQ | coloureg{% endblock %}
+
+{% block extra_css %}
+<style>
+    .help-page h3 {
+        font-size: 1.75rem;
+        font-weight: 700;
+        color: #1a1a1a;
+        margin: 0 0 28px;
+    }
+    .faq-accordion {
+        border-top: 0.5px solid rgba(0, 0, 0, 0.1);
+        margin-bottom: 60px;
+    }
+    .faq-item {
+        border-bottom: 0.5px solid rgba(0, 0, 0, 0.1);
+    }
+    .faq-toggle {
+        width: 100%;
+        background: transparent;
+        border: none;
+        text-align: left;
+        padding: 22px 0;
+        font-size: 1.15rem;
+        font-weight: 600;
+        color: #1a1a1a;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        cursor: pointer;
+        transition: color 0.15s;
+    }
+    .faq-toggle:hover {
+        color: #C8102E;
+    }
+    .faq-toggle .faq-icon {
+        font-size: 1rem;
+        color: #999;
+        transition: transform 0.2s;
+        margin-left: 16px;
+    }
+    .faq-toggle[aria-expanded="true"] .faq-icon {
+        transform: rotate(180deg);
+        color: #C8102E;
+    }
+    .faq-answer {
+        font-size: 1.05rem;
+        line-height: 1.7;
+        color: #444;
+        padding: 0 0 22px;
+    }
+    .faq-answer p {
+        margin: 0 0 12px;
+    }
+    .faq-answer p:last-child {
+        margin-bottom: 0;
+    }
+    .makes-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+        gap: 8px 16px;
+        margin: 14px 0 16px;
+        padding: 14px 18px;
+        background: #f8f9fa;
+        border-radius: 6px;
+    }
+    .makes-grid div {
+        font-size: 0.98rem;
+        color: #1a1a1a;
+        padding: 4px 0;
+    }
+    .makes-grid div::before {
+        content: '✓';
+        color: #16a34a;
+        font-weight: 700;
+        margin-right: 8px;
+    }
+    .help-page code {
+        background: #f1f3f5;
+        padding: 2px 6px;
+        border-radius: 4px;
+        font-size: 0.92em;
+        color: #1a1a1a;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container mt-4 mb-5 help-page">
+    <div class="row justify-content-center">
+        <div class="col-lg-10 col-md-11">
+
+            <h3>FAQ</h3>
+
+            <div class="faq-accordion">
+
+                <div class="faq-item">
+                    <button class="faq-toggle" type="button" aria-expanded="false" aria-controls="faq-1">
+                        How do I find my car's paint code?
+                        <span class="faq-icon">▼</span>
+                    </button>
+                    <div class="faq-answer" id="faq-1" style="display: none;">
+                        <p>Enter your registration on the homepage. We pull the factory paint code from the manufacturer's database. If we can't reach the servers in time, you can request a manual lookup and we'll email the code within 12 hours.</p>
+                    </div>
+                </div>
+
+                <div class="faq-item">
+                    <button class="faq-toggle" type="button" aria-expanded="false" aria-controls="faq-2">
+                        Where is the paint code physically located on my car?
+                        <span class="faq-icon">▼</span>
+                    </button>
+                    <div class="faq-answer" id="faq-2" style="display: none;">
+                        <p>It's usually on a sticker — most commonly in the driver's door jamb, under the bonnet, in the glovebox, or in the boot/trunk. The label often shows make/model alongside a 3–5 character code (e.g. <code>LY9C</code>, <code>775U</code>). Location varies by manufacturer.</p>
+                    </div>
+                </div>
+
+                <div class="faq-item">
+                    <button class="faq-toggle" type="button" aria-expanded="false" aria-controls="faq-3">
+                        Why can't I find my paint code through coloureg?
+                        <span class="faq-icon">▼</span>
+                    </button>
+                    <div class="faq-answer" id="faq-3" style="display: none;">
+                        <p>A few possibilities: the manufacturer's database doesn't have data for your specific vehicle (some makes have better coverage than others), the servers were too slow to respond, or your reg returned an unusual result. In those cases, drop us your email and we'll look it up manually.</p>
+                    </div>
+                </div>
+
+                <div class="faq-item">
+                    <button class="faq-toggle" type="button" aria-expanded="false" aria-controls="faq-4">
+                        What manufacturers does coloureg support?
+                        <span class="faq-icon">▼</span>
+                    </button>
+                    <div class="faq-answer" id="faq-4" style="display: none;">
+                        <p>Automated lookup currently supports the following manufacturers:</p>
+                        <div class="makes-grid">
+                            <div>Audi</div>
+                            <div>BMW</div>
+                            <div>Citroën</div>
+                            <div>Cupra</div>
+                            <div>Dacia</div>
+                            <div>DS</div>
+                            <div>Ford</div>
+                            <div>Hyundai</div>
+                            <div>Infiniti</div>
+                            <div>Jaguar</div>
+                            <div>Jeep</div>
+                            <div>Kia</div>
+                            <div>Land Rover</div>
+                            <div>Lexus</div>
+                            <div>Mazda</div>
+                            <div>Mercedes-Benz</div>
+                            <div>MINI</div>
+                            <div>Peugeot</div>
+                            <div>Renault</div>
+                            <div>Saab</div>
+                            <div>SEAT</div>
+                            <div>Škoda</div>
+                            <div>Toyota</div>
+                            <div>Vauxhall</div>
+                            <div>Volkswagen</div>
+                            <div>Volvo</div>
+                        </div>
+                        <p>If your make isn't listed, manual lookup may still work — <a href="#contact-section" style="color: #003399;">send us a message</a> and we'll do our best to track it down.</p>
+                    </div>
+                </div>
+
+                <div class="faq-item">
+                    <button class="faq-toggle" type="button" aria-expanded="false" aria-controls="faq-5">
+                        How accurate is the paint code?
+                        <span class="faq-icon">▼</span>
+                    </button>
+                    <div class="faq-answer" id="faq-5" style="display: none;">
+                        <p>The codes come straight from manufacturer databases, so they're as accurate as the source.</p>
+                        <p>That said, paint codes describe the original factory colour. If your car has been resprayed, the code may not match the current paint. Vinyl wraps (an adhesive film applied over the factory paint) don't change the underlying colour — once removed, the original paint code still applies.</p>
+                    </div>
+                </div>
+
+                <div class="faq-item">
+                    <button class="faq-toggle" type="button" aria-expanded="false" aria-controls="faq-6">
+                        Do you store my data?
+                        <span class="faq-icon">▼</span>
+                    </button>
+                    <div class="faq-answer" id="faq-6" style="display: none;">
+                        <p>Yes, briefly. We log each search (<code>registration</code>, <code>time</code>, <code>IP</code>) for usage analytics and abuse prevention. If you submit your <code>email</code> for a manual lookup, we store it to send you the result. We don't sell or share your data with third parties.</p>
+                    </div>
+                </div>
+
+                <div class="faq-item">
+                    <button class="faq-toggle" type="button" aria-expanded="false" aria-controls="faq-7">
+                        Why does the manual lookup take up to 12 hours?
+                        <span class="faq-icon">▼</span>
+                    </button>
+                    <div class="faq-answer" id="faq-7" style="display: none;">
+                        <p>Manual lookups involve querying manufacturer databases directly, sometimes by VIN. We aim to respond much faster than 12 hours, but the buffer accounts for overnight requests and busy periods.</p>
+                    </div>
+                </div>
+
+                <div class="faq-item">
+                    <button class="faq-toggle" type="button" aria-expanded="false" aria-controls="faq-8">
+                        Is coloureg really free?
+                        <span class="faq-icon">▼</span>
+                    </button>
+                    <div class="faq-answer" id="faq-8" style="display: none;">
+                        <p>Yes — coloureg is free. But running it isn't: there's the cloud server, the database, the domains, the email service, per-lookup charges from third-party data providers... Right now this is a hobby project and the costs are manageable, but as traffic grows charges may become necessary. Nothing will change without warning.</p>
+                    </div>
+                </div>
+
+            </div>
+
+            <h3 id="contact-section">Get in touch</h3>
+
+            <p class="text-muted">
+                Email us at <a href="mailto:hello@coloureg.com" style="color: #003399; text-decoration: none;"><strong>hello@coloureg.com</strong></a> or use the form below.
+            </p>
+
+            {% if contact_submitted %}
+            <div class="card mt-4" style="border: 2px solid #22c55e; background: #f0fdf4; max-width: 540px;">
+                <div class="card-body text-center py-4">
+                    <div style="width: 48px; height: 48px; border-radius: 50%; background: #22c55e; display: inline-flex; align-items: center; justify-content: center; margin-bottom: 12px;">
+                        <i class="fas fa-check" style="color: white; font-size: 20px;"></i>
+                    </div>
+                    <h6 class="mb-1" style="color: #166534;">Message received</h6>
+                    <p class="mb-0 small text-muted">
+                        We'll reply to <strong>{{ contact_submitted }}</strong> within 12 hours
+                    </p>
+                </div>
+            </div>
+            {% else %}
+            <div class="mt-3" style="max-width: 540px;">
+                <button class="btn btn-outline-dark" id="sendMessageBtn" type="button" data-bs-toggle="collapse" data-bs-target="#contactForm" aria-expanded="false">
+                    <i class="fas fa-envelope me-2"></i>Send a message
+                </button>
+
+                <div class="collapse mt-3" id="contactForm">
+                    <div class="card">
+                        <div class="card-body p-4">
+                            <form method="POST" action="{% url 'submit_contact' %}#contact-section">
+                                {% csrf_token %}
+                                <div class="mb-3">
+                                    <label class="form-label small fw-semibold">Type</label>
+                                    <select name="type" class="form-select" required>
+                                        <option value="general">General</option>
+                                        <option value="technical">Technical</option>
+                                    </select>
+                                </div>
+                                <div class="mb-3">
+                                    <label class="form-label small fw-semibold">Email</label>
+                                    <input type="email" name="email" class="form-control" placeholder="your@email.com" required>
+                                </div>
+                                <div class="mb-3">
+                                    <label class="form-label small fw-semibold">Message</label>
+                                    <textarea name="message" rows="5" class="form-control" placeholder="What's on your mind?" required></textarea>
+                                </div>
+                                <button type="submit" class="btn btn-dark">Send message</button>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            {% endif %}
+
+        </div>
+    </div>
+</div>
+
+<script>
+    // FAQ accordion toggle - one open at a time
+    document.querySelectorAll('.faq-toggle').forEach(function(btn) {
+        btn.addEventListener('click', function() {
+            var expanded = btn.getAttribute('aria-expanded') === 'true';
+
+            // Close all other FAQ items
+            document.querySelectorAll('.faq-toggle').forEach(function(otherBtn) {
+                if (otherBtn !== btn) {
+                    otherBtn.setAttribute('aria-expanded', 'false');
+                    var otherId = otherBtn.getAttribute('aria-controls');
+                    var otherAnswer = document.getElementById(otherId);
+                    if (otherAnswer) otherAnswer.style.display = 'none';
+                }
+            });
+
+            // Toggle this one
+            btn.setAttribute('aria-expanded', !expanded);
+            var answerId = btn.getAttribute('aria-controls');
+            var answer = document.getElementById(answerId);
+            if (answer) {
+                answer.style.display = expanded ? 'none' : 'block';
+            }
+        });
+    });
+
+    // Contact form smooth scroll
+    var contactForm = document.getElementById('contactForm');
+    if (contactForm) {
+        contactForm.addEventListener('shown.bs.collapse', function() {
+            contactForm.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        });
+    }
+</script>
+
+{% if contact_submitted %}
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        var el = document.getElementById('contact-section');
+        if (el) {
+            el.scrollIntoView({ behavior: 'instant', block: 'start' });
+        }
+    });
+</script>
+{% endif %}
+{% endblock %}

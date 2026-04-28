@@ -430,8 +430,12 @@ def submit_email(request):
 
 
 def about(request):
+    return render(request, 'lookup/about.html')
+
+
+def help_page(request):
     contact_submitted = request.session.pop('contact_submitted', None)
-    return render(request, 'lookup/about.html', {
+    return render(request, 'lookup/help.html', {
         'contact_submitted': contact_submitted,
     })
 
@@ -444,7 +448,7 @@ def submit_contact(request):
 
     if not email or not message:
         messages.error(request, 'Email and message are required.')
-        return redirect('about')
+        return redirect('help')
 
     was_limited = is_ratelimited(
         request,
@@ -459,7 +463,7 @@ def submit_contact(request):
             request,
             'Too many messages. Please wait an hour before trying again.'
         )
-        return redirect('about')
+        return redirect('help')
 
     admin_sent = send_admin_contact_message(contact_type, email, message)
     user_sent = send_user_contact_confirmation(email)
@@ -467,7 +471,7 @@ def submit_contact(request):
     if admin_sent and user_sent:
         request.session['contact_submitted'] = email
 
-    return redirect('about')
+    return redirect('help')
 
 
 @staff_member_required

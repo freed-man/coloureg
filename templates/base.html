@@ -59,6 +59,19 @@
     <link rel="icon" type="image/x-icon" href="{% static 'images/favicon/favicon.ico' %}">
     <link rel="apple-touch-icon" href="{% static 'images/favicon/apple-touch-icon.png' %}">
     <link rel="icon" type="image/png" sizes="192x192" href="{% static 'images/favicon/favicon-192x192.png' %}">
+    <style>
+        .sr-only {
+            position: absolute;
+            width: 1px;
+            height: 1px;
+            padding: 0;
+            margin: -1px;
+            overflow: hidden;
+            clip: rect(0, 0, 0, 0);
+            white-space: nowrap;
+            border: 0;
+        }
+    </style>
     {% block extra_css %}
     {% endblock %}
 </head>
@@ -95,18 +108,8 @@
         {% endblock %}
     </main>
 
-    {% block about_link %}
-    <a href="{% url 'about' %}" 
-    style="position: fixed; bottom: 20px; right: 20px; z-index: 100; 
-            font-size: 0.9rem; letter-spacing: 2px; 
-            color: #333; text-decoration: none; 
-            font-weight: 600;
-            transition: color 0.2s;"
-    onmouseover="this.style.color='#C8102E'"
-    onmouseout="this.style.color='#333'">
-        about
-    </a>
-    {% endblock %}
+    {% block about_link %}{% endblock %}
+    {% block help_link %}{% endblock %}
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 
