@@ -7,17 +7,32 @@ class SearchAdmin(admin.ModelAdmin):
     list_display = (
         'timestamp',
         'registration',
+        'vehicle_title',
+        'paint_code',
+        'paint_description',
+        'success',
+        'manual_lookup_completed',
+    )
+    list_filter = (
+        'success',
+        'provider',
+        'vdg_paint_called',
+        'vdg_vehicle_called',
+        'email_sent',
+        'manual_lookup_completed',
+    )
+    list_editable = ('manual_lookup_completed',)
+    search_fields = (
+        'registration',
         'make',
         'model',
-        'year',
-        'colour',
+        'vehicle_title',
+        'vin',
         'paint_code',
-        'provider',
-        'success',
-        'lookup_duration_ms',
+        'paint_description',
+        'email',
+        'ip_address',
     )
-    list_filter = ('success', 'provider', 'vdg_paint_called', 'vdg_vehicle_called', 'email_sent', 'manual_lookup_completed')
-    search_fields = ('registration', 'make', 'model', 'vin', 'paint_code', 'email', 'ip_address')
     readonly_fields = (
         'timestamp',
         'ip_address',
@@ -27,6 +42,7 @@ class SearchAdmin(admin.ModelAdmin):
         'model',
         'year',
         'colour',
+        'vehicle_title',
         'vin',
         'paint_code',
         'paint_description',
@@ -36,6 +52,7 @@ class SearchAdmin(admin.ModelAdmin):
         'lookup_duration_ms',
         'vdg_paint_called',
         'vdg_vehicle_called',
+        'vdg_balance_after_call',
         'email',
         'email_sent',
     )
@@ -43,17 +60,21 @@ class SearchAdmin(admin.ModelAdmin):
         ('Search Info', {
             'fields': ('timestamp', 'ip_address', 'user_agent', 'registration')
         }),
-        ('Vehicle Data (DVLA)', {
-            'fields': ('make', 'model', 'year', 'colour')
+        ('Vehicle Data', {
+            'fields': ('vehicle_title', 'make', 'model', 'year', 'colour', 'vin')
         }),
-        ('VDG Data', {
-            'fields': ('vin', 'paint_code', 'paint_description')
+        ('Paint Code', {
+            'fields': ('paint_code', 'paint_description')
         }),
         ('Outcome', {
             'fields': ('provider', 'success', 'error_message', 'lookup_duration_ms')
         }),
         ('Cost Tracking', {
-            'fields': ('vdg_paint_called', 'vdg_vehicle_called')
+            'fields': (
+                'vdg_paint_called',
+                'vdg_vehicle_called',
+                'vdg_balance_after_call',
+            )
         }),
         ('Manual Fallback', {
             'fields': ('email', 'email_sent', 'manual_lookup_completed')

@@ -1,8 +1,13 @@
 import os
 import time
 import requests
+from datetime import timedelta
 from django.shortcuts import render, redirect
 from django.contrib import messages
+from django.contrib.admin.views.decorators import staff_member_required
+from django.db.models import Count, Avg
+from django.db.models.functions import TruncDate
+from django.utils import timezone
 from django.views.decorators.http import require_POST
 from django_ratelimit.core import is_ratelimited
 from .models import Search
@@ -140,6 +145,18 @@ def build_vehicle_title(year, make, model):
     return ' '.join(parts).strip()
 
 
+def parse_device(user_agent):
+    """Classify user agent as 'mobile', 'tablet', or 'desktop'."""
+    if not user_agent:
+        return 'unknown'
+    ua_lower = user_agent.lower()
+    if any(kw in ua_lower for kw in ['ipad', 'tablet']):
+        return 'tablet'
+    if any(kw in ua_lower for kw in ['mobile', 'android', 'iphone', 'ipod']):
+        return 'mobile'
+    return 'desktop'
+
+
 def index(request):
     if request.method == 'POST':
         was_limited = is_ratelimited(
@@ -176,9 +193,12 @@ def index(request):
 
         # --- VDG VehicleDetails (PRIMARY) ---
         vdg_details = None
+        latest_balance = None
         try:
             vdg_details = get_vehicle_details(registration)
             search.vdg_vehicle_called = True
+            if vdg_details and vdg_details.get('balance') is not None:
+                latest_balance = vdg_details.get('balance')
         except (VdgError, VdgNotFoundError) as e:
             search.vdg_vehicle_called = True
             search.error_message = f'VDG Vehicle: {str(e)[:200]}'
@@ -228,7 +248,6 @@ def index(request):
             mot_model = extract_mot_field(mot, 'model') or ''
             model = mot_model.title()
 
-        # Build the vehicle title
         vehicle_title = build_vehicle_title(year, make, model)
 
         search.make = make
@@ -245,15 +264,22 @@ def index(request):
             paint_result = get_paint_code(registration)
             search.vdg_paint_called = True
             if paint_result:
-                paint_code = paint_result['code']
-                paint_description = paint_result['description']
-                search.paint_code = paint_code
-                search.paint_description = paint_description
-                search.provider = Search.PROVIDER_VDG
+                if paint_result.get('balance') is not None:
+                    latest_balance = paint_result.get('balance')
+                if paint_result.get('found'):
+                    paint_code = paint_result['code']
+                    paint_description = paint_result['description']
+                    search.paint_code = paint_code
+                    search.paint_description = paint_description
+                    search.provider = Search.PROVIDER_VDG
         except (VdgError, VdgNotFoundError) as e:
             search.vdg_paint_called = True
             existing = search.error_message or ''
             search.error_message = f'{existing} | VDG Paint: {str(e)[:200]}'.strip(' |')
+
+        # Save latest VDG balance
+        if latest_balance is not None:
+            search.vdg_balance_after_call = latest_balance
 
         search.success = True
         search.lookup_duration_ms = int((time.time() - start_time) * 1000)
@@ -442,3 +468,146 @@ def submit_contact(request):
         request.session['contact_submitted'] = email
 
     return redirect('about')
+
+
+@staff_member_required
+def admin_stats(request):
+    """Admin-only stats dashboard."""
+    now = timezone.now()
+    today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    week_ago = now - timedelta(days=7)
+    month_ago = now - timedelta(days=30)
+
+    # Top metrics
+    total_searches = Search.objects.count()
+    today_searches = Search.objects.filter(timestamp__gte=today_start).count()
+    week_searches = Search.objects.filter(timestamp__gte=week_ago).count()
+    success_with_code = Search.objects.exclude(paint_code='').count()
+    success_rate = (success_with_code / total_searches * 100) if total_searches > 0 else 0
+
+    # Avg lookup duration
+    avg_duration_ms = Search.objects.exclude(
+        lookup_duration_ms__isnull=True
+    ).aggregate(avg=Avg('lookup_duration_ms'))['avg'] or 0
+    avg_duration_s = round(avg_duration_ms / 1000, 2)
+
+    # Daily counts for last 30 days
+    daily_counts = (
+        Search.objects.filter(timestamp__gte=month_ago)
+        .annotate(date=TruncDate('timestamp'))
+        .values('date')
+        .annotate(count=Count('id'))
+        .order_by('date')
+    )
+    chart_labels = []
+    chart_data = []
+    daily_dict = {item['date']: item['count'] for item in daily_counts}
+    for i in range(30, -1, -1):
+        d = (now - timedelta(days=i)).date()
+        chart_labels.append(d.strftime('%b %d'))
+        chart_data.append(daily_dict.get(d, 0))
+
+    # Top searched makes
+    top_makes = (
+        Search.objects.exclude(make='')
+        .values('make')
+        .annotate(count=Count('id'))
+        .order_by('-count')[:10]
+    )
+
+    # Top searched registrations
+    top_regs = (
+        Search.objects.values('registration')
+        .annotate(count=Count('id'))
+        .order_by('-count')[:10]
+    )
+
+    # Top makes with NO paint code
+    failed_makes = (
+        Search.objects.filter(paint_code='').exclude(make='')
+        .values('make')
+        .annotate(count=Count('id'))
+        .order_by('-count')[:10]
+    )
+
+    # Recent failures with email (manual lookup pipeline)
+    recent_failures_with_email = (
+        Search.objects.filter(paint_code='', email__gt='', manual_lookup_completed=False)
+        .order_by('-timestamp')[:10]
+    )
+
+    # All recent failures (no paint code)
+    recent_all_failures = (
+        Search.objects.filter(paint_code='')
+        .exclude(make='')
+        .order_by('-timestamp')[:20]
+    )
+
+    # Email submissions
+    total_emails = Search.objects.exclude(email='').count()
+    emails_sent = Search.objects.filter(email_sent=True).count()
+    conversion_rate = (total_emails / total_searches * 100) if total_searches > 0 else 0
+
+    # Device breakdown (mobile / tablet / desktop)
+    device_counts = {'mobile': 0, 'tablet': 0, 'desktop': 0, 'unknown': 0}
+    for s in Search.objects.exclude(user_agent='').only('user_agent').iterator():
+        device = parse_device(s.user_agent)
+        device_counts[device] = device_counts.get(device, 0) + 1
+    device_total = sum(device_counts.values())
+
+    # VDG cost tracker
+    # £0.15 per VehicleDetails (always charged)
+    # £0.35 per PaintCodeDetails (refunded by VDG if no paint data returned)
+    vdg_vehicle_calls = Search.objects.filter(vdg_vehicle_called=True).count()
+    vdg_paint_calls = Search.objects.filter(vdg_paint_called=True).count()
+    paint_calls_charged = Search.objects.filter(
+        vdg_paint_called=True
+    ).exclude(paint_code='').count()
+    paint_refunds_count = vdg_paint_calls - paint_calls_charged
+
+    vehicle_cost = round(vdg_vehicle_calls * 0.15, 2)
+    paint_charged_total = round(vdg_paint_calls * 0.35, 2)
+    paint_refunds_amount = round(paint_refunds_count * 0.35, 2)
+    estimated_cost = round(vehicle_cost + paint_charged_total - paint_refunds_amount, 2)
+
+    # Latest VDG balance (captured opportunistically from any API call)
+    latest_with_balance = (
+        Search.objects.exclude(vdg_balance_after_call__isnull=True)
+        .order_by('-timestamp')
+        .first()
+    )
+    vdg_balance = latest_with_balance.vdg_balance_after_call if latest_with_balance else None
+    vdg_balance_at = latest_with_balance.timestamp if latest_with_balance else None
+
+    context = {
+        'total_searches': total_searches,
+        'today_searches': today_searches,
+        'week_searches': week_searches,
+        'success_rate': round(success_rate, 1),
+        'success_with_code': success_with_code,
+        'avg_duration_s': avg_duration_s,
+        'chart_labels': chart_labels,
+        'chart_data': chart_data,
+        'top_makes': top_makes,
+        'top_regs': top_regs,
+        'failed_makes': failed_makes,
+        'recent_failures': recent_failures_with_email,
+        'recent_all_failures': recent_all_failures,
+        'total_emails': total_emails,
+        'emails_sent': emails_sent,
+        'conversion_rate': round(conversion_rate, 1),
+        'device_counts': device_counts,
+        'device_total': device_total,
+        'vdg_vehicle_calls': vdg_vehicle_calls,
+        'vdg_paint_calls': vdg_paint_calls,
+        'paint_calls_charged': paint_calls_charged,
+        'paint_refunds_count': paint_refunds_count,
+        'paint_refunds_amount': paint_refunds_amount,
+        'vehicle_cost': vehicle_cost,
+        'paint_charged_total': paint_charged_total,
+        'estimated_cost': estimated_cost,
+        'vdg_balance': vdg_balance,
+        'vdg_balance_at': vdg_balance_at,
+    }
+
+    return render(request, 'lookup/admin_stats.html', context)

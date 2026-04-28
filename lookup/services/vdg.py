@@ -54,6 +54,14 @@ def _make_request(endpoint, package_name, registration):
     return data
 
 
+def _extract_balance(data):
+    """Extract account balance from VDG response BillingInformation block."""
+    if not data:
+        return None
+    billing = data.get('BillingInformation', {}) or {}
+    return billing.get('AccountBalance')
+
+
 def _normalize_fuel_type(fuel):
     """Normalize fuel type to consumer-friendly format."""
     if not fuel:
@@ -81,7 +89,7 @@ def get_vehicle_details(registration):
     """Fetch full vehicle details from VDG VehicleDetails package.
 
     Returns dict with: make, model, year, colour, vin, fuel_type,
-    transmission, engine_description.
+    transmission, engine_description, balance.
     Or None if vehicle not found.
     """
     try:
@@ -95,7 +103,6 @@ def get_vehicle_details(registration):
 
     results = data.get('Results', {})
 
-    # VehicleDetails contains identification, status, history (DVLA-sourced)
     vehicle_details = results.get('VehicleDetails', {}) or {}
     identification = vehicle_details.get('VehicleIdentification', {}) or {}
     vin = identification.get('Vin', '')
@@ -103,12 +110,10 @@ def get_vehicle_details(registration):
     dvla_fuel = identification.get('DvlaFuelType', '')
     engine_number = (identification.get('EngineNumber', '') or '').strip()
 
-    # Colour from VehicleHistory inside VehicleDetails
     vehicle_history = vehicle_details.get('VehicleHistory', {}) or {}
     colour_details = vehicle_history.get('ColourDetails', {}) or {}
     colour = (colour_details.get('CurrentColour', '') or '').title()
 
-    # ModelDetails is a SIBLING of VehicleDetails (at Results level)
     model_details = results.get('ModelDetails', {}) or {}
     model_identification = model_details.get('ModelIdentification', {}) or {}
 
@@ -122,13 +127,10 @@ def get_vehicle_details(registration):
     if model and model.isupper():
         model = model.title()
 
-    # Powertrain (fuel, engine, transmission)
     powertrain = model_details.get('Powertrain', {}) or {}
     fuel_type = powertrain.get('FuelType') or dvla_fuel
     fuel_type = _normalize_fuel_type(fuel_type)
 
-    # Transmission — try Powertrain.Transmission first, then ModelDetails.Transmission,
-    # then EvDetails.TechnicalDetails.TransmissionDetailsList[0]
     transmission_data = (
         powertrain.get('Transmission')
         or model_details.get('Transmission')
@@ -153,7 +155,6 @@ def get_vehicle_details(registration):
         else:
             transmission = transmission_type
 
-    # Engine description (ICE) or motor info (EV) + append engine number in brackets
     engine_description = ''
     ice_details = powertrain.get('IceDetails')
     if ice_details:
@@ -170,7 +171,6 @@ def get_vehicle_details(registration):
             else:
                 engine_description = 'Electric Motor'
 
-    # Append engine number / engine code in brackets if available
     if engine_description and engine_number:
         engine_description = f'{engine_description} ({engine_number})'
     elif not engine_description and engine_number:
@@ -185,6 +185,7 @@ def get_vehicle_details(registration):
         'fuel_type': fuel_type,
         'transmission': transmission,
         'engine_description': engine_description,
+        'balance': _extract_balance(data),
     }
 
 
@@ -197,7 +198,10 @@ def get_vin(registration):
 
 
 def get_paint_code(registration):
-    """Fetch paint code from VDG Paint Package (launches May 2026)."""
+    """Fetch paint code from VDG Paint Package.
+
+    Returns dict with 'code', 'description', 'balance', or None if no paint code found.
+    """
     try:
         data = _make_request(
             VDG_PAINT_ENDPOINT,
@@ -207,15 +211,20 @@ def get_paint_code(registration):
     except VdgNotFoundError:
         return None
 
+    balance = _extract_balance(data)
+
     results = data.get('Results', {})
     paint_details = results.get('PaintCodeDetails', {})
     paint_list = paint_details.get('PaintCodeList', [])
 
     if not paint_list:
-        return None
+        # Return balance even when no paint data (so we can still update it)
+        return {'code': '', 'description': '', 'balance': balance, 'found': False}
 
     first = paint_list[0]
     return {
         'code': first.get('Code', ''),
         'description': first.get('Description', ''),
+        'balance': balance,
+        'found': True,
     }

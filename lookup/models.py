@@ -46,6 +46,9 @@ class Search(models.Model):
     # Cost tracking (VDG charges per call)
     vdg_paint_called = models.BooleanField(default=False)
     vdg_vehicle_called = models.BooleanField(default=False)
+    vdg_balance_after_call = models.DecimalField(
+        max_digits=10, decimal_places=2, null=True, blank=True
+    )
 
     # Email / manual fallback
     email = models.EmailField(blank=True, default='')
