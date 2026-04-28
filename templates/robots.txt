@@ -1,6 +1,7 @@
 User-agent: *
 Allow: /
 Disallow: /admin/
+Disallow: /admin-stats/
 Disallow: /results/
 Disallow: /submit-email/
 Disallow: /submit-contact/
