@@ -260,6 +260,7 @@ def index(request):
         # --- VDG Paint Package ---
         paint_code = None
         paint_description = None
+        all_paint_codes = []
         try:
             paint_result = get_paint_code(registration)
             search.vdg_paint_called = True
@@ -269,6 +270,7 @@ def index(request):
                 if paint_result.get('found'):
                     paint_code = paint_result['code']
                     paint_description = paint_result['description']
+                    all_paint_codes = paint_result.get('all_codes', [])
                     search.paint_code = paint_code
                     search.paint_description = paint_description
                     search.provider = Search.PROVIDER_VDG
@@ -308,6 +310,7 @@ def index(request):
             'vehicle_title': vehicle_title,
             'paint_code': paint_code,
             'paint_description': paint_description,
+            'all_paint_codes': all_paint_codes,
             'make_logo': make_logo,
             'search_id': search.id,
         }
@@ -347,6 +350,7 @@ def results(request):
         'vehicle_title': vehicle_data.get('vehicle_title', ''),
         'paint_code': vehicle_data.get('paint_code'),
         'paint_description': vehicle_data.get('paint_description'),
+        'all_paint_codes': vehicle_data.get('all_paint_codes', []),
         'search_id': vehicle_data.get('search_id'),
         'email_submitted': email_submitted,
     }

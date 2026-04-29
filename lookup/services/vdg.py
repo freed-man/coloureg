@@ -4,8 +4,7 @@ import requests
 
 
 VDG_BASE_URL = 'https://uk.api.vehicledataglobal.com/r2'
-VDG_VEHICLE_ENDPOINT = f'{VDG_BASE_URL}/lookup'
-VDG_PAINT_ENDPOINT = f'{VDG_BASE_URL}/lookup'
+VDG_LOOKUP_ENDPOINT = f'{VDG_BASE_URL}/lookup'
 
 
 class VdgError(Exception):
@@ -28,7 +27,7 @@ def _make_request(endpoint, package_name, registration):
     }
 
     try:
-        response = requests.get(endpoint, params=params, timeout=15)
+        response = requests.get(endpoint, params=params, timeout=30)
     except requests.exceptions.RequestException as e:
         raise VdgError(f'VDG request failed: {e}')
 
@@ -94,7 +93,7 @@ def get_vehicle_details(registration):
     """
     try:
         data = _make_request(
-            VDG_VEHICLE_ENDPOINT,
+            VDG_LOOKUP_ENDPOINT,
             'VehicleDetails',
             registration,
         )
@@ -198,13 +197,18 @@ def get_vin(registration):
 
 
 def get_paint_code(registration):
-    """Fetch paint code from VDG Paint Package.
+    """Fetch paint code(s) from VDG Paint Package.
 
-    Returns dict with 'code', 'description', 'balance', or None if no paint code found.
+    Returns dict with:
+      - 'code': primary paint code (first in list)
+      - 'description': primary paint description
+      - 'all_codes': list of all paint codes [{code, description}, ...]
+      - 'balance': latest VDG balance
+      - 'found': True/False
     """
     try:
         data = _make_request(
-            VDG_PAINT_ENDPOINT,
+            VDG_LOOKUP_ENDPOINT,
             'PaintCodeDetails',
             registration,
         )
@@ -218,13 +222,24 @@ def get_paint_code(registration):
     paint_list = paint_details.get('PaintCodeList', [])
 
     if not paint_list:
-        # Return balance even when no paint data (so we can still update it)
-        return {'code': '', 'description': '', 'balance': balance, 'found': False}
+        return {
+            'code': '',
+            'description': '',
+            'all_codes': [],
+            'balance': balance,
+            'found': False,
+        }
+
+    all_codes = [
+        {'code': p.get('Code', ''), 'description': p.get('Description', '')}
+        for p in paint_list
+    ]
 
     first = paint_list[0]
     return {
         'code': first.get('Code', ''),
         'description': first.get('Description', ''),
+        'all_codes': all_codes,
         'balance': balance,
         'found': True,
     }

@@ -10,7 +10,7 @@
         font-family: 'IBM Plex Sans', sans-serif;
     }
     .vehicle-card-title {
-        font-size: 26px;
+        font-size: 28px;
         font-weight: 500;
         margin: 0 0 14px;
     }
@@ -105,11 +105,27 @@
                 <div class="card-body">
                     {% if paint_code %}
                     <div class="text-center py-3">
-                        <h1 class="display-4 mb-2" style="font-family: 'Courier New', monospace; letter-spacing: 2px;">
-                            {{ paint_code }}
-                        </h1>
-                        {% if paint_description %}
-                        <p class="text-muted mb-0">{{ paint_description }}</p>
+                        {% if all_paint_codes|length > 1 %}
+                            {% for item in all_paint_codes %}
+                            <div class="mb-3">
+                                <h1 class="display-4 mb-2" style="font-family: 'Courier New', monospace; letter-spacing: 2px;">
+                                    {{ item.code }}
+                                </h1>
+                                {% if item.description %}
+                                <p class="text-muted mb-0">{{ item.description }}</p>
+                                {% endif %}
+                            </div>
+                            {% if not forloop.last %}
+                            <hr style="max-width: 200px; margin: 16px auto; border-top: 1px solid #eee;">
+                            {% endif %}
+                            {% endfor %}
+                        {% else %}
+                            <h1 class="display-4 mb-2" style="font-family: 'Courier New', monospace; letter-spacing: 2px;">
+                                {{ paint_code }}
+                            </h1>
+                            {% if paint_description %}
+                            <p class="text-muted mb-0">{{ paint_description }}</p>
+                            {% endif %}
                         {% endif %}
                     </div>
                     {% else %}
