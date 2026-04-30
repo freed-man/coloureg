@@ -300,17 +300,35 @@
     }
 
     // Auto-open contact form when arriving from another page with ?contact=open
-    (function() {
+    // Runs on DOMContentLoaded to guarantee Bootstrap's JS has loaded (it's in base.html after <main>)
+    document.addEventListener('DOMContentLoaded', function() {
         var params = new URLSearchParams(window.location.search);
-        if (params.get('contact') === 'open' && contactForm) {
-            // Use Bootstrap's Collapse API so the existing shown.bs.collapse handler fires
-            var collapse = new bootstrap.Collapse(contactForm, { toggle: false });
-            collapse.show();
-            // Update the toggle button's aria-expanded for accessibility
-            var btn = document.getElementById('sendMessageBtn');
+        if (params.get('contact') !== 'open' || !contactForm) return;
+
+        var btn = document.getElementById('sendMessageBtn');
+
+        function openForm() {
+            // Prefer Bootstrap's Collapse API so the shown.bs.collapse listener fires
+            if (typeof bootstrap !== 'undefined' && bootstrap.Collapse) {
+                var collapse = bootstrap.Collapse.getOrCreateInstance(contactForm, { toggle: false });
+                collapse.show();
+            } else {
+                // Fallback: just add the 'show' class manually
+                contactForm.classList.add('show');
+                contactForm.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            }
             if (btn) btn.setAttribute('aria-expanded', 'true');
+
+            // Focus the email input so the user can start typing immediately
+            var emailInput = contactForm.querySelector('input[name="email"]');
+            if (emailInput) {
+                setTimeout(function() { emailInput.focus(); }, 400);
+            }
         }
-    })();
+
+        // Slight delay to let Bootstrap finish initialising
+        setTimeout(openForm, 50);
+    });
 </script>
 
 {% if contact_submitted %}
