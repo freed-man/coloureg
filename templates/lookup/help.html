@@ -318,12 +318,6 @@
                 contactForm.scrollIntoView({ behavior: 'smooth', block: 'center' });
             }
             if (btn) btn.setAttribute('aria-expanded', 'true');
-
-            // Focus the email input so the user can start typing immediately
-            var emailInput = contactForm.querySelector('input[name="email"]');
-            if (emailInput) {
-                setTimeout(function() { emailInput.focus(); }, 400);
-            }
         }
 
         // Slight delay to let Bootstrap finish initialising
