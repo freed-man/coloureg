@@ -298,6 +298,19 @@
             contactForm.scrollIntoView({ behavior: 'smooth', block: 'center' });
         });
     }
+
+    // Auto-open contact form when arriving from another page with ?contact=open
+    (function() {
+        var params = new URLSearchParams(window.location.search);
+        if (params.get('contact') === 'open' && contactForm) {
+            // Use Bootstrap's Collapse API so the existing shown.bs.collapse handler fires
+            var collapse = new bootstrap.Collapse(contactForm, { toggle: false });
+            collapse.show();
+            // Update the toggle button's aria-expanded for accessibility
+            var btn = document.getElementById('sendMessageBtn');
+            if (btn) btn.setAttribute('aria-expanded', 'true');
+        }
+    })();
 </script>
 
 {% if contact_submitted %}

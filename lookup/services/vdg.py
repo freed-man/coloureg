@@ -201,7 +201,7 @@ def get_paint_code(registration):
 
     Returns dict with:
       - 'code': primary paint code (first in list)
-      - 'description': primary paint description
+      - 'description': primary paint description (title-cased)
       - 'all_codes': list of all paint codes [{code, description}, ...]
       - 'balance': latest VDG balance
       - 'found': True/False
@@ -231,14 +231,17 @@ def get_paint_code(registration):
         }
 
     all_codes = [
-        {'code': p.get('Code', ''), 'description': p.get('Description', '')}
+        {
+            'code': p.get('Code', ''),
+            'description': (p.get('Description', '') or '').title(),
+        }
         for p in paint_list
     ]
 
     first = paint_list[0]
     return {
         'code': first.get('Code', ''),
-        'description': first.get('Description', ''),
+        'description': (first.get('Description', '') or '').title(),
         'all_codes': all_codes,
         'balance': balance,
         'found': True,

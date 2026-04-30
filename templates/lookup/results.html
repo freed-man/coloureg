@@ -4,7 +4,7 @@
 {% block extra_title %} - Results for {{ registration }}{% endblock %}
 
 {% block extra_css %}
-<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
     .vehicle-card {
         font-family: 'IBM Plex Sans', sans-serif;
@@ -36,6 +36,50 @@
     }
     .vehicle-divider {
         border-top: 0.5px solid rgba(0, 0, 0, 0.1);
+    }
+    .paint-card {
+        font-family: 'IBM Plex Sans', sans-serif;
+        overflow: hidden;
+    }
+    .paint-swatch-bar {
+        height: 80px;
+        width: 100%;
+        display: block;
+    }
+    .paint-block {
+        padding: 2rem 1.5rem;
+        text-align: center;
+    }
+    .paint-block + .paint-swatch-bar {
+        border-top: 0.5px solid rgba(0, 0, 0, 0.06);
+    }
+    .paint-code {
+        font-family: 'IBM Plex Mono', 'Courier New', monospace;
+        font-size: 64px;
+        letter-spacing: 3px;
+        font-weight: 500;
+        line-height: 1;
+        margin: 0 0 12px;
+        color: #1a1a1a;
+    }
+    .paint-desc {
+        font-family: 'IBM Plex Sans', sans-serif;
+        font-size: 16px;
+        color: #666;
+        margin: 0;
+        font-weight: 400;
+    }
+    @media (max-width: 480px) {
+        .paint-code {
+            font-size: 44px;
+            letter-spacing: 2px;
+        }
+        .paint-swatch-bar {
+            height: 64px;
+        }
+        .paint-block {
+            padding: 1.5rem 1rem;
+        }
     }
 </style>
 {% endblock %}
@@ -101,34 +145,29 @@
                 <img src="{% static 'images/palette.png' %}" alt="" height="40" class="me-2">Paint Code
             </h2>
 
-            <div class="card">
-                <div class="card-body">
-                    {% if paint_code %}
-                    <div class="text-center py-3">
-                        {% if all_paint_codes|length > 1 %}
-                            {% for item in all_paint_codes %}
-                            <div class="mb-3">
-                                <h1 class="display-4 mb-2" style="font-family: 'Courier New', monospace; letter-spacing: 2px;">
-                                    {{ item.code }}
-                                </h1>
-                                {% if item.description %}
-                                <p class="text-muted mb-0">{{ item.description }}</p>
-                                {% endif %}
-                            </div>
-                            {% if not forloop.last %}
-                            <hr style="max-width: 200px; margin: 16px auto; border-top: 1px solid #eee;">
+            <div class="card paint-card">
+                {% if paint_code %}
+                    {% if all_paint_codes|length > 1 %}
+                        {% for item in all_paint_codes %}
+                        {% if item.hex %}<div class="paint-swatch-bar" style="background: {{ item.hex }};"></div>{% endif %}
+                        <div class="paint-block">
+                            <div class="paint-code">{{ item.code }}</div>
+                            {% if item.description %}
+                            <p class="paint-desc">{{ item.description }}</p>
                             {% endif %}
-                            {% endfor %}
-                        {% else %}
-                            <h1 class="display-4 mb-2" style="font-family: 'Courier New', monospace; letter-spacing: 2px;">
-                                {{ paint_code }}
-                            </h1>
-                            {% if paint_description %}
-                            <p class="text-muted mb-0">{{ paint_description }}</p>
-                            {% endif %}
-                        {% endif %}
-                    </div>
+                        </div>
+                        {% endfor %}
                     {% else %}
+                        {% if paint_hex %}<div class="paint-swatch-bar" style="background: {{ paint_hex }};"></div>{% endif %}
+                        <div class="paint-block">
+                            <div class="paint-code">{{ paint_code }}</div>
+                            {% if paint_description %}
+                            <p class="paint-desc">{{ paint_description }}</p>
+                            {% endif %}
+                        </div>
+                    {% endif %}
+                {% else %}
+                <div class="card-body">
                     <div class="d-flex align-items-center justify-content-center py-4" style="gap: 16px;">
                         <div style="font-size: 2.5rem; color: #C8102E; line-height: 1;">⚠</div>
                         <div>
@@ -140,8 +179,8 @@
                             </p>
                         </div>
                     </div>
-                    {% endif %}
                 </div>
+                {% endif %}
             </div>
 
             {% if search_id %}
