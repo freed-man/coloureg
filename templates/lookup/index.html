@@ -190,6 +190,96 @@
             letter-spacing: 1px;
         }
     }
+
+    /* Loading state shown after form submit */
+    .lookup-loader {
+        display: none;
+        flex-direction: column;
+        align-items: center;
+        gap: 22px;
+        padding: 18px 0;
+        perspective: 700px;
+    }
+    .lookup-loader.active {
+        display: flex;
+    }
+    .lookup-spinner {
+        position: relative;
+        width: 140px;
+        height: 140px;
+        transform-style: preserve-3d;
+        animation: spinner-tumble 5s linear infinite;
+    }
+    .lookup-spinner .dot {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        width: 18px;
+        height: 18px;
+        margin: -9px 0 0 -9px;
+        border-radius: 50%;
+        box-shadow: 0 2px 6px rgba(0, 0, 0, 0.25);
+        transform-style: preserve-3d;
+    }
+    /* 16 paint-shop colours distributed on sphere surface (radius 52px) */
+    .lookup-spinner .dot:nth-child(1)  { background: #C8102E; transform: rotateY(0deg)   rotateX(0deg)   translateZ(52px); }  /* cherry red */
+    .lookup-spinner .dot:nth-child(2)  { background: #FF6B35; transform: rotateY(45deg)  rotateX(0deg)   translateZ(52px); }  /* sunset orange */
+    .lookup-spinner .dot:nth-child(3)  { background: #F4B400; transform: rotateY(90deg)  rotateX(0deg)   translateZ(52px); }  /* sunflower yellow */
+    .lookup-spinner .dot:nth-child(4)  { background: #B8E23E; transform: rotateY(135deg) rotateX(0deg)   translateZ(52px); }  /* lime */
+    .lookup-spinner .dot:nth-child(5)  { background: #0F9D58; transform: rotateY(180deg) rotateX(0deg)   translateZ(52px); }  /* forest green */
+    .lookup-spinner .dot:nth-child(6)  { background: #00C2A8; transform: rotateY(225deg) rotateX(0deg)   translateZ(52px); }  /* teal */
+    .lookup-spinner .dot:nth-child(7)  { background: #2196F3; transform: rotateY(270deg) rotateX(0deg)   translateZ(52px); }  /* sky blue */
+    .lookup-spinner .dot:nth-child(8)  { background: #003399; transform: rotateY(315deg) rotateX(0deg)   translateZ(52px); }  /* deep blue */
+    .lookup-spinner .dot:nth-child(9)  { background: #6f42c1; transform: rotateY(22deg)  rotateX(55deg)  translateZ(52px); }  /* royal purple */
+    .lookup-spinner .dot:nth-child(10) { background: #E91E63; transform: rotateY(112deg) rotateX(55deg)  translateZ(52px); }  /* magenta */
+    .lookup-spinner .dot:nth-child(11) { background: #FF8FA3; transform: rotateY(202deg) rotateX(55deg)  translateZ(52px); }  /* pink */
+    .lookup-spinner .dot:nth-child(12) { background: #B5651D; transform: rotateY(292deg) rotateX(55deg)  translateZ(52px); }  /* copper */
+    .lookup-spinner .dot:nth-child(13) { background: #6D4C41; transform: rotateY(67deg)  rotateX(-55deg) translateZ(52px); }  /* chocolate */
+    .lookup-spinner .dot:nth-child(14) { background: #8B0000; transform: rotateY(157deg) rotateX(-55deg) translateZ(52px); }  /* maroon */
+    .lookup-spinner .dot:nth-child(15) { background: #1a1a1a; transform: rotateY(247deg) rotateX(-55deg) translateZ(52px); }  /* jet black */
+    .lookup-spinner .dot:nth-child(16) { background: #E8E8E8; border: 1px solid rgba(0,0,0,0.08); transform: rotateY(337deg) rotateX(-55deg) translateZ(52px); }  /* pearl white */
+    @keyframes spinner-tumble {
+        from { transform: rotateY(0deg)   rotateX(0deg); }
+        to   { transform: rotateY(360deg) rotateX(720deg); }
+    }
+    .lookup-message {
+        font-family: 'Playfair Display', Georgia, serif;
+        font-style: italic;
+        font-size: 20px;
+        color: #333;
+        text-align: center;
+        margin: 0;
+        min-height: 28px;
+        transition: opacity 0.3s ease;
+        max-width: 320px;
+        line-height: 1.4;
+    }
+    .lookup-message.stuck {
+        color: #888;
+        font-size: 17px;
+    }
+    @media (max-width: 480px) {
+        .lookup-spinner { width: 110px; height: 110px; }
+        .lookup-spinner .dot { width: 14px; height: 14px; margin: -7px 0 0 -7px; }
+        .lookup-spinner .dot:nth-child(1)  { transform: rotateY(0deg)   rotateX(0deg)   translateZ(40px); }
+        .lookup-spinner .dot:nth-child(2)  { transform: rotateY(45deg)  rotateX(0deg)   translateZ(40px); }
+        .lookup-spinner .dot:nth-child(3)  { transform: rotateY(90deg)  rotateX(0deg)   translateZ(40px); }
+        .lookup-spinner .dot:nth-child(4)  { transform: rotateY(135deg) rotateX(0deg)   translateZ(40px); }
+        .lookup-spinner .dot:nth-child(5)  { transform: rotateY(180deg) rotateX(0deg)   translateZ(40px); }
+        .lookup-spinner .dot:nth-child(6)  { transform: rotateY(225deg) rotateX(0deg)   translateZ(40px); }
+        .lookup-spinner .dot:nth-child(7)  { transform: rotateY(270deg) rotateX(0deg)   translateZ(40px); }
+        .lookup-spinner .dot:nth-child(8)  { transform: rotateY(315deg) rotateX(0deg)   translateZ(40px); }
+        .lookup-spinner .dot:nth-child(9)  { transform: rotateY(22deg)  rotateX(55deg)  translateZ(40px); }
+        .lookup-spinner .dot:nth-child(10) { transform: rotateY(112deg) rotateX(55deg)  translateZ(40px); }
+        .lookup-spinner .dot:nth-child(11) { transform: rotateY(202deg) rotateX(55deg)  translateZ(40px); }
+        .lookup-spinner .dot:nth-child(12) { transform: rotateY(292deg) rotateX(55deg)  translateZ(40px); }
+        .lookup-spinner .dot:nth-child(13) { transform: rotateY(67deg)  rotateX(-55deg) translateZ(40px); }
+        .lookup-spinner .dot:nth-child(14) { transform: rotateY(157deg) rotateX(-55deg) translateZ(40px); }
+        .lookup-spinner .dot:nth-child(15) { transform: rotateY(247deg) rotateX(-55deg) translateZ(40px); }
+        .lookup-spinner .dot:nth-child(16) { transform: rotateY(337deg) rotateX(-55deg) translateZ(40px); }
+        .lookup-message { font-size: 17px; }
+        .lookup-message.stuck { font-size: 15px; }
+    }
 </style>
 {% endblock %}
 
@@ -234,6 +324,27 @@
                             <i class="fas fa-search"></i>
                         </button>
                     </form>
+                    <div class="lookup-loader" id="lookup-loader" aria-live="polite">
+                        <div class="lookup-spinner" aria-hidden="true">
+                            <span class="dot"></span>
+                            <span class="dot"></span>
+                            <span class="dot"></span>
+                            <span class="dot"></span>
+                            <span class="dot"></span>
+                            <span class="dot"></span>
+                            <span class="dot"></span>
+                            <span class="dot"></span>
+                            <span class="dot"></span>
+                            <span class="dot"></span>
+                            <span class="dot"></span>
+                            <span class="dot"></span>
+                            <span class="dot"></span>
+                            <span class="dot"></span>
+                            <span class="dot"></span>
+                            <span class="dot"></span>
+                        </div>
+                        <p class="lookup-message" id="lookup-message">Connecting to manufacturer server...</p>
+                    </div>
                 </div>
             </div>
         </div>
@@ -398,6 +509,61 @@ onmouseout="this.style.color='#333'">
         if (regInput.value.trim() === '') {
             e.preventDefault();
             regInput.focus();
+            return;
+        }
+
+        // Valid submit: hide form, show loader, schedule staged messages.
+        // The form still submits — the page will navigate to /results/ when the server responds.
+        var form = lookupForm;
+        var loader = document.getElementById('lookup-loader');
+        var msgEl = document.getElementById('lookup-message');
+
+        form.style.display = 'none';
+        loader.classList.add('active');
+
+        // Three honest stages — message stays put until next threshold is hit.
+        // 0s: initial, already in DOM
+        // 15s: still working honestly
+        // 30s: server slow honestly
+        var stage15 = "Still working on it...";
+        var stage30 = "Manufacturer servers are slow today, hang tight...";
+
+        function fadeTo(text, isStuck) {
+            msgEl.style.opacity = '0';
+            setTimeout(function() {
+                msgEl.textContent = text;
+                if (isStuck) msgEl.classList.add('stuck');
+                msgEl.style.opacity = '1';
+            }, 300);
+        }
+
+        var t15 = setTimeout(function() { fadeTo(stage15, false); }, 15000);
+        var t30 = setTimeout(function() { fadeTo(stage30, true); },  30000);
+
+        // Stash handles on the form so the pageshow handler can clear them on back-navigation.
+        form._loaderTimers = [t15, t30];
+    });
+
+    // Reset loader state on page show (covers back-button navigation from a bfcache).
+    // Without this, returning via back button leaves the loader visible and the messages still on their timers.
+    window.addEventListener('pageshow', function(event) {
+        var loader = document.getElementById('lookup-loader');
+        var msgEl = document.getElementById('lookup-message');
+        if (!loader) return;
+
+        // Cancel any in-flight stage timers from a previous submit.
+        if (lookupForm._loaderTimers) {
+            lookupForm._loaderTimers.forEach(function(t) { clearTimeout(t); });
+            lookupForm._loaderTimers = null;
+        }
+
+        // Hide loader, restore form, reset message to initial state.
+        loader.classList.remove('active');
+        lookupForm.style.display = '';
+        if (msgEl) {
+            msgEl.classList.remove('stuck');
+            msgEl.style.opacity = '1';
+            msgEl.textContent = 'Connecting to manufacturer server...';
         }
     });
 </script>
