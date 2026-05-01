@@ -61,6 +61,40 @@ def _extract_balance(data):
     return billing.get('AccountBalance')
 
 
+def _smart_title(text):
+    """Title-case a string while preserving all-uppercase tokens.
+
+    VDG returns paint descriptions in sentence case ('Glacier white-metallic'),
+    which we want to display as 'Glacier White-Metallic'. Python's built-in
+    .title() would also wrongly lowercase already-uppercase tokens like 'BMW',
+    so this function only capitalises the first letter of each word and leaves
+    the rest of each word untouched.
+
+    Splits on whitespace, hyphens, and parentheses so multi-token paint names
+    capitalise correctly: 'metallic deep-blue (sapphire)' becomes
+    'Metallic Deep-Blue (Sapphire)'.
+    """
+    if not text:
+        return text
+    import re
+    # Split on word boundaries that should trigger capitalisation: whitespace,
+    # hyphens, opening/closing parens, slashes. Keep separators by using a
+    # capturing group so we can rejoin.
+    parts = re.split(r'([\s\-()/])', text)
+    out = []
+    for p in parts:
+        if not p or p.isspace() or p in '-()/':
+            out.append(p)
+            continue
+        # Skip already all-uppercase tokens (e.g. 'BMW', 'AMG', 'GTI')
+        if p.isupper():
+            out.append(p)
+            continue
+        # Otherwise, uppercase first character only — leave rest of word alone
+        out.append(p[0].upper() + p[1:])
+    return ''.join(out)
+
+
 def _normalize_fuel_type(fuel):
     """Normalize fuel type to consumer-friendly format."""
     if not fuel:
@@ -275,14 +309,14 @@ def get_paint_code(registration):
         }
 
     all_codes = [
-        {'code': p.get('Code', ''), 'description': p.get('Description', '')}
+        {'code': p.get('Code', ''), 'description': _smart_title(p.get('Description', ''))}
         for p in paint_list
     ]
 
     first = paint_list[0]
     return {
         'code': first.get('Code', ''),
-        'description': first.get('Description', ''),
+        'description': _smart_title(first.get('Description', '')),
         'all_codes': all_codes,
         'balance': balance,
         'found': True,
