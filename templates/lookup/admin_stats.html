@@ -182,7 +182,7 @@
         <div class="stat-card balance">
             <p class="stat-label">VDG balance</p>
             {% if vdg_balance is not None %}
-            <p class="stat-value balance-highlight">£{{ vdg_balance }}</p>
+            <p class="stat-value balance-highlight">£{{ vdg_balance|floatformat:2 }}</p>
             <p class="stat-subvalue">as of {{ vdg_balance_at|date:"M j H:i" }}</p>
             {% else %}
             <p class="stat-value" style="color: #999;">—</p>
@@ -310,7 +310,7 @@
                     <span class="cost-label">VehicleDetails</span>
                     <span class="cost-detail">({{ vdg_vehicle_calls }} × £0.15)</span>
                 </div>
-                <span class="cost-amount">£{{ vehicle_cost }}</span>
+                <span class="cost-amount">£{{ vehicle_cost|floatformat:2 }}</span>
             </div>
 
             <div class="cost-row">
@@ -318,7 +318,7 @@
                     <span class="cost-label">PaintCodeDetails</span>
                     <span class="cost-detail">({{ vdg_paint_calls }} × £0.35)</span>
                 </div>
-                <span class="cost-amount">£{{ paint_charged_total }}</span>
+                <span class="cost-amount">£{{ paint_charged_total|floatformat:2 }}</span>
             </div>
 
             {% if paint_refunds_count > 0 %}
@@ -327,7 +327,7 @@
                     <span class="cost-label">PaintCodeDetails refunds</span>
                     <span class="cost-detail">({{ paint_refunds_count }} × £0.35) — auto-refunded by VDG when no paint data found</span>
                 </div>
-                <span class="cost-amount refund">−£{{ paint_refunds_amount }}</span>
+                <span class="cost-amount refund">−£{{ paint_refunds_amount|floatformat:2 }}</span>
             </div>
             {% endif %}
 
@@ -335,7 +335,7 @@
 
             <div class="cost-row cost-total">
                 <span class="cost-label">Total</span>
-                <span class="cost-amount">£{{ estimated_cost }}</span>
+                <span class="cost-amount">£{{ estimated_cost|floatformat:2 }}</span>
             </div>
         </div>
     </div>
