@@ -39,6 +39,13 @@ def _brand_header():
     """
 
 
+FONT_IMPORT = """
+<style>
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600;700&display=swap');
+</style>
+"""
+
+
 FOOTER = """
 <div style="max-width: 560px; margin: 24px auto 0; text-align: center; color: #999; font-size: 12px;">
     Sent by <a href="https://coloureg.com" style="color: #0066cc; text-decoration: none;">coloureg.com</a>
@@ -62,7 +69,8 @@ def send_user_paint_code(to_email, registration, vehicle_title, vin_masked, colo
     client = _client()
 
     html = f"""
-    <div style="background: #f8f9fa; padding: 40px 20px; font-family: Arial, Helvetica, sans-serif;">
+    {FONT_IMPORT}
+    <div style="background: #f8f9fa; padding: 40px 20px; font-family: 'IBM Plex Sans', Arial, Helvetica, sans-serif;">
         <div style="max-width: 560px; margin: 0 auto; background: #fff; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.04);">
             {_brand_header()}
             <div style="padding: 40px 32px;">
@@ -71,7 +79,7 @@ def send_user_paint_code(to_email, registration, vehicle_title, vin_masked, colo
                     Here's the paint code for your vehicle.
                 </p>
                 <div style="background: #f8f9fa; padding: 32px; border-radius: 8px; text-align: center; margin-bottom: 24px;">
-                    <div style="font-family: 'Courier New', Courier, monospace; font-size: 42px; font-weight: 700; letter-spacing: 3px; color: #1a1a1a; font-feature-settings: 'zero' 0;">
+                    <div style="font-family: 'IBM Plex Mono', 'Courier New', Courier, monospace; font-size: 42px; font-weight: 700; letter-spacing: 3px; color: #1a1a1a; font-feature-settings: 'zero' 0;">
                         {paint_code}
                     </div>
                     {f'<div style="margin-top: 12px; color: #666; font-size: 14px; letter-spacing: 0.5px;">{paint_description}</div>' if paint_description else ''}
@@ -118,7 +126,8 @@ def send_admin_failure_notification(registration, vehicle_title, vin_full, colou
     client = _client()
 
     html = f"""
-    <div style="background: #f8f9fa; padding: 40px 20px; font-family: Arial, Helvetica, sans-serif;">
+    {FONT_IMPORT}
+    <div style="background: #f8f9fa; padding: 40px 20px; font-family: 'IBM Plex Sans', Arial, Helvetica, sans-serif;">
         <div style="max-width: 560px; margin: 0 auto; background: #fff; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.04);">
             {_brand_header()}
             <div style="background: #C8102E; padding: 16px; text-align: center;">
@@ -136,7 +145,7 @@ def send_admin_failure_notification(registration, vehicle_title, vin_full, colou
                     </tr>
                     <tr style="border-bottom: 1px solid #eee;">
                         <td style="padding: 10px 0; color: #666; font-size: 13px;">VIN</td>
-                        <td style="padding: 10px 0; color: #1a1a1a; font-size: 14px; font-family: Arial, Helvetica, sans-serif;">{vin_full or '—'}</td>
+                        <td style="padding: 10px 0; color: #1a1a1a; font-size: 14px; font-family: 'IBM Plex Sans', Arial, Helvetica, sans-serif;">{vin_full or '—'}</td>
                     </tr>
                     <tr style="border-bottom: 1px solid #eee;">
                         <td style="padding: 10px 0; color: #666; font-size: 13px;">Colour</td>
@@ -176,7 +185,8 @@ def send_user_pending_notification(to_email, registration, vehicle_title, vin_ma
     client = _client()
 
     html = f"""
-    <div style="background: #f8f9fa; padding: 40px 20px; font-family: Arial, Helvetica, sans-serif;">
+    {FONT_IMPORT}
+    <div style="background: #f8f9fa; padding: 40px 20px; font-family: 'IBM Plex Sans', Arial, Helvetica, sans-serif;">
         <div style="max-width: 560px; margin: 0 auto; background: #fff; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.04);">
             {_brand_header()}
             <div style="padding: 40px 32px;">
@@ -232,7 +242,8 @@ def send_admin_contact_message(contact_type, user_email, message):
     type_label = contact_type.title()
 
     html = f"""
-    <div style="background: #f8f9fa; padding: 40px 20px; font-family: Arial, Helvetica, sans-serif;">
+    {FONT_IMPORT}
+    <div style="background: #f8f9fa; padding: 40px 20px; font-family: 'IBM Plex Sans', Arial, Helvetica, sans-serif;">
         <div style="max-width: 560px; margin: 0 auto; background: #fff; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.04);">
             {_brand_header()}
             <div style="background: #003399; padding: 16px; text-align: center;">
@@ -282,7 +293,8 @@ def send_user_contact_confirmation(to_email):
     client = _client()
 
     html = f"""
-    <div style="background: #f8f9fa; padding: 40px 20px; font-family: Arial, Helvetica, sans-serif;">
+    {FONT_IMPORT}
+    <div style="background: #f8f9fa; padding: 40px 20px; font-family: 'IBM Plex Sans', Arial, Helvetica, sans-serif;">
         <div style="max-width: 560px; margin: 0 auto; background: #fff; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.04);">
             {_brand_header()}
             <div style="padding: 40px 32px;">
