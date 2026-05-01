@@ -79,7 +79,7 @@ def send_user_paint_code(to_email, registration, vehicle_title, vin_masked, colo
                 <table style="width: 100%; border-collapse: collapse;">
                     <tr>
                         <td style="padding: 12px 0; color: #666; font-size: 14px; width: 120px;">Vehicle</td>
-                        <td style="padding: 12px 0; color: #1a1a1a; font-size: 14px; font-weight: 500;">{vehicle_title or '—'}</td>
+                        <td style="padding: 12px 0; color: #1a1a1a; font-size: 14px;">{vehicle_title or '—'}</td>
                     </tr>
                     <tr style="border-top: 1px solid #eee;">
                         <td style="padding: 12px 0; color: #666; font-size: 14px;">Registration</td>
