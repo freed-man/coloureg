@@ -151,12 +151,8 @@
         <a href="/admin/" class="btn btn-outline-dark btn-sm">Django Admin</a>
     </div>
 
-    <!-- Top metrics -->
+    <!-- Top metrics: row 1 = volume -->
     <div class="stats-grid">
-        <div class="stat-card">
-            <p class="stat-label">Total searches</p>
-            <p class="stat-value">{{ total_searches }}</p>
-        </div>
         <div class="stat-card">
             <p class="stat-label">Today</p>
             <p class="stat-value">{{ today_searches }}</p>
@@ -166,6 +162,18 @@
             <p class="stat-value">{{ week_searches }}</p>
         </div>
         <div class="stat-card">
+            <p class="stat-label">Last 30 days</p>
+            <p class="stat-value">{{ month_searches }}</p>
+        </div>
+        <div class="stat-card">
+            <p class="stat-label">Total</p>
+            <p class="stat-value">{{ total_searches }}</p>
+        </div>
+    </div>
+
+    <!-- Top metrics: row 2 = quality + balance -->
+    <div class="stats-grid">
+        <div class="stat-card">
             <p class="stat-label">Success rate</p>
             <p class="stat-value">{{ success_rate }}%</p>
             <p class="stat-subvalue">{{ success_with_code }} with paint code</p>
@@ -173,11 +181,6 @@
         <div class="stat-card">
             <p class="stat-label">Avg lookup time</p>
             <p class="stat-value">{{ avg_duration_s }}s</p>
-        </div>
-        <div class="stat-card">
-            <p class="stat-label">Email conversion</p>
-            <p class="stat-value">{{ conversion_rate }}%</p>
-            <p class="stat-subvalue">{{ total_emails }} of {{ total_searches }}</p>
         </div>
         <div class="stat-card balance">
             <p class="stat-label">VDG balance</p>
@@ -285,25 +288,9 @@
         </div>
     </div>
 
-    <div class="panel-grid">
-        <!-- Email funnel -->
-        <div class="panel">
-            <h3>Email submissions</h3>
-            <div style="display: flex; gap: 32px;">
-                <div>
-                    <p class="stat-label">Total captured</p>
-                    <p class="stat-value">{{ total_emails }}</p>
-                </div>
-                <div>
-                    <p class="stat-label">Sent successfully</p>
-                    <p class="stat-value">{{ emails_sent }}</p>
-                </div>
-            </div>
-        </div>
-
-        <!-- Cost tracker -->
-        <div class="panel">
-            <h3>VDG API costs</h3>
+    <!-- Cost tracker -->
+    <div class="panel">
+        <h3>VDG API costs</h3>
 
             <div class="cost-row">
                 <div>
@@ -337,58 +324,205 @@
                 <span class="cost-label">Total</span>
                 <span class="cost-amount">£{{ estimated_cost|floatformat:2 }}</span>
             </div>
-        </div>
     </div>
 
     <!-- Recent manual lookup queue -->
+    <style>
+        .mlq-card {
+            background: #fafafa;
+            border: 1px solid #eee;
+            border-radius: 6px;
+            padding: 16px;
+            margin-bottom: 12px;
+            transition: opacity 0.4s ease, max-height 0.5s ease, margin 0.5s ease, padding 0.5s ease;
+            overflow: hidden;
+            max-height: 600px;
+            font-family: 'IBM Plex Sans', sans-serif;
+        }
+        .mlq-card.collapsing {
+            opacity: 0;
+            max-height: 0;
+            margin: 0;
+            padding-top: 0;
+            padding-bottom: 0;
+            border-width: 0;
+        }
+        .mlq-meta {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 12px 24px;
+            margin-bottom: 14px;
+            font-size: 13px;
+        }
+        .mlq-meta .lbl {
+            color: #888;
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 2px;
+        }
+        .mlq-meta .val {
+            color: #1a1a1a;
+            word-break: break-all;
+        }
+        .mlq-form {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+            padding-top: 12px;
+            border-top: 1px solid #eee;
+            align-items: stretch;
+        }
+        .mlq-form input[type="text"] {
+            flex: 1;
+            min-width: 140px;
+            padding: 8px 12px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            font-family: 'IBM Plex Sans', sans-serif;
+            font-size: 14px;
+        }
+        .mlq-form input[name="paint_code"] {
+            max-width: 200px;
+        }
+        .mlq-form input::placeholder {
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            font-size: 11px;
+            color: #aaa;
+        }
+        .mlq-form button {
+            padding: 8px 18px;
+            border: none;
+            border-radius: 4px;
+            font-family: 'IBM Plex Sans', sans-serif;
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: background 0.15s ease;
+        }
+        .mlq-form button.send-btn {
+            background: #003399;
+            color: #fff;
+        }
+        .mlq-form button.send-btn:hover { background: #002277; }
+        .mlq-form button.send-btn:disabled { background: #99a3c2; cursor: not-allowed; }
+        .mlq-form button.dismiss-btn {
+            background: transparent;
+            color: #c8102e;
+            border: 1px solid #e0a8af;
+            padding: 8px 14px;
+        }
+        .mlq-form button.dismiss-btn:hover { background: #fff5f6; border-color: #c8102e; }
+        .mlq-form button.dismiss-btn:disabled { color: #ccc; border-color: #eee; cursor: not-allowed; }
+        .mlq-empty {
+            color: #999;
+            text-align: center;
+            padding: 24px 0;
+        }
+        .mlq-status {
+            padding: 16px;
+            border-radius: 6px;
+            font-family: 'IBM Plex Sans', sans-serif;
+            font-size: 14px;
+            margin-bottom: 12px;
+            transition: opacity 0.4s ease, max-height 0.5s ease, margin 0.5s ease, padding 0.5s ease;
+            overflow: hidden;
+            max-height: 100px;
+        }
+        .mlq-status.success { background: #e8f5e9; color: #1b5e20; border: 1px solid #a5d6a7; }
+        .mlq-status.dismissed { background: #f5f5f5; color: #555; border: 1px solid #ddd; }
+        .mlq-status.error { background: #fdecea; color: #b71c1c; border: 1px solid #f1b0b0; }
+        .mlq-status.collapsing {
+            opacity: 0;
+            max-height: 0;
+            margin: 0;
+            padding-top: 0;
+            padding-bottom: 0;
+            border-width: 0;
+        }
+
+        /* Outcome badges in the recent-lookups table */
+        .outcome-tick { color: #2e7d32; font-weight: 600; font-size: 16px; }
+        .outcome-cross { color: #c62828; font-weight: 600; font-size: 16px; }
+    </style>
     <div class="panel">
-        <h3>Manual lookup queue ({{ recent_failures|length }})</h3>
-        <table class="stats-table">
-            <thead>
-                <tr>
-                    <th>When</th>
-                    <th>Reg</th>
-                    <th>Vehicle</th>
-                    <th>Email</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for s in recent_failures %}
-                <tr>
-                    <td style="color: #666; font-size: 13px;">{{ s.timestamp|date:"M j, H:i" }}</td>
-                    <td style="font-family: monospace;">{{ s.registration }}</td>
-                    <td>{{ s.vehicle_title|default:"—" }}</td>
-                    <td><a href="mailto:{{ s.email }}" style="color: #003399;">{{ s.email }}</a></td>
-                </tr>
-                {% empty %}
-                <tr><td colspan="4" style="color: #999; text-align: center; padding: 24px 0;">No pending requests</td></tr>
-                {% endfor %}
-            </tbody>
-        </table>
+        <h3>Manual lookup queue (<span id="mlq-count">{{ recent_failures|length }}</span>)</h3>
+        <div id="mlq-list">
+            {% for s in recent_failures %}
+            <div class="mlq-card" data-search-id="{{ s.id }}" data-reg="{{ s.registration }}">
+                <div class="mlq-meta">
+                    <div>
+                        <div class="lbl">When</div>
+                        <div class="val">{{ s.timestamp|date:"M j, H:i" }}</div>
+                    </div>
+                    <div>
+                        <div class="lbl">Vehicle</div>
+                        <div class="val">{{ s.vehicle_title|default:"—" }}</div>
+                    </div>
+                    <div>
+                        <div class="lbl">Reg</div>
+                        <div class="val">{{ s.registration }}</div>
+                    </div>
+                    <div>
+                        <div class="lbl">VIN</div>
+                        <div class="val">{{ s.vin|default:"—" }}</div>
+                    </div>
+                    <div>
+                        <div class="lbl">Colour</div>
+                        <div class="val">{{ s.colour|default:"—" }}</div>
+                    </div>
+                    <div>
+                        <div class="lbl">Customer email</div>
+                        <div class="val"><a href="mailto:{{ s.email }}" style="color: #003399;">{{ s.email }}</a></div>
+                    </div>
+                </div>
+                <form class="mlq-form" data-search-id="{{ s.id }}">
+                    {% csrf_token %}
+                    <input type="text" name="paint_code" placeholder="paint code" required>
+                    <input type="text" name="paint_description" placeholder="description">
+                    <button type="submit" class="send-btn">Send</button>
+                    <button type="button" class="dismiss-btn">×</button>
+                </form>
+            </div>
+            {% empty %}
+            <p class="mlq-empty" id="mlq-empty">No pending requests</p>
+            {% endfor %}
+        </div>
     </div>
 
-    <!-- All recent failed lookups (for investigation) -->
+    <!-- Recent paint code lookups (all searches, success + failure) -->
     <div class="panel">
-        <h3>Recent failed paint code lookups (for investigation)</h3>
+        <h3>Recent paint code lookups</h3>
         <table class="stats-table">
             <thead>
                 <tr>
-                    <th>When</th>
-                    <th>Reg</th>
+                    <th>Date</th>
                     <th>Vehicle</th>
+                    <th>Reg</th>
+                    <th>VIN</th>
                     <th>Colour</th>
+                    <th style="text-align: center;">Outcome</th>
                 </tr>
             </thead>
             <tbody>
-                {% for s in recent_all_failures %}
+                {% for s in recent_all_lookups %}
                 <tr>
-                    <td style="color: #666; font-size: 13px;">{{ s.timestamp|date:"M j, H:i" }}</td>
-                    <td style="font-family: monospace;">{{ s.registration }}</td>
+                    <td style="color: #666; font-size: 13px; white-space: nowrap;">{{ s.timestamp|date:"M j, H:i" }}</td>
                     <td>{{ s.vehicle_title|default:"—" }}</td>
+                    <td>{{ s.registration }}</td>
+                    <td style="word-break: break-all;">{{ s.vin|default:"—" }}</td>
                     <td>{{ s.colour|default:"—" }}</td>
+                    <td style="text-align: center;">
+                        {% if s.paint_code %}
+                        <span class="outcome-tick" title="Paint code returned">✓</span>
+                        {% else %}
+                        <span class="outcome-cross" title="No paint code">✗</span>
+                        {% endif %}
+                    </td>
                 </tr>
                 {% empty %}
-                <tr><td colspan="4" style="color: #999; text-align: center; padding: 24px 0;">No failures yet</td></tr>
+                <tr><td colspan="6" style="color: #999; text-align: center; padding: 24px 0;">No lookups yet</td></tr>
                 {% endfor %}
             </tbody>
         </table>
@@ -448,5 +582,157 @@
         }
     });
     {% endif %}
+
+    /* ============== Manual lookup queue: send / dismiss with animation ============== */
+    (function() {
+        var list = document.getElementById('mlq-list');
+        if (!list) return;
+
+        function getCsrf(card) {
+            var input = card.querySelector('input[name="csrfmiddlewaretoken"]');
+            return input ? input.value : '';
+        }
+
+        // Replace a card's inner HTML with a status panel, then collapse it after a delay.
+        function morphAndCollapse(card, statusType, statusText, delayMs) {
+            // Build the status panel that takes the card's place visually
+            var statusEl = document.createElement('div');
+            statusEl.className = 'mlq-status ' + statusType;
+            statusEl.textContent = statusText;
+
+            // Replace card's contents with the status panel (keeps card in DOM so collapse animates)
+            card.innerHTML = '';
+            card.style.background = 'transparent';
+            card.style.borderColor = 'transparent';
+            card.style.padding = '0';
+            card.appendChild(statusEl);
+
+            // After delay, fade out and collapse
+            setTimeout(function() {
+                statusEl.classList.add('collapsing');
+                card.classList.add('collapsing');
+            }, delayMs);
+
+            // After collapse animation finishes, remove the card from DOM and update count
+            setTimeout(function() {
+                card.parentNode && card.parentNode.removeChild(card);
+                updateCount();
+                showEmptyIfNeeded();
+            }, delayMs + 600);
+        }
+
+        // Show transient error inline above the form without removing the card
+        function showError(card, errText) {
+            var existing = card.querySelector('.mlq-error');
+            if (existing) existing.remove();
+            var err = document.createElement('div');
+            err.className = 'mlq-error mlq-status error';
+            err.textContent = errText;
+            card.insertBefore(err, card.firstChild);
+            setTimeout(function() {
+                err.classList.add('collapsing');
+                setTimeout(function() { err.remove(); }, 600);
+            }, 4000);
+        }
+
+        function updateCount() {
+            var counter = document.getElementById('mlq-count');
+            if (counter) {
+                var remaining = list.querySelectorAll('.mlq-card').length;
+                counter.textContent = remaining;
+            }
+        }
+
+        function showEmptyIfNeeded() {
+            if (list.querySelectorAll('.mlq-card').length === 0 && !document.getElementById('mlq-empty')) {
+                var empty = document.createElement('p');
+                empty.className = 'mlq-empty';
+                empty.id = 'mlq-empty';
+                empty.textContent = 'No pending requests';
+                list.appendChild(empty);
+            }
+        }
+
+        // Submit (send) handler — submits via fetch, animates row on success
+        list.addEventListener('submit', function(e) {
+            if (!e.target.matches('.mlq-form')) return;
+            e.preventDefault();
+            var form = e.target;
+            var card = form.closest('.mlq-card');
+            var searchId = form.dataset.searchId;
+            var sendBtn = form.querySelector('.send-btn');
+            var dismissBtn = form.querySelector('.dismiss-btn');
+            var data = new FormData(form);
+            data.append('search_id', searchId);
+
+            sendBtn.disabled = true;
+            dismissBtn.disabled = true;
+            sendBtn.textContent = 'Sending...';
+
+            fetch("{% url 'submit_manual_lookup' %}", {
+                method: 'POST',
+                headers: { 'X-CSRFToken': getCsrf(form) },
+                body: data,
+            }).then(function(r) {
+                return r.json().then(function(j) { return { ok: r.ok, body: j }; });
+            }).then(function(res) {
+                if (res.ok && res.body.success) {
+                    morphAndCollapse(card, 'success', '✓ ' + res.body.message, 5000);
+                } else {
+                    showError(card, res.body.error || 'Failed to send. Please try again.');
+                    sendBtn.disabled = false;
+                    dismissBtn.disabled = false;
+                    sendBtn.textContent = 'Send';
+                }
+            }).catch(function() {
+                showError(card, 'Network error. Please try again.');
+                sendBtn.disabled = false;
+                dismissBtn.disabled = false;
+                sendBtn.textContent = 'Send';
+            });
+        });
+
+        // Dismiss handler — confirm, then POST and animate out
+        list.addEventListener('click', function(e) {
+            if (!e.target.matches('.dismiss-btn')) return;
+            var btn = e.target;
+            var card = btn.closest('.mlq-card');
+            var reg = card.dataset.reg;
+            if (!confirm('Dismiss the manual lookup request for ' + reg + '? This will not send any email and the request will drop off the queue.')) return;
+
+            var form = card.querySelector('.mlq-form');
+            var searchId = form.dataset.searchId;
+            var sendBtn = form.querySelector('.send-btn');
+            sendBtn.disabled = true;
+            btn.disabled = true;
+            btn.textContent = '...';
+
+            var data = new FormData();
+            data.append('search_id', searchId);
+            data.append('csrfmiddlewaretoken', getCsrf(form));
+
+            fetch("{% url 'dismiss_manual_lookup' %}", {
+                method: 'POST',
+                headers: { 'X-CSRFToken': getCsrf(form) },
+                body: data,
+            }).then(function(r) {
+                return r.json().then(function(j) { return { ok: r.ok, body: j }; });
+            }).then(function(res) {
+                if (res.ok && res.body.success) {
+                    morphAndCollapse(card, 'dismissed', '✗ ' + res.body.message, 5000);
+                } else {
+                    showError(card, res.body.error || 'Failed to dismiss. Please try again.');
+                    sendBtn.disabled = false;
+                    btn.disabled = false;
+                    btn.textContent = '×';
+                }
+            }).catch(function() {
+                showError(card, 'Network error. Please try again.');
+                sendBtn.disabled = false;
+                btn.disabled = false;
+                btn.textContent = '×';
+            });
+        });
+    })();
 </script>
 {% endblock %}

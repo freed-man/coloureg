@@ -10,4 +10,6 @@ urlpatterns = [
     path('help/', views.help_page, name='help'),
     path('submit-contact/', views.submit_contact, name='submit_contact'),
     path('admin-stats/', views.admin_stats, name='admin_stats'),
+    path('submit-manual-lookup/', views.submit_manual_lookup, name='submit_manual_lookup'),
+    path('dismiss-manual-lookup/', views.dismiss_manual_lookup, name='dismiss_manual_lookup'),
 ]

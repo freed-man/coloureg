@@ -61,7 +61,7 @@ def _extract_balance(data):
     return billing.get('AccountBalance')
 
 
-def _smart_title(text):
+def smart_title(text):
     """Title-case a string while preserving all-uppercase tokens.
 
     VDG returns paint descriptions in sentence case ('Glacier white-metallic'),
@@ -309,14 +309,14 @@ def get_paint_code(registration):
         }
 
     all_codes = [
-        {'code': p.get('Code', ''), 'description': _smart_title(p.get('Description', ''))}
+        {'code': p.get('Code', ''), 'description': smart_title(p.get('Description', ''))}
         for p in paint_list
     ]
 
     first = paint_list[0]
     return {
         'code': first.get('Code', ''),
-        'description': _smart_title(first.get('Description', '')),
+        'description': smart_title(first.get('Description', '')),
         'all_codes': all_codes,
         'balance': balance,
         'found': True,

@@ -15,6 +15,7 @@ from .services.vdg import (
     get_vehicle_details,
     get_vin,
     get_paint_code,
+    smart_title,
     VdgError,
     VdgNotFoundError,
 )
@@ -490,6 +491,7 @@ def admin_stats(request):
     total_searches = Search.objects.count()
     today_searches = Search.objects.filter(timestamp__gte=today_start).count()
     week_searches = Search.objects.filter(timestamp__gte=week_ago).count()
+    month_searches = Search.objects.filter(timestamp__gte=month_ago).count()
     success_with_code = Search.objects.exclude(paint_code='').count()
     success_rate = (success_with_code / total_searches * 100) if total_searches > 0 else 0
 
@@ -551,6 +553,12 @@ def admin_stats(request):
         .order_by('-timestamp')[:20]
     )
 
+    # All recent lookups (success + failure) for the unified history table
+    recent_all_lookups = (
+        Search.objects.exclude(make='')
+        .order_by('-timestamp')[:20]
+    )
+
     # Email submissions
     total_emails = Search.objects.exclude(email='').count()
     emails_sent = Search.objects.filter(email_sent=True).count()
@@ -591,6 +599,7 @@ def admin_stats(request):
         'total_searches': total_searches,
         'today_searches': today_searches,
         'week_searches': week_searches,
+        'month_searches': month_searches,
         'success_rate': round(success_rate, 1),
         'success_with_code': success_with_code,
         'avg_duration_s': avg_duration_s,
@@ -601,6 +610,7 @@ def admin_stats(request):
         'failed_makes': failed_makes,
         'recent_failures': recent_failures_with_email,
         'recent_all_failures': recent_all_failures,
+        'recent_all_lookups': recent_all_lookups,
         'total_emails': total_emails,
         'emails_sent': emails_sent,
         'conversion_rate': round(conversion_rate, 1),
@@ -619,3 +629,101 @@ def admin_stats(request):
     }
 
     return render(request, 'lookup/admin_stats.html', context)
+
+@staff_member_required
+@require_POST
+def submit_manual_lookup(request):
+    """Admin endpoint for fulfilling a pending manual paint code lookup.
+
+    Expected POST fields: search_id, paint_code, paint_description.
+    Returns JSON so the dashboard can animate the row in-place without
+    a full page reload.
+    """
+    from django.http import JsonResponse
+
+    search_id = request.POST.get('search_id')
+    paint_code = (request.POST.get('paint_code') or '').strip()
+    paint_description = (request.POST.get('paint_description') or '').strip()
+
+    if not search_id or not paint_code:
+        return JsonResponse({'success': False, 'error': 'Search ID and paint code are required.'}, status=400)
+
+    try:
+        search = Search.objects.get(id=search_id)
+    except Search.DoesNotExist:
+        return JsonResponse({'success': False, 'error': 'Search record not found.'}, status=404)
+
+    if search.manual_lookup_completed:
+        return JsonResponse({'success': False, 'error': f'Already completed for {search.registration}.'}, status=409)
+
+    if not search.email:
+        return JsonResponse({'success': False, 'error': f'No email on file for {search.registration}.'}, status=400)
+
+    # Title-case the description so '  glacier white-metallic ' becomes
+    # 'Glacier White-Metallic' before saving and sending.
+    paint_description_clean = smart_title(paint_description) if paint_description else ''
+
+    sent = send_user_paint_code(
+        to_email=search.email,
+        registration=search.registration,
+        vehicle_title=search.vehicle_title,
+        vin_masked=mask_vin(search.vin),
+        colour=search.colour,
+        paint_code=paint_code,
+        paint_description=paint_description_clean,
+    )
+
+    if not sent:
+        return JsonResponse({
+            'success': False,
+            'error': f'Failed to send email to {search.email}. Please try again.',
+        }, status=502)
+
+    # Update DB only after successful send so a failed email doesn't mark complete
+    search.paint_code = paint_code
+    search.paint_description = paint_description_clean
+    search.manual_lookup_completed = True
+    search.email_sent = True
+    search.save()
+
+    return JsonResponse({
+        'success': True,
+        'message': f'Sent paint code {paint_code} to {search.email} for {search.registration}.',
+        'paint_code': paint_code,
+        'registration': search.registration,
+        'email': search.email,
+    })
+
+
+@staff_member_required
+@require_POST
+def dismiss_manual_lookup(request):
+    """Admin endpoint to dismiss a manual lookup request without sending.
+
+    Marks the search as 'manual_lookup_completed' so it falls off the queue,
+    but does not email the customer or mark email_sent. Used for spam,
+    test entries, or otherwise unactionable requests. Returns JSON so the
+    dashboard can animate the row out without a page reload.
+    """
+    from django.http import JsonResponse
+
+    search_id = request.POST.get('search_id')
+    if not search_id:
+        return JsonResponse({'success': False, 'error': 'Search ID is required.'}, status=400)
+
+    try:
+        search = Search.objects.get(id=search_id)
+    except Search.DoesNotExist:
+        return JsonResponse({'success': False, 'error': 'Search record not found.'}, status=404)
+
+    if search.manual_lookup_completed:
+        return JsonResponse({'success': False, 'error': f'Already actioned for {search.registration}.'}, status=409)
+
+    search.manual_lookup_completed = True
+    search.save()
+
+    return JsonResponse({
+        'success': True,
+        'message': f'Dismissed manual lookup request for {search.registration}.',
+        'registration': search.registration,
+    })
