@@ -438,6 +438,13 @@ def about(request):
     return render(request, 'lookup/about.html')
 
 
+def privacy(request):
+    # Update this date when the privacy notice content changes substantively
+    return render(request, 'lookup/privacy.html', {
+        'last_updated': 'May 3, 2026',
+    })
+
+
 def help_page(request):
     contact_submitted = request.session.pop('contact_submitted', None)
     return render(request, 'lookup/help.html', {
