@@ -734,18 +734,3 @@ def dismiss_manual_lookup(request):
         'message': f'Dismissed manual lookup request for {search.registration}.',
         'registration': search.registration,
     })
-
-# -----------------------------------------------------------------------------
-# Sentry test endpoint — DELETE THIS VIEW + ITS URL ONCE SENTRY IS CONFIRMED
-# -----------------------------------------------------------------------------
-# Hitting this URL deliberately raises an exception so we can verify Sentry is
-# wired up correctly. Wrapped in @staff_member_required so the public can't
-# spam our Sentry dashboard with fake errors. Once you've seen the test event
-# arrive in your Sentry project, remove this view and its URL entry.
-@staff_member_required
-def sentry_test(request):
-    raise ValueError(
-        "Sentry test event from coloureg — if you see this in your Sentry "
-        "dashboard, the integration is working. Remove this view and the "
-        "/sentry-test/ URL once verified."
-    )

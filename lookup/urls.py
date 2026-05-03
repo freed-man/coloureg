@@ -13,6 +13,4 @@ urlpatterns = [
     path('admin-stats/', views.admin_stats, name='admin_stats'),
     path('submit-manual-lookup/', views.submit_manual_lookup, name='submit_manual_lookup'),
     path('dismiss-manual-lookup/', views.dismiss_manual_lookup, name='dismiss_manual_lookup'),
-    # DELETE-ME: temporary Sentry verification endpoint. Remove with the view in views.py once confirmed.
-    path('sentry-test/', views.sentry_test, name='sentry_test'),
 ]
