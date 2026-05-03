@@ -153,3 +153,51 @@ MESSAGE_TAGS = {
 }
 
 SITE_ID = 1
+
+# ---------------------------------------------------------------------------
+# Sentry error tracking
+# ---------------------------------------------------------------------------
+# Catches unhandled exceptions in production and sends them to sentry.io for
+# triage. Only initialised when DEBUG=False AND the SENTRY_DSN env var is set,
+# so local development errors stay local.
+SENTRY_DSN = os.environ.get('SENTRY_DSN', '')
+
+if not DEBUG and SENTRY_DSN:
+    import sentry_sdk
+
+    def _before_send(event, hint):
+        """Filter out events we don't want to log to Sentry.
+
+        - 404 errors: noisy bots scanning for /wp-admin/, /.env, etc.
+        - Admin path crashes: usually the developer breaking something on
+          purpose, not a real production error.
+        """
+        # Drop events for paths under /admin/ or /admin-stats/
+        request = event.get('request') or {}
+        url = request.get('url') or ''
+        if '/admin/' in url or '/admin-stats/' in url:
+            return None
+
+        # Drop 404s — Django raises Http404 which becomes a logger event
+        exc_info = hint.get('exc_info')
+        if exc_info:
+            exc_type = exc_info[0]
+            if exc_type is not None:
+                # Match Http404 by name to avoid importing django.http here
+                if exc_type.__name__ == 'Http404':
+                    return None
+
+        return event
+
+    sentry_sdk.init(
+        dsn=SENTRY_DSN,
+        # Don't capture IPs, request headers, or user info — keeps the data
+        # we send to Sentry minimal and consistent with our privacy notice.
+        send_default_pii=False,
+        # No performance tracing for now (saves event quota; can enable later)
+        traces_sample_rate=0.0,
+        # Tag events so multiple deploys can be told apart in Sentry's UI
+        environment='production',
+        # Filter out noise (404s, admin path crashes)
+        before_send=_before_send,
+    )
