@@ -1,0 +1,152 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block extra_title %} - Privacy | UK Paint Code Finder{% endblock %}
+
+{% block content %}
+<div class="container mt-4 mb-5">
+    <div class="row justify-content-center">
+        <div class="col-lg-9 col-md-11">
+
+            <h1 class="mb-3" style="font-size: 2rem; font-weight: 600; color: #1a1a1a;">
+                Privacy
+            </h1>
+            <p class="text-muted mb-4" style="font-size: 0.9rem;">Last updated: {{ last_updated }}</p>
+
+            <p style="font-size: 1.05rem; line-height: 1.7; color: #333;">
+                This is the privacy notice for <strong>coloureg</strong> (the website at
+                <a href="https://coloureg.com" style="color: #003399;">coloureg.com</a>). It explains what
+                personal data we collect, why we collect it, who else gets to see it, and what your rights are
+                under UK GDPR.
+            </p>
+
+            <p style="font-size: 1.05rem; line-height: 1.7; color: #333;">
+                We've tried to write this in plain English. If anything's unclear, email us at
+                <a href="mailto:hello@coloureg.com" style="color: #003399;">hello@coloureg.com</a>.
+            </p>
+
+            <h2 style="font-size: 1.3rem; font-weight: 600; margin-top: 2rem; margin-bottom: 0.75rem;">Who's responsible for your data</h2>
+            <p style="line-height: 1.7;">
+                The data controller is <strong>coloureg</strong>, operating in the United Kingdom.
+                You can reach us about anything privacy-related at
+                <a href="mailto:hello@coloureg.com" style="color: #003399;">hello@coloureg.com</a>.
+            </p>
+
+            <h2 style="font-size: 1.3rem; font-weight: 600; margin-top: 2rem; margin-bottom: 0.75rem;">What we collect, and why</h2>
+
+            <p style="line-height: 1.7;">When you use coloureg, we collect:</p>
+
+            <ul style="line-height: 1.8;">
+                <li><strong>Your registration plate</strong> — to look up the paint code. Stored alongside the search record.</li>
+                <li><strong>Your VIN</strong> — returned by our vehicle data provider as part of the lookup. Stored to support manual lookups (we may need it to query the manufacturer directly) and shown to you partially masked in confirmation emails.</li>
+                <li><strong>Your IP address and browser user-agent</strong> — for usage analytics, abuse prevention, and to detect issues. Logged automatically with each search.</li>
+                <li><strong>The timestamp of your search</strong> — same reasons.</li>
+                <li><strong>Your email address</strong> — only if you submit it (manual lookup request, paint code email, or contact form). Used to send you the requested response, and stored so we can fulfil follow-up questions.</li>
+            </ul>
+
+            <p style="line-height: 1.7;">
+                We don't ask for your name, address, phone number, or anything else. We don't track what
+                car you actually own — only what you searched for.
+            </p>
+
+            <h2 style="font-size: 1.3rem; font-weight: 600; margin-top: 2rem; margin-bottom: 0.75rem;">Lawful basis</h2>
+            <p style="line-height: 1.7;">
+                We rely on the following lawful bases under UK GDPR:
+            </p>
+            <ul style="line-height: 1.8;">
+                <li><strong>Legitimate interests</strong> — for analytics, abuse prevention, and basic site operation. We've assessed that these uses don't override your rights given how minimal the data is.</li>
+                <li><strong>Consent</strong> — when you submit your email to receive a paint code or contact us, you're giving consent for us to process that email to deliver the response. You can withdraw consent at any time by emailing <a href="mailto:hello@coloureg.com" style="color: #003399;">hello@coloureg.com</a>.</li>
+            </ul>
+
+            <h2 style="font-size: 1.3rem; font-weight: 600; margin-top: 2rem; margin-bottom: 0.75rem;">Who else sees your data</h2>
+            <p style="line-height: 1.7;">
+                We don't sell your data and we don't use it for advertising. To operate the site, your data
+                passes through several third-party services that help us run things (called "processors" under
+                GDPR):
+            </p>
+            <ul style="line-height: 1.8;">
+                <li><strong>Vehicle data providers</strong> — receive your registration plate to look up vehicle and paint code data. Based in the UK.</li>
+                <li><strong>Email delivery provider</strong> — receives your email address and message content when we send you a paint code or contact reply. US-based; international transfers covered under the UK International Data Transfer Agreement / UK Data Bridge.</li>
+                <li><strong>Web hosting and database providers</strong> — store your search history and the data above. The hosting provider is US-based (transfers covered by the UK Data Bridge); the database provider is EU-based.</li>
+                <li><strong>Analytics provider</strong> — sets cookies in your browser to collect anonymised usage statistics such as page views, device type, and country. US-based; transfers covered as above.</li>
+            </ul>
+            <p style="line-height: 1.7;">
+                If you'd like the specific names of any of these providers, email us and we'll tell you. Each
+                processor is bound by their own privacy commitments and processes your data only as needed to
+                provide their service to us.
+            </p>
+
+            <h2 style="font-size: 1.3rem; font-weight: 600; margin-top: 2rem; margin-bottom: 0.75rem;">How long we keep it</h2>
+            <p style="line-height: 1.7;">
+                After 12 months, we scrub the personal fields from each search record — specifically your IP
+                address, browser user-agent, email address, and VIN. The remaining record (the registration
+                plate, vehicle make/model/year, and the search timestamp) is non-identifying on its own and is
+                retained for trend reporting and product analytics.
+            </p>
+            <p style="line-height: 1.7;">
+                If you'd like us to delete your data sooner than that, see "Your rights" below.
+            </p>
+
+            <h2 style="font-size: 1.3rem; font-weight: 600; margin-top: 2rem; margin-bottom: 0.75rem;">Cookies</h2>
+            <p style="line-height: 1.7;">
+                We use a small number of cookies:
+            </p>
+            <ul style="line-height: 1.8;">
+                <li><strong>Essential cookies</strong> — Django session cookie and CSRF token. Required for the site to function. These don't track you and don't need your consent under UK PECR.</li>
+                <li><strong>Analytics cookies</strong> — set by our analytics provider to count visits and pages viewed in aggregate. They're not used for advertising or cross-site tracking. You can prevent them by using a privacy-respecting browser (e.g. Brave) or browser extensions like uBlock Origin or Privacy Badger, which block tracking cookies before they're set.</li>
+            </ul>
+
+            <h2 style="font-size: 1.3rem; font-weight: 600; margin-top: 2rem; margin-bottom: 0.75rem;">Security</h2>
+            <p style="line-height: 1.7;">
+                The site is served over HTTPS, so traffic between your browser and our servers is encrypted in
+                transit. Your data is stored in UK or EU data centres operated by reputable infrastructure
+                providers. Access to the database is restricted to the site owner and protected by strong
+                authentication.
+            </p>
+
+            <h2 style="font-size: 1.3rem; font-weight: 600; margin-top: 2rem; margin-bottom: 0.75rem;">Children</h2>
+            <p style="line-height: 1.7;">
+                coloureg isn't intended for children under 13. We don't knowingly collect personal data from
+                children. If you're a parent or guardian and you believe a child has submitted data to us,
+                email <a href="mailto:hello@coloureg.com" style="color: #003399;">hello@coloureg.com</a> and we'll
+                delete it.
+            </p>
+
+            <h2 style="font-size: 1.3rem; font-weight: 600; margin-top: 2rem; margin-bottom: 0.75rem;">Your rights</h2>
+            <p style="line-height: 1.7;">
+                Under UK GDPR you have the right to:
+            </p>
+            <ul style="line-height: 1.8;">
+                <li><strong>Access</strong> — ask for a copy of the personal data we hold about you.</li>
+                <li><strong>Rectification</strong> — ask us to correct inaccurate data.</li>
+                <li><strong>Erasure</strong> — ask us to delete your data ("the right to be forgotten").</li>
+                <li><strong>Restriction</strong> — ask us to pause processing while a query is resolved.</li>
+                <li><strong>Portability</strong> — receive your data in a machine-readable format.</li>
+                <li><strong>Object</strong> — object to processing based on legitimate interests.</li>
+                <li><strong>Withdraw consent</strong> — for anything we process based on consent (e.g. your email).</li>
+            </ul>
+            <p style="line-height: 1.7;">
+                To exercise any of these rights, email
+                <a href="mailto:hello@coloureg.com" style="color: #003399;">hello@coloureg.com</a>.
+                We'll respond within 30 days.
+            </p>
+
+            <h2 style="font-size: 1.3rem; font-weight: 600; margin-top: 2rem; margin-bottom: 0.75rem;">Complaints</h2>
+            <p style="line-height: 1.7;">
+                If you're not happy with how we've handled your data, please tell us first so we can put it
+                right. You also have the right to complain to the
+                <a href="https://ico.org.uk/make-a-complaint/" style="color: #003399;">Information Commissioner's Office (ICO)</a> —
+                the UK's data protection regulator.
+            </p>
+
+            <h2 style="font-size: 1.3rem; font-weight: 600; margin-top: 2rem; margin-bottom: 0.75rem;">Changes</h2>
+            <p style="line-height: 1.7;">
+                If we update this notice — for example to add a new processor or change retention periods — we'll
+                update the "Last updated" date at the top of this page. For substantial changes we'll add a banner
+                on the homepage.
+            </p>
+
+        </div>
+    </div>
+</div>
+{% endblock %}
