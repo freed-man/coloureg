@@ -4,6 +4,17 @@
 <html lang="en">
 
 <head>
+    {% if GA_MEASUREMENT_ID and not GA_DEBUG and not request.path|slice:":7" == "/admin/" and not request.path|slice:":13" == "/admin-stats/" %}
+    <!-- Google tag (gtag.js) — only loads in production, with an ID set, on non-admin pages -->
+    <script async src="https://www.googletagmanager.com/gtag/js?id={{ GA_MEASUREMENT_ID }}"></script>
+    <script>
+        window.dataLayer = window.dataLayer || [];
+        function gtag(){dataLayer.push(arguments);}
+        gtag('js', new Date());
+        gtag('config', '{{ GA_MEASUREMENT_ID }}', { 'anonymize_ip': true });
+    </script>
+    {% endif %}
+
     <title>coloureg{% block extra_title %} — Free UK Paint Code Lookup by Registration{% endblock %}</title>
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="description" content="Find your car's factory paint code by registration in seconds. The free UK lookup tool that gives you the actual code, not just a colour match. Beta.">
