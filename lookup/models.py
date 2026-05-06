@@ -67,3 +67,211 @@ class Search(models.Model):
 
     def __str__(self):
         return f"{self.timestamp:%Y-%m-%d %H:%M} {self.registration}"
+
+# =============================================================================
+# PaintSwatch — runtime lookup table for colour swatches on the results page.
+#
+# Populated by `python manage.py load_paint_swatches` from a paint_swatches.json
+# committed to the repo (the canonical source). One row per unique (manufacturer,
+# code, hex) combination; multiple rows can exist for the same (manufacturer, code)
+# when different models or eras use the same paint code for different colours.
+# =============================================================================
+
+import re
+
+
+class PaintSwatch(models.Model):
+    """A single paint colour swatch keyed by manufacturer + code + hex."""
+
+    # Lookup keys (normalised, lowercase mfr / uppercase code)
+    manufacturer = models.CharField(max_length=64, db_index=True)
+    code = models.CharField(max_length=32, db_index=True)
+    hex = models.CharField(max_length=7)
+    name = models.CharField(max_length=200, blank=True, default='')
+
+    # Disambiguators (used when multiple rows exist for the same mfr+code)
+    applicable_models = models.JSONField(default=list)   # ["roomster", "fabia"]
+    model_families = models.JSONField(default=list)      # first-word fragments (computed at load time)
+    color_group = models.CharField(max_length=20, blank=True, default='', db_index=True)
+    year_min = models.IntegerField(null=True, blank=True)
+    year_max = models.IntegerField(null=True, blank=True)
+
+    # Provenance
+    sources_count = models.IntegerField(default=1)
+    sources = models.JSONField(default=list)           # ["atu", "chipex"]
+
+    # Bookkeeping
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=['manufacturer', 'code', 'hex'],
+                name='lookup_paintswatch_uniq',
+            ),
+        ]
+        indexes = [
+            models.Index(fields=['manufacturer', 'code']),
+            models.Index(fields=['manufacturer', 'code', 'color_group']),
+        ]
+        verbose_name = 'Paint swatch'
+        verbose_name_plural = 'Paint swatches'
+
+    def __str__(self):
+        return f"{self.manufacturer} {self.code} {self.hex} ({self.name})"
+
+    # ------------------------------------------------------------------
+    # Lookup logic
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def normalize_manufacturer(text):
+        """Match the normalisation used at prep time."""
+        if not text:
+            return ''
+        return text.strip().lower().replace('-', '').replace(' ', '').replace('.', '')
+
+    @staticmethod
+    def normalize_model(text):
+        """Match the normalisation used at prep time."""
+        if not text:
+            return ''
+        return text.strip().lower().replace('.', '').replace('-', '').replace(' ', '')
+
+    @staticmethod
+    def normalize_code_variants(paint_code):
+        """Generate all reasonable variants of a paint code to try.
+
+        VDG often returns codes like '8E8E/A7W' which are TWO codes joined
+        by a slash, but slashes also appear inside legitimate single codes
+        like Fiat '102/F'. So we try the full string first, then fall back
+        to splitting.
+        """
+        if not paint_code:
+            return []
+
+        variants = []
+        seen = set()
+
+        full = paint_code.strip().upper()
+        if full and full not in seen:
+            variants.append(full)
+            seen.add(full)
+
+        # Split on / and , and try each fragment
+        for part in re.split(r'[/,]', full):
+            part = part.strip()
+            if part and part not in seen:
+                variants.append(part)
+                seen.add(part)
+
+        return variants
+
+    # Map VDG colour names to our color_group taxonomy
+    VDG_COLOUR_TO_GROUP = {
+        'silver': 'grey',
+        'grey': 'grey',
+        'gray': 'grey',
+        'black': 'black',
+        'white': 'white',
+        'blue': 'blue',
+        'red': 'red',
+        'green': 'green',
+        'yellow': 'yellow',
+        'orange': 'orange',
+        'brown': 'brown',
+        'gold': 'gold',
+        'beige': 'beige',
+        'cream': 'beige',
+        'ivory': 'beige',
+        'purple': 'purple',
+        'maroon': 'red',
+        'pink': 'red',
+        'turquoise': 'blue',
+    }
+
+    @classmethod
+    def lookup(cls, manufacturer, paint_code, model=None, year=None, vdg_colour=None):
+        """Find the best swatch for a given vehicle.
+
+        Returns a PaintSwatch instance or None.
+
+        Decision tree (each tier returns immediately on a unique match):
+
+            Tier 1: (mfr, code) → if 1 candidate, return it
+            Tier 2: filter by exact normalised model
+            Tier 3: narrow Tier 2 by year (within ±2 years)
+            Tier 4: fuzzy model match (model_family startswith first word)
+            Tier 5: VDG colour matches color_group
+            Tier 6: pick swatch with highest sources_count (deterministic
+                    tiebreak: alphabetical hex)
+        """
+        if not manufacturer or not paint_code:
+            return None
+
+        mfr_norm = cls.normalize_manufacturer(manufacturer)
+
+        for code in cls.normalize_code_variants(paint_code):
+            candidates = list(
+                cls.objects.filter(manufacturer=mfr_norm, code=code)
+            )
+
+            if not candidates:
+                continue
+
+            # Tier 1: only one candidate
+            if len(candidates) == 1:
+                return candidates[0]
+
+            # Tier 2: exact model match
+            if model:
+                model_norm = cls.normalize_model(model)
+                tier2 = [c for c in candidates if model_norm in c.applicable_models]
+                if len(tier2) == 1:
+                    return tier2[0]
+
+                if tier2 and year:
+                    # Tier 3: year filter on top of model
+                    tier3 = [
+                        c for c in tier2
+                        if c.year_min and c.year_max
+                        and c.year_min - 2 <= year <= c.year_max + 2
+                    ]
+                    if len(tier3) == 1:
+                        return tier3[0]
+                    if tier3:
+                        candidates = tier3
+                    else:
+                        candidates = tier2
+                elif tier2:
+                    candidates = tier2
+
+            # Tier 4: fuzzy model (first-word startswith)
+            if len(candidates) > 1 and model:
+                first = re.match(r'^[a-z]+', cls.normalize_model(model))
+                if first:
+                    first_word = first.group(0)
+                    tier4 = [
+                        c for c in candidates
+                        if any(fam.startswith(first_word) for fam in c.model_families)
+                    ]
+                    if len(tier4) == 1:
+                        return tier4[0]
+                    if tier4:
+                        candidates = tier4
+
+            # Tier 5: VDG colour disambiguation
+            if len(candidates) > 1 and vdg_colour:
+                target_group = cls.VDG_COLOUR_TO_GROUP.get(vdg_colour.lower().strip())
+                if target_group:
+                    tier5 = [c for c in candidates if c.color_group == target_group]
+                    if len(tier5) == 1:
+                        return tier5[0]
+                    if tier5:
+                        candidates = tier5
+
+            # Tier 6: most-sourced wins, alphabetical hex tiebreak
+            best = max(candidates, key=lambda c: (c.sources_count, c.hex))
+            return best
+
+        return None

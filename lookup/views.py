@@ -10,7 +10,7 @@ from django.db.models.functions import TruncDate
 from django.utils import timezone
 from django.views.decorators.http import require_POST
 from django_ratelimit.core import is_ratelimited
-from .models import Search
+from .models import Search, PaintSwatch
 from .services.vdg import (
     get_vehicle_details,
     get_vin,
@@ -337,6 +337,52 @@ def results(request):
 
     email_submitted = request.session.pop('email_submitted', None)
 
+    # Look up paint swatch (hex + name) for the result page swatch bar.
+    # Returns None if no match found, in which case the swatch bar stays dormant.
+    paint_hex = None
+    paint_name = None
+    paint_code = vehicle_data.get('paint_code')
+    all_paint_codes = list(vehicle_data.get('all_paint_codes', []))
+
+    if paint_code:
+        try:
+            swatch = PaintSwatch.lookup(
+                manufacturer=vehicle_data.get('make', ''),
+                paint_code=paint_code,
+                model=vehicle_data.get('model', ''),
+                year=vehicle_data.get('year'),
+                vdg_colour=vehicle_data.get('colour', ''),
+            )
+            if swatch:
+                paint_hex = swatch.hex
+                paint_name = swatch.name
+        except Exception:
+            # Never let a swatch lookup failure break the results page
+            pass
+
+    # When VDG returns multiple codes (e.g. "8E8E/A7W"), look up each individually
+    # so the multi-code template path can show a swatch bar per code.
+    for item in all_paint_codes:
+        if not isinstance(item, dict):
+            continue
+        if 'hex' in item and item['hex']:
+            continue  # already has hex
+        item_code = item.get('code')
+        if not item_code:
+            item['hex'] = None
+            continue
+        try:
+            swatch = PaintSwatch.lookup(
+                manufacturer=vehicle_data.get('make', ''),
+                paint_code=item_code,
+                model=vehicle_data.get('model', ''),
+                year=vehicle_data.get('year'),
+                vdg_colour=vehicle_data.get('colour', ''),
+            )
+            item['hex'] = swatch.hex if swatch else None
+        except Exception:
+            item['hex'] = None
+
     context = {
         'registration': vehicle_data.get('registration', ''),
         'make': vehicle_data.get('make', ''),
@@ -349,9 +395,11 @@ def results(request):
         'vin_masked': vehicle_data.get('vin_masked', ''),
         'make_logo': vehicle_data.get('make_logo', ''),
         'vehicle_title': vehicle_data.get('vehicle_title', ''),
-        'paint_code': vehicle_data.get('paint_code'),
+        'paint_code': paint_code,
         'paint_description': vehicle_data.get('paint_description'),
-        'all_paint_codes': vehicle_data.get('all_paint_codes', []),
+        'all_paint_codes': all_paint_codes,
+        'paint_hex': paint_hex,
+        'paint_name': paint_name,
         'search_id': vehicle_data.get('search_id'),
         'email_submitted': email_submitted,
     }
