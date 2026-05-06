@@ -465,13 +465,24 @@ def submit_email(request):
     vin_masked = mask_vin(search.vin)
 
     if search.paint_code:
-        # Look up canonical (longer/authoritative) form if VDG returned a short code
+        # Look up swatch (hex) and canonical code so the email matches the website UI
         canonical_code = None
+        paint_hex = None
         try:
-            canonical_code = PaintSwatch.find_canonical_code(
+            swatch = PaintSwatch.lookup(
                 manufacturer=search.make,
                 paint_code=search.paint_code,
+                model=search.model,
+                year=search.year,
+                vdg_colour=search.colour,
             )
+            if swatch:
+                paint_hex = swatch.hex
+                canonical_code = PaintSwatch.find_canonical_code(
+                    manufacturer=search.make,
+                    paint_code=search.paint_code,
+                    swatch=swatch,
+                )
         except Exception:
             pass
 
@@ -484,6 +495,7 @@ def submit_email(request):
             paint_code=search.paint_code,
             paint_description=search.paint_description,
             canonical_code=canonical_code,
+            paint_hex=paint_hex,
         )
         if sent:
             search.email_sent = True
@@ -754,14 +766,24 @@ def submit_manual_lookup(request):
     # 'Glacier White-Metallic' before saving and sending.
     paint_description_clean = smart_title(paint_description) if paint_description else ''
 
-    # Look up canonical (longer/authoritative) form if the manually-entered
-    # code has a recognised expansion in our swatch DB
+    # Look up swatch (hex) and canonical code so the email matches the website UI
     canonical_code = None
+    paint_hex = None
     try:
-        canonical_code = PaintSwatch.find_canonical_code(
+        swatch = PaintSwatch.lookup(
             manufacturer=search.make,
             paint_code=paint_code,
+            model=search.model,
+            year=search.year,
+            vdg_colour=search.colour,
         )
+        if swatch:
+            paint_hex = swatch.hex
+            canonical_code = PaintSwatch.find_canonical_code(
+                manufacturer=search.make,
+                paint_code=paint_code,
+                swatch=swatch,
+            )
     except Exception:
         pass
 
@@ -774,6 +796,7 @@ def submit_manual_lookup(request):
         paint_code=paint_code,
         paint_description=paint_description_clean,
         canonical_code=canonical_code,
+        paint_hex=paint_hex,
     )
 
     if not sent:

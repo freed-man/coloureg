@@ -64,15 +64,30 @@ def _attachments():
     return []
 
 
-def send_user_paint_code(to_email, registration, vehicle_title, vin_masked, colour, paint_code, paint_description, canonical_code=None):
+def send_user_paint_code(to_email, registration, vehicle_title, vin_masked, colour, paint_code, paint_description, canonical_code=None, paint_hex=None):
     """Email user the found paint code.
 
     If canonical_code is provided and differs from paint_code, the email displays
     the VDG-returned code prominently with an 'also: <canonical>' subline below,
     matching the results page UI. The subject line shows both codes
     (e.g. 'L8 / LZ9Y') so the inbox preview is unambiguous.
+
+    If paint_hex is provided (a validated 6-digit hex colour), a swatch bar is
+    rendered above the paint code box, matching the website's results page.
     """
     client = _client()
+
+    # Optional swatch bar — mirrors the results page UI
+    if paint_hex:
+        swatch_html = (
+            f'<div style="height: 80px; background: {paint_hex}; '
+            f'border-radius: 8px 8px 0 0;"></div>'
+        )
+        # Slightly adjust the box below so the rounded corners only show on bottom
+        box_radius = '0 0 8px 8px'
+    else:
+        swatch_html = ''
+        box_radius = '8px'
 
     # Build the optional 'also: LZ9Y' line that mirrors the results page
     if canonical_code and canonical_code.upper() != (paint_code or '').upper():
@@ -95,7 +110,8 @@ def send_user_paint_code(to_email, registration, vehicle_title, vin_masked, colo
                 <p style="margin: 0 0 24px; color: #666; font-size: 15px; line-height: 1.5;">
                     Here's the paint code for your vehicle.
                 </p>
-                <div style="background: #f8f9fa; padding: 32px; border-radius: 8px; text-align: center; margin-bottom: 24px;">
+                {swatch_html}
+                <div style="background: #f8f9fa; padding: 32px; border-radius: {box_radius}; text-align: center; margin-bottom: 24px;">
                     <div style="font-family: 'IBM Plex Mono', 'Courier New', Courier, monospace; font-size: 42px; font-weight: 700; letter-spacing: 3px; color: #1a1a1a; font-feature-settings: 'zero' 0;">
                         {paint_code}
                     </div>
