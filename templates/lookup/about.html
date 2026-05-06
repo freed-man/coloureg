@@ -16,10 +16,13 @@
                 <span style="background: linear-gradient(90deg, #e74c3c, #f39c12, #f1c40f, #2ecc71, #3498db, #9b59b6); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; font-weight: 700;">hassle-free</span>.
             </h1>
 
-            <img src="{% static 'images/about.png' %}" alt="How coloureg works — paint code lookup process by registration" 
-                 class="img-fluid mb-4" 
-                 id="aboutImage"
-                 style="width: 100%; border-radius: 8px; cursor: zoom-in;">
+            <picture>
+                <source srcset="{% static 'images/about.webp' %}" type="image/webp">
+                <img src="{% static 'images/about.png' %}" alt="How coloureg works — paint code lookup process by registration" 
+                     class="img-fluid mb-4" 
+                     id="aboutImage"
+                     style="width: 100%; border-radius: 8px; cursor: zoom-in;">
+            </picture>
 
             <p style="font-size: 1.05rem; line-height: 1.7; color: #333;">
                 <span style="background: linear-gradient(90deg, #e74c3c, #f39c12, #f1c40f, #2ecc71, #3498db, #9b59b6); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; font-weight: 600;">colou<strong>reg</strong></span>
