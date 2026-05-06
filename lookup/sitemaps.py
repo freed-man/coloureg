@@ -7,7 +7,7 @@ class StaticViewSitemap(Sitemap):
     protocol = 'https'
 
     def items(self):
-        return ['index', 'about', 'help', 'privacy']
+        return ['index', 'about', 'help', 'privacy', 'disclaimer']
 
     def location(self, item):
         return reverse(item)
@@ -18,6 +18,7 @@ class StaticViewSitemap(Sitemap):
             'help': 0.8,
             'about': 0.6,
             'privacy': 0.3,
+            'disclaimer': 0.3,
         }
         return priorities.get(item, 0.5)
 

@@ -1,0 +1,88 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block extra_title %}Disclaimer — Data Sources & Liability | coloureg{% endblock %}
+{% block meta_description %}How coloureg's paint code data is sourced, the limits of its accuracy, and the terms under which the service is provided.{% endblock %}
+
+{% block content %}
+<div class="container mt-4 mb-5">
+    <div class="row justify-content-center">
+        <div class="col-lg-9 col-md-11">
+
+            <h1 class="mb-3" style="font-size: 2rem; font-weight: 600; color: #1a1a1a;">
+                Disclaimer
+            </h1>
+            <p class="text-muted mb-4" style="font-size: 0.9rem;">Last updated: {{ last_updated }}</p>
+
+            <p style="font-size: 1.05rem; line-height: 1.7; color: #333;">
+                <strong>coloureg</strong> is a free tool that helps you find your car's paint code by registration.
+                We've tried to make it as accurate and useful as possible, but the data has limits — and you
+                should know what they are before you spend money on paint based on what we show you.
+            </p>
+
+            <h2 style="font-size: 1.3rem; font-weight: 600; margin-top: 2rem; margin-bottom: 0.75rem;">Where the data comes from</h2>
+            <p style="line-height: 1.7;">
+                coloureg combines data from several third-party providers, including official UK vehicle data
+                services and paint colour databases. We don't generate paint codes ourselves — we pass through
+                what these sources return, with some processing to give you the best available result.
+            </p>
+
+            <h2 style="font-size: 1.3rem; font-weight: 600; margin-top: 2rem; margin-bottom: 0.75rem;">No guarantee of accuracy</h2>
+            <p style="line-height: 1.7;">
+                The third-party data we rely on can be incomplete, outdated, or wrong. Common reasons:
+            </p>
+            <ul style="line-height: 1.7;">
+                <li>Manufacturer databases sometimes return abbreviated codes rather than the full factory code.
+                    We try to expand abbreviations where we can.</li>
+                <li>Your car may have been resprayed, in which case the factory code no longer applies.</li>
+                <li>Some paint codes are reused by manufacturers across years, models, and trims — meaning the
+                    same code can refer to different colours.</li>
+                <li>Vinyl wraps don't change the underlying paint, but if your car is wrapped, the visible colour
+                    won't match the factory code.</li>
+            </ul>
+            <p style="line-height: 1.7;">
+                <strong>Always verify the code against your vehicle's paint code label</strong> — typically found
+                on a sticker in the driver's door jamb, under the bonnet, or in the boot. The label is the
+                authoritative source for your specific car.
+            </p>
+
+            <h2 style="font-size: 1.3rem; font-weight: 600; margin-top: 2rem; margin-bottom: 0.75rem;">No liability</h2>
+            <p style="line-height: 1.7;">
+                coloureg is provided as-is, free of charge, with no warranty of any kind, express or implied.
+                To the fullest extent permitted by law, we accept no liability for:
+            </p>
+            <ul style="line-height: 1.7;">
+                <li>Paint, parts, or services purchased based on results shown by coloureg</li>
+                <li>Errors or omissions in the data returned by third-party sources</li>
+                <li>Loss, damage, or expense arising from use of (or inability to use) the site</li>
+                <li>Service downtime, slow responses, or temporary unavailability</li>
+            </ul>
+            <p style="line-height: 1.7;">
+                Nothing in this disclaimer limits liability for fraud, death, or personal injury caused by
+                negligence, or any other liability that cannot be excluded under UK law.
+            </p>
+
+            <h2 style="font-size: 1.3rem; font-weight: 600; margin-top: 2rem; margin-bottom: 0.75rem;">External links and trademarks</h2>
+            <p style="line-height: 1.7;">
+                Manufacturer names, model names, and paint code names referenced on coloureg are the property
+                of their respective owners. coloureg is not affiliated with, endorsed by, or sponsored by any
+                vehicle manufacturer or paint supplier.
+            </p>
+
+            <h2 style="font-size: 1.3rem; font-weight: 600; margin-top: 2rem; margin-bottom: 0.75rem;">Changes to this disclaimer</h2>
+            <p style="line-height: 1.7;">
+                We may update this disclaimer from time to time. The date at the top reflects when it was last
+                changed. If you've used coloureg before, the version that was live on the day of your lookup
+                applies to that lookup.
+            </p>
+
+            <h2 style="font-size: 1.3rem; font-weight: 600; margin-top: 2rem; margin-bottom: 0.75rem;">Questions</h2>
+            <p style="line-height: 1.7;">
+                Email <a href="mailto:hello@coloureg.com" style="color: #003399;">hello@coloureg.com</a> if
+                you spot something wrong, want us to update an entry, or have any other concerns.
+            </p>
+
+        </div>
+    </div>
+</div>
+{% endblock %}

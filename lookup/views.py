@@ -341,6 +341,7 @@ def results(request):
     # Returns None if no match found, in which case the swatch bar stays dormant.
     paint_hex = None
     paint_name = None
+    canonical_code = None  # If VDG returned a short code, the canonical long form
     paint_code = vehicle_data.get('paint_code')
     all_paint_codes = list(vehicle_data.get('all_paint_codes', []))
 
@@ -356,6 +357,12 @@ def results(request):
             if swatch:
                 paint_hex = swatch.hex
                 paint_name = swatch.name
+                # If VDG returned an abbreviated code, surface the canonical long form
+                canonical_code = PaintSwatch.find_canonical_code(
+                    manufacturer=vehicle_data.get('make', ''),
+                    paint_code=paint_code,
+                    swatch=swatch,
+                )
         except Exception:
             # Never let a swatch lookup failure break the results page
             pass
@@ -380,8 +387,18 @@ def results(request):
                 vdg_colour=vehicle_data.get('colour', ''),
             )
             item['hex'] = swatch.hex if swatch else None
+            # Per-item canonical expansion (multi-code template can show it)
+            if swatch:
+                item['canonical'] = PaintSwatch.find_canonical_code(
+                    manufacturer=vehicle_data.get('make', ''),
+                    paint_code=item_code,
+                    swatch=swatch,
+                )
+            else:
+                item['canonical'] = None
         except Exception:
             item['hex'] = None
+            item['canonical'] = None
 
     context = {
         'registration': vehicle_data.get('registration', ''),
@@ -400,6 +417,7 @@ def results(request):
         'all_paint_codes': all_paint_codes,
         'paint_hex': paint_hex,
         'paint_name': paint_name,
+        'canonical_code': canonical_code,
         'search_id': vehicle_data.get('search_id'),
         'email_submitted': email_submitted,
     }
@@ -490,6 +508,13 @@ def privacy(request):
     # Update this date when the privacy notice content changes substantively
     return render(request, 'lookup/privacy.html', {
         'last_updated': 'May 3, 2026',
+    })
+
+
+def disclaimer(request):
+    # Update this date when the disclaimer content changes substantively
+    return render(request, 'lookup/disclaimer.html', {
+        'last_updated': 'May 6, 2026',
     })
 
 
