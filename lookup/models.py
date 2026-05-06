@@ -124,12 +124,21 @@ class PaintSwatch(models.Model):
     # Lookup logic
     # ------------------------------------------------------------------
 
+    # Manufacturer aliases — handle cases where VDG/DVLA returns a brand name
+    # that differs from how it's stored in our scraped data. Maps the normalised
+    # input to the normalised DB key. Only added when a real mismatch is known.
+    MANUFACTURER_ALIASES = {
+        'mercedesbenz': 'mercedes',  # VDG: 'Mercedes-Benz' → DB stores as 'mercedes'
+    }
+
     @staticmethod
     def normalize_manufacturer(text):
-        """Match the normalisation used at prep time."""
+        """Match the normalisation used at prep time, with aliasing for known
+        VDG/DB mismatches (e.g. 'Mercedes-Benz' → 'mercedes')."""
         if not text:
             return ''
-        return text.strip().lower().replace('-', '').replace(' ', '').replace('.', '')
+        norm = text.strip().lower().replace('-', '').replace(' ', '').replace('.', '')
+        return PaintSwatch.MANUFACTURER_ALIASES.get(norm, norm)
 
     @staticmethod
     def normalize_model(text):
@@ -146,6 +155,11 @@ class PaintSwatch(models.Model):
         by a slash, but slashes also appear inside legitimate single codes
         like Fiat '102/F'. So we try the full string first, then fall back
         to splitting.
+
+        Also yields suffix-stripped fallbacks (e.g. '197U' → '197') as a
+        last resort so codes with manufacturer-specific variant suffixes
+        (Mercedes 'U' for uni, Audi 'PA'/'SF' for process variants, etc.)
+        can match the base code when no exact match exists.
         """
         if not paint_code:
             return []
@@ -164,6 +178,27 @@ class PaintSwatch(models.Model):
             if part and part not in seen:
                 variants.append(part)
                 seen.add(part)
+
+        # Last-resort: strip common 1-2 char suffixes from numeric codes.
+        # Only applies when the base would still be a meaningful code
+        # (≥3 chars and starts with a digit, e.g. '197U' → '197').
+        # We append these LAST so they only match if exact lookups fail.
+        suffix_candidates = []
+        for v in list(variants):
+            if len(v) >= 4 and v[0].isdigit():
+                # Try stripping 1-char alphabetic suffix
+                if v[-1].isalpha():
+                    base = v[:-1]
+                    if base not in seen:
+                        suffix_candidates.append(base)
+                        seen.add(base)
+                # Try stripping 2-char alphabetic suffix
+                if len(v) >= 5 and v[-1].isalpha() and v[-2].isalpha():
+                    base = v[:-2]
+                    if base not in seen:
+                        suffix_candidates.append(base)
+                        seen.add(base)
+        variants.extend(suffix_candidates)
 
         return variants
 
