@@ -68,14 +68,14 @@
     }
     .paint-desc {
         font-family: 'IBM Plex Sans', sans-serif;
-        font-size: 16px;
+        font-size: 18px;
         color: #666;
         margin: 0;
         font-weight: 400;
     }
     .paint-alt {
         font-family: 'IBM Plex Sans', sans-serif;
-        font-size: 13px;
+        font-size: 15px;
         color: #999;
         margin: -8px 0 8px;
         font-weight: 400;
@@ -250,11 +250,11 @@
                 <div class="card">
                     <div class="card-body p-4">
                         {% if paint_code %}
-                        <h5 class="mb-2 fw-semibold" style="display: flex; gap: 8px; align-items: baseline;"><span>✉️</span><span>Email me this code</span></h5>
+                        <h5 class="mb-2 fw-semibold">✉️ Email me this code</h5>
                         {% else %}
-                        <h5 class="mb-3 fw-semibold" style="display: flex; gap: 8px; align-items: baseline;"><span>✉️</span><span>No problem — we'll find it</span></h5>
+                        <h5 class="mb-3 fw-semibold">✉️ Retrieve from manufacturer database</h5>
                         <p class="mb-3" style="font-size: 0.95rem; color: #555;">
-                            Sorry for the inconvenience, we'll check {{ make }}'s database manually and email you the code within 12 hours.
+                            Sorry for the inconvenience, we'll query {{ make }}'s database directly and email you the code within 12 hours.
                         </p>
                         {% endif %}
                         <form method="POST" action="{% url 'submit_email' %}#email-section" class="d-flex gap-2">

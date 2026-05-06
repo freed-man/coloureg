@@ -69,8 +69,8 @@ def send_user_paint_code(to_email, registration, vehicle_title, vin_masked, colo
 
     If canonical_code is provided and differs from paint_code, the email displays
     the VDG-returned code prominently with an 'also: <canonical>' subline below,
-    matching the results page UI. The subject line uses the canonical code when
-    available so inbox previews show the most authoritative form to body shops.
+    matching the results page UI. The subject line shows both codes
+    (e.g. 'L8 / LZ9Y') so the inbox preview is unambiguous.
     """
     client = _client()
 
@@ -126,9 +126,13 @@ def send_user_paint_code(to_email, registration, vehicle_title, vin_masked, colo
     </div>
     """
 
-    # Subject: prefer the canonical (longer, more authoritative) form when
-    # available so inbox previews show the most useful code to body shops.
-    subject_code = canonical_code if canonical_code else paint_code
+    # Subject: when both VDG's code and a canonical expansion exist, show both
+    # so the inbox preview is unambiguous (e.g. 'L8 / LZ9Y'). Otherwise just
+    # show the VDG code.
+    if canonical_code and canonical_code.upper() != (paint_code or '').upper():
+        subject_code = f"{paint_code} / {canonical_code}"
+    else:
+        subject_code = paint_code
 
     try:
         client.Emails.send({
