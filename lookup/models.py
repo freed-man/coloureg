@@ -223,10 +223,17 @@ class PaintSwatch(models.Model):
             if len(candidates) == 1:
                 return candidates[0]
 
-            # Tier 2: exact model match
+            # Tier 2: model prefix match
+            # The user's model string is typically more detailed than the DB
+            # entry — e.g. 'a3sportbacktdi138slinespecialedition' vs DB 'a3sportback'.
+            # Prefix-match so longer user input still matches shorter DB entries,
+            # picking the most specific (longest) DB match.
             if model:
                 model_norm = cls.normalize_model(model)
-                tier2 = [c for c in candidates if model_norm in c.applicable_models]
+                tier2 = [
+                    c for c in candidates
+                    if any(model_norm.startswith(m) for m in c.applicable_models if m)
+                ]
                 if len(tier2) == 1:
                     return tier2[0]
 
@@ -246,9 +253,12 @@ class PaintSwatch(models.Model):
                 elif tier2:
                     candidates = tier2
 
-            # Tier 4: fuzzy model (first-word startswith)
+            # Tier 4: fuzzy model (first-token startswith)
+            # The first token combines leading letters with any directly
+            # following digits, so 'a3sportbacktdi...' yields 'a3' (not 'a'),
+            # giving meaningful disambiguation for alphanumeric model series.
             if len(candidates) > 1 and model:
-                first = re.match(r'^[a-z]+', cls.normalize_model(model))
+                first = re.match(r'^[a-z]+\d*', cls.normalize_model(model))
                 if first:
                     first_word = first.group(0)
                     tier4 = [
@@ -275,3 +285,66 @@ class PaintSwatch(models.Model):
             return best
 
         return None
+
+    @classmethod
+    def find_canonical_code(cls, manufacturer, paint_code, swatch=None):
+        """If paint_code is a short/abbreviated form, find the canonical long code.
+
+        Many paint code databases (including some VDG responses) return abbreviated
+        codes like 'L8' when the actual factory code on the car is 'LZ9Y'. This
+        method searches the database for the most-cited longer code that points
+        to the same hex, allowing the UI to display a more authoritative code.
+
+        Returns a string (the canonical code) or None if no meaningful expansion
+        exists. Never expands a code that's already long (>3 chars) — those are
+        already canonical.
+
+        Conservative criteria:
+          - Input code must be ≤3 chars (short codes only)
+          - Candidate must be strictly longer than input
+          - Candidate must NOT be the input plus a 1-2 char suffix
+            (those are process variants like L8PA, L8SF — not the canonical form)
+          - Candidate must NOT be the input doubled (e.g. A2 → A2A2)
+          - Candidate must have ≥50 source records (filters out one-off noise)
+        """
+        if not manufacturer or not paint_code:
+            return None
+
+        original = paint_code.strip().upper()
+        if len(original) > 3:
+            return None  # Already long enough — don't try to "expand"
+
+        mfr_norm = cls.normalize_manufacturer(manufacturer)
+
+        # Find the swatch for the input (or use the one already looked up)
+        if swatch is None:
+            swatch = cls.lookup(manufacturer, paint_code)
+        if swatch is None:
+            return None
+
+        target_hex = swatch.hex
+
+        # Search for siblings — same (mfr, hex), different code, longer, well-supported
+        siblings = cls.objects.filter(
+            manufacturer=mfr_norm, hex=target_hex
+        ).exclude(code=original)
+
+        candidates = []
+        for s in siblings:
+            c = s.code
+            if len(c) <= len(original):
+                continue
+            if c == original + original:
+                continue  # trivial doubling
+            if c.startswith(original) and len(c) - len(original) <= 2:
+                continue  # process variant (e.g. L8PA, L8SF)
+            if s.sources_count < 50:
+                continue
+            candidates.append(s)
+
+        if not candidates:
+            return None
+
+        # Pick the most-cited candidate
+        best = max(candidates, key=lambda s: s.sources_count)
+        return best.code
