@@ -64,9 +64,26 @@ def _attachments():
     return []
 
 
-def send_user_paint_code(to_email, registration, vehicle_title, vin_masked, colour, paint_code, paint_description):
-    """Email user the found paint code."""
+def send_user_paint_code(to_email, registration, vehicle_title, vin_masked, colour, paint_code, paint_description, canonical_code=None):
+    """Email user the found paint code.
+
+    If canonical_code is provided and differs from paint_code, the email displays
+    the VDG-returned code prominently with an 'also: <canonical>' subline below,
+    matching the results page UI. The subject line uses the canonical code when
+    available so inbox previews show the most authoritative form to body shops.
+    """
     client = _client()
+
+    # Build the optional 'also: LZ9Y' line that mirrors the results page
+    if canonical_code and canonical_code.upper() != (paint_code or '').upper():
+        canonical_html = (
+            f'<div style="margin-top: 8px; color: #999; font-size: 13px; '
+            f'letter-spacing: 0.3px; font-style: italic;">'
+            f'also: {canonical_code}'
+            f'</div>'
+        )
+    else:
+        canonical_html = ''
 
     html = f"""
     {FONT_IMPORT}
@@ -82,6 +99,7 @@ def send_user_paint_code(to_email, registration, vehicle_title, vin_masked, colo
                     <div style="font-family: 'IBM Plex Mono', 'Courier New', Courier, monospace; font-size: 42px; font-weight: 700; letter-spacing: 3px; color: #1a1a1a; font-feature-settings: 'zero' 0;">
                         {paint_code}
                     </div>
+                    {canonical_html}
                     {f'<div style="margin-top: 12px; color: #666; font-size: 14px; letter-spacing: 0.5px;">{paint_description}</div>' if paint_description else ''}
                 </div>
                 <table style="width: 100%; border-collapse: collapse;">
@@ -108,11 +126,15 @@ def send_user_paint_code(to_email, registration, vehicle_title, vin_masked, colo
     </div>
     """
 
+    # Subject: prefer the canonical (longer, more authoritative) form when
+    # available so inbox previews show the most useful code to body shops.
+    subject_code = canonical_code if canonical_code else paint_code
+
     try:
         client.Emails.send({
             "from": settings.DEFAULT_FROM_EMAIL,
             "to": to_email,
-            "subject": f"Paint code for {registration}: {paint_code}",
+            "subject": f"Paint code for {registration}: {subject_code}",
             "html": html,
             "attachments": _attachments(),
         })

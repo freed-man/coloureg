@@ -465,6 +465,16 @@ def submit_email(request):
     vin_masked = mask_vin(search.vin)
 
     if search.paint_code:
+        # Look up canonical (longer/authoritative) form if VDG returned a short code
+        canonical_code = None
+        try:
+            canonical_code = PaintSwatch.find_canonical_code(
+                manufacturer=search.make,
+                paint_code=search.paint_code,
+            )
+        except Exception:
+            pass
+
         sent = send_user_paint_code(
             to_email=email,
             registration=search.registration,
@@ -473,6 +483,7 @@ def submit_email(request):
             colour=search.colour,
             paint_code=search.paint_code,
             paint_description=search.paint_description,
+            canonical_code=canonical_code,
         )
         if sent:
             search.email_sent = True
@@ -743,6 +754,17 @@ def submit_manual_lookup(request):
     # 'Glacier White-Metallic' before saving and sending.
     paint_description_clean = smart_title(paint_description) if paint_description else ''
 
+    # Look up canonical (longer/authoritative) form if the manually-entered
+    # code has a recognised expansion in our swatch DB
+    canonical_code = None
+    try:
+        canonical_code = PaintSwatch.find_canonical_code(
+            manufacturer=search.make,
+            paint_code=paint_code,
+        )
+    except Exception:
+        pass
+
     sent = send_user_paint_code(
         to_email=search.email,
         registration=search.registration,
@@ -751,6 +773,7 @@ def submit_manual_lookup(request):
         colour=search.colour,
         paint_code=paint_code,
         paint_description=paint_description_clean,
+        canonical_code=canonical_code,
     )
 
     if not sent:
