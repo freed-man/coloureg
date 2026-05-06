@@ -15,12 +15,12 @@
     </script>
     {% endif %}
 
-    <title>coloureg{% block extra_title %} — Free UK Paint Code Lookup by Registration{% endblock %}</title>
+    <title>{% block extra_title %}Free UK Car Paint Code Lookup by Registration | coloureg{% endblock %}</title>
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="description" content="Find your car's factory paint code by registration in seconds. The free UK lookup tool that gives you the actual code, not just a colour match. Beta.">
+    <meta name="description" content="{% block meta_description %}Find your car's factory paint code by registration — free, instant, no signup. The only UK tool that gives you the actual factory code, not a colour match.{% endblock %}">
     <meta name="keywords" content="paint code lookup, car paint code by reg, find paint code UK, factory paint code, registration paint code, vehicle paint code, what colour is my car, car colour code, audi paint code by reg, bmw paint code by reg, ford paint code by reg, vauxhall paint code lookup, vw paint code, car touch up paint code, paint code finder UK, free paint code lookup, my car paint code">
     <meta name="author" content="coloureg">
-    <meta name="robots" content="index, follow">
+    <meta name="robots" content="{% block meta_robots %}index, follow{% endblock %}">
     <meta name="theme-color" content="#C8102E">
 
     <link rel="canonical" href="https://coloureg.com{{ request.path }}">
@@ -28,41 +28,67 @@
     <!-- Open Graph / Facebook -->
     <meta property="og:type" content="website">
     <meta property="og:url" content="https://coloureg.com{{ request.path }}">
-    <meta property="og:title" content="coloureg — Free UK Paint Code Lookup by Registration">
-    <meta property="og:description" content="Find your car's factory paint code by registration in seconds. The free UK lookup tool that gives you the actual code, not just a colour match.">
+    <meta property="og:title" content="{% block og_title %}Free UK Car Paint Code Lookup by Registration | coloureg{% endblock %}">
+    <meta property="og:description" content="{% block og_description %}Find your car's factory paint code by registration — free, instant, no signup. The only UK tool that gives you the actual factory code, not a colour match.{% endblock %}">
     <meta property="og:image" content="https://coloureg.com/static/images/about.png">
+    <meta property="og:site_name" content="coloureg">
 
     <!-- Twitter -->
     <meta name="twitter:card" content="summary_large_image">
     <meta name="twitter:url" content="https://coloureg.com{{ request.path }}">
-    <meta name="twitter:title" content="coloureg — Free UK Paint Code Lookup by Registration">
-    <meta name="twitter:description" content="Find your car's factory paint code by registration in seconds.">
+    <meta name="twitter:title" content="{% block twitter_title %}Free UK Car Paint Code Lookup by Registration | coloureg{% endblock %}">
+    <meta name="twitter:description" content="{% block twitter_description %}Find your car's factory paint code by registration — free, instant, no signup.{% endblock %}">
     <meta name="twitter:image" content="https://coloureg.com/static/images/about.png">
 
     <!-- Structured data for Google -->
     <script type="application/ld+json">
     {
       "@context": "https://schema.org",
+      "@type": "Organization",
+      "name": "coloureg",
+      "url": "https://coloureg.com",
+      "logo": "https://coloureg.com/static/images/favicon/favicon-192x192.png",
+      "description": "The only free UK paint code lookup tool. Find any car's factory paint code by registration — no signup, no payment, no email required.",
+      "slogan": "Free UK car paint code lookup by registration",
+      "email": "hello@coloureg.com",
+      "areaServed": {
+        "@type": "Country",
+        "name": "United Kingdom"
+      }
+    }
+    </script>
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
       "@type": "WebApplication",
       "name": "coloureg",
       "alternateName": "coloureg paint code finder",
-      "description": "Free UK paint code lookup tool. Enter your car's registration to retrieve the factory paint code from the manufacturer's database.",
+      "description": "Free UK paint code lookup tool. Enter your car's registration to retrieve the factory paint code from the manufacturer's database. No signup required, results in seconds, completely free.",
       "url": "https://coloureg.com",
       "applicationCategory": "AutomotiveApplication",
+      "browserRequirements": "Requires JavaScript",
       "operatingSystem": "Web",
       "offers": {
         "@type": "Offer",
         "price": "0",
-        "priceCurrency": "GBP"
+        "priceCurrency": "GBP",
+        "availability": "https://schema.org/InStock"
       },
       "featureList": [
         "Free paint code lookup by UK registration",
         "Factory paint code retrieval from manufacturer database",
         "Manual lookup fallback within 12 hours",
-        "No account required"
-      ]
+        "No account required",
+        "No email required for instant lookup",
+        "Supports 26+ manufacturers including Ford, BMW, Audi, VW, Vauxhall"
+      ],
+      "audience": {
+        "@type": "Audience",
+        "audienceType": "UK car owners, body shops, paint specialists"
+      }
     }
     </script>
+    {% block extra_schema %}{% endblock %}
 
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">

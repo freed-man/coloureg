@@ -1,14 +1,15 @@
 {% extends "base.html" %}
 {% load static %}
 
-{% block extra_title %} - Server Error{% endblock %}
+{% block extra_title %}500 — Server Error | coloureg{% endblock %}
+{% block meta_robots %}noindex, follow{% endblock %}
 
 {% block content %}
 <div class="container mt-5">
     <div class="row justify-content-center text-center">
         <div class="col-md-6">
             <h1 style="font-size: 7rem; font-weight: 900; color: #C8102E; margin-bottom: 0; line-height: 1;">500</h1>
-            <h3 class="mb-3 mt-2">Something went wrong</h3>
+            <h2 class="mb-3 mt-2" style="font-size: 1.75rem;">Something went wrong</h2>
             <p class="text-muted mb-4">
                 We've hit an unexpected error on our end. Please try again in a moment.
             </p>

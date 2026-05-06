@@ -1,16 +1,87 @@
 {% extends "base.html" %}
 {% load static %}
 
-{% block extra_title %} - Help & FAQ | coloureg{% endblock %}
+{% block extra_title %}Help & FAQ — How to Find Your Car's Paint Code | coloureg{% endblock %}
+{% block meta_description %}Frequently asked questions about coloureg — how to find your paint code, where it's located on your car, what makes are supported, and why we're free.{% endblock %}
+
+{% block extra_schema %}
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  "mainEntity": [
+    {
+      "@type": "Question",
+      "name": "How do I find my car's paint code?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Enter your registration on the homepage. We pull the factory paint code from the manufacturer's database. If we can't reach the servers in time, you can request a manual lookup and we'll email the code within 12 hours."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Where is the paint code physically located on my car?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "It's usually on a sticker — most commonly in the driver's door jamb, under the bonnet, in the glovebox, or in the boot/trunk. The label often shows make/model alongside a 3–5 character code (e.g. LY9C, 775U). Location varies by manufacturer."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Why can't I find my paint code through coloureg?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "A few possibilities: the manufacturer's database doesn't have data for your specific vehicle (some makes have better coverage than others), the servers were too slow to respond, or your reg returned an unusual result. In those cases, drop us your email and we'll look it up manually."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "What manufacturers does coloureg support?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Automated lookup currently supports Audi, BMW, Citroën, Cupra, Dacia, DS, Ford, Hyundai, Infiniti, Jaguar, Jeep, Kia, Land Rover, Lexus, Mazda, Mercedes-Benz, MINI, Peugeot, Renault, Saab, SEAT, Škoda, Toyota, Vauxhall, Volkswagen, and Volvo. If your make isn't listed, manual lookup may still work."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "How accurate is the paint code?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "The codes come straight from manufacturer databases, so they're as accurate as the source. That said, paint codes describe the original factory colour. If your car has been resprayed, the code may not match the current paint. Vinyl wraps don't change the underlying colour — once removed, the original paint code still applies."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Do you store my data?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Yes, briefly. We log each search (registration, time, IP) for usage analytics and abuse prevention. If you submit your email for a manual lookup, we store it to send you the result. We don't sell or share your data with third parties. See our privacy notice for full details."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Why does the manual lookup take up to 12 hours?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Manual lookups involve querying manufacturer databases directly, sometimes by VIN. We aim to respond much faster than 12 hours, but the buffer accounts for overnight requests and busy periods."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Is coloureg really free?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Yes — coloureg is free. But running it isn't: there's the cloud server, the database, the domains, the email service, per-lookup charges from third-party data providers. Right now this is a hobby project and the costs are manageable, but as traffic grows charges may become necessary. Nothing will change without warning."
+      }
+    }
+  ]
+}
+</script>
+{% endblock %}
 
 {% block extra_css %}
 <style>
-    .help-page h1 {
-        font-size: 1.75rem;
-        font-weight: 700;
-        color: #1a1a1a;
-        margin: 0 0 28px;
-    }
+    .help-page h1,
     .help-page h2 {
         font-size: 1.75rem;
         font-weight: 700;

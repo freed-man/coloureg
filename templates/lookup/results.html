@@ -1,7 +1,8 @@
 {% extends "base.html" %}
 {% load static %}
 
-{% block extra_title %} - Results for {{ registration }}{% endblock %}
+{% block extra_title %}Results for {{ registration }} | coloureg{% endblock %}
+{% block meta_robots %}noindex, follow{% endblock %}
 
 {% block extra_css %}
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">

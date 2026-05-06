@@ -1,7 +1,8 @@
 {% extends "base.html" %}
 {% load static %}
 
-{% block extra_title %} - About | UK's Free Paint Code Finder{% endblock %}
+{% block extra_title %}About coloureg — The Only Free UK Paint Code Tool | coloureg{% endblock %}
+{% block meta_description %}coloureg is the only free UK car paint code lookup tool. We pull factory paint codes straight from manufacturer databases — no signup, no email, no payment required.{% endblock %}
 
 {% block content %}
 <div class="container mt-4 mb-5">
@@ -15,13 +16,11 @@
                 <span style="background: linear-gradient(90deg, #e74c3c, #f39c12, #f1c40f, #2ecc71, #3498db, #9b59b6); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; font-weight: 700;">hassle-free</span>.
             </h1>
 
-            <picture>
-                <source srcset="{% static 'images/about.webp' %}" type="image/webp">
-                <img src="{% static 'images/about.png' %}" alt="How coloureg works — paint code lookup process by registration" 
-                     class="img-fluid mb-4" 
-                     id="aboutImage"
-                     style="width: 100%; border-radius: 8px; cursor: zoom-in;">
-            </picture>
+            <img src="{% static 'images/about.png' %}" alt="How coloureg works — paint code lookup process by registration" 
+                 class="img-fluid mb-4" 
+                 id="aboutImage"
+                 style="width: 100%; border-radius: 8px; cursor: zoom-in;">
+
             <p style="font-size: 1.05rem; line-height: 1.7; color: #333;">
                 <span style="background: linear-gradient(90deg, #e74c3c, #f39c12, #f1c40f, #2ecc71, #3498db, #9b59b6); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; font-weight: 600;">colou<strong>reg</strong></span>
                 helps you find your car's factory paint code by registration. Just type in your reg and we'll query the manufacturer's database to pull the colour code straight from the source. If our automated lookup can't reach the manufacturer's servers in time, we'll do a manual search and email the code to you within 12 hours. The site is in beta, actively being developed — questions, suggestions, or anything off? <a href="{% url 'help' %}?contact=open#contact-section" style="color: #003399;">Drop us a message on the help page</a>.
