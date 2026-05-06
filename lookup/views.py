@@ -528,17 +528,11 @@ def about(request):
 
 
 def privacy(request):
-    # Update this date when the privacy notice content changes substantively
-    return render(request, 'lookup/privacy.html', {
-        'last_updated': 'May 3, 2026',
-    })
+    return render(request, 'lookup/privacy.html')
 
 
 def disclaimer(request):
-    # Update this date when the disclaimer content changes substantively
-    return render(request, 'lookup/disclaimer.html', {
-        'last_updated': 'May 6, 2026',
-    })
+    return render(request, 'lookup/disclaimer.html')
 
 
 def help_page(request):
