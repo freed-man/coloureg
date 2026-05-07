@@ -160,7 +160,7 @@
            ============================================================ */
         .menu-panel {
             width: 100% !important;
-            max-width: 380px;
+            max-width: 340px;
             background: #0d0d0d;
             color: #fff;
             border-left: none !important;
@@ -324,19 +324,28 @@
             margin-top: 32px;
             padding-top: 20px;
         }
-        /* Email link — static rainbow gradient text, no animation, no underline,
-           no hover/tap effects. It's just a colourful hyperlink that opens
-           the user's mail client when clicked. */
         .menu-email {
             display: inline-block;
+            color: #fff;
             text-decoration: none;
             font-size: 0.95rem;
             letter-spacing: 0.3px;
-            background: linear-gradient(90deg, #e74c3c, #f39c12, #f1c40f, #2ecc71, #3498db, #9b59b6);
-            -webkit-background-clip: text;
-            background-clip: text;
-            -webkit-text-fill-color: transparent;
-            color: transparent;
+            position: relative;
+        }
+        .menu-email::after {
+            content: '';
+            position: absolute;
+            left: 0;
+            bottom: -2px;
+            width: 0;
+            height: 1px;
+            background: rgba(255, 255, 255, 0.4);
+            transition: width 0.3s ease;
+        }
+        @media (hover: hover) {
+            .menu-email:hover::after {
+                width: 100%;
+            }
         }
 
         /* Slightly slower, smoother slide */
@@ -493,13 +502,9 @@
 
                         item.classList.add('tapping');
 
-                        // Wait for the paint-sweep animation to fully complete
-                        // (CSS transition is 0.6s) before navigating, so the
-                        // user sees the rainbow finish painting before the
-                        // page changes.
                         setTimeout(function () {
                             window.location.href = href;
-                        }, 600);
+                        }, 500);
                     });
                 });
 
