@@ -493,15 +493,13 @@
 
                         item.classList.add('tapping');
 
-                        // The CSS paint-sweep transition is 0.6s with cubic-bezier
-                        // easing, but visually it's >90% complete by ~350ms thanks
-                        // to the fast-start curve. Starting navigation here lets
-                        // the new page begin loading while the tail of the animation
-                        // visually finishes, removing the perceived gap between
-                        // animation end and page change.
+                        // Wait for the paint-sweep animation to fully complete
+                        // (CSS transition is 0.6s) before navigating, so the
+                        // user sees the rainbow finish painting before the
+                        // page changes.
                         setTimeout(function () {
                             window.location.href = href;
-                        }, 350);
+                        }, 600);
                     });
                 });
 
