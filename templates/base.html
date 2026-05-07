@@ -108,6 +108,231 @@
             white-space: nowrap;
             border: 0;
         }
+
+        /* ============================================================
+           Burger toggle — three lines that morph into an X when open
+           ============================================================ */
+        .menu-toggle {
+            position: relative;
+            width: 36px;
+            height: 36px;
+            background: transparent;
+            border: none;
+            padding: 0;
+            cursor: pointer;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            gap: 5px;
+        }
+        .menu-toggle:focus {
+            outline: none;
+            box-shadow: 0 0 0 2px rgba(52, 152, 219, 0.3);
+            border-radius: 4px;
+        }
+        .menu-toggle-bar {
+            display: block;
+            width: 22px;
+            height: 2px;
+            background: #1a1a1a;
+            border-radius: 2px;
+            transition: transform 0.35s ease, opacity 0.25s ease, width 0.35s ease;
+            transform-origin: center;
+        }
+        .menu-toggle:hover .menu-toggle-bar:nth-child(2) {
+            width: 16px;
+        }
+        /* When the offcanvas is open, animate to an X */
+        body.menu-open .menu-toggle-bar:nth-child(1) {
+            transform: translateY(7px) rotate(45deg);
+        }
+        body.menu-open .menu-toggle-bar:nth-child(2) {
+            opacity: 0;
+            width: 0;
+        }
+        body.menu-open .menu-toggle-bar:nth-child(3) {
+            transform: translateY(-7px) rotate(-45deg);
+        }
+
+        /* ============================================================
+           Slide-in menu panel
+           ============================================================ */
+        .menu-panel {
+            width: 100% !important;
+            max-width: 480px;
+            background: #0d0d0d;
+            color: #fff;
+            border-left: none !important;
+            font-family: 'IBM Plex Sans', sans-serif;
+        }
+        .menu-panel::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 4px;
+            background: linear-gradient(90deg, #e74c3c, #f39c12, #f1c40f, #2ecc71, #3498db, #9b59b6);
+        }
+        .menu-close-wrap {
+            display: flex;
+            justify-content: flex-end;
+            padding: 24px 32px 0;
+        }
+        .menu-close {
+            position: relative;
+            width: 40px;
+            height: 40px;
+            background: transparent;
+            border: none;
+            cursor: pointer;
+            padding: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 50%;
+            transition: background 0.2s;
+        }
+        .menu-close:hover {
+            background: rgba(255, 255, 255, 0.08);
+        }
+        .menu-close span {
+            position: absolute;
+            width: 22px;
+            height: 2px;
+            background: #fff;
+            border-radius: 2px;
+        }
+        .menu-close span:nth-child(1) { transform: rotate(45deg); }
+        .menu-close span:nth-child(2) { transform: rotate(-45deg); }
+
+        .menu-body {
+            padding: 40px 48px 48px;
+            display: flex;
+            flex-direction: column;
+            height: calc(100% - 64px);
+        }
+        .menu-nav {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+            flex: 1;
+        }
+        .menu-item {
+            display: flex;
+            align-items: baseline;
+            gap: 16px;
+            padding: 18px 0;
+            color: #fff;
+            text-decoration: none;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+            position: relative;
+            transition: padding-left 0.3s ease;
+        }
+        .menu-item:hover {
+            color: #fff;
+            padding-left: 12px;
+        }
+        .menu-item::before {
+            content: '';
+            position: absolute;
+            left: 0;
+            top: 50%;
+            width: 0;
+            height: 1px;
+            background: linear-gradient(90deg, #e74c3c, #f39c12, #f1c40f, #2ecc71, #3498db, #9b59b6);
+            transition: width 0.3s ease;
+            transform: translateY(-50%);
+        }
+        .menu-item:hover::before {
+            width: 8px;
+        }
+        .menu-num {
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 0.7rem;
+            color: #666;
+            font-weight: 400;
+            letter-spacing: 1px;
+            min-width: 24px;
+            transition: color 0.3s;
+        }
+        .menu-item:hover .menu-num {
+            color: #999;
+        }
+        .menu-text {
+            font-size: 2rem;
+            font-weight: 500;
+            letter-spacing: -0.5px;
+            line-height: 1.2;
+            background: linear-gradient(90deg, #fff, #fff);
+            -webkit-background-clip: text;
+            background-clip: text;
+            -webkit-text-fill-color: transparent;
+            transition: background 0.3s ease;
+        }
+        .menu-item:hover .menu-text {
+            background: linear-gradient(90deg, #e74c3c, #f39c12, #f1c40f, #2ecc71, #3498db, #9b59b6);
+            -webkit-background-clip: text;
+            background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .menu-footer {
+            margin-top: 32px;
+            padding-top: 24px;
+            border-top: 1px solid rgba(255, 255, 255, 0.08);
+        }
+        .menu-email {
+            display: inline-block;
+            color: #fff;
+            text-decoration: none;
+            font-size: 0.95rem;
+            letter-spacing: 0.3px;
+            margin-bottom: 12px;
+            position: relative;
+            transition: color 0.2s;
+        }
+        .menu-email::after {
+            content: '';
+            position: absolute;
+            left: 0;
+            bottom: -2px;
+            width: 0;
+            height: 1px;
+            background: linear-gradient(90deg, #e74c3c, #f39c12, #f1c40f, #2ecc71, #3498db, #9b59b6);
+            transition: width 0.3s ease;
+        }
+        .menu-email:hover {
+            color: #fff;
+        }
+        .menu-email:hover::after {
+            width: 100%;
+        }
+        .menu-tag {
+            color: #666;
+            font-size: 0.85rem;
+            margin: 0;
+            line-height: 1.6;
+        }
+
+        /* Slightly slower, smoother slide */
+        .menu-panel.offcanvas {
+            transition: transform 0.45s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+
+        /* Responsive — narrower padding on smaller screens */
+        @media (max-width: 480px) {
+            .menu-body {
+                padding: 32px 28px 32px;
+            }
+            .menu-text {
+                font-size: 1.6rem;
+            }
+            .menu-close-wrap {
+                padding: 20px 20px 0;
+            }
+        }
     </style>
     {% block extra_css %}
     {% endblock %}
@@ -115,73 +340,57 @@
 
 <body class="d-flex flex-column min-vh-100">
 
-    <nav class="navbar">
+    <nav class="navbar" style="position: relative; z-index: 1000;">
         <div class="container-fluid justify-content-between">
             <a class="navbar-brand" href="{% url 'index' %}">
                 <span class="brand-text" style="background: linear-gradient(90deg, #e74c3c, #f39c12, #f1c40f, #2ecc71, #3498db, #9b59b6); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;">
                     <i class="fas fa-spray-can me-2"></i>colou<strong>reg</strong>
                 </span>
             </a>
-            <button class="navbar-toggler border-0" type="button"
+            <button id="menuToggle" class="menu-toggle" type="button"
                     data-bs-toggle="offcanvas" data-bs-target="#mainMenu"
-                    aria-controls="mainMenu" aria-label="Open menu"
-                    style="box-shadow: none;">
-                <span class="navbar-toggler-icon"></span>
+                    aria-controls="mainMenu" aria-label="Open menu">
+                <span class="menu-toggle-bar"></span>
+                <span class="menu-toggle-bar"></span>
+                <span class="menu-toggle-bar"></span>
             </button>
         </div>
     </nav>
 
     <!-- Slide-in menu panel -->
-    <div class="offcanvas offcanvas-end" tabindex="-1" id="mainMenu"
-         aria-labelledby="mainMenuLabel"
-         style="font-family: 'IBM Plex Sans', sans-serif; max-width: 320px;">
-        <div class="offcanvas-header" style="border-bottom: 1px solid #eee; padding: 20px 24px;">
-            <h2 class="offcanvas-title" id="mainMenuLabel"
-                style="font-size: 1rem; letter-spacing: 2px; color: #999; font-weight: 500; margin: 0;">
-                MENU
-            </h2>
-            <button type="button" class="btn-close" data-bs-dismiss="offcanvas"
-                    aria-label="Close"></button>
+    <div class="offcanvas offcanvas-end menu-panel" tabindex="-1" id="mainMenu"
+         aria-labelledby="mainMenuLabel">
+        <div class="menu-close-wrap">
+            <button type="button" class="menu-close" data-bs-dismiss="offcanvas"
+                    aria-label="Close menu">
+                <span></span>
+                <span></span>
+            </button>
         </div>
-        <div class="offcanvas-body" style="padding: 8px 0;">
-            <nav>
-                <a href="{% url 'about' %}"
-                   class="d-block menu-link"
-                   style="padding: 14px 24px; color: #333; text-decoration: none;
-                          font-size: 1.05rem; letter-spacing: 1px; font-weight: 500;
-                          transition: background 0.15s, color 0.15s;"
-                   onmouseover="this.style.background='#f8f9fa'; this.style.color='#C8102E';"
-                   onmouseout="this.style.background='transparent'; this.style.color='#333';">
-                    About
+        <div class="menu-body">
+            <h2 id="mainMenuLabel" class="visually-hidden">Site menu</h2>
+            <nav class="menu-nav">
+                <a href="{% url 'about' %}" class="menu-item">
+                    <span class="menu-num">01</span>
+                    <span class="menu-text">About</span>
                 </a>
-                <a href="{% url 'help' %}"
-                   class="d-block menu-link"
-                   style="padding: 14px 24px; color: #333; text-decoration: none;
-                          font-size: 1.05rem; letter-spacing: 1px; font-weight: 500;
-                          transition: background 0.15s, color 0.15s;"
-                   onmouseover="this.style.background='#f8f9fa'; this.style.color='#C8102E';"
-                   onmouseout="this.style.background='transparent'; this.style.color='#333';">
-                    Help
+                <a href="{% url 'help' %}" class="menu-item">
+                    <span class="menu-num">02</span>
+                    <span class="menu-text">Help</span>
                 </a>
-                <a href="{% url 'privacy' %}"
-                   class="d-block menu-link"
-                   style="padding: 14px 24px; color: #333; text-decoration: none;
-                          font-size: 1.05rem; letter-spacing: 1px; font-weight: 500;
-                          transition: background 0.15s, color 0.15s;"
-                   onmouseover="this.style.background='#f8f9fa'; this.style.color='#C8102E';"
-                   onmouseout="this.style.background='transparent'; this.style.color='#333';">
-                    Privacy
+                <a href="{% url 'privacy' %}" class="menu-item">
+                    <span class="menu-num">03</span>
+                    <span class="menu-text">Privacy</span>
                 </a>
-                <a href="{% url 'disclaimer' %}"
-                   class="d-block menu-link"
-                   style="padding: 14px 24px; color: #333; text-decoration: none;
-                          font-size: 1.05rem; letter-spacing: 1px; font-weight: 500;
-                          transition: background 0.15s, color 0.15s;"
-                   onmouseover="this.style.background='#f8f9fa'; this.style.color='#C8102E';"
-                   onmouseout="this.style.background='transparent'; this.style.color='#333';">
-                    Disclaimer
+                <a href="{% url 'disclaimer' %}" class="menu-item">
+                    <span class="menu-num">04</span>
+                    <span class="menu-text">Disclaimer</span>
                 </a>
             </nav>
+            <div class="menu-footer">
+                <a href="mailto:hello@coloureg.com" class="menu-email">hello@coloureg.com</a>
+                <p class="menu-tag">Find your car's paint code by registration.</p>
+            </div>
         </div>
     </div>
 
@@ -221,6 +430,18 @@
                 }, 500);
             }
         }, 5000);
+
+        // Toggle body class when menu opens/closes so the burger morphs to X
+        (function () {
+            var menuPanel = document.getElementById('mainMenu');
+            if (!menuPanel) return;
+            menuPanel.addEventListener('show.bs.offcanvas', function () {
+                document.body.classList.add('menu-open');
+            });
+            menuPanel.addEventListener('hidden.bs.offcanvas', function () {
+                document.body.classList.remove('menu-open');
+            });
+        })();
     </script>
 
 </body>
