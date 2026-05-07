@@ -317,39 +317,34 @@
             background-position: 0% 0;
         }
 
-        /* Email menu item — slightly smaller text since it's longer.
-           Also has top margin to give it a bit of breathing room from
-           the page links above. */
-        .menu-item-email {
-            margin-top: 16px;
-            border-bottom: none;
+        /* Plain email link in the panel footer — separate from the
+           animated menu items. White text by default, subtle underline
+           on desktop hover, no gradient or animation. */
+        .menu-footer {
+            margin-top: 32px;
+            padding-top: 20px;
         }
-        .menu-item-email .menu-text {
-            font-size: 1.1rem;
-            letter-spacing: 0;
-            font-weight: 400;
+        .menu-email {
+            display: inline-block;
+            color: #fff;
+            text-decoration: none;
+            font-size: 0.95rem;
+            letter-spacing: 0.3px;
+            position: relative;
         }
-
-        /* On touch devices, email link is plain white text with no gradient,
-           no spray icon, no animation. The cross-browser inconsistencies
-           with state preservation when returning from external apps make
-           the painted version unreliable. Desktop hover via @media (hover: hover)
-           is unaffected and still works. */
-        @media (hover: none) {
-            .menu-item-email .menu-text {
-                background: none !important;
-                background-image: none !important;
-                -webkit-background-clip: initial !important;
-                background-clip: initial !important;
-                -webkit-text-fill-color: #fff !important;
-                color: #fff !important;
-                transition: none !important;
-            }
-            .menu-item-email::before {
-                display: none !important;
-            }
-            .menu-item-email {
-                padding-left: 0 !important;
+        .menu-email::after {
+            content: '';
+            position: absolute;
+            left: 0;
+            bottom: -2px;
+            width: 0;
+            height: 1px;
+            background: rgba(255, 255, 255, 0.4);
+            transition: width 0.3s ease;
+        }
+        @media (hover: hover) {
+            .menu-email:hover::after {
+                width: 100%;
             }
         }
 
@@ -420,11 +415,11 @@
                 <a href="{% url 'disclaimer' %}" class="menu-item{% if current == 'disclaimer' %} active{% endif %}">
                     <span class="menu-text">Disclaimer</span>
                 </a>
-                <a href="mailto:hello@coloureg.com" class="menu-item menu-item-email">
-                    <span class="menu-text">hello@coloureg.com</span>
-                </a>
                 {% endwith %}
             </nav>
+            <div class="menu-footer">
+                <a href="mailto:hello@coloureg.com" class="menu-email">hello@coloureg.com</a>
+            </div>
         </div>
     </div>
 
@@ -486,14 +481,6 @@
                 var menuItems = menuPanel.querySelectorAll('.menu-item');
                 menuItems.forEach(function (item) {
                     var href = item.getAttribute('href') || '';
-                    var isEmailLink = item.classList.contains('menu-item-email')
-                        || href.startsWith('mailto:')
-                        || href.startsWith('tel:');
-
-                    // Email/tel links on touch: no JS handler, no animation,
-                    // no paint at all. Just let the mailto fire natively.
-                    // (CSS @media (hover: none) ensures email stays white.)
-                    if (isEmailLink) return;
 
                     item.addEventListener('click', function (e) {
                         // If we've already triggered the animation, allow the
