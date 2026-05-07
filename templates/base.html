@@ -160,7 +160,7 @@
            ============================================================ */
         .menu-panel {
             width: 100% !important;
-            max-width: 420px;
+            max-width: 380px;
             background: #0d0d0d;
             color: #fff;
             border-left: none !important;
@@ -242,7 +242,7 @@
             left: 0;
             top: 50%;
             transform: translateY(-50%) translateX(-8px);
-            font-size: 1rem;
+            font-size: 1.2rem;
             opacity: 0;
             background: linear-gradient(
                 90deg,
@@ -283,44 +283,43 @@
             background-position: 0% 0;
         }
 
-        .menu-footer {
-            margin-top: 32px;
-            padding-top: 24px;
+        /* Active page indicator — spray icon + rainbow text always visible
+           for the current page. No transition, just static. */
+        .menu-item.active {
+            padding-left: 32px;
         }
-        .menu-email {
-            display: inline-block;
-            text-decoration: none;
-            font-size: 0.95rem;
-            letter-spacing: 0.3px;
-            position: relative;
-            background: linear-gradient(
-                90deg,
-                #e74c3c 0%, #f39c12 10%, #f1c40f 20%, #2ecc71 30%,
-                #3498db 40%, #9b59b6 50%,
-                #ffffff 50%, #ffffff 100%
-            );
-            background-size: 200% 100%;
-            background-position: 100% 0;
-            -webkit-background-clip: text;
-            background-clip: text;
-            -webkit-text-fill-color: transparent;
-            transition: background-position 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+        .menu-item.active::before {
+            opacity: 1;
+            transform: translateY(-50%) translateX(0);
         }
-        .menu-email::after {
-            content: '';
-            position: absolute;
-            left: 0;
-            bottom: -2px;
-            width: 0;
-            height: 1px;
-            background: linear-gradient(90deg, #e74c3c, #f39c12, #f1c40f, #2ecc71, #3498db, #9b59b6);
-            transition: width 0.3s ease;
-        }
-        .menu-email:hover {
+        .menu-item.active .menu-text {
             background-position: 0% 0;
         }
-        .menu-email:hover::after {
-            width: 100%;
+
+        /* Mobile tap animation — when user taps a menu item, run the hover
+           animation as a one-shot before navigating away. */
+        .menu-item.tapping {
+            padding-left: 32px;
+        }
+        .menu-item.tapping::before {
+            opacity: 1;
+            transform: translateY(-50%) translateX(0);
+        }
+        .menu-item.tapping .menu-text {
+            background-position: 0% 0;
+        }
+
+        /* Email menu item — slightly smaller text since it's longer.
+           Also has top margin to give it a bit of breathing room from
+           the page links above. */
+        .menu-item-email {
+            margin-top: 16px;
+            border-bottom: none;
+        }
+        .menu-item-email .menu-text {
+            font-size: 1.1rem;
+            letter-spacing: 0;
+            font-weight: 400;
         }
 
         /* Slightly slower, smoother slide */
@@ -377,22 +376,24 @@
         <div class="menu-body">
             <h2 id="mainMenuLabel" class="visually-hidden">Site menu</h2>
             <nav class="menu-nav">
-                <a href="{% url 'about' %}" class="menu-item">
+                {% with current=request.resolver_match.url_name %}
+                <a href="{% url 'about' %}" class="menu-item{% if current == 'about' %} active{% endif %}">
                     <span class="menu-text">About</span>
                 </a>
-                <a href="{% url 'help' %}" class="menu-item">
+                <a href="{% url 'help' %}" class="menu-item{% if current == 'help' %} active{% endif %}">
                     <span class="menu-text">Help</span>
                 </a>
-                <a href="{% url 'privacy' %}" class="menu-item">
+                <a href="{% url 'privacy' %}" class="menu-item{% if current == 'privacy' %} active{% endif %}">
                     <span class="menu-text">Privacy</span>
                 </a>
-                <a href="{% url 'disclaimer' %}" class="menu-item">
+                <a href="{% url 'disclaimer' %}" class="menu-item{% if current == 'disclaimer' %} active{% endif %}">
                     <span class="menu-text">Disclaimer</span>
                 </a>
+                <a href="mailto:hello@coloureg.com" class="menu-item menu-item-email">
+                    <span class="menu-text">hello@coloureg.com</span>
+                </a>
+                {% endwith %}
             </nav>
-            <div class="menu-footer">
-                <a href="mailto:hello@coloureg.com" class="menu-email">hello@coloureg.com</a>
-            </div>
         </div>
     </div>
 
@@ -443,6 +444,39 @@
             menuPanel.addEventListener('hidden.bs.offcanvas', function () {
                 document.body.classList.remove('menu-open');
             });
+
+            // On touch devices (mobile/tablet), let the paint-sweep animation
+            // play before navigating, so the user actually sees it. On desktop
+            // with a real mouse, the hover already shows it before any click.
+            var isTouchDevice = window.matchMedia('(hover: none)').matches
+                || ('ontouchstart' in window);
+
+            if (isTouchDevice) {
+                var menuItems = menuPanel.querySelectorAll('.menu-item');
+                menuItems.forEach(function (item) {
+                    // Skip items already styled as 'active' — they're already
+                    // showing the painted state, no need for a tap animation.
+                    if (item.classList.contains('active')) return;
+
+                    item.addEventListener('click', function (e) {
+                        // If we've already triggered the animation, allow the
+                        // click through normally (avoids infinite intercept).
+                        if (item.dataset.animating === '1') return;
+
+                        e.preventDefault();
+                        var href = item.getAttribute('href');
+                        item.dataset.animating = '1';
+                        item.classList.add('tapping');
+
+                        // After 500ms the rainbow sweep is essentially complete.
+                        // Navigate then; the browser starts loading the new page
+                        // while the panel slides closed in the background.
+                        setTimeout(function () {
+                            window.location.href = href;
+                        }, 500);
+                    });
+                });
+            }
         })();
     </script>
 
