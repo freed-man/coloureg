@@ -330,34 +330,6 @@
             font-weight: 400;
         }
 
-        /* NUCLEAR OVERRIDE — on touch devices, email link uses plain white
-           text with NO gradient at all. The wide-gradient + background-clip
-           technique can leave touch browsers in a stuck state where the
-           gradient stays positioned at 0% even after returning from Gmail.
-           By stripping the gradient entirely on touch, there's nothing for
-           the browser to "remember" — email is always plain white text.
-           Desktop with real mouse keeps the hover paint via @media (hover: hover). */
-        @media (hover: none) {
-            .menu-item-email .menu-text {
-                background: none !important;
-                background-image: none !important;
-                -webkit-background-clip: initial !important;
-                background-clip: initial !important;
-                -webkit-text-fill-color: #fff !important;
-                color: #fff !important;
-                transition: none !important;
-            }
-            .menu-item-email::before {
-                display: none !important;
-            }
-            .menu-item-email,
-            .menu-item-email:hover,
-            .menu-item-email:focus,
-            .menu-item-email:active {
-                padding-left: 0 !important;
-            }
-        }
-
         /* Slightly slower, smoother slide */
         .menu-panel.offcanvas {
             transition: transform 0.45s cubic-bezier(0.16, 1, 0.3, 1);
@@ -491,38 +463,48 @@
                 var menuItems = menuPanel.querySelectorAll('.menu-item');
                 menuItems.forEach(function (item) {
                     var href = item.getAttribute('href') || '';
-                    // Detect external links robustly. Note: Cloudflare's email
-                    // obfuscation rewrites mailto: links to /cdn-cgi/l/email-protection
-                    // URLs, so we check the class name as the primary signal,
-                    // with URL-prefix checks as fallback.
-                    var isExternal = item.classList.contains('menu-item-email')
+                    var isEmailLink = item.classList.contains('menu-item-email')
                         || href.startsWith('mailto:')
-                        || href.startsWith('tel:')
-                        || href.indexOf('/cdn-cgi/l/email-protection') !== -1
-                        || (href.startsWith('http') && !href.includes(window.location.host));
-
-                    // For external links: no tap animation. The OS/Cloudflare
-                    // hijacks the tap before any animation can be perceived,
-                    // and stuck states from sticky :hover or class assignment
-                    // become annoying to clear afterwards.
-                    if (isExternal) return;
+                        || href.startsWith('tel:');
 
                     item.addEventListener('click', function (e) {
                         // If we've already triggered the animation, allow the
                         // click through normally (avoids infinite intercept).
                         if (item.dataset.animating === '1') return;
 
-                        // Same-page tap (already active): no animation, just navigate.
+                        // Same-page tap (already active): no animation.
                         if (item.classList.contains('active')) return;
 
-                        // Different page: animate then navigate.
-                        // 1. Strip 'active' from current page so the rainbow
-                        //    visually leaves it during the new item's animation.
-                        // 2. Add 'tapping' to the tapped item — sweep paints in.
-                        // 3. After 500ms, navigate.
                         e.preventDefault();
                         item.dataset.animating = '1';
 
+                        if (isEmailLink) {
+                            // EMAIL TAP FLOW:
+                            // 1. Paint sweeps in over 600ms
+                            // 2. At 600ms: strip the painting class (revert to white)
+                            // 3. Force a browser repaint so the white state is committed
+                            // 4. THEN trigger mailto: (mail app opens with email already white)
+                            // This order matters — we revert BEFORE the tab gets
+                            // backgrounded, so there's no stuck painted state to
+                            // worry about when the user returns from the mail app.
+                            item.classList.add('tapping');
+                            setTimeout(function () {
+                                item.classList.remove('tapping');
+                                delete item.dataset.animating;
+                                // Force the browser to commit the revert before navigating
+                                void item.offsetWidth;
+                                // Small delay so the white state is visible briefly
+                                // before the OS switches to the mail app
+                                setTimeout(function () {
+                                    window.location.href = href;
+                                }, 50);
+                            }, 600);
+                            return;
+                        }
+
+                        // INTERNAL PAGE LINKS:
+                        // Strip 'active' from current page so its rainbow
+                        // visually leaves during the new item's animation.
                         var currentlyActive = menuPanel.querySelector('.menu-item.active');
                         if (currentlyActive) {
                             currentlyActive.classList.remove('active');
@@ -536,9 +518,9 @@
                     });
                 });
 
-                // Safety net: if the menu is closed and reopened, clear any
-                // lingering 'tapping' classes so previously-tapped items don't
-                // appear stuck in the painted state.
+                // Safety net: clear any lingering 'tapping' class when menu
+                // is reopened (covers edge cases like user backing out of an
+                // app and reopening the burger).
                 menuPanel.addEventListener('show.bs.offcanvas', function () {
                     menuPanel.querySelectorAll('.menu-item.tapping').forEach(function (item) {
                         item.classList.remove('tapping');
