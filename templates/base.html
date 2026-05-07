@@ -491,16 +491,20 @@
                 var menuItems = menuPanel.querySelectorAll('.menu-item');
                 menuItems.forEach(function (item) {
                     var href = item.getAttribute('href') || '';
-                    var isExternal = href.startsWith('mailto:')
+                    // Detect external links robustly. Note: Cloudflare's email
+                    // obfuscation rewrites mailto: links to /cdn-cgi/l/email-protection
+                    // URLs, so we check the class name as the primary signal,
+                    // with URL-prefix checks as fallback.
+                    var isExternal = item.classList.contains('menu-item-email')
+                        || href.startsWith('mailto:')
                         || href.startsWith('tel:')
+                        || href.indexOf('/cdn-cgi/l/email-protection') !== -1
                         || (href.startsWith('http') && !href.includes(window.location.host));
 
-                    // For external links (mailto/tel/external sites): no tap
-                    // animation at all. The OS switches to the external app
-                    // before any CSS transition can visually start, and the
-                    // backgrounded tab pauses JavaScript so cleanup timers
-                    // don't fire reliably. Letting the link open immediately
-                    // avoids stuck painted states when the user returns.
+                    // For external links: no tap animation. The OS/Cloudflare
+                    // hijacks the tap before any animation can be perceived,
+                    // and stuck states from sticky :hover or class assignment
+                    // become annoying to clear afterwards.
                     if (isExternal) return;
 
                     item.addEventListener('click', function (e) {
