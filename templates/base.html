@@ -458,13 +458,21 @@
                     // showing the painted state, no need for a tap animation.
                     if (item.classList.contains('active')) return;
 
+                    // Skip mailto: and other non-page links — they open an
+                    // external app rather than loading a new coloureg page,
+                    // so animating then handing off feels weird.
+                    var href = item.getAttribute('href') || '';
+                    if (href.startsWith('mailto:') || href.startsWith('tel:')
+                        || href.startsWith('http://') || href.startsWith('https://')) {
+                        return;
+                    }
+
                     item.addEventListener('click', function (e) {
                         // If we've already triggered the animation, allow the
                         // click through normally (avoids infinite intercept).
                         if (item.dataset.animating === '1') return;
 
                         e.preventDefault();
-                        var href = item.getAttribute('href');
                         item.dataset.animating = '1';
                         item.classList.add('tapping');
 
@@ -474,6 +482,16 @@
                         setTimeout(function () {
                             window.location.href = href;
                         }, 500);
+                    });
+                });
+
+                // Safety net: if the menu is closed and reopened, clear any
+                // lingering 'tapping' classes so previously-tapped items don't
+                // appear stuck in the painted state.
+                menuPanel.addEventListener('show.bs.offcanvas', function () {
+                    menuPanel.querySelectorAll('.menu-item.tapping').forEach(function (item) {
+                        item.classList.remove('tapping');
+                        delete item.dataset.animating;
                     });
                 });
             }
