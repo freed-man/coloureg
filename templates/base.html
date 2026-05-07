@@ -330,6 +330,34 @@
             font-weight: 400;
         }
 
+        /* NUCLEAR OVERRIDE — on touch devices, email link never paints under
+           any circumstances. Touch browsers can leave :hover/:focus/:active
+           states stuck after returning from external apps like Gmail.
+           Desktop with real mouse keeps the hover paint via @media (hover: hover). */
+        @media (hover: none) {
+            .menu-item-email .menu-text,
+            .menu-item-email:hover .menu-text,
+            .menu-item-email:focus .menu-text,
+            .menu-item-email:active .menu-text {
+                background-position: 100% 0 !important;
+                transition: none !important;
+            }
+            .menu-item-email::before,
+            .menu-item-email:hover::before,
+            .menu-item-email:focus::before,
+            .menu-item-email:active::before {
+                opacity: 0 !important;
+                transform: translateY(-50%) translateX(-8px) !important;
+                transition: none !important;
+            }
+            .menu-item-email,
+            .menu-item-email:hover,
+            .menu-item-email:focus,
+            .menu-item-email:active {
+                padding-left: 0 !important;
+            }
+        }
+
         /* Slightly slower, smoother slide */
         .menu-panel.offcanvas {
             transition: transform 0.45s cubic-bezier(0.16, 1, 0.3, 1);
