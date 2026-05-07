@@ -480,32 +480,46 @@
 
                         if (isEmailLink) {
                             // EMAIL TAP FLOW:
-                            // 1. Paint sweeps in over 600ms
-                            // 2. At 600ms: revert to white + blur the element
-                            //    (so :focus/:active states don't stick)
-                            // 3. Navigate via a temporary hidden link
-                            //    (so the email element itself never receives
-                            //    the navigation focus that could stick)
+                            // 1. Animate paint in over 600ms
+                            // 2. At 600ms: SNAP back to white instantly (no transition)
+                            //    by temporarily disabling the transition,
+                            //    removing the tapping class, then forcing
+                            //    a layout flush before re-enabling.
+                            // 3. THEN trigger mailto. The browser snapshots
+                            //    a fully white state when the tab backgrounds.
                             item.classList.add('tapping');
                             setTimeout(function () {
+                                // Find the inner text span (which has the gradient)
+                                var textSpan = item.querySelector('.menu-text');
+
+                                // Disable transitions on both the item and its text
+                                // span so removing 'tapping' snaps instantly to white.
+                                if (textSpan) textSpan.style.transition = 'none';
+                                item.style.transition = 'none';
+
                                 item.classList.remove('tapping');
                                 delete item.dataset.animating;
-                                item.blur();  // strip focus from the element
-                                // Force the browser to commit the visual state
+                                item.blur();
+
+                                // Force the browser to commit the no-transition,
+                                // tapping-removed state synchronously.
                                 void item.offsetWidth;
+                                if (textSpan) void textSpan.offsetWidth;
 
                                 // Trigger mailto via a fresh, hidden anchor.
-                                // This way the click event is on an element
-                                // we immediately remove, leaving no DOM node
-                                // for the browser to remember in a "tapped" state.
+                                var hiddenLink = document.createElement('a');
+                                hiddenLink.href = href;
+                                hiddenLink.style.display = 'none';
+                                document.body.appendChild(hiddenLink);
+                                hiddenLink.click();
+                                document.body.removeChild(hiddenLink);
+
+                                // After the mail app launch is in flight, restore
+                                // transitions so future hovers/taps animate again.
                                 setTimeout(function () {
-                                    var hiddenLink = document.createElement('a');
-                                    hiddenLink.href = href;
-                                    hiddenLink.style.display = 'none';
-                                    document.body.appendChild(hiddenLink);
-                                    hiddenLink.click();
-                                    document.body.removeChild(hiddenLink);
-                                }, 50);
+                                    if (textSpan) textSpan.style.transition = '';
+                                    item.style.transition = '';
+                                }, 100);
                             }, 600);
                             return;
                         }
