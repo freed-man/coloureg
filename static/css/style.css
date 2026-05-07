@@ -17,3 +17,18 @@
 .navbar-brand .brand-text {
     vertical-align: baseline;
 }
+
+/* Inline brand mention — for using "coloureg" inside body text on any page.
+   Inherits the surrounding font-size so it blends naturally into prose.
+   Use as: <span class="coloureg-brand">colou<strong>reg</strong></span> */
+.coloureg-brand {
+    background: linear-gradient(90deg, #e74c3c, #f39c12, #f1c40f, #2ecc71, #3498db, #9b59b6);
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+    color: transparent;
+    font-weight: 600;
+}
+.coloureg-brand strong {
+    font-weight: 900;
+}
