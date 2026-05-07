@@ -105,7 +105,6 @@
         font-weight: 600;
         color: #1a1a1a;
         display: flex;
-        justify-content: space-between;
         align-items: center;
         cursor: pointer;
         transition: color 0.15s;
@@ -117,7 +116,9 @@
         font-size: 1rem;
         color: #999;
         transition: transform 0.2s;
-        margin-left: 16px;
+        margin-left: auto;
+        padding-left: 16px;
+        flex-shrink: 0;
     }
     .faq-toggle[aria-expanded="true"] .faq-icon {
         transform: rotate(180deg);
