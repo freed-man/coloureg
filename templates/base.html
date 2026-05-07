@@ -522,6 +522,25 @@
                         delete item.dataset.animating;
                     });
                 });
+
+                // When the user returns to the tab from an external app
+                // (e.g. tapped email → Gmail opened → user came back),
+                // clear any lingering 'tapping' state. Mobile browsers
+                // pause JavaScript timers while backgrounded, so the
+                // 700ms revert timeout doesn't fire — we need these
+                // events as a backup.
+                function clearTappingState() {
+                    menuPanel.querySelectorAll('.menu-item.tapping').forEach(function (item) {
+                        item.classList.remove('tapping');
+                        delete item.dataset.animating;
+                    });
+                }
+                document.addEventListener('visibilitychange', function () {
+                    if (document.visibilityState === 'visible') {
+                        clearTappingState();
+                    }
+                });
+                window.addEventListener('pageshow', clearTappingState);
             }
         })();
     </script>
