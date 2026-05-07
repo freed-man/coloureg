@@ -67,11 +67,21 @@ WSGI_APPLICATION = 'coloureg.wsgi.application'
 
 # Database
 # https://docs.djangoproject.com/en/6.0/ref/settings/#databases
+#
+# Neon's free tier auto-suspends inactive databases after ~5 minutes,
+# which kills any pooled connection from Django's side. Two settings
+# work together to handle this gracefully:
+#   conn_max_age=200      — recycle connections after ~3.3 min, comfortably
+#                           below Neon's ~5-min idle suspend window
+#   conn_health_checks    — run a fast SELECT 1 before each query; if the
+#                           connection is dead, transparently open a new
+#                           one instead of crashing with an SSL error
 
 DATABASES = {
     'default': dj_database_url.config(
         default=f'sqlite:///{BASE_DIR}/db.sqlite3',
-        conn_max_age=600,
+        conn_max_age=200,
+        conn_health_checks=True,
     )
 }
 

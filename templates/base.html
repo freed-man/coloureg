@@ -116,14 +116,74 @@
 <body class="d-flex flex-column min-vh-100">
 
     <nav class="navbar">
-        <div class="container-fluid justify-content-start">
+        <div class="container-fluid justify-content-between">
             <a class="navbar-brand" href="{% url 'index' %}">
                 <span class="brand-text" style="background: linear-gradient(90deg, #e74c3c, #f39c12, #f1c40f, #2ecc71, #3498db, #9b59b6); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;">
                     <i class="fas fa-spray-can me-2"></i>colou<strong>reg</strong>
                 </span>
             </a>
+            <button class="navbar-toggler border-0" type="button"
+                    data-bs-toggle="offcanvas" data-bs-target="#mainMenu"
+                    aria-controls="mainMenu" aria-label="Open menu"
+                    style="box-shadow: none;">
+                <span class="navbar-toggler-icon"></span>
+            </button>
         </div>
     </nav>
+
+    <!-- Slide-in menu panel -->
+    <div class="offcanvas offcanvas-end" tabindex="-1" id="mainMenu"
+         aria-labelledby="mainMenuLabel"
+         style="font-family: 'IBM Plex Sans', sans-serif; max-width: 320px;">
+        <div class="offcanvas-header" style="border-bottom: 1px solid #eee; padding: 20px 24px;">
+            <h2 class="offcanvas-title" id="mainMenuLabel"
+                style="font-size: 1rem; letter-spacing: 2px; color: #999; font-weight: 500; margin: 0;">
+                MENU
+            </h2>
+            <button type="button" class="btn-close" data-bs-dismiss="offcanvas"
+                    aria-label="Close"></button>
+        </div>
+        <div class="offcanvas-body" style="padding: 8px 0;">
+            <nav>
+                <a href="{% url 'about' %}"
+                   class="d-block menu-link"
+                   style="padding: 14px 24px; color: #333; text-decoration: none;
+                          font-size: 1.05rem; letter-spacing: 1px; font-weight: 500;
+                          transition: background 0.15s, color 0.15s;"
+                   onmouseover="this.style.background='#f8f9fa'; this.style.color='#C8102E';"
+                   onmouseout="this.style.background='transparent'; this.style.color='#333';">
+                    About
+                </a>
+                <a href="{% url 'help' %}"
+                   class="d-block menu-link"
+                   style="padding: 14px 24px; color: #333; text-decoration: none;
+                          font-size: 1.05rem; letter-spacing: 1px; font-weight: 500;
+                          transition: background 0.15s, color 0.15s;"
+                   onmouseover="this.style.background='#f8f9fa'; this.style.color='#C8102E';"
+                   onmouseout="this.style.background='transparent'; this.style.color='#333';">
+                    Help
+                </a>
+                <a href="{% url 'privacy' %}"
+                   class="d-block menu-link"
+                   style="padding: 14px 24px; color: #333; text-decoration: none;
+                          font-size: 1.05rem; letter-spacing: 1px; font-weight: 500;
+                          transition: background 0.15s, color 0.15s;"
+                   onmouseover="this.style.background='#f8f9fa'; this.style.color='#C8102E';"
+                   onmouseout="this.style.background='transparent'; this.style.color='#333';">
+                    Privacy
+                </a>
+                <a href="{% url 'disclaimer' %}"
+                   class="d-block menu-link"
+                   style="padding: 14px 24px; color: #333; text-decoration: none;
+                          font-size: 1.05rem; letter-spacing: 1px; font-weight: 500;
+                          transition: background 0.15s, color 0.15s;"
+                   onmouseover="this.style.background='#f8f9fa'; this.style.color='#C8102E';"
+                   onmouseout="this.style.background='transparent'; this.style.color='#333';">
+                    Disclaimer
+                </a>
+            </nav>
+        </div>
+    </div>
 
     <div class="container" style="position: relative; z-index: 10;">
         <div class="row">
@@ -144,9 +204,6 @@
         {% block content %}
         {% endblock %}
     </main>
-
-    {% block about_link %}{% endblock %}
-    {% block help_link %}{% endblock %}
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 
