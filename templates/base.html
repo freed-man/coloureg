@@ -330,25 +330,25 @@
             font-weight: 400;
         }
 
-        /* NUCLEAR OVERRIDE — on touch devices, email link never paints under
-           any circumstances. Touch browsers can leave :hover/:focus/:active
-           states stuck after returning from external apps like Gmail.
+        /* NUCLEAR OVERRIDE — on touch devices, email link uses plain white
+           text with NO gradient at all. The wide-gradient + background-clip
+           technique can leave touch browsers in a stuck state where the
+           gradient stays positioned at 0% even after returning from Gmail.
+           By stripping the gradient entirely on touch, there's nothing for
+           the browser to "remember" — email is always plain white text.
            Desktop with real mouse keeps the hover paint via @media (hover: hover). */
         @media (hover: none) {
-            .menu-item-email .menu-text,
-            .menu-item-email:hover .menu-text,
-            .menu-item-email:focus .menu-text,
-            .menu-item-email:active .menu-text {
-                background-position: 100% 0 !important;
+            .menu-item-email .menu-text {
+                background: none !important;
+                background-image: none !important;
+                -webkit-background-clip: initial !important;
+                background-clip: initial !important;
+                -webkit-text-fill-color: #fff !important;
+                color: #fff !important;
                 transition: none !important;
             }
-            .menu-item-email::before,
-            .menu-item-email:hover::before,
-            .menu-item-email:focus::before,
-            .menu-item-email:active::before {
-                opacity: 0 !important;
-                transform: translateY(-50%) translateX(-8px) !important;
-                transition: none !important;
+            .menu-item-email::before {
+                display: none !important;
             }
             .menu-item-email,
             .menu-item-email:hover,
