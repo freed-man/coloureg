@@ -481,22 +481,30 @@
                         if (isEmailLink) {
                             // EMAIL TAP FLOW:
                             // 1. Paint sweeps in over 600ms
-                            // 2. At 600ms: strip the painting class (revert to white)
-                            // 3. Force a browser repaint so the white state is committed
-                            // 4. THEN trigger mailto: (mail app opens with email already white)
-                            // This order matters — we revert BEFORE the tab gets
-                            // backgrounded, so there's no stuck painted state to
-                            // worry about when the user returns from the mail app.
+                            // 2. At 600ms: revert to white + blur the element
+                            //    (so :focus/:active states don't stick)
+                            // 3. Navigate via a temporary hidden link
+                            //    (so the email element itself never receives
+                            //    the navigation focus that could stick)
                             item.classList.add('tapping');
                             setTimeout(function () {
                                 item.classList.remove('tapping');
                                 delete item.dataset.animating;
-                                // Force the browser to commit the revert before navigating
+                                item.blur();  // strip focus from the element
+                                // Force the browser to commit the visual state
                                 void item.offsetWidth;
-                                // Small delay so the white state is visible briefly
-                                // before the OS switches to the mail app
+
+                                // Trigger mailto via a fresh, hidden anchor.
+                                // This way the click event is on an element
+                                // we immediately remove, leaving no DOM node
+                                // for the browser to remember in a "tapped" state.
                                 setTimeout(function () {
-                                    window.location.href = href;
+                                    var hiddenLink = document.createElement('a');
+                                    hiddenLink.href = href;
+                                    hiddenLink.style.display = 'none';
+                                    document.body.appendChild(hiddenLink);
+                                    hiddenLink.click();
+                                    document.body.removeChild(hiddenLink);
                                 }, 50);
                             }, 600);
                             return;
@@ -522,6 +530,19 @@
                 // is reopened (covers edge cases like user backing out of an
                 // app and reopening the burger).
                 menuPanel.addEventListener('show.bs.offcanvas', function () {
+                    menuPanel.querySelectorAll('.menu-item.tapping').forEach(function (item) {
+                        item.classList.remove('tapping');
+                        delete item.dataset.animating;
+                    });
+                });
+
+                // When the page is shown (including from bfcache after returning
+                // from an external app), force a clean state on all menu items.
+                // We blur whatever has focus and clear tapping classes.
+                window.addEventListener('pageshow', function () {
+                    if (document.activeElement && document.activeElement.blur) {
+                        document.activeElement.blur();
+                    }
                     menuPanel.querySelectorAll('.menu-item.tapping').forEach(function (item) {
                         item.classList.remove('tapping');
                         delete item.dataset.animating;
