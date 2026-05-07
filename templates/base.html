@@ -230,10 +230,6 @@
             position: relative;
             transition: padding-left 0.3s ease;
         }
-        .menu-item:hover {
-            color: #fff;
-            padding-left: 32px;
-        }
         .menu-item::before {
             content: '\f5d0';  /* Font Awesome spray-can */
             font-family: 'Font Awesome 6 Free';
@@ -253,10 +249,6 @@
             -webkit-text-fill-color: transparent;
             color: transparent;
             transition: opacity 0.25s ease, transform 0.4s cubic-bezier(0.16, 1, 0.3, 1);
-        }
-        .menu-item:hover::before {
-            opacity: 1;
-            transform: translateY(-50%) translateX(0);
         }
         .menu-text {
             font-size: 2rem;
@@ -279,8 +271,24 @@
             -webkit-text-fill-color: transparent;
             transition: background-position 0.6s cubic-bezier(0.4, 0, 0.2, 1);
         }
-        .menu-item:hover .menu-text {
-            background-position: 0% 0;
+
+        /* Hover paint-sweep — only on devices with a real hover-capable input
+           (mice, trackpads). Touch devices skip these rules entirely so taps
+           don't trigger sticky hover states that linger after navigation or
+           when returning from external apps. Mobile users get the equivalent
+           via JS-driven .tapping class on internal page taps. */
+        @media (hover: hover) {
+            .menu-item:hover {
+                color: #fff;
+                padding-left: 32px;
+            }
+            .menu-item:hover::before {
+                opacity: 1;
+                transform: translateY(-50%) translateX(0);
+            }
+            .menu-item:hover .menu-text {
+                background-position: 0% 0;
+            }
         }
 
         /* Active page indicator — spray icon + rainbow text always visible
