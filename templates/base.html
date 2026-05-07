@@ -330,6 +330,29 @@
             font-weight: 400;
         }
 
+        /* On touch devices, email link is plain white text with no gradient,
+           no spray icon, no animation. The cross-browser inconsistencies
+           with state preservation when returning from external apps make
+           the painted version unreliable. Desktop hover via @media (hover: hover)
+           is unaffected and still works. */
+        @media (hover: none) {
+            .menu-item-email .menu-text {
+                background: none !important;
+                background-image: none !important;
+                -webkit-background-clip: initial !important;
+                background-clip: initial !important;
+                -webkit-text-fill-color: #fff !important;
+                color: #fff !important;
+                transition: none !important;
+            }
+            .menu-item-email::before {
+                display: none !important;
+            }
+            .menu-item-email {
+                padding-left: 0 !important;
+            }
+        }
+
         /* Slightly slower, smoother slide */
         .menu-panel.offcanvas {
             transition: transform 0.45s cubic-bezier(0.16, 1, 0.3, 1);
@@ -467,9 +490,14 @@
                         || href.startsWith('mailto:')
                         || href.startsWith('tel:');
 
+                    // Email/tel links on touch: no JS handler, no animation,
+                    // no paint at all. Just let the mailto fire natively.
+                    // (CSS @media (hover: none) ensures email stays white.)
+                    if (isEmailLink) return;
+
                     item.addEventListener('click', function (e) {
                         // If we've already triggered the animation, allow the
-                        // click through normally (avoids infinite intercept).
+                        // click through normally.
                         if (item.dataset.animating === '1') return;
 
                         // Same-page tap (already active): no animation.
@@ -478,53 +506,6 @@
                         e.preventDefault();
                         item.dataset.animating = '1';
 
-                        if (isEmailLink) {
-                            // EMAIL TAP FLOW:
-                            // 1. Animate paint in over 600ms
-                            // 2. At 600ms: SNAP back to white instantly (no transition)
-                            //    by temporarily disabling the transition,
-                            //    removing the tapping class, then forcing
-                            //    a layout flush before re-enabling.
-                            // 3. THEN trigger mailto. The browser snapshots
-                            //    a fully white state when the tab backgrounds.
-                            item.classList.add('tapping');
-                            setTimeout(function () {
-                                // Find the inner text span (which has the gradient)
-                                var textSpan = item.querySelector('.menu-text');
-
-                                // Disable transitions on both the item and its text
-                                // span so removing 'tapping' snaps instantly to white.
-                                if (textSpan) textSpan.style.transition = 'none';
-                                item.style.transition = 'none';
-
-                                item.classList.remove('tapping');
-                                delete item.dataset.animating;
-                                item.blur();
-
-                                // Force the browser to commit the no-transition,
-                                // tapping-removed state synchronously.
-                                void item.offsetWidth;
-                                if (textSpan) void textSpan.offsetWidth;
-
-                                // Trigger mailto via a fresh, hidden anchor.
-                                var hiddenLink = document.createElement('a');
-                                hiddenLink.href = href;
-                                hiddenLink.style.display = 'none';
-                                document.body.appendChild(hiddenLink);
-                                hiddenLink.click();
-                                document.body.removeChild(hiddenLink);
-
-                                // After the mail app launch is in flight, restore
-                                // transitions so future hovers/taps animate again.
-                                setTimeout(function () {
-                                    if (textSpan) textSpan.style.transition = '';
-                                    item.style.transition = '';
-                                }, 100);
-                            }, 600);
-                            return;
-                        }
-
-                        // INTERNAL PAGE LINKS:
                         // Strip 'active' from current page so its rainbow
                         // visually leaves during the new item's animation.
                         var currentlyActive = menuPanel.querySelector('.menu-item.active');
@@ -541,22 +522,8 @@
                 });
 
                 // Safety net: clear any lingering 'tapping' class when menu
-                // is reopened (covers edge cases like user backing out of an
-                // app and reopening the burger).
+                // is reopened.
                 menuPanel.addEventListener('show.bs.offcanvas', function () {
-                    menuPanel.querySelectorAll('.menu-item.tapping').forEach(function (item) {
-                        item.classList.remove('tapping');
-                        delete item.dataset.animating;
-                    });
-                });
-
-                // When the page is shown (including from bfcache after returning
-                // from an external app), force a clean state on all menu items.
-                // We blur whatever has focus and clear tapping classes.
-                window.addEventListener('pageshow', function () {
-                    if (document.activeElement && document.activeElement.blur) {
-                        document.activeElement.blur();
-                    }
                     menuPanel.querySelectorAll('.menu-item.tapping').forEach(function (item) {
                         item.classList.remove('tapping');
                         delete item.dataset.animating;
