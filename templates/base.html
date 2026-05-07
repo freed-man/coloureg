@@ -160,7 +160,7 @@
            ============================================================ */
         .menu-panel {
             width: 100% !important;
-            max-width: 480px;
+            max-width: 420px;
             background: #0d0d0d;
             color: #fff;
             border-left: none !important;
@@ -221,7 +221,7 @@
         }
         .menu-item {
             display: flex;
-            align-items: baseline;
+            align-items: center;
             gap: 16px;
             padding: 18px 0;
             color: #fff;
@@ -232,66 +232,79 @@
         }
         .menu-item:hover {
             color: #fff;
-            padding-left: 12px;
+            padding-left: 32px;
         }
         .menu-item::before {
-            content: '';
+            content: '\f5d0';  /* Font Awesome spray-can */
+            font-family: 'Font Awesome 6 Free';
+            font-weight: 900;
             position: absolute;
             left: 0;
             top: 50%;
-            width: 0;
-            height: 1px;
-            background: linear-gradient(90deg, #e74c3c, #f39c12, #f1c40f, #2ecc71, #3498db, #9b59b6);
-            transition: width 0.3s ease;
-            transform: translateY(-50%);
+            transform: translateY(-50%) translateX(-8px);
+            font-size: 1rem;
+            opacity: 0;
+            background: linear-gradient(
+                90deg,
+                #e74c3c, #f39c12, #f1c40f, #2ecc71, #3498db, #9b59b6
+            );
+            -webkit-background-clip: text;
+            background-clip: text;
+            -webkit-text-fill-color: transparent;
+            color: transparent;
+            transition: opacity 0.25s ease, transform 0.4s cubic-bezier(0.16, 1, 0.3, 1);
         }
         .menu-item:hover::before {
-            width: 8px;
-        }
-        .menu-num {
-            font-family: 'IBM Plex Mono', monospace;
-            font-size: 0.7rem;
-            color: #666;
-            font-weight: 400;
-            letter-spacing: 1px;
-            min-width: 24px;
-            transition: color 0.3s;
-        }
-        .menu-item:hover .menu-num {
-            color: #999;
+            opacity: 1;
+            transform: translateY(-50%) translateX(0);
         }
         .menu-text {
             font-size: 2rem;
             font-weight: 500;
             letter-spacing: -0.5px;
             line-height: 1.2;
-            background: linear-gradient(90deg, #fff, #fff);
+            /* Wide gradient: solid rainbow on the left half, solid white on the right half.
+               The hard transition between them at exactly 50% means default position
+               shows pure white, hover position shows pure rainbow. */
+            background: linear-gradient(
+                90deg,
+                #e74c3c 0%, #f39c12 10%, #f1c40f 20%, #2ecc71 30%,
+                #3498db 40%, #9b59b6 50%,
+                #ffffff 50%, #ffffff 100%
+            );
+            background-size: 200% 100%;
+            background-position: 100% 0;
             -webkit-background-clip: text;
             background-clip: text;
             -webkit-text-fill-color: transparent;
-            transition: background 0.3s ease;
+            transition: background-position 0.6s cubic-bezier(0.4, 0, 0.2, 1);
         }
         .menu-item:hover .menu-text {
-            background: linear-gradient(90deg, #e74c3c, #f39c12, #f1c40f, #2ecc71, #3498db, #9b59b6);
-            -webkit-background-clip: text;
-            background-clip: text;
-            -webkit-text-fill-color: transparent;
+            background-position: 0% 0;
         }
 
         .menu-footer {
             margin-top: 32px;
             padding-top: 24px;
-            border-top: 1px solid rgba(255, 255, 255, 0.08);
         }
         .menu-email {
             display: inline-block;
-            color: #fff;
             text-decoration: none;
             font-size: 0.95rem;
             letter-spacing: 0.3px;
-            margin-bottom: 12px;
             position: relative;
-            transition: color 0.2s;
+            background: linear-gradient(
+                90deg,
+                #e74c3c 0%, #f39c12 10%, #f1c40f 20%, #2ecc71 30%,
+                #3498db 40%, #9b59b6 50%,
+                #ffffff 50%, #ffffff 100%
+            );
+            background-size: 200% 100%;
+            background-position: 100% 0;
+            -webkit-background-clip: text;
+            background-clip: text;
+            -webkit-text-fill-color: transparent;
+            transition: background-position 0.6s cubic-bezier(0.4, 0, 0.2, 1);
         }
         .menu-email::after {
             content: '';
@@ -304,16 +317,10 @@
             transition: width 0.3s ease;
         }
         .menu-email:hover {
-            color: #fff;
+            background-position: 0% 0;
         }
         .menu-email:hover::after {
             width: 100%;
-        }
-        .menu-tag {
-            color: #666;
-            font-size: 0.85rem;
-            margin: 0;
-            line-height: 1.6;
         }
 
         /* Slightly slower, smoother slide */
@@ -371,25 +378,20 @@
             <h2 id="mainMenuLabel" class="visually-hidden">Site menu</h2>
             <nav class="menu-nav">
                 <a href="{% url 'about' %}" class="menu-item">
-                    <span class="menu-num">01</span>
                     <span class="menu-text">About</span>
                 </a>
                 <a href="{% url 'help' %}" class="menu-item">
-                    <span class="menu-num">02</span>
                     <span class="menu-text">Help</span>
                 </a>
                 <a href="{% url 'privacy' %}" class="menu-item">
-                    <span class="menu-num">03</span>
                     <span class="menu-text">Privacy</span>
                 </a>
                 <a href="{% url 'disclaimer' %}" class="menu-item">
-                    <span class="menu-num">04</span>
                     <span class="menu-text">Disclaimer</span>
                 </a>
             </nav>
             <div class="menu-footer">
                 <a href="mailto:hello@coloureg.com" class="menu-email">hello@coloureg.com</a>
-                <p class="menu-tag">Find your car's paint code by registration.</p>
             </div>
         </div>
     </div>
