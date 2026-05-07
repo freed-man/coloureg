@@ -25,6 +25,12 @@
 
     <link rel="canonical" href="https://coloureg.com{{ request.path }}">
 
+    <!-- Preconnect to third-party origins for faster first paint -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
+    <link rel="preconnect" href="https://cdnjs.cloudflare.com" crossorigin>
+
     <!-- Open Graph / Facebook -->
     <meta property="og:type" content="website">
     <meta property="og:url" content="https://coloureg.com{{ request.path }}">
@@ -93,6 +99,7 @@
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
     <link rel="stylesheet" href="{% static 'css/style.css' %}">
+    <link rel="stylesheet" href="{% static 'css/menu.css' %}">
     <link rel="icon" type="image/x-icon" href="{% static 'images/favicon/favicon.ico' %}">
     <link rel="apple-touch-icon" href="{% static 'images/favicon/apple-touch-icon.png' %}">
     <link rel="icon" type="image/png" sizes="192x192" href="{% static 'images/favicon/favicon-192x192.png' %}">
@@ -107,254 +114,6 @@
             clip: rect(0, 0, 0, 0);
             white-space: nowrap;
             border: 0;
-        }
-
-        /* ============================================================
-           Burger toggle — three lines that morph into an X when open
-           ============================================================ */
-        .menu-toggle {
-            position: relative;
-            width: 36px;
-            height: 36px;
-            background: transparent;
-            border: none;
-            padding: 0;
-            cursor: pointer;
-            display: flex;
-            flex-direction: column;
-            justify-content: center;
-            align-items: center;
-            gap: 5px;
-        }
-        .menu-toggle:focus {
-            outline: none;
-            box-shadow: 0 0 0 2px rgba(52, 152, 219, 0.3);
-            border-radius: 4px;
-        }
-        .menu-toggle-bar {
-            display: block;
-            width: 22px;
-            height: 2px;
-            background: #1a1a1a;
-            border-radius: 2px;
-            transition: transform 0.35s ease, opacity 0.25s ease, width 0.35s ease;
-            transform-origin: center;
-        }
-        .menu-toggle:hover .menu-toggle-bar:nth-child(2) {
-            width: 16px;
-        }
-        /* When the offcanvas is open, animate to an X */
-        body.menu-open .menu-toggle-bar:nth-child(1) {
-            transform: translateY(7px) rotate(45deg);
-        }
-        body.menu-open .menu-toggle-bar:nth-child(2) {
-            opacity: 0;
-            width: 0;
-        }
-        body.menu-open .menu-toggle-bar:nth-child(3) {
-            transform: translateY(-7px) rotate(-45deg);
-        }
-
-        /* ============================================================
-           Slide-in menu panel
-           ============================================================ */
-        .menu-panel {
-            width: 100% !important;
-            max-width: 340px;
-            background: #0d0d0d;
-            color: #fff;
-            border-left: none !important;
-            font-family: 'IBM Plex Sans', sans-serif;
-        }
-        .menu-panel::before {
-            content: '';
-            position: absolute;
-            top: 0;
-            left: 0;
-            right: 0;
-            height: 4px;
-            background: linear-gradient(90deg, #e74c3c, #f39c12, #f1c40f, #2ecc71, #3498db, #9b59b6);
-        }
-        .menu-close-wrap {
-            display: flex;
-            justify-content: flex-end;
-            padding: 24px 32px 0;
-        }
-        .menu-close {
-            position: relative;
-            width: 40px;
-            height: 40px;
-            background: transparent;
-            border: none;
-            cursor: pointer;
-            padding: 0;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            border-radius: 50%;
-            transition: background 0.2s;
-        }
-        .menu-close:hover {
-            background: rgba(255, 255, 255, 0.08);
-        }
-        .menu-close span {
-            position: absolute;
-            width: 22px;
-            height: 2px;
-            background: #fff;
-            border-radius: 2px;
-        }
-        .menu-close span:nth-child(1) { transform: rotate(45deg); }
-        .menu-close span:nth-child(2) { transform: rotate(-45deg); }
-
-        .menu-body {
-            padding: 40px 48px 48px;
-            display: flex;
-            flex-direction: column;
-            height: calc(100% - 64px);
-        }
-        .menu-nav {
-            display: flex;
-            flex-direction: column;
-            gap: 4px;
-            flex: 1;
-        }
-        .menu-item {
-            display: flex;
-            align-items: center;
-            gap: 16px;
-            padding: 18px 0;
-            color: #fff;
-            text-decoration: none;
-            border-bottom: 1px solid rgba(255, 255, 255, 0.06);
-            position: relative;
-            transition: padding-left 0.3s ease;
-        }
-        .menu-item::before {
-            content: '\f5d0';  /* Font Awesome spray-can */
-            font-family: 'Font Awesome 6 Free';
-            font-weight: 900;
-            position: absolute;
-            left: 0;
-            top: 50%;
-            transform: translateY(-50%) translateX(-8px);
-            font-size: 1.2rem;
-            opacity: 0;
-            background: linear-gradient(
-                90deg,
-                #e74c3c, #f39c12, #f1c40f, #2ecc71, #3498db, #9b59b6
-            );
-            -webkit-background-clip: text;
-            background-clip: text;
-            -webkit-text-fill-color: transparent;
-            color: transparent;
-            transition: opacity 0.25s ease, transform 0.4s cubic-bezier(0.16, 1, 0.3, 1);
-        }
-        .menu-text {
-            font-size: 2rem;
-            font-weight: 500;
-            letter-spacing: -0.5px;
-            line-height: 1.2;
-            /* Wide gradient: solid rainbow on the left half, solid white on the right half.
-               The hard transition between them at exactly 50% means default position
-               shows pure white, hover position shows pure rainbow. */
-            background: linear-gradient(
-                90deg,
-                #e74c3c 0%, #f39c12 10%, #f1c40f 20%, #2ecc71 30%,
-                #3498db 40%, #9b59b6 50%,
-                #ffffff 50%, #ffffff 100%
-            );
-            background-size: 200% 100%;
-            background-position: 100% 0;
-            -webkit-background-clip: text;
-            background-clip: text;
-            -webkit-text-fill-color: transparent;
-            transition: background-position 0.6s cubic-bezier(0.4, 0, 0.2, 1);
-        }
-
-        /* Hover paint-sweep — only on devices with a real hover-capable input
-           (mice, trackpads). Touch devices skip these rules entirely so taps
-           don't trigger sticky hover states that linger after navigation or
-           when returning from external apps. Mobile users get the equivalent
-           via JS-driven .tapping class on internal page taps. */
-        @media (hover: hover) {
-            .menu-item:hover {
-                color: #fff;
-                padding-left: 32px;
-            }
-            .menu-item:hover::before {
-                opacity: 1;
-                transform: translateY(-50%) translateX(0);
-            }
-            .menu-item:hover .menu-text {
-                background-position: 0% 0;
-            }
-        }
-
-        /* Active page indicator — spray icon + rainbow text always visible
-           for the current page. No transition, just static. */
-        .menu-item.active {
-            padding-left: 32px;
-        }
-        .menu-item.active::before {
-            opacity: 1;
-            transform: translateY(-50%) translateX(0);
-        }
-        .menu-item.active .menu-text {
-            background-position: 0% 0;
-        }
-
-        /* Mobile tap animation — when user taps a menu item, run the hover
-           animation as a one-shot before navigating away. */
-        .menu-item.tapping {
-            padding-left: 32px;
-        }
-        .menu-item.tapping::before {
-            opacity: 1;
-            transform: translateY(-50%) translateX(0);
-        }
-        .menu-item.tapping .menu-text {
-            background-position: 0% 0;
-        }
-
-        /* Plain email link in the panel footer — separate from the
-           animated menu items. White text by default, subtle underline
-           on desktop hover, no gradient or animation. */
-        .menu-footer {
-            margin-top: 32px;
-            padding-top: 20px;
-        }
-        /* Email link — static rainbow gradient text, no animation, no underline,
-           no hover/tap effects. Just a colourful hyperlink that opens the user's
-           mail client when clicked. */
-        .menu-email {
-            display: inline-block;
-            text-decoration: none;
-            font-size: 0.95rem;
-            letter-spacing: 0.3px;
-            background: linear-gradient(90deg, #e74c3c, #f39c12, #f1c40f, #2ecc71, #3498db, #9b59b6);
-            -webkit-background-clip: text;
-            background-clip: text;
-            -webkit-text-fill-color: transparent;
-            color: transparent;
-        }
-
-        /* Slightly slower, smoother slide */
-        .menu-panel.offcanvas {
-            transition: transform 0.45s cubic-bezier(0.16, 1, 0.3, 1);
-        }
-
-        /* Responsive — narrower padding on smaller screens */
-        @media (max-width: 480px) {
-            .menu-body {
-                padding: 32px 28px 32px;
-            }
-            .menu-text {
-                font-size: 1.6rem;
-            }
-            .menu-close-wrap {
-                padding: 20px 20px 0;
-            }
         }
     </style>
     {% block extra_css %}
@@ -495,7 +254,7 @@
 
                         setTimeout(function () {
                             window.location.href = href;
-                        }, 500);
+                        }, 600);
                     });
                 });
 
