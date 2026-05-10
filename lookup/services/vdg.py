@@ -1,10 +1,28 @@
-"""VDG (Vehicle Data Global) API client."""
+"""VDG (Vehicle Data Global) API client.
+
+Single combined-package call: PaintCodeDetails has been extended on the VDG
+side to also include VehicleDetails + ModelDetails as components, so a single
+HTTP request returns vehicle data, model spec, and paint code(s) in one shot.
+
+Cost is unchanged at £0.50 per successful lookup (£0.15 + £0.35 + £0.00 for
+the dependency-included Model Details), but latency is roughly halved compared
+to the previous two-sequential-call pattern.
+
+Per-document StatusCode is exposed in the response so the caller can record
+which documents returned data.
+"""
 import os
+import re
+
 import requests
 
 
 VDG_BASE_URL = 'https://uk.api.vehicledataglobal.com/r2'
 VDG_LOOKUP_ENDPOINT = f'{VDG_BASE_URL}/lookup'
+
+# The single package name used for every lookup. Configured on the VDG side
+# to include VehicleDetails + ModelDetails + PaintCodeDetails.
+VDG_PACKAGE_NAME = 'PaintCodeDetails'
 
 
 class VdgError(Exception):
@@ -15,19 +33,20 @@ class VdgNotFoundError(VdgError):
     pass
 
 
-def _make_request(endpoint, package_name, registration):
+def _make_request(registration):
+    """Single combined call. Returns the parsed JSON dict, or raises."""
     api_key = os.environ.get('VDG_API_KEY')
     if not api_key:
         raise VdgError('VDG_API_KEY not configured')
 
     params = {
-        'packagename': package_name,
+        'packagename': VDG_PACKAGE_NAME,
         'apikey': api_key,
         'vrm': registration,
     }
 
     try:
-        response = requests.get(endpoint, params=params, timeout=30)
+        response = requests.get(VDG_LOOKUP_ENDPOINT, params=params, timeout=30)
     except requests.exceptions.RequestException as e:
         raise VdgError(f'VDG request failed: {e}')
 
@@ -44,7 +63,7 @@ def _make_request(endpoint, package_name, registration):
     status_message = response_info.get('StatusMessage', '')
 
     if not is_success:
-        if 'NotFound' in status_message or 'not found' in status_message.lower():
+        if 'not found' in status_message.lower():
             raise VdgNotFoundError(f'Vehicle not found: {registration}')
         if 'Invalid' in status_message and 'Key' in status_message:
             raise VdgError('VDG API key invalid')
@@ -76,7 +95,6 @@ def smart_title(text):
     """
     if not text:
         return text
-    import re
     # Split on word boundaries that should trigger capitalisation: whitespace,
     # hyphens, opening/closing parens, slashes. Keep separators by using a
     # capturing group so we can rejoin.
@@ -118,30 +136,25 @@ def _normalize_fuel_type(fuel):
     return mapping.get(fuel, fuel.title())
 
 
-def get_vehicle_details(registration):
-    """Fetch full vehicle details from VDG VehicleDetails package.
-
-    Returns dict with: make, model, year, colour, vin, fuel_type,
-    transmission, engine_description, balance.
-    Or None if vehicle not found.
-
-    fuel_type and engine_description are pre-composed display strings:
-      ICE: engine_description = '1.6 TDI BLUEMOTION (103bhp)'
-           fuel_type          = 'Diesel (4 cylinders)'
-      EV:  engine_description = '150 kW Electric Motor (201bhp)'
-           fuel_type          = 'Electric (58kWh battery)'
+def _doc_succeeded(doc):
+    """A document inside Results.* is considered to have returned data when
+    its StatusCode is 0 (Success). VDG occasionally returns a top-level
+    success but with one document partially failed — this is the per-doc check.
     """
-    try:
-        data = _make_request(
-            VDG_LOOKUP_ENDPOINT,
-            'VehicleDetails',
-            registration,
-        )
-    except VdgNotFoundError:
-        return None
+    if not doc:
+        return False
+    return doc.get('StatusCode', -1) == 0
 
-    results = data.get('Results', {})
 
+def _parse_vehicle_fields(results):
+    """Pull vehicle fields out of the combined response.
+
+    Reads from Results.VehicleDetails (DVLA-derived fields like VIN, year,
+    colour, body type) and Results.ModelDetails (manufacturer-spec fields
+    like clean make/model, transmission, engine description, BHP).
+
+    Returns a dict with the same shape the old get_vehicle_details() used.
+    """
     vehicle_details = results.get('VehicleDetails', {}) or {}
     identification = vehicle_details.get('VehicleIdentification', {}) or {}
     vin = identification.get('Vin', '')
@@ -262,51 +275,22 @@ def get_vehicle_details(registration):
         'fuel_type': fuel_display,
         'transmission': transmission,
         'engine_description': engine_description,
-        'balance': _extract_balance(data),
     }
 
 
-def get_vin(registration):
-    """Fetch just the VIN. Compatibility wrapper."""
-    details = get_vehicle_details(registration)
-    if details:
-        return details.get('vin')
-    return None
-
-
-def get_paint_code(registration):
-    """Fetch paint code(s) from VDG Paint Package.
+def _parse_paint_fields(results):
+    """Extract paint code(s) from Results.PaintCodeDetails.
 
     Returns dict with:
-      - 'code': primary paint code (first in list)
-      - 'description': primary paint description
+      - 'code': primary paint code (first in list), '' if none
+      - 'description': primary paint description, '' if none
       - 'all_codes': list of all paint codes [{code, description}, ...]
-      - 'balance': latest VDG balance
-      - 'found': True/False
     """
-    try:
-        data = _make_request(
-            VDG_LOOKUP_ENDPOINT,
-            'PaintCodeDetails',
-            registration,
-        )
-    except VdgNotFoundError:
-        return None
-
-    balance = _extract_balance(data)
-
-    results = data.get('Results', {})
-    paint_details = results.get('PaintCodeDetails', {})
-    paint_list = paint_details.get('PaintCodeList', [])
+    paint_details = results.get('PaintCodeDetails', {}) or {}
+    paint_list = paint_details.get('PaintCodeList', []) or []
 
     if not paint_list:
-        return {
-            'code': '',
-            'description': '',
-            'all_codes': [],
-            'balance': balance,
-            'found': False,
-        }
+        return {'code': '', 'description': '', 'all_codes': []}
 
     all_codes = [
         {'code': p.get('Code', ''), 'description': smart_title(p.get('Description', ''))}
@@ -318,6 +302,49 @@ def get_paint_code(registration):
         'code': first.get('Code', ''),
         'description': smart_title(first.get('Description', '')),
         'all_codes': all_codes,
-        'balance': balance,
-        'found': True,
     }
+
+
+def get_combined_lookup(registration):
+    """Single combined VDG call. Returns vehicle + paint data + per-doc flags.
+
+    Returns dict with:
+      - 'make', 'model', 'year', 'colour', 'vin', 'fuel_type',
+        'transmission', 'engine_description'  -- vehicle/model fields
+      - 'paint_code', 'paint_description', 'all_paint_codes'  -- paint fields
+      - 'vehicle_returned': bool — Results.VehicleDetails StatusCode == 0
+      - 'paint_returned':   bool — Results.PaintCodeDetails returned ≥1 paint code
+      - 'balance': float — VDG account balance after this call (or None)
+
+    Returns None if VDG reports the vehicle was not found at all.
+    Raises VdgError on HTTP / config / unexpected-payload errors.
+    """
+    try:
+        data = _make_request(registration)
+    except VdgNotFoundError:
+        return None
+
+    results = data.get('Results', {}) or {}
+    vehicle_details_doc = results.get('VehicleDetails', {}) or {}
+    paint_details_doc = results.get('PaintCodeDetails', {}) or {}
+
+    vehicle_returned = _doc_succeeded(vehicle_details_doc)
+    # Paint is "returned" only if both StatusCode is OK *and* there's at least
+    # one paint code. An empty PaintCodeList is what triggers VDG's auto-refund.
+    paint_list = paint_details_doc.get('PaintCodeList', []) or []
+    paint_returned = _doc_succeeded(paint_details_doc) and len(paint_list) > 0
+
+    out = {
+        'vehicle_returned': vehicle_returned,
+        'paint_returned': paint_returned,
+        'balance': _extract_balance(data),
+    }
+
+    # Always pull what we can from each document, even on partial success.
+    out.update(_parse_vehicle_fields(results))
+    paint = _parse_paint_fields(results)
+    out['paint_code'] = paint['code']
+    out['paint_description'] = paint['description']
+    out['all_paint_codes'] = paint['all_codes']
+
+    return out

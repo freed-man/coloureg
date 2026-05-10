@@ -16,8 +16,9 @@ class SearchAdmin(admin.ModelAdmin):
     list_filter = (
         'success',
         'provider',
-        'vdg_paint_called',
-        'vdg_vehicle_called',
+        'vdg_combined_called',
+        'vdg_vehicle_returned',
+        'vdg_paint_returned',
         'email_sent',
         'manual_lookup_completed',
     )
@@ -50,8 +51,9 @@ class SearchAdmin(admin.ModelAdmin):
         'success',
         'error_message',
         'lookup_duration_ms',
-        'vdg_paint_called',
-        'vdg_vehicle_called',
+        'vdg_combined_called',
+        'vdg_vehicle_returned',
+        'vdg_paint_returned',
         'vdg_balance_after_call',
         'email',
         'email_sent',
@@ -71,8 +73,9 @@ class SearchAdmin(admin.ModelAdmin):
         }),
         ('Cost Tracking', {
             'fields': (
-                'vdg_paint_called',
-                'vdg_vehicle_called',
+                'vdg_combined_called',
+                'vdg_vehicle_returned',
+                'vdg_paint_returned',
                 'vdg_balance_after_call',
             )
         }),

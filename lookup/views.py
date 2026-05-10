@@ -12,9 +12,7 @@ from django.views.decorators.http import require_POST
 from django_ratelimit.core import is_ratelimited
 from .models import Search, PaintSwatch
 from .services.vdg import (
-    get_vehicle_details,
-    get_vin,
-    get_paint_code,
+    get_combined_lookup,
     smart_title,
     VdgError,
     VdgNotFoundError,
@@ -192,17 +190,26 @@ def index(request):
             user_agent=request.META.get('HTTP_USER_AGENT', ''),
         )
 
-        # --- VDG VehicleDetails (PRIMARY) ---
-        vdg_details = None
+        # --- VDG combined lookup (single API call) ---
+        # The VDG PaintCodeDetails package now bundles VehicleDetails +
+        # ModelDetails + PaintCodeDetails, so one HTTP request returns
+        # everything we used to fetch in two. Latency roughly halved at the
+        # same £0.50 cost.
+        vdg_data = None
         latest_balance = None
         try:
-            vdg_details = get_vehicle_details(registration)
-            search.vdg_vehicle_called = True
-            if vdg_details and vdg_details.get('balance') is not None:
-                latest_balance = vdg_details.get('balance')
+            vdg_data = get_combined_lookup(registration)
+            search.vdg_combined_called = True
+            if vdg_data:
+                # Per-document tracking: each doc has its own StatusCode
+                # inside the response, exposed by vdg.py as boolean flags.
+                search.vdg_vehicle_returned = vdg_data.get('vehicle_returned', False)
+                search.vdg_paint_returned = vdg_data.get('paint_returned', False)
+                if vdg_data.get('balance') is not None:
+                    latest_balance = vdg_data.get('balance')
         except (VdgError, VdgNotFoundError) as e:
-            search.vdg_vehicle_called = True
-            search.error_message = f'VDG Vehicle: {str(e)[:200]}'
+            search.vdg_combined_called = True
+            search.error_message = f'VDG: {str(e)[:200]}'
 
         make = ''
         model = ''
@@ -213,15 +220,16 @@ def index(request):
         transmission = ''
         engine_description = ''
 
-        if vdg_details:
-            make = vdg_details.get('make', '')
-            model = vdg_details.get('model', '')
-            year = vdg_details.get('year')
-            colour = vdg_details.get('colour', '')
-            vin = vdg_details.get('vin', '')
-            fuel_type = vdg_details.get('fuel_type', '')
-            transmission = vdg_details.get('transmission', '')
-            engine_description = vdg_details.get('engine_description', '')
+        # Use VDG vehicle data if it returned successfully, else fall back to DVLA+MOT
+        if vdg_data and vdg_data.get('vehicle_returned'):
+            make = vdg_data.get('make', '')
+            model = vdg_data.get('model', '')
+            year = vdg_data.get('year')
+            colour = vdg_data.get('colour', '')
+            vin = vdg_data.get('vin', '')
+            fuel_type = vdg_data.get('fuel_type', '')
+            transmission = vdg_data.get('transmission', '')
+            engine_description = vdg_data.get('engine_description', '')
         else:
             # --- FALLBACK: DVLA + MOT ---
             dvla = get_dvla_data(registration)
@@ -258,27 +266,17 @@ def index(request):
         search.vin = vin or ''
         search.vehicle_title = vehicle_title
 
-        # --- VDG Paint Package ---
+        # --- Paint code (from same combined response) ---
         paint_code = None
         paint_description = None
         all_paint_codes = []
-        try:
-            paint_result = get_paint_code(registration)
-            search.vdg_paint_called = True
-            if paint_result:
-                if paint_result.get('balance') is not None:
-                    latest_balance = paint_result.get('balance')
-                if paint_result.get('found'):
-                    paint_code = paint_result['code']
-                    paint_description = paint_result['description']
-                    all_paint_codes = paint_result.get('all_codes', [])
-                    search.paint_code = paint_code
-                    search.paint_description = paint_description
-                    search.provider = Search.PROVIDER_VDG
-        except (VdgError, VdgNotFoundError) as e:
-            search.vdg_paint_called = True
-            existing = search.error_message or ''
-            search.error_message = f'{existing} | VDG Paint: {str(e)[:200]}'.strip(' |')
+        if vdg_data and vdg_data.get('paint_returned'):
+            paint_code = vdg_data.get('paint_code', '')
+            paint_description = vdg_data.get('paint_description', '')
+            all_paint_codes = vdg_data.get('all_paint_codes', [])
+            search.paint_code = paint_code
+            search.paint_description = paint_description
+            search.provider = Search.PROVIDER_VDG
 
         # Save latest VDG balance
         if latest_balance is not None:
@@ -669,14 +667,26 @@ def admin_stats(request):
     device_total = sum(device_counts.values())
 
     # VDG cost tracker
-    # £0.15 per VehicleDetails (always charged)
+    # £0.15 per VehicleDetails (always charged when returned)
     # £0.35 per PaintCodeDetails (refunded by VDG if no paint data returned)
-    vdg_vehicle_calls = Search.objects.filter(vdg_vehicle_called=True).count()
-    vdg_paint_calls = Search.objects.filter(vdg_paint_called=True).count()
-    paint_calls_charged = Search.objects.filter(
-        vdg_paint_called=True
-    ).exclude(paint_code='').count()
-    paint_refunds_count = vdg_paint_calls - paint_calls_charged
+    # As of the combined-call refactor, each lookup makes ONE API call that
+    # contains both documents. We track which documents *returned* data
+    # (vdg_vehicle_returned, vdg_paint_returned), which is what determines
+    # billing and refunds. Old call-flags (vdg_paint_called, vdg_vehicle_called)
+    # were backfilled into the returned-flags by migration 0006.
+    #
+    # Variable naming kept as vdg_vehicle_calls / vdg_paint_calls for backward
+    # compatibility with admin_stats.html — semantically these are now "how many
+    # times we were billed for X", which equals "how many times the doc returned"
+    # (vehicle: always charged when returned) or "how many combined calls"
+    # (paint: charged then refunded if no code).
+    vdg_vehicle_calls = Search.objects.filter(vdg_vehicle_returned=True).count()
+    # Paint is initially billed on every combined call where the package was
+    # requested. The refund happens after if no paint code came back.
+    vdg_paint_calls = Search.objects.filter(vdg_combined_called=True).count()
+    # Of those billed, how many actually returned paint data (kept) vs got refunded
+    paint_calls_returned = Search.objects.filter(vdg_paint_returned=True).count()
+    paint_refunds_count = vdg_paint_calls - paint_calls_returned
 
     vehicle_cost = round(vdg_vehicle_calls * 0.15, 2)
     paint_charged_total = round(vdg_paint_calls * 0.35, 2)
@@ -715,7 +725,7 @@ def admin_stats(request):
         'device_total': device_total,
         'vdg_vehicle_calls': vdg_vehicle_calls,
         'vdg_paint_calls': vdg_paint_calls,
-        'paint_calls_charged': paint_calls_charged,
+        'paint_calls_charged': paint_calls_returned,
         'paint_refunds_count': paint_refunds_count,
         'paint_refunds_amount': paint_refunds_amount,
         'vehicle_cost': vehicle_cost,

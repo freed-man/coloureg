@@ -44,8 +44,14 @@ class Search(models.Model):
     lookup_duration_ms = models.IntegerField(null=True, blank=True)
 
     # Cost tracking (VDG charges per call)
-    vdg_paint_called = models.BooleanField(default=False)
-    vdg_vehicle_called = models.BooleanField(default=False)
+    # Per-document flags for the combined PaintCodeDetails call.
+    # vdg_combined_called   — was the VDG combined call made at all?
+    # vdg_vehicle_returned  — did Results.VehicleDetails return successfully? (£0.15 charged)
+    # vdg_paint_returned    — did Results.PaintCodeDetails return ≥1 paint code? (£0.35 charged
+    #                          if False, refunded by VDG; if True, kept)
+    vdg_combined_called = models.BooleanField(default=False)
+    vdg_vehicle_returned = models.BooleanField(default=False)
+    vdg_paint_returned = models.BooleanField(default=False)
     vdg_balance_after_call = models.DecimalField(
         max_digits=10, decimal_places=2, null=True, blank=True
     )
