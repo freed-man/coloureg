@@ -95,20 +95,34 @@ def _extract_balance(data):
 
 
 def smart_title(text):
-    """Title-case a string while preserving all-uppercase tokens.
+    """Title-case a string for paint descriptions.
 
-    VDG returns paint descriptions in sentence case ('Glacier white-metallic'),
-    which we want to display as 'Glacier White-Metallic'. Python's built-in
-    .title() would also wrongly lowercase already-uppercase tokens like 'BMW',
-    so this function only capitalises the first letter of each word and leaves
-    the rest of each word untouched.
+    VDG returns paint descriptions in mixed cases:
+      - Sentence case: 'Glacier white-metallic' → 'Glacier White-Metallic'
+      - All-caps SHOUTING: 'BLUE IRON' → 'Blue Iron'
+      - Already-correct title: 'Limestone Grey' → unchanged
 
-    Splits on whitespace, hyphens, and parentheses so multi-token paint names
-    capitalise correctly: 'metallic deep-blue (sapphire)' becomes
-    'Metallic Deep-Blue (Sapphire)'.
+    The function preserves the first character of each word (uppercase)
+    and otherwise leaves word internals alone — *unless* the whole input
+    is all-caps, in which case we treat it as shouting and lowercase
+    the rest of each word.
+
+    Used only on paint descriptions (never makes/models), so we don't
+    need to worry about acronymic brand tokens like 'BMW', 'AMG', 'GTI'
+    appearing inside the input.
+
+    Splits on whitespace, hyphens, parentheses, and slashes so multi-token
+    paint names capitalise correctly: 'metallic deep-blue (sapphire)'
+    becomes 'Metallic Deep-Blue (Sapphire)'.
     """
     if not text:
         return text
+    # If the whole string is uppercase (no lowercase chars anywhere), it's
+    # shouting case — lowercase first so the per-word logic below produces
+    # proper Title Case rather than preserving every word as if it were an
+    # acronym. 'BLUE IRON' → 'blue iron' here, → 'Blue Iron' below.
+    if text.isupper():
+        text = text.lower()
     # Split on word boundaries that should trigger capitalisation: whitespace,
     # hyphens, opening/closing parens, slashes. Keep separators by using a
     # capturing group so we can rejoin.
@@ -118,11 +132,8 @@ def smart_title(text):
         if not p or p.isspace() or p in '-()/':
             out.append(p)
             continue
-        # Skip already all-uppercase tokens (e.g. 'BMW', 'AMG', 'GTI')
-        if p.isupper():
-            out.append(p)
-            continue
-        # Otherwise, uppercase first character only — leave rest of word alone
+        # Uppercase first character only — leave rest of word alone so that
+        # already-correct casings like 'McLaren' or 'eBoost' survive intact.
         out.append(p[0].upper() + p[1:])
     return ''.join(out)
 
