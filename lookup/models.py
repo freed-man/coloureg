@@ -1,3 +1,5 @@
+import re
+
 from django.db import models
 
 
@@ -19,6 +21,11 @@ class Search(models.Model):
     timestamp = models.DateTimeField(auto_now_add=True, db_index=True)
     ip_address = models.GenericIPAddressField(null=True, blank=True)
     user_agent = models.TextField(blank=True, default='')
+    # Computed at write time from user_agent, then queried as a plain CharField
+    # for fast aggregation in /admin-stats/. Saves iterating every Search row
+    # in Python on every dashboard render. Possible values match parse_device():
+    # 'mobile', 'tablet', 'desktop', 'unknown'.
+    device = models.CharField(max_length=8, blank=True, default='', db_index=True)
 
     # Search input
     registration = models.CharField(max_length=10, db_index=True)
@@ -82,8 +89,6 @@ class Search(models.Model):
 # code, hex) combination; multiple rows can exist for the same (manufacturer, code)
 # when different models or eras use the same paint code for different colours.
 # =============================================================================
-
-import re
 
 
 class PaintSwatch(models.Model):
@@ -269,6 +274,12 @@ class PaintSwatch(models.Model):
             # entry — e.g. 'a3sportbacktdi138slinespecialedition' vs DB 'a3sportback'.
             # Prefix-match so longer user input still matches shorter DB entries,
             # picking the most specific (longest) DB match.
+            #
+            # If Tier 2 narrows to nothing (no applicable_model prefix matched),
+            # we deliberately keep the wider `candidates` set and let Tiers 4-6
+            # try to disambiguate. This is intentional: Tier 4's fuzzy first-
+            # token match is more forgiving than Tier 2's full-prefix and often
+            # rescues these cases.
             if model:
                 model_norm = cls.normalize_model(model)
                 tier2 = [
@@ -279,7 +290,7 @@ class PaintSwatch(models.Model):
                     return tier2[0]
 
                 if tier2 and year:
-                    # Tier 3: year filter on top of model
+                    # Tier 3: year filter on top of model (±2 years tolerance)
                     tier3 = [
                         c for c in tier2
                         if c.year_min and c.year_max
@@ -287,12 +298,13 @@ class PaintSwatch(models.Model):
                     ]
                     if len(tier3) == 1:
                         return tier3[0]
-                    if tier3:
-                        candidates = tier3
-                    else:
-                        candidates = tier2
+                    # Tier 3 narrows tier2 if it found anything, else keep tier2
+                    candidates = tier3 if tier3 else tier2
                 elif tier2:
+                    # No year — just use tier2's model-narrowed set
                     candidates = tier2
+                # else: tier2 is empty — keep the wider candidates set unchanged
+                # (deliberate fallthrough to Tiers 4-6, see comment above)
 
             # Tier 4: fuzzy model (first-token startswith)
             # The first token combines leading letters with any directly
@@ -389,3 +401,35 @@ class PaintSwatch(models.Model):
         # Pick the most-cited candidate
         best = max(candidates, key=lambda s: s.sources_count)
         return best.code
+
+    @classmethod
+    def lookup_with_canonical(cls, manufacturer, paint_code, model=None, year=None, vdg_colour=None):
+        """Convenience: do a swatch lookup AND find any canonical expansion.
+
+        Returns a tuple (paint_hex, paint_name, canonical_code) — all None on
+        miss or exception. Used by the results page, manual-lookup admin
+        endpoint, and email send paths so the same try/except dance isn't
+        repeated four times across views.py.
+
+        Never raises; a swatch failure should never break the calling page.
+        """
+        if not paint_code:
+            return None, None, None
+        try:
+            swatch = cls.lookup(
+                manufacturer=manufacturer,
+                paint_code=paint_code,
+                model=model,
+                year=year,
+                vdg_colour=vdg_colour,
+            )
+            if not swatch:
+                return None, None, None
+            canonical = cls.find_canonical_code(
+                manufacturer=manufacturer,
+                paint_code=paint_code,
+                swatch=swatch,
+            )
+            return swatch.hex, swatch.name, canonical
+        except Exception:
+            return None, None, None

@@ -15,6 +15,7 @@ for trend reporting and product analytics.
 from datetime import timedelta
 
 from django.core.management.base import BaseCommand
+from django.db.models import Q
 from django.utils import timezone
 
 from lookup.models import Search
@@ -39,14 +40,17 @@ class Command(BaseCommand):
         cutoff = timezone.now() - timedelta(days=self.RETENTION_DAYS)
         dry_run = options['dry_run']
 
-        # Find rows older than cutoff that still have at least one personal field populated.
-        # Once a row's personal fields are already empty, there's nothing left to scrub.
-        candidates = Search.objects.filter(timestamp__lt=cutoff).exclude(
-            ip_address__isnull=True,
-            user_agent='',
-            vin='',
-            email='',
+        # Find rows older than cutoff that still have at least one personal
+        # field populated. Using positive Q-disjunction makes intent clear:
+        # "row has at least one of these fields set." Once a row's personal
+        # fields are already empty, there's nothing left to scrub.
+        has_personal = (
+            Q(ip_address__isnull=False)
+            | ~Q(user_agent='')
+            | ~Q(vin='')
+            | ~Q(email='')
         )
+        candidates = Search.objects.filter(timestamp__lt=cutoff).filter(has_personal)
 
         count = candidates.count()
         oldest = candidates.order_by('timestamp').values_list('timestamp', flat=True).first()

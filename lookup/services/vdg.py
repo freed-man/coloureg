@@ -33,6 +33,16 @@ class VdgNotFoundError(VdgError):
     pass
 
 
+class VdgTimeoutError(VdgError):
+    """The VDG request exceeded the client-side timeout.
+
+    Raised separately from generic VdgError so callers (and the error_message
+    column on Search) can distinguish 'VDG was slow' from 'VDG was unreachable'
+    or 'VDG returned a 5xx'. All three previously surfaced as the same VdgError.
+    """
+    pass
+
+
 def _make_request(registration):
     """Single combined call. Returns the parsed JSON dict, or raises."""
     api_key = os.environ.get('VDG_API_KEY')
@@ -47,6 +57,10 @@ def _make_request(registration):
 
     try:
         response = requests.get(VDG_LOOKUP_ENDPOINT, params=params, timeout=30)
+    except requests.exceptions.Timeout as e:
+        # Raise the timeout-specific subclass so views.py / Sentry can tell
+        # this apart from a generic transport failure or VDG 500.
+        raise VdgTimeoutError(f'VDG request timed out: {e}')
     except requests.exceptions.RequestException as e:
         raise VdgError(f'VDG request failed: {e}')
 
@@ -113,8 +127,14 @@ def smart_title(text):
     return ''.join(out)
 
 
-def _normalize_fuel_type(fuel):
-    """Normalize fuel type to consumer-friendly format."""
+def normalize_fuel_type(fuel):
+    """Normalize fuel type to consumer-friendly format.
+
+    Used both by the VDG parser (when ModelDetails.Powertrain.FuelType is
+    missing and we fall back to DvlaFuelType) and by views.py's DVLA fallback
+    path. Single source of truth so 'PLUG-IN HYBRID ELECTRIC' etc. stay
+    consistent across both code paths.
+    """
     if not fuel:
         return ''
     fuel = fuel.upper().strip()
@@ -134,6 +154,22 @@ def _normalize_fuel_type(fuel):
         'HYDROGEN': 'Hydrogen',
     }
     return mapping.get(fuel, fuel.title())
+
+
+# Internal alias so existing _parse_vehicle_fields callers keep working
+_normalize_fuel_type = normalize_fuel_type
+
+
+def _clean_case(s):
+    """Strip + title-case ALL-CAPS strings, leave mixed-case alone.
+
+    VDG's ModelDetails returns clean names ('Volkswagen', 'Golf SE BlueMotion'),
+    but DVLA fallbacks return ALL-CAPS ('VOLKSWAGEN'). This normalises only
+    the all-caps case so 'BMW' or 'TDI' tokens within a properly-cased model
+    name are preserved.
+    """
+    s = (s or '').strip()
+    return s.title() if s and s.isupper() else s
 
 
 def _doc_succeeded(doc):
@@ -171,12 +207,8 @@ def _parse_vehicle_fields(results):
     make = model_identification.get('Make') or identification.get('DvlaMake', '')
     model = model_identification.get('Model') or identification.get('DvlaModel', '')
 
-    make = (make or '').strip()
-    if make and make.isupper():
-        make = make.title()
-    model = (model or '').strip()
-    if model and model.isupper():
-        model = model.title()
+    make = _clean_case(make)
+    model = _clean_case(model)
 
     powertrain = model_details.get('Powertrain', {}) or {}
     fuel_type_raw = powertrain.get('FuelType') or dvla_fuel

@@ -1,8 +1,12 @@
 """Email sending via Resend."""
 import base64
+import logging
 import os
 import resend
 from django.conf import settings
+
+
+logger = logging.getLogger(__name__)
 
 
 def _client():
@@ -18,6 +22,10 @@ def _load_logo():
         with open(logo_path, 'rb') as f:
             return base64.b64encode(f.read()).decode('utf-8')
     except FileNotFoundError:
+        # Don't crash if the logo's missing — emails fall back to a text header
+        # — but make it loud so a future move/rename doesn't silently strip the
+        # branding from every email going out.
+        logger.warning('Email logo not found at %s; using text fallback', logo_path)
         return None
 
 
@@ -64,6 +72,28 @@ def _attachments():
     return []
 
 
+def _safe_send(payload, context=''):
+    """Wrap Resend's send call so a transport failure returns False (instead of
+    raising) and is logged for visibility.
+
+    Resend's send() can raise on auth errors, rate limits, network issues, or
+    invalid payloads. Without this wrapper, every send_*() function would bury
+    the actual exception in `except Exception: return False`, meaning failures
+    silently disappear from Sentry and admin diagnostics. Logging here means
+    the actual error is captured even though we still return False.
+
+    `context` is a short label (e.g. 'paint_code', 'admin_failure') so the
+    log line is greppable.
+    """
+    client = _client()
+    try:
+        client.Emails.send(payload)
+        return True
+    except Exception as exc:
+        logger.warning('Resend send failed (%s): %s', context, exc)
+        return False
+
+
 def send_user_paint_code(to_email, registration, vehicle_title, vin_masked, colour, paint_code, paint_description, canonical_code=None, paint_hex=None):
     """Email user the found paint code.
 
@@ -75,7 +105,6 @@ def send_user_paint_code(to_email, registration, vehicle_title, vin_masked, colo
     If paint_hex is provided (a validated 6-digit hex colour), a swatch bar is
     rendered above the paint code box, matching the website's results page.
     """
-    client = _client()
 
     # Optional swatch bar — mirrors the results page UI
     if paint_hex:
@@ -150,22 +179,17 @@ def send_user_paint_code(to_email, registration, vehicle_title, vin_masked, colo
     else:
         subject_code = paint_code
 
-    try:
-        client.Emails.send({
-            "from": settings.DEFAULT_FROM_EMAIL,
-            "to": to_email,
-            "subject": f"Paint code for {registration}: {subject_code}",
-            "html": html,
-            "attachments": _attachments(),
-        })
-        return True
-    except Exception:
-        return False
+    return _safe_send({
+        "from": settings.DEFAULT_FROM_EMAIL,
+        "to": to_email,
+        "subject": f"Paint code for {registration}: {subject_code}",
+        "html": html,
+        "attachments": _attachments(),
+    }, context='paint_code')
 
 
 def send_admin_failure_notification(registration, vehicle_title, vin_full, colour, user_email):
     """Email admin when paint code wasn't found and user requested manual lookup."""
-    client = _client()
 
     html = f"""
     {FONT_IMPORT}
@@ -208,23 +232,18 @@ def send_admin_failure_notification(registration, vehicle_title, vin_full, colou
     </div>
     """
 
-    try:
-        client.Emails.send({
-            "from": settings.DEFAULT_FROM_EMAIL,
-            "to": settings.ADMIN_EMAIL,
-            "reply_to": user_email,
-            "subject": f"Pending Request - {registration}",
-            "html": html,
-            "attachments": _attachments(),
-        })
-        return True
-    except Exception:
-        return False
+    return _safe_send({
+        "from": settings.DEFAULT_FROM_EMAIL,
+        "to": settings.ADMIN_EMAIL,
+        "reply_to": user_email,
+        "subject": f"Pending Request - {registration}",
+        "html": html,
+        "attachments": _attachments(),
+    }, context='admin_failure')
 
 
 def send_user_pending_notification(to_email, registration, vehicle_title, vin_masked, colour):
     """Email user confirming we'll do manual lookup."""
-    client = _client()
 
     html = f"""
     {FONT_IMPORT}
@@ -265,22 +284,17 @@ def send_user_pending_notification(to_email, registration, vehicle_title, vin_ma
     </div>
     """
 
-    try:
-        client.Emails.send({
-            "from": settings.DEFAULT_FROM_EMAIL,
-            "to": to_email,
-            "subject": f"We've received your paint code request for {registration}",
-            "html": html,
-            "attachments": _attachments(),
-        })
-        return True
-    except Exception:
-        return False
+    return _safe_send({
+        "from": settings.DEFAULT_FROM_EMAIL,
+        "to": to_email,
+        "subject": f"We've received your paint code request for {registration}",
+        "html": html,
+        "attachments": _attachments(),
+    }, context='user_pending')
 
 
 def send_admin_contact_message(contact_type, user_email, message):
     """Send contact form message to admin."""
-    client = _client()
     type_label = contact_type.title()
 
     html = f"""
@@ -316,23 +330,18 @@ def send_admin_contact_message(contact_type, user_email, message):
     </div>
     """
 
-    try:
-        client.Emails.send({
-            "from": settings.DEFAULT_FROM_EMAIL,
-            "to": settings.ADMIN_EMAIL,
-            "reply_to": user_email,
-            "subject": f"[{type_label}] Message from {user_email}",
-            "html": html,
-            "attachments": _attachments(),
-        })
-        return True
-    except Exception:
-        return False
+    return _safe_send({
+        "from": settings.DEFAULT_FROM_EMAIL,
+        "to": settings.ADMIN_EMAIL,
+        "reply_to": user_email,
+        "subject": f"[{type_label}] Message from {user_email}",
+        "html": html,
+        "attachments": _attachments(),
+    }, context='admin_contact')
 
 
 def send_user_contact_confirmation(to_email):
     """Confirm to user that their message was received."""
-    client = _client()
 
     html = f"""
     {FONT_IMPORT}
@@ -355,14 +364,10 @@ def send_user_contact_confirmation(to_email):
     </div>
     """
 
-    try:
-        client.Emails.send({
-            "from": settings.DEFAULT_FROM_EMAIL,
-            "to": to_email,
-            "subject": "We've received your message",
-            "html": html,
-            "attachments": _attachments(),
-        })
-        return True
-    except Exception:
-        return False
+    return _safe_send({
+        "from": settings.DEFAULT_FROM_EMAIL,
+        "to": to_email,
+        "subject": "We've received your message",
+        "html": html,
+        "attachments": _attachments(),
+    }, context='user_contact_confirmation')

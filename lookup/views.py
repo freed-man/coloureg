@@ -5,8 +5,9 @@ from datetime import timedelta
 from django.shortcuts import render, redirect
 from django.contrib import messages
 from django.contrib.admin.views.decorators import staff_member_required
-from django.db.models import Count, Avg
+from django.db.models import Count, Avg, Q
 from django.db.models.functions import TruncDate
+from django.http import JsonResponse
 from django.utils import timezone
 from django.views.decorators.http import require_POST
 from django_ratelimit.core import is_ratelimited
@@ -14,6 +15,7 @@ from .models import Search, PaintSwatch
 from .services.vdg import (
     get_combined_lookup,
     smart_title,
+    normalize_fuel_type,
     VdgError,
     VdgNotFoundError,
 )
@@ -34,10 +36,13 @@ def get_client_ip(request):
 
 
 def extract_mot_field(mot_data, field_name):
+    """Pull a field from the DVLA MOT API response.
+
+    DVLA's /v1/trade/vehicles/registration/{vrm} endpoint returns a single dict
+    for one VRM (it never returns a list for the per-VRM endpoint).
+    """
     if mot_data and isinstance(mot_data, dict):
         return mot_data.get(field_name)
-    elif mot_data and isinstance(mot_data, list) and len(mot_data) > 0:
-        return mot_data[0].get(field_name)
     return None
 
 
@@ -104,32 +109,29 @@ def get_mot_data(registration):
     return None
 
 
-def normalize_fuel_type(fuel):
-    if not fuel:
-        return ''
-    fuel = fuel.upper().strip()
-    mapping = {
-        'ELECTRICITY': 'Electric',
-        'ELECTRIC': 'Electric',
-        'PETROL': 'Petrol',
-        'GASOLINE': 'Petrol',
-        'DIESEL': 'Diesel',
-        'HEAVY OIL': 'Diesel',
-        'HYBRID ELECTRIC': 'Hybrid',
-        'HYBRID': 'Hybrid',
-        'PLUG-IN HYBRID': 'Plug-in Hybrid',
-        'LPG': 'LPG',
-        'CNG': 'CNG',
-        'HYDROGEN': 'Hydrogen',
-    }
-    return mapping.get(fuel, fuel.title())
-
-
 def mask_vin(vin):
     """Censor middle of VIN for display: WAU***********456"""
     if not vin or len(vin) < 6:
         return vin or ''
     return vin[:3] + '*' * (len(vin) - 6) + vin[-3:]
+
+
+# Make → logo filename overrides. Default behaviour is "lowercase, spaces and
+# hyphens become underscores" (e.g. 'Volkswagen' → 'volkswagen.png'). This
+# table covers cases where the natural slugification doesn't match the file
+# we have on disk under static/images/logos/.
+MAKE_LOGO_OVERRIDES = {
+    'mercedes': 'mercedes_benz',
+    'vw': 'volkswagen',
+    'landrover': 'land_rover',
+    'alfaromeo': 'alfa_romeo',
+}
+
+
+def make_to_logo(make):
+    """Translate a make string into the logo filename stem (no .png extension)."""
+    slug = (make or '').lower().replace('-', '_').replace(' ', '_')
+    return MAKE_LOGO_OVERRIDES.get(slug, slug)
 
 
 def build_vehicle_title(year, make, model):
@@ -188,6 +190,7 @@ def index(request):
             registration=registration,
             ip_address=get_client_ip(request),
             user_agent=request.META.get('HTTP_USER_AGENT', ''),
+            device=parse_device(request.META.get('HTTP_USER_AGENT', '')),
         )
 
         # --- VDG combined lookup (single API call) ---
@@ -282,18 +285,17 @@ def index(request):
         if latest_balance is not None:
             search.vdg_balance_after_call = latest_balance
 
-        search.success = True
+        # success = "we found a paint code for this lookup"
+        # (vehicle-found-but-no-paint is recorded with success=False so the
+        # admin filter and stats reflect end-user value, not just whether VDG
+        # returned any data at all). The dashboard's success_rate metric
+        # already used `paint_code != ''` to count real successes — this just
+        # makes the underlying field match.
+        search.success = bool(paint_code)
         search.lookup_duration_ms = int((time.time() - start_time) * 1000)
         search.save()
 
-        make_raw = make.lower().replace('-', '_').replace(' ', '_')
-        make_logo_map = {
-            'mercedes': 'mercedes_benz',
-            'vw': 'volkswagen',
-            'landrover': 'land_rover',
-            'alfaromeo': 'alfa_romeo',
-        }
-        make_logo = make_logo_map.get(make_raw, make_raw)
+        make_logo = make_to_logo(make)
 
         request.session['vehicle_data'] = {
             'make': make,
@@ -343,30 +345,24 @@ def results(request):
     paint_code = vehicle_data.get('paint_code')
     all_paint_codes = list(vehicle_data.get('all_paint_codes', []))
 
-    if paint_code:
-        try:
-            swatch = PaintSwatch.lookup(
-                manufacturer=vehicle_data.get('make', ''),
-                paint_code=paint_code,
-                model=vehicle_data.get('model', ''),
-                year=vehicle_data.get('year'),
-                vdg_colour=vehicle_data.get('colour', ''),
-            )
-            if swatch:
-                paint_hex = swatch.hex
-                paint_name = swatch.name
-                # If VDG returned an abbreviated code, surface the canonical long form
-                canonical_code = PaintSwatch.find_canonical_code(
-                    manufacturer=vehicle_data.get('make', ''),
-                    paint_code=paint_code,
-                    swatch=swatch,
-                )
-        except Exception:
-            # Never let a swatch lookup failure break the results page
-            pass
+    make = vehicle_data.get('make', '')
+    model = vehicle_data.get('model', '')
+    year = vehicle_data.get('year')
+    colour_for_lookup = vehicle_data.get('colour', '')
 
-    # When VDG returns multiple codes (e.g. "8E8E/A7W"), look up each individually
-    # so the multi-code template path can show a swatch bar per code.
+    if paint_code:
+        paint_hex, paint_name, canonical_code = PaintSwatch.lookup_with_canonical(
+            manufacturer=make,
+            paint_code=paint_code,
+            model=model,
+            year=year,
+            vdg_colour=colour_for_lookup,
+        )
+
+    # When VDG returns multiple codes (e.g. "8E8E/A7W"), look up each so the
+    # multi-code template path can show a swatch bar per code. If the item's
+    # code matches the top-level paint_code we already looked up, reuse the
+    # result instead of re-querying.
     for item in all_paint_codes:
         if not isinstance(item, dict):
             continue
@@ -376,27 +372,20 @@ def results(request):
         if not item_code:
             item['hex'] = None
             continue
-        try:
-            swatch = PaintSwatch.lookup(
-                manufacturer=vehicle_data.get('make', ''),
-                paint_code=item_code,
-                model=vehicle_data.get('model', ''),
-                year=vehicle_data.get('year'),
-                vdg_colour=vehicle_data.get('colour', ''),
-            )
-            item['hex'] = swatch.hex if swatch else None
-            # Per-item canonical expansion (multi-code template can show it)
-            if swatch:
-                item['canonical'] = PaintSwatch.find_canonical_code(
-                    manufacturer=vehicle_data.get('make', ''),
-                    paint_code=item_code,
-                    swatch=swatch,
-                )
-            else:
-                item['canonical'] = None
-        except Exception:
-            item['hex'] = None
-            item['canonical'] = None
+        # Reuse the top-level lookup when it's the same code
+        if item_code == paint_code:
+            item['hex'] = paint_hex
+            item['canonical'] = canonical_code
+            continue
+        item_hex, _item_name, item_canonical = PaintSwatch.lookup_with_canonical(
+            manufacturer=make,
+            paint_code=item_code,
+            model=model,
+            year=year,
+            vdg_colour=colour_for_lookup,
+        )
+        item['hex'] = item_hex
+        item['canonical'] = item_canonical
 
     context = {
         'registration': vehicle_data.get('registration', ''),
@@ -464,25 +453,13 @@ def submit_email(request):
 
     if search.paint_code:
         # Look up swatch (hex) and canonical code so the email matches the website UI
-        canonical_code = None
-        paint_hex = None
-        try:
-            swatch = PaintSwatch.lookup(
-                manufacturer=search.make,
-                paint_code=search.paint_code,
-                model=search.model,
-                year=search.year,
-                vdg_colour=search.colour,
-            )
-            if swatch:
-                paint_hex = swatch.hex
-                canonical_code = PaintSwatch.find_canonical_code(
-                    manufacturer=search.make,
-                    paint_code=search.paint_code,
-                    swatch=swatch,
-                )
-        except Exception:
-            pass
+        paint_hex, _paint_name, canonical_code = PaintSwatch.lookup_with_canonical(
+            manufacturer=search.make,
+            paint_code=search.paint_code,
+            model=search.model,
+            year=search.year,
+            vdg_colour=search.colour,
+        )
 
         sent = send_user_paint_code(
             to_email=email,
@@ -582,19 +559,38 @@ def admin_stats(request):
     week_ago = now - timedelta(days=7)
     month_ago = now - timedelta(days=30)
 
-    # Top metrics
-    total_searches = Search.objects.count()
-    today_searches = Search.objects.filter(timestamp__gte=today_start).count()
-    week_searches = Search.objects.filter(timestamp__gte=week_ago).count()
-    month_searches = Search.objects.filter(timestamp__gte=month_ago).count()
-    success_with_code = Search.objects.exclude(paint_code='').count()
+    # Top metrics + email + cost — collapsed into a single aggregate so the
+    # dashboard does ONE round-trip to Postgres instead of ~10. Each metric is
+    # a conditional Count over the same Search table, so they fit naturally
+    # into one SELECT with FILTER clauses.
+    top_metrics = Search.objects.aggregate(
+        # Volume / time windows
+        total=Count('id'),
+        today=Count('id', filter=Q(timestamp__gte=today_start)),
+        week=Count('id', filter=Q(timestamp__gte=week_ago)),
+        month=Count('id', filter=Q(timestamp__gte=month_ago)),
+        # Success / paint hit rate
+        with_code=Count('id', filter=~Q(paint_code='')),
+        # Email pipeline
+        with_email=Count('id', filter=~Q(email='')),
+        emails_sent_count=Count('id', filter=Q(email_sent=True)),
+        # VDG cost flags (per-document returned counts, plus combined-call count)
+        vdg_vehicle_returned_count=Count('id', filter=Q(vdg_vehicle_returned=True)),
+        vdg_combined_count=Count('id', filter=Q(vdg_combined_called=True)),
+        vdg_paint_returned_count=Count('id', filter=Q(vdg_paint_returned=True)),
+        # Average lookup duration (filtered nulls handled by Avg)
+        avg_duration_ms=Avg('lookup_duration_ms'),
+    )
+    total_searches = top_metrics['total']
+    today_searches = top_metrics['today']
+    week_searches = top_metrics['week']
+    month_searches = top_metrics['month']
+    success_with_code = top_metrics['with_code']
     success_rate = (success_with_code / total_searches * 100) if total_searches > 0 else 0
-
-    # Avg lookup duration
-    avg_duration_ms = Search.objects.exclude(
-        lookup_duration_ms__isnull=True
-    ).aggregate(avg=Avg('lookup_duration_ms'))['avg'] or 0
-    avg_duration_s = round(avg_duration_ms / 1000, 2)
+    total_emails = top_metrics['with_email']
+    emails_sent = top_metrics['emails_sent_count']
+    conversion_rate = (total_emails / total_searches * 100) if total_searches > 0 else 0
+    avg_duration_s = round((top_metrics['avg_duration_ms'] or 0) / 1000, 2)
 
     # Daily counts for last 30 days
     daily_counts = (
@@ -654,38 +650,34 @@ def admin_stats(request):
         .order_by('-timestamp')[:20]
     )
 
-    # Email submissions
-    total_emails = Search.objects.exclude(email='').count()
-    emails_sent = Search.objects.filter(email_sent=True).count()
-    conversion_rate = (total_emails / total_searches * 100) if total_searches > 0 else 0
+    # (total_emails, emails_sent, conversion_rate computed in top_metrics above)
 
     # Device breakdown (mobile / tablet / desktop)
+    # Stored at write time on Search.device, so this is one fast aggregate
+    # instead of iterating every Search row in Python on every render.
     device_counts = {'mobile': 0, 'tablet': 0, 'desktop': 0, 'unknown': 0}
-    for s in Search.objects.exclude(user_agent='').only('user_agent').iterator():
-        device = parse_device(s.user_agent)
-        device_counts[device] = device_counts.get(device, 0) + 1
+    for row in (
+        Search.objects.exclude(device='')
+        .values('device')
+        .annotate(count=Count('id'))
+    ):
+        device_counts[row['device']] = row['count']
     device_total = sum(device_counts.values())
 
     # VDG cost tracker
     # £0.15 per VehicleDetails (always charged when returned)
     # £0.35 per PaintCodeDetails (refunded by VDG if no paint data returned)
     # As of the combined-call refactor, each lookup makes ONE API call that
-    # contains both documents. We track which documents *returned* data
-    # (vdg_vehicle_returned, vdg_paint_returned), which is what determines
-    # billing and refunds. Old call-flags (vdg_paint_called, vdg_vehicle_called)
-    # were backfilled into the returned-flags by migration 0006.
+    # contains both documents. Counts come from the single aggregate above.
     #
     # Variable naming kept as vdg_vehicle_calls / vdg_paint_calls for backward
     # compatibility with admin_stats.html — semantically these are now "how many
-    # times we were billed for X", which equals "how many times the doc returned"
-    # (vehicle: always charged when returned) or "how many combined calls"
-    # (paint: charged then refunded if no code).
-    vdg_vehicle_calls = Search.objects.filter(vdg_vehicle_returned=True).count()
+    # times we were billed for X".
+    vdg_vehicle_calls = top_metrics['vdg_vehicle_returned_count']
     # Paint is initially billed on every combined call where the package was
     # requested. The refund happens after if no paint code came back.
-    vdg_paint_calls = Search.objects.filter(vdg_combined_called=True).count()
-    # Of those billed, how many actually returned paint data (kept) vs got refunded
-    paint_calls_returned = Search.objects.filter(vdg_paint_returned=True).count()
+    vdg_paint_calls = top_metrics['vdg_combined_count']
+    paint_calls_returned = top_metrics['vdg_paint_returned_count']
     paint_refunds_count = vdg_paint_calls - paint_calls_returned
 
     vehicle_cost = round(vdg_vehicle_calls * 0.15, 2)
@@ -725,7 +717,7 @@ def admin_stats(request):
         'device_total': device_total,
         'vdg_vehicle_calls': vdg_vehicle_calls,
         'vdg_paint_calls': vdg_paint_calls,
-        'paint_calls_charged': paint_calls_returned,
+        'paint_calls_returned': paint_calls_returned,
         'paint_refunds_count': paint_refunds_count,
         'paint_refunds_amount': paint_refunds_amount,
         'vehicle_cost': vehicle_cost,
@@ -737,6 +729,7 @@ def admin_stats(request):
 
     return render(request, 'lookup/admin_stats.html', context)
 
+
 @staff_member_required
 @require_POST
 def submit_manual_lookup(request):
@@ -746,7 +739,6 @@ def submit_manual_lookup(request):
     Returns JSON so the dashboard can animate the row in-place without
     a full page reload.
     """
-    from django.http import JsonResponse
 
     search_id = request.POST.get('search_id')
     paint_code = (request.POST.get('paint_code') or '').strip()
@@ -771,25 +763,13 @@ def submit_manual_lookup(request):
     paint_description_clean = smart_title(paint_description) if paint_description else ''
 
     # Look up swatch (hex) and canonical code so the email matches the website UI
-    canonical_code = None
-    paint_hex = None
-    try:
-        swatch = PaintSwatch.lookup(
-            manufacturer=search.make,
-            paint_code=paint_code,
-            model=search.model,
-            year=search.year,
-            vdg_colour=search.colour,
-        )
-        if swatch:
-            paint_hex = swatch.hex
-            canonical_code = PaintSwatch.find_canonical_code(
-                manufacturer=search.make,
-                paint_code=paint_code,
-                swatch=swatch,
-            )
-    except Exception:
-        pass
+    paint_hex, _paint_name, canonical_code = PaintSwatch.lookup_with_canonical(
+        manufacturer=search.make,
+        paint_code=paint_code,
+        model=search.model,
+        year=search.year,
+        vdg_colour=search.colour,
+    )
 
     sent = send_user_paint_code(
         to_email=search.email,
@@ -812,6 +792,8 @@ def submit_manual_lookup(request):
     # Update DB only after successful send so a failed email doesn't mark complete
     search.paint_code = paint_code
     search.paint_description = paint_description_clean
+    search.provider = Search.PROVIDER_MANUAL
+    search.success = True  # paint code was found (manually) and emailed
     search.manual_lookup_completed = True
     search.email_sent = True
     search.save()
@@ -835,7 +817,6 @@ def dismiss_manual_lookup(request):
     test entries, or otherwise unactionable requests. Returns JSON so the
     dashboard can animate the row out without a page reload.
     """
-    from django.http import JsonResponse
 
     search_id = request.POST.get('search_id')
     if not search_id:
