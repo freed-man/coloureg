@@ -204,11 +204,22 @@ def _parse_vehicle_fields(results):
     model_details = results.get('ModelDetails', {}) or {}
     model_identification = model_details.get('ModelIdentification', {}) or {}
 
-    make = model_identification.get('Make') or identification.get('DvlaMake', '')
-    model = model_identification.get('Model') or identification.get('DvlaModel', '')
+    # Make and model: prefer VDG's curated ModelDetails (clean casing like
+    # 'BMW', 'Volkswagen', '730Ld SE Auto'). Only fall back to DvlaMake/DvlaModel
+    # when ModelDetails has no value, and clean those because DVLA always
+    # returns SHOUTING CASE.
+    make_from_model = model_identification.get('Make')
+    model_from_model = model_identification.get('Model')
 
-    make = _clean_case(make)
-    model = _clean_case(model)
+    if make_from_model:
+        make = make_from_model.strip()
+    else:
+        make = _clean_case(identification.get('DvlaMake', ''))
+
+    if model_from_model:
+        model = model_from_model.strip()
+    else:
+        model = _clean_case(identification.get('DvlaModel', ''))
 
     powertrain = model_details.get('Powertrain', {}) or {}
     fuel_type_raw = powertrain.get('FuelType') or dvla_fuel
