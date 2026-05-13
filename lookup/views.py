@@ -747,6 +747,22 @@ def submit_manual_lookup(request):
     if not search_id or not paint_code:
         return JsonResponse({'success': False, 'error': 'Search ID and paint code are required.'}, status=400)
 
+    # Validate field lengths against the underlying DB column sizes BEFORE doing
+    # any work (DB lookup, swatch lookup, email send). Otherwise an over-long
+    # description silently sends the email then crashes on save, leaving the
+    # row marked as not-completed despite the user having received the email.
+    # Limits match the Search model: paint_code=50, paint_description=200.
+    if len(paint_code) > 50:
+        return JsonResponse({
+            'success': False,
+            'error': f'Paint code too long ({len(paint_code)} chars, max 50).',
+        }, status=400)
+    if len(paint_description) > 200:
+        return JsonResponse({
+            'success': False,
+            'error': f'Paint description too long ({len(paint_description)} chars, max 200).',
+        }, status=400)
+
     try:
         search = Search.objects.get(id=search_id)
     except Search.DoesNotExist:
