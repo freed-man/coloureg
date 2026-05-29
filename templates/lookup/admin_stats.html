@@ -789,6 +789,10 @@
         var status = document.getElementById('compose-status');
         if (!form || !btn || !status) return;
 
+        // Tracks the auto-fade timer so we can cancel it if a new submit happens
+        // before the previous fade has run.
+        var fadeTimer = null;
+
         function getCsrfToken() {
             var input = form.querySelector('input[name="csrfmiddlewaretoken"]');
             return input ? input.value : '';
@@ -796,14 +800,40 @@
 
         function showStatus(kind, text) {
             // kind = 'success' | 'error' | 'sending'
+            if (fadeTimer) { clearTimeout(fadeTimer); fadeTimer = null; }
             status.className = 'compose-status compose-status-' + kind;
             status.textContent = text;
+            status.style.opacity = '1';
         }
 
         function clearStatus() {
+            if (fadeTimer) { clearTimeout(fadeTimer); fadeTimer = null; }
             status.className = 'compose-status';
             status.textContent = '';
+            status.style.opacity = '1';
         }
+
+        function autoFadeStatus() {
+            // Hold for 5s, then fade out over 0.4s, then clear.
+            // Matches the timing of the global flash messages in base.html.
+            fadeTimer = setTimeout(function () {
+                status.style.transition = 'opacity 0.4s';
+                status.style.opacity = '0';
+                setTimeout(function () {
+                    clearStatus();
+                    status.style.transition = '';
+                }, 400);
+            }, 5000);
+        }
+
+        // Clear any stale status the moment the user starts typing — a "sent"
+        // notice shouldn't linger while they're composing a new message.
+        ['to', 'subject', 'body'].forEach(function (name) {
+            var el = form.querySelector('[name="' + name + '"]');
+            if (el) el.addEventListener('input', function () {
+                if (status.textContent) clearStatus();
+            });
+        });
 
         form.addEventListener('submit', function (e) {
             e.preventDefault();
@@ -827,10 +857,13 @@
             .then(function (result) {
                 if (result.ok && result.data.success) {
                     showStatus('success', result.data.message || 'Email sent.');
-                    // Reset only the body so user can quickly send another message
-                    // to the same recipient (or different) without re-typing the To.
-                    form.querySelector('textarea[name="body"]').value = '';
+                    // Clear all fields on success so the next compose starts fresh.
+                    // (If they want to send to the same recipient again, browser
+                    // autocomplete on the `to` field will suggest it back.)
+                    form.reset();
+                    autoFadeStatus();
                 } else {
+                    // Errors stay visible — user needs to read what went wrong.
                     showStatus('error', result.data.error || 'Send failed. Check Resend logs.');
                 }
             })
