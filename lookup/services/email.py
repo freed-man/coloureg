@@ -94,6 +94,61 @@ def _safe_send(payload, context=''):
         return False
 
 
+def _brand_wrapper(body_html):
+    """Wrap arbitrary body HTML in coloureg's standard branded shell.
+
+    Used by send_custom_message for one-off admin compose emails. Existing
+    send_*() functions still inline their own brand markup (deliberately
+    untouched to avoid regressing working emails).
+
+    `body_html` is dropped into the white content card with 32px padding,
+    matching the visual style of the transactional emails.
+    """
+    return f"""
+    {FONT_IMPORT}
+    <div style="background: #f8f9fa; padding: 40px 20px; font-family: 'IBM Plex Sans', Arial, Helvetica, sans-serif;">
+        <div style="max-width: 560px; margin: 0 auto; background: #fff; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.04);">
+            {_brand_header()}
+            <div style="padding: 32px; color: #1a1a1a; font-size: 15px; line-height: 1.6;">
+                {body_html}
+            </div>
+        </div>
+        {FOOTER}
+    </div>
+    """
+
+
+def send_custom_message(to_email, subject, markdown_body):
+    """Send a custom one-off email composed via the admin compose form.
+
+    `markdown_body` is converted to HTML using the standard markdown library
+    (no sanitisation — this endpoint is staff-only, so the input is trusted).
+    The result is wrapped in coloureg's brand shell so the email looks like
+    every other coloureg email.
+
+    BCC: a copy goes to settings.DEFAULT_FROM_EMAIL (hello@coloureg.com) so
+    you have a sent-folder record via your existing Dynadot forward to Gmail.
+    """
+    # Local import so the rest of email.py doesn't pull in markdown unless
+    # this function is actually used.
+    import markdown as _md
+
+    body_html = _md.markdown(
+        markdown_body or '',
+        extensions=['nl2br', 'extra'],
+    )
+    html = _brand_wrapper(body_html)
+
+    return _safe_send({
+        "from": settings.DEFAULT_FROM_EMAIL,
+        "to": [to_email],
+        "bcc": [settings.DEFAULT_FROM_EMAIL],
+        "subject": subject,
+        "html": html,
+        "attachments": _attachments(),
+    }, context='custom_message')
+
+
 def send_user_paint_code(to_email, registration, vehicle_title, vin_masked, colour, paint_code, paint_description, canonical_code=None, paint_hex=None):
     """Email user the found paint code.
 
@@ -202,23 +257,23 @@ def send_admin_failure_notification(registration, vehicle_title, vin_full, colou
             <div style="padding: 32px;">
                 <table style="width: 100%; border-collapse: collapse; margin-bottom: 24px;">
                     <tr style="border-bottom: 1px solid #eee;">
-                        <td style="padding: 10px 0; color: #666; font-size: 13px; width: 100px;">Vehicle</td>
+                        <td style="padding: 10px 16px 10px 0; color: #666; font-size: 13px; width: 100px;">Vehicle</td>
                         <td style="padding: 10px 0; color: #1a1a1a; font-size: 14px;">{vehicle_title or '—'}</td>
                     </tr>
                     <tr style="border-bottom: 1px solid #eee;">
-                        <td style="padding: 10px 0; color: #666; font-size: 13px;">Registration</td>
+                        <td style="padding: 10px 16px 10px 0; color: #666; font-size: 13px;">Registration</td>
                         <td style="padding: 10px 0; color: #1a1a1a; font-size: 14px;">{registration}</td>
                     </tr>
                     <tr style="border-bottom: 1px solid #eee;">
-                        <td style="padding: 10px 0; color: #666; font-size: 13px;">VIN</td>
+                        <td style="padding: 10px 16px 10px 0; color: #666; font-size: 13px;">VIN</td>
                         <td style="padding: 10px 0; color: #1a1a1a; font-size: 14px; font-family: 'IBM Plex Sans', Arial, Helvetica, sans-serif;">{vin_full or '—'}</td>
                     </tr>
                     <tr style="border-bottom: 1px solid #eee;">
-                        <td style="padding: 10px 0; color: #666; font-size: 13px;">Colour</td>
+                        <td style="padding: 10px 16px 10px 0; color: #666; font-size: 13px;">Colour</td>
                         <td style="padding: 10px 0; color: #1a1a1a; font-size: 14px;">{colour or '—'}</td>
                     </tr>
                     <tr>
-                        <td style="padding: 10px 0; color: #666; font-size: 13px;">User</td>
+                        <td style="padding: 10px 16px 10px 0; color: #666; font-size: 13px;">User</td>
                         <td style="padding: 10px 0;"><a href="mailto:{user_email}" style="color: #003399; font-size: 14px;">{user_email}</a></td>
                     </tr>
                 </table>
@@ -257,19 +312,19 @@ def send_user_pending_notification(to_email, registration, vehicle_title, vin_ma
                 </p>
                 <table style="width: 100%; border-collapse: collapse; margin-bottom: 24px;">
                     <tr style="border-bottom: 1px solid #eee;">
-                        <td style="padding: 10px 0; color: #666; font-size: 13px; width: 100px;">Vehicle</td>
+                        <td style="padding: 10px 16px 10px 0; color: #666; font-size: 13px; width: 100px;">Vehicle</td>
                         <td style="padding: 10px 0; color: #1a1a1a; font-size: 14px;">{vehicle_title or '—'}</td>
                     </tr>
                     <tr style="border-bottom: 1px solid #eee;">
-                        <td style="padding: 10px 0; color: #666; font-size: 13px;">Registration</td>
+                        <td style="padding: 10px 16px 10px 0; color: #666; font-size: 13px;">Registration</td>
                         <td style="padding: 10px 0; color: #1a1a1a; font-size: 14px;">{registration}</td>
                     </tr>
                     <tr style="border-bottom: 1px solid #eee;">
-                        <td style="padding: 10px 0; color: #666; font-size: 13px;">VIN</td>
+                        <td style="padding: 10px 16px 10px 0; color: #666; font-size: 13px;">VIN</td>
                         <td style="padding: 10px 0; color: #1a1a1a; font-size: 14px;">{vin_masked or '—'}</td>
                     </tr>
                     <tr>
-                        <td style="padding: 10px 0; color: #666; font-size: 13px;">Colour</td>
+                        <td style="padding: 10px 16px 10px 0; color: #666; font-size: 13px;">Colour</td>
                         <td style="padding: 10px 0; color: #1a1a1a; font-size: 14px;">{colour or '—'}</td>
                     </tr>
                 </table>
@@ -308,11 +363,11 @@ def send_admin_contact_message(contact_type, user_email, message):
             <div style="padding: 32px;">
                 <table style="width: 100%; border-collapse: collapse; margin-bottom: 24px;">
                     <tr style="border-bottom: 1px solid #eee;">
-                        <td style="padding: 10px 0; color: #666; font-size: 13px; width: 80px;">Type</td>
+                        <td style="padding: 10px 16px 10px 0; color: #666; font-size: 13px; width: 80px;">Type</td>
                         <td style="padding: 10px 0; color: #1a1a1a; font-size: 14px;">{type_label}</td>
                     </tr>
                     <tr style="border-bottom: 1px solid #eee;">
-                        <td style="padding: 10px 0; color: #666; font-size: 13px;">From</td>
+                        <td style="padding: 10px 16px 10px 0; color: #666; font-size: 13px;">From</td>
                         <td style="padding: 10px 0;"><a href="mailto:{user_email}" style="color: #003399; font-size: 14px;">{user_email}</a></td>
                     </tr>
                 </table>

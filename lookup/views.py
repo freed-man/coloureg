@@ -25,6 +25,7 @@ from .services.email import (
     send_user_pending_notification,
     send_admin_contact_message,
     send_user_contact_confirmation,
+    send_custom_message,
 )
 
 
@@ -631,17 +632,13 @@ def admin_stats(request):
         .order_by('-count')[:10]
     )
 
-    # Recent failures with email (manual lookup pipeline)
+    # Pending manual lookups (the actual to-do list — shows ALL unfulfilled
+    # requests, no [:10] cap. In practice this is small; if your backlog grew
+    # to thousands it'd be worth paginating, but you'd notice that long before
+    # the page slowed down).
     recent_failures_with_email = (
         Search.objects.filter(paint_code='', email__gt='', manual_lookup_completed=False)
-        .order_by('-timestamp')[:10]
-    )
-
-    # All recent failures (no paint code)
-    recent_all_failures = (
-        Search.objects.filter(paint_code='')
-        .exclude(make='')
-        .order_by('-timestamp')[:20]
+        .order_by('-timestamp')
     )
 
     # All recent lookups (success + failure) for the unified history table
@@ -708,7 +705,6 @@ def admin_stats(request):
         'top_regs': top_regs,
         'failed_makes': failed_makes,
         'recent_failures': recent_failures_with_email,
-        'recent_all_failures': recent_all_failures,
         'recent_all_lookups': recent_all_lookups,
         'total_emails': total_emails,
         'emails_sent': emails_sent,
@@ -728,6 +724,50 @@ def admin_stats(request):
     }
 
     return render(request, 'lookup/admin_stats.html', context)
+
+
+@staff_member_required
+@require_POST
+def send_compose_email(request):
+    """Admin endpoint for sending a one-off branded email from the compose form
+    on /admin-stats/.
+
+    Posts: to (email), subject (str, max 200), body (markdown, max 5000).
+    Validates length, calls send_custom_message, redirects back to admin-stats
+    with a success or error flash message.
+
+    The compose form is staff-only (the decorator enforces auth), so we don't
+    sanitise the body — staff input is trusted. The body is rendered through
+    markdown -> HTML -> brand wrapper in send_custom_message.
+    """
+    to_email = (request.POST.get('to') or '').strip()
+    subject = (request.POST.get('subject') or '').strip()
+    body = (request.POST.get('body') or '').strip()
+
+    # Basic validation. Reject before any work happens (same pattern as
+    # submit_manual_lookup) so we don't half-send.
+    if not to_email or '@' not in to_email or '.' not in to_email:
+        messages.error(request, 'Recipient must be a valid email address.')
+        return redirect('admin_stats')
+    if not subject:
+        messages.error(request, 'Subject is required.')
+        return redirect('admin_stats')
+    if len(subject) > 200:
+        messages.error(request, f'Subject too long ({len(subject)} chars, max 200).')
+        return redirect('admin_stats')
+    if not body:
+        messages.error(request, 'Message body is required.')
+        return redirect('admin_stats')
+    if len(body) > 5000:
+        messages.error(request, f'Message body too long ({len(body)} chars, max 5000).')
+        return redirect('admin_stats')
+
+    sent = send_custom_message(to_email, subject, body)
+    if sent:
+        messages.success(request, f'Email sent to {to_email}.')
+    else:
+        messages.error(request, f'Failed to send email to {to_email}. Check Resend logs.')
+    return redirect('admin_stats')
 
 
 @staff_member_required

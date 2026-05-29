@@ -14,4 +14,5 @@ urlpatterns = [
     path('admin-stats/', views.admin_stats, name='admin_stats'),
     path('submit-manual-lookup/', views.submit_manual_lookup, name='submit_manual_lookup'),
     path('dismiss-manual-lookup/', views.dismiss_manual_lookup, name='dismiss_manual_lookup'),
+    path('send-compose-email/', views.send_compose_email, name='send_compose_email'),
 ]

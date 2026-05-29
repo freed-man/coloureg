@@ -152,6 +152,14 @@
         <a href="/admin/" class="btn btn-outline-dark btn-sm">Django Admin</a>
     </div>
 
+    {% if messages %}
+    <div class="flash-messages">
+        {% for message in messages %}
+        <div class="flash flash-{{ message.tags|default:'info' }}">{{ message }}</div>
+        {% endfor %}
+    </div>
+    {% endif %}
+
     <!-- Top metrics: row 1 = volume -->
     <div class="stats-grid">
         <div class="stat-card">
@@ -446,6 +454,154 @@
         /* Outcome badges in the recent-lookups table */
         .outcome-tick { color: #2e7d32; font-weight: 600; font-size: 16px; }
         .outcome-cross { color: #c62828; font-weight: 600; font-size: 16px; }
+
+        /* Recent paint code lookups: paint code (mono) + wrap-friendly description */
+        .recent-paint-code {
+            font-family: 'IBM Plex Mono', 'Courier New', monospace;
+            font-size: 13px;
+            color: #1a1a1a;
+            white-space: nowrap;
+        }
+        .recent-paint-desc {
+            color: #555;
+            font-size: 13px;
+            /* Wrap rather than truncate — descriptions can be long but staff want to read them */
+            word-break: break-word;
+            max-width: 220px;
+        }
+        .recent-empty { color: #ccc; }
+
+        /* Responsive: below 768px, swap the table for stacked cards.
+           Hide the table, show the card list. The two structures are siblings in markup. */
+        .recent-cards { display: none; }
+        @media (max-width: 768px) {
+            .recent-table { display: none; }
+            .recent-cards { display: block; }
+            .recent-card {
+                padding: 12px 0;
+                border-bottom: 0.5px solid #f0f0f0;
+            }
+            .recent-card:last-child { border-bottom: none; }
+            .recent-card-row1 {
+                display: flex;
+                justify-content: space-between;
+                align-items: baseline;
+                gap: 12px;
+                margin-bottom: 4px;
+            }
+            .recent-card-date { color: #666; font-size: 12px; }
+            .recent-card-title { color: #1a1a1a; font-size: 14px; font-weight: 500; margin: 2px 0; }
+            .recent-card-meta {
+                color: #666;
+                font-size: 12px;
+                margin-top: 2px;
+                word-break: break-all;
+            }
+            .recent-card-paint { font-size: 13px; margin-top: 6px; }
+            .recent-card-paint .recent-paint-code { display: inline-block; margin-right: 8px; }
+
+            /* Manual lookup queue — tighten the meta grid (default minmax(180px,1fr)
+               wastes space at narrow widths) and stack the form into clean rows.
+               Goal at mobile widths:
+                 row 1: paint_code input (full width)
+                 row 2: description input (full width)
+                 row 3: Send + ×  (side by side, Send fills space) */
+            .mlq-card {
+                padding: 14px;
+            }
+            .mlq-meta {
+                grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+                gap: 10px 16px;
+            }
+            /* Force each input onto its own line by giving it full basis.
+               Form is already flex with flex-wrap:wrap, so the next item drops down. */
+            .mlq-form input[type="text"] {
+                flex: 1 1 100%;
+                min-width: 0;
+                max-width: none;
+            }
+            /* Buttons share the final row. Send fills available space, dismiss stays compact. */
+            .mlq-form button.send-btn {
+                flex: 1 1 auto;
+            }
+            .mlq-form button.dismiss-btn {
+                flex: 0 0 auto;
+            }
+        }
+
+        /* Even narrower: phone widths. Collapse meta to single column. */
+        @media (max-width: 480px) {
+            .mlq-meta {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        /* Compose email section at the bottom of admin-stats */
+        .compose-form { display: flex; flex-direction: column; gap: 12px; margin-top: 8px; }
+        .compose-form label {
+            font-size: 12px;
+            font-weight: 600;
+            color: #666;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        .compose-form input[type="email"],
+        .compose-form input[type="text"],
+        .compose-form textarea {
+            width: 100%;
+            padding: 10px 12px;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            font-family: inherit;
+            font-size: 14px;
+            box-sizing: border-box;
+            background: #fff;
+        }
+        .compose-form textarea {
+            min-height: 180px;
+            resize: vertical;
+            font-family: 'IBM Plex Mono', 'Courier New', monospace;
+            line-height: 1.5;
+        }
+        .compose-form input:focus,
+        .compose-form textarea:focus {
+            outline: none;
+            border-color: #003399;
+        }
+        .compose-form .compose-hint {
+            color: #999;
+            font-size: 12px;
+            margin-top: -4px;
+        }
+        .compose-form button {
+            align-self: flex-start;
+            background: #003399;
+            color: #fff;
+            border: none;
+            padding: 10px 24px;
+            border-radius: 6px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+        }
+        .compose-form button:disabled {
+            background: #999;
+            cursor: not-allowed;
+        }
+        .compose-form button:hover:not(:disabled) {
+            background: #002277;
+        }
+
+        /* Flash messages (shown at top after compose submit) */
+        .flash-messages { margin-bottom: 16px; }
+        .flash {
+            padding: 10px 14px;
+            border-radius: 6px;
+            font-size: 14px;
+            margin-bottom: 8px;
+        }
+        .flash-success { background: #e8f5e9; color: #2e7d32; border: 1px solid #c8e6c9; }
+        .flash-error { background: #ffebee; color: #c62828; border: 1px solid #ffcdd2; }
     </style>
     <div class="panel">
         <h3>Manual lookup queue (<span id="mlq-count">{{ recent_failures|length }}</span>)</h3>
@@ -495,7 +651,9 @@
     <!-- Recent paint code lookups (all searches, success + failure) -->
     <div class="panel">
         <h3>Recent paint code lookups</h3>
-        <table class="stats-table">
+
+        <!-- Desktop/tablet table (>768px). CSS hides this below 768px. -->
+        <table class="stats-table recent-table">
             <thead>
                 <tr>
                     <th>Date</th>
@@ -503,6 +661,8 @@
                     <th>Reg</th>
                     <th>VIN</th>
                     <th>Colour</th>
+                    <th>Paint code</th>
+                    <th>Description</th>
                     <th style="text-align: center;">Outcome</th>
                 </tr>
             </thead>
@@ -514,6 +674,20 @@
                     <td>{{ s.registration }}</td>
                     <td style="word-break: break-all;">{{ s.vin|default:"—" }}</td>
                     <td>{{ s.colour|default:"—" }}</td>
+                    <td>
+                        {% if s.paint_code %}
+                        <span class="recent-paint-code">{{ s.paint_code }}</span>
+                        {% else %}
+                        <span class="recent-empty">—</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if s.paint_description %}
+                        <span class="recent-paint-desc">{{ s.paint_description }}</span>
+                        {% else %}
+                        <span class="recent-empty">—</span>
+                        {% endif %}
+                    </td>
                     <td style="text-align: center;">
                         {% if s.paint_code %}
                         <span class="outcome-tick" title="Paint code returned">✓</span>
@@ -523,13 +697,80 @@
                     </td>
                 </tr>
                 {% empty %}
-                <tr><td colspan="6" style="color: #999; text-align: center; padding: 24px 0;">No lookups yet</td></tr>
+                <tr><td colspan="8" style="color: #999; text-align: center; padding: 24px 0;">No lookups yet</td></tr>
                 {% endfor %}
             </tbody>
         </table>
+
+        <!-- Mobile cards (<=768px). CSS shows this only on narrow viewports. -->
+        <div class="recent-cards">
+            {% for s in recent_all_lookups %}
+            <div class="recent-card">
+                <div class="recent-card-row1">
+                    <span class="recent-card-date">{{ s.timestamp|date:"M j, H:i" }}</span>
+                    {% if s.paint_code %}
+                    <span class="outcome-tick" title="Paint code returned">✓</span>
+                    {% else %}
+                    <span class="outcome-cross" title="No paint code">✗</span>
+                    {% endif %}
+                </div>
+                <div class="recent-card-title">{{ s.vehicle_title|default:"—" }}</div>
+                <div class="recent-card-meta">{{ s.registration }} · {{ s.vin|default:"no VIN" }}</div>
+                <div class="recent-card-meta">{{ s.colour|default:"—" }}</div>
+                {% if s.paint_code or s.paint_description %}
+                <div class="recent-card-paint">
+                    {% if s.paint_code %}<span class="recent-paint-code">{{ s.paint_code }}</span>{% endif %}
+                    {% if s.paint_description %}<span class="recent-paint-desc">{{ s.paint_description }}</span>{% endif %}
+                </div>
+                {% endif %}
+            </div>
+            {% empty %}
+            <div style="color: #999; text-align: center; padding: 24px 0;">No lookups yet</div>
+            {% endfor %}
+        </div>
+    </div>
+
+    <!-- Compose email — staff-only one-off branded emails -->
+    <div class="panel">
+        <h3>Compose email</h3>
+        <p style="color: #666; font-size: 13px; margin-top: -8px; margin-bottom: 16px;">
+            Send a one-off branded email. Markdown supported in the body (links, bold, lists, etc.).
+            A copy is BCCed to hello@coloureg.com so it lands in your Gmail via Dynadot forward.
+        </p>
+        <form method="post" action="{% url 'send_compose_email' %}" class="compose-form" id="compose-form">
+            {% csrf_token %}
+            <div>
+                <label for="compose-to">To</label>
+                <input type="email" id="compose-to" name="to" required maxlength="200" autocomplete="email" placeholder="recipient@example.com" />
+            </div>
+            <div>
+                <label for="compose-subject">Subject</label>
+                <input type="text" id="compose-subject" name="subject" required maxlength="200" placeholder="Paint code for [reg]" />
+            </div>
+            <div>
+                <label for="compose-body">Body (Markdown)</label>
+                <textarea id="compose-body" name="body" required maxlength="5000" placeholder="Hi,&#10;&#10;Here's the paint code you asked about: **Z1Z1/A7N — Limestone Grey-Metallic**.&#10;&#10;[Check it on coloureg](https://coloureg.com)&#10;&#10;Thanks,&#10;Roland"></textarea>
+                <span class="compose-hint">Supports **bold**, [links](url), # headings, lists.</span>
+            </div>
+            <button type="submit" id="compose-send-btn">Send email</button>
+        </form>
     </div>
 
 </div>
+
+<script>
+    // Disable Send button on submit so a double-click can't trigger two sends.
+    (function () {
+        var form = document.getElementById('compose-form');
+        var btn = document.getElementById('compose-send-btn');
+        if (form && btn) {
+            form.addEventListener('submit', function () {
+                btn.disabled = true;
+                btn.textContent = 'Sending...';
+            });
+        }
+    })();
+</script>
 
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <script>
