@@ -152,14 +152,6 @@
         <a href="/admin/" class="btn btn-outline-dark btn-sm">Django Admin</a>
     </div>
 
-    {% if messages %}
-    <div class="flash-messages">
-        {% for message in messages %}
-        <div class="flash flash-{{ message.tags|default:'info' }}">{{ message }}</div>
-        {% endfor %}
-    </div>
-    {% endif %}
-
     <!-- Top metrics: row 1 = volume -->
     <div class="stats-grid">
         <div class="stat-card">
@@ -461,6 +453,9 @@
             font-size: 13px;
             color: #1a1a1a;
             white-space: nowrap;
+            /* Paint codes are always upper-case in practice; force the display
+               so legacy rows stored in mixed case still render correctly. */
+            text-transform: uppercase;
         }
         .recent-paint-desc {
             color: #555;
@@ -591,17 +586,6 @@
         .compose-form button:hover:not(:disabled) {
             background: #002277;
         }
-
-        /* Flash messages (shown at top after compose submit) */
-        .flash-messages { margin-bottom: 16px; }
-        .flash {
-            padding: 10px 14px;
-            border-radius: 6px;
-            font-size: 14px;
-            margin-bottom: 8px;
-        }
-        .flash-success { background: #e8f5e9; color: #2e7d32; border: 1px solid #c8e6c9; }
-        .flash-error { background: #ffebee; color: #c62828; border: 1px solid #ffcdd2; }
     </style>
     <div class="panel">
         <h3>Manual lookup queue (<span id="mlq-count">{{ recent_failures|length }}</span>)</h3>
@@ -731,7 +715,7 @@
     </div>
 
     <!-- Compose email — staff-only one-off branded emails -->
-    <div class="panel">
+    <div class="panel" id="compose">
         <h3>Compose email</h3>
         <p style="color: #666; font-size: 13px; margin-top: -8px; margin-bottom: 16px;">
             Send a one-off branded email. Markdown supported in the body (links, bold, lists, etc.).

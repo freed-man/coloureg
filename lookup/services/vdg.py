@@ -339,6 +339,11 @@ def _parse_paint_fields(results):
       - 'code': primary paint code (first in list), '' if none
       - 'description': primary paint description, '' if none
       - 'all_codes': list of all paint codes [{code, description}, ...]
+
+    Paint codes are .upper()'d on the way out — manufacturer convention is
+    always upper-case, but VDG occasionally returns mixed case for some
+    Ford codes (e.g. 'Pn4lr'). Uppercasing at this boundary means every
+    downstream consumer (DB, email, display) sees consistent caps.
     """
     paint_details = results.get('PaintCodeDetails', {}) or {}
     paint_list = paint_details.get('PaintCodeList', []) or []
@@ -347,13 +352,16 @@ def _parse_paint_fields(results):
         return {'code': '', 'description': '', 'all_codes': []}
 
     all_codes = [
-        {'code': p.get('Code', ''), 'description': smart_title(p.get('Description', ''))}
+        {
+            'code': (p.get('Code', '') or '').strip().upper(),
+            'description': smart_title(p.get('Description', '')),
+        }
         for p in paint_list
     ]
 
     first = paint_list[0]
     return {
-        'code': first.get('Code', ''),
+        'code': (first.get('Code', '') or '').strip().upper(),
         'description': smart_title(first.get('Description', '')),
         'all_codes': all_codes,
     }

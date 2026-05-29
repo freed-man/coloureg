@@ -118,12 +118,57 @@ def _brand_wrapper(body_html):
     """
 
 
+def _make_images_responsive(html):
+    """Inject responsive sizing into <img> tags emitted by Markdown.
+
+    The Markdown ![]() syntax doesn't let the user add styles, so any image
+    embedded in a compose email comes out at its natural pixel size and
+    overflows narrow viewports (e.g. Gmail's mobile app on a 390px phone).
+
+    Email clients are wildly inconsistent about CSS support, so we add the
+    fix as INLINE attributes on every <img> tag:
+      - max-width: 100%   — scale down to fit the container on any viewport
+      - height: auto      — preserve aspect ratio when scaled
+      - display: block    — avoid mystery whitespace under images
+      - max-height: 600px — guard against absurdly tall portrait images
+      - margin: 12px 0    — breathing room around images in text
+
+    Single inline-style block; no JS, no media queries, no device detection.
+    The image just fits whatever container it ends up in.
+    """
+    import re
+
+    inline_style = (
+        'max-width:100%;height:auto;display:block;'
+        'max-height:600px;margin:12px 0;'
+    )
+
+    def _inject(match):
+        attrs = match.group(1)
+        # Strip any trailing whitespace + optional self-closing slash so we can
+        # cleanly re-close the tag ourselves.
+        attrs = re.sub(r'\s*/\s*$', '', attrs).rstrip()
+        # If the img already has a style attribute, append our rules to it.
+        # Otherwise, add a fresh style attribute.
+        style_match = re.search(r'style\s*=\s*"([^"]*)"', attrs)
+        if style_match:
+            existing = style_match.group(1).rstrip(';')
+            merged = f'{existing};{inline_style}' if existing else inline_style
+            attrs = attrs[:style_match.start()] + f'style="{merged}"' + attrs[style_match.end():]
+        else:
+            attrs = f'{attrs} style="{inline_style}"'
+        return f'<img {attrs.lstrip()}>'
+
+    return re.sub(r'<img\b([^>]*?)\s*/?\s*>', _inject, html)
+
+
 def send_custom_message(to_email, subject, markdown_body):
     """Send a custom one-off email composed via the admin compose form.
 
     `markdown_body` is converted to HTML using the standard markdown library
     (no sanitisation — this endpoint is staff-only, so the input is trusted).
-    The result is wrapped in coloureg's brand shell so the email looks like
+    Images get responsive sizing injected via _make_images_responsive. The
+    result is wrapped in coloureg's brand shell so the email looks like
     every other coloureg email.
 
     BCC: a copy goes to settings.DEFAULT_FROM_EMAIL (hello@coloureg.com) so
@@ -137,6 +182,7 @@ def send_custom_message(to_email, subject, markdown_body):
         markdown_body or '',
         extensions=['nl2br', 'extra'],
     )
+    body_html = _make_images_responsive(body_html)
     html = _brand_wrapper(body_html)
 
     return _safe_send({

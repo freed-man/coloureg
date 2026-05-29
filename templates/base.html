@@ -177,8 +177,22 @@
         <div class="row">
             <div class="col-md-8 offset-md-2">
                 {% for message in messages %}
+                {# Colour by message tag. Django emits tags like 'success',  #}
+                {# 'error', 'warning', 'info'. We map to inline styles so the #}
+                {# colours work whether or not Bootstrap's alert CSS is loaded. #}
+                {% if message.tags == 'success' %}
+                <div class="alert alert-dismissible fade show mt-3" role="alert"
+                     style="background-color: #d1e7dd; color: #0f5132; border: 1px solid #badbcc; padding: 12px 20px; font-weight: 500; position: relative; z-index: 10;">
+                {% elif message.tags == 'warning' %}
+                <div class="alert alert-dismissible fade show mt-3" role="alert"
+                     style="background-color: #fff3cd; color: #664d03; border: 1px solid #ffecb5; padding: 12px 20px; font-weight: 500; position: relative; z-index: 10;">
+                {% elif message.tags == 'info' %}
+                <div class="alert alert-dismissible fade show mt-3" role="alert"
+                     style="background-color: #cff4fc; color: #055160; border: 1px solid #b6effb; padding: 12px 20px; font-weight: 500; position: relative; z-index: 10;">
+                {% else %}
                 <div class="alert alert-dismissible fade show mt-3" role="alert"
                      style="background-color: #f8d7da; color: #842029; border: 1px solid #f5c2c7; padding: 12px 20px; font-weight: 500; position: relative; z-index: 10;">
+                {% endif %}
                     <span>{{ message }}</span>
                     <button type="button" class="btn-close" data-bs-dismiss="alert"
                         aria-label="Close"></button>

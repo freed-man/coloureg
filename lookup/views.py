@@ -748,26 +748,26 @@ def send_compose_email(request):
     # submit_manual_lookup) so we don't half-send.
     if not to_email or '@' not in to_email or '.' not in to_email:
         messages.error(request, 'Recipient must be a valid email address.')
-        return redirect('admin_stats')
+        return redirect('/admin-stats/#compose')
     if not subject:
         messages.error(request, 'Subject is required.')
-        return redirect('admin_stats')
+        return redirect('/admin-stats/#compose')
     if len(subject) > 200:
         messages.error(request, f'Subject too long ({len(subject)} chars, max 200).')
-        return redirect('admin_stats')
+        return redirect('/admin-stats/#compose')
     if not body:
         messages.error(request, 'Message body is required.')
-        return redirect('admin_stats')
+        return redirect('/admin-stats/#compose')
     if len(body) > 5000:
         messages.error(request, f'Message body too long ({len(body)} chars, max 5000).')
-        return redirect('admin_stats')
+        return redirect('/admin-stats/#compose')
 
     sent = send_custom_message(to_email, subject, body)
     if sent:
         messages.success(request, f'Email sent to {to_email}.')
     else:
         messages.error(request, f'Failed to send email to {to_email}. Check Resend logs.')
-    return redirect('admin_stats')
+    return redirect('/admin-stats/#compose')
 
 
 @staff_member_required
@@ -781,7 +781,9 @@ def submit_manual_lookup(request):
     """
 
     search_id = request.POST.get('search_id')
-    paint_code = (request.POST.get('paint_code') or '').strip()
+    # Paint codes are always upper-case in practice (manufacturer convention).
+    # We .upper() here so admin typos don't end up as mixed-case in the DB.
+    paint_code = (request.POST.get('paint_code') or '').strip().upper()
     paint_description = (request.POST.get('paint_description') or '').strip()
 
     if not search_id or not paint_code:
