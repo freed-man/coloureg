@@ -732,9 +732,10 @@ def send_compose_email(request):
     """Admin endpoint for sending a one-off branded email from the compose form
     on /admin-stats/.
 
+    Returns JSON so the frontend can show success/error inline without a full
+    page reload. Mirrors the AJAX pattern already used by submit_manual_lookup.
+
     Posts: to (email), subject (str, max 200), body (markdown, max 5000).
-    Validates length, calls send_custom_message, redirects back to admin-stats
-    with a success or error flash message.
 
     The compose form is staff-only (the decorator enforces auth), so we don't
     sanitise the body — staff input is trusted. The body is rendered through
@@ -747,27 +748,20 @@ def send_compose_email(request):
     # Basic validation. Reject before any work happens (same pattern as
     # submit_manual_lookup) so we don't half-send.
     if not to_email or '@' not in to_email or '.' not in to_email:
-        messages.error(request, 'Recipient must be a valid email address.')
-        return redirect('/admin-stats/#compose')
+        return JsonResponse({'success': False, 'error': 'Recipient must be a valid email address.'}, status=400)
     if not subject:
-        messages.error(request, 'Subject is required.')
-        return redirect('/admin-stats/#compose')
+        return JsonResponse({'success': False, 'error': 'Subject is required.'}, status=400)
     if len(subject) > 200:
-        messages.error(request, f'Subject too long ({len(subject)} chars, max 200).')
-        return redirect('/admin-stats/#compose')
+        return JsonResponse({'success': False, 'error': f'Subject too long ({len(subject)} chars, max 200).'}, status=400)
     if not body:
-        messages.error(request, 'Message body is required.')
-        return redirect('/admin-stats/#compose')
+        return JsonResponse({'success': False, 'error': 'Message body is required.'}, status=400)
     if len(body) > 5000:
-        messages.error(request, f'Message body too long ({len(body)} chars, max 5000).')
-        return redirect('/admin-stats/#compose')
+        return JsonResponse({'success': False, 'error': f'Message body too long ({len(body)} chars, max 5000).'}, status=400)
 
     sent = send_custom_message(to_email, subject, body)
     if sent:
-        messages.success(request, f'Email sent to {to_email}.')
-    else:
-        messages.error(request, f'Failed to send email to {to_email}. Check Resend logs.')
-    return redirect('/admin-stats/#compose')
+        return JsonResponse({'success': True, 'message': f'Email sent to {to_email}.'})
+    return JsonResponse({'success': False, 'error': f'Failed to send email to {to_email}. Check Resend logs.'}, status=502)
 
 
 @staff_member_required

@@ -588,6 +588,39 @@
         .compose-form button:hover:not(:disabled) {
             background: #002277;
         }
+        /* Inline status panel for AJAX compose submits */
+        .compose-status {
+            margin-top: 4px;
+            padding: 0;
+            font-size: 14px;
+            min-height: 22px;
+            transition: opacity 0.2s ease;
+        }
+        .compose-status:empty {
+            padding: 0;
+            border: none;
+        }
+        .compose-status-success {
+            color: #0f5132;
+            padding: 10px 14px;
+            background: #d1e7dd;
+            border: 1px solid #badbcc;
+            border-radius: 6px;
+        }
+        .compose-status-error {
+            color: #842029;
+            padding: 10px 14px;
+            background: #f8d7da;
+            border: 1px solid #f5c2c7;
+            border-radius: 6px;
+        }
+        .compose-status-sending {
+            color: #555;
+            padding: 10px 14px;
+            background: #f4f4f4;
+            border: 1px solid #e0e0e0;
+            border-radius: 6px;
+        }
     </style>
     <div class="panel">
         <h3>Manual lookup queue (<span id="mlq-count">{{ recent_failures|length }}</span>)</h3>
@@ -597,7 +630,7 @@
                 <div class="mlq-meta">
                     <div>
                         <div class="lbl">When</div>
-                        <div class="val">{{ s.timestamp|date:"M j, H:i" }}</div>
+                        <div class="val">{{ s.timestamp|date:"M j Y, H:i" }}</div>
                     </div>
                     <div>
                         <div class="lbl">Vehicle</div>
@@ -655,7 +688,7 @@
             <tbody>
                 {% for s in recent_all_lookups %}
                 <tr>
-                    <td style="color: #666; font-size: 13px; white-space: nowrap;">{{ s.timestamp|date:"M j, H:i" }}</td>
+                    <td style="color: #666; font-size: 13px; white-space: nowrap;">{{ s.timestamp|date:"M j Y, H:i" }}</td>
                     <td>{{ s.vehicle_title|default:"—" }}</td>
                     <td>{{ s.registration }}</td>
                     <td style="word-break: break-all;">{{ s.vin|default:"—" }}</td>
@@ -693,7 +726,7 @@
             {% for s in recent_all_lookups %}
             <div class="recent-card">
                 <div class="recent-card-row1">
-                    <span class="recent-card-date">{{ s.timestamp|date:"M j, H:i" }}</span>
+                    <span class="recent-card-date">{{ s.timestamp|date:"M j Y, H:i" }}</span>
                     {% if s.paint_code %}
                     <span class="outcome-tick" title="Paint code returned">✓</span>
                     {% else %}
@@ -739,22 +772,76 @@
                 <span class="compose-hint">Supports **bold**, [links](url), # headings, lists.</span>
             </div>
             <button type="submit" id="compose-send-btn">Send email</button>
+            <!-- Inline status — populated by JS after fetch. Stays empty when idle. -->
+            <div id="compose-status" class="compose-status" role="status" aria-live="polite"></div>
         </form>
     </div>
 
 </div>
 
 <script>
-    // Disable Send button on submit so a double-click can't trigger two sends.
+    // AJAX compose-form submit. Posts to /send-compose-email/ as JSON-returning
+    // endpoint, shows success/error inline, no page reload. Mirrors the pattern
+    // used by the manual-lookup queue (also on this page).
     (function () {
         var form = document.getElementById('compose-form');
         var btn = document.getElementById('compose-send-btn');
-        if (form && btn) {
-            form.addEventListener('submit', function () {
-                btn.disabled = true;
-                btn.textContent = 'Sending...';
-            });
+        var status = document.getElementById('compose-status');
+        if (!form || !btn || !status) return;
+
+        function getCsrfToken() {
+            var input = form.querySelector('input[name="csrfmiddlewaretoken"]');
+            return input ? input.value : '';
         }
+
+        function showStatus(kind, text) {
+            // kind = 'success' | 'error' | 'sending'
+            status.className = 'compose-status compose-status-' + kind;
+            status.textContent = text;
+        }
+
+        function clearStatus() {
+            status.className = 'compose-status';
+            status.textContent = '';
+        }
+
+        form.addEventListener('submit', function (e) {
+            e.preventDefault();
+            btn.disabled = true;
+            btn.textContent = 'Sending...';
+            showStatus('sending', 'Sending email...');
+
+            var formData = new FormData(form);
+
+            fetch(form.action, {
+                method: 'POST',
+                body: formData,
+                headers: {'X-CSRFToken': getCsrfToken()},
+                credentials: 'same-origin',
+            })
+            .then(function (response) {
+                return response.json().then(function (data) {
+                    return {ok: response.ok, data: data};
+                });
+            })
+            .then(function (result) {
+                if (result.ok && result.data.success) {
+                    showStatus('success', result.data.message || 'Email sent.');
+                    // Reset only the body so user can quickly send another message
+                    // to the same recipient (or different) without re-typing the To.
+                    form.querySelector('textarea[name="body"]').value = '';
+                } else {
+                    showStatus('error', result.data.error || 'Send failed. Check Resend logs.');
+                }
+            })
+            .catch(function () {
+                showStatus('error', 'Network error — could not contact server.');
+            })
+            .finally(function () {
+                btn.disabled = false;
+                btn.textContent = 'Send email';
+            });
+        });
     })();
 </script>
 
