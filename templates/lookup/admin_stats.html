@@ -447,10 +447,12 @@
         .outcome-tick { color: #2e7d32; font-weight: 600; font-size: 16px; }
         .outcome-cross { color: #c62828; font-weight: 600; font-size: 16px; }
 
-        /* Recent paint code lookups: paint code (mono) + wrap-friendly description */
+        /* Recent paint code lookups: paint code (mono) + wrap-friendly description.
+           Sized to match the surrounding row text (14px, dark) so the columns
+           don't look like a second-class citizen alongside Date / Vehicle / etc. */
         .recent-paint-code {
             font-family: 'IBM Plex Mono', 'Courier New', monospace;
-            font-size: 13px;
+            font-size: 14px;
             color: #1a1a1a;
             white-space: nowrap;
             /* Paint codes are always upper-case in practice; force the display
@@ -458,8 +460,8 @@
             text-transform: uppercase;
         }
         .recent-paint-desc {
-            color: #555;
-            font-size: 13px;
+            color: #1a1a1a;
+            font-size: 14px;
             /* Wrap rather than truncate — descriptions can be long but staff want to read them */
             word-break: break-word;
             max-width: 220px;
