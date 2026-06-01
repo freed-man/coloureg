@@ -47,13 +47,6 @@ def _brand_header():
     """
 
 
-FONT_IMPORT = """
-<style>
-@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600;700&display=swap');
-</style>
-"""
-
-
 FOOTER = """
 <div style="max-width: 560px; margin: 24px auto 0; text-align: center; color: #999; font-size: 12px;">
     Sent by <a href="https://coloureg.com" style="color: #0066cc; text-decoration: none;">coloureg.com</a>
@@ -105,7 +98,6 @@ def _brand_wrapper(body_html):
     matching the visual style of the transactional emails.
     """
     return f"""
-    {FONT_IMPORT}
     <div style="background: #f8f9fa; padding: 40px 20px; font-family: 'IBM Plex Sans', Arial, Helvetica, sans-serif;">
         <div style="max-width: 560px; margin: 0 auto; background: #fff; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.04);">
             {_brand_header()}
@@ -231,7 +223,6 @@ def send_user_paint_code(to_email, registration, vehicle_title, vin_masked, colo
         canonical_html = ''
 
     html = f"""
-    {FONT_IMPORT}
     <div style="background: #f8f9fa; padding: 40px 20px; font-family: 'IBM Plex Sans', Arial, Helvetica, sans-serif;">
         <div style="max-width: 560px; margin: 0 auto; background: #fff; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.04);">
             {_brand_header()}
@@ -293,7 +284,6 @@ def send_admin_failure_notification(registration, vehicle_title, vin_full, colou
     """Email admin when paint code wasn't found and user requested manual lookup."""
 
     html = f"""
-    {FONT_IMPORT}
     <div style="background: #f8f9fa; padding: 40px 20px; font-family: 'IBM Plex Sans', Arial, Helvetica, sans-serif;">
         <div style="max-width: 560px; margin: 0 auto; background: #fff; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.04);">
             {_brand_header()}
@@ -347,7 +337,6 @@ def send_user_pending_notification(to_email, registration, vehicle_title, vin_ma
     """Email user confirming we'll do manual lookup."""
 
     html = f"""
-    {FONT_IMPORT}
     <div style="background: #f8f9fa; padding: 40px 20px; font-family: 'IBM Plex Sans', Arial, Helvetica, sans-serif;">
         <div style="max-width: 560px; margin: 0 auto; background: #fff; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.04);">
             {_brand_header()}
@@ -399,7 +388,6 @@ def send_admin_contact_message(contact_type, user_email, message):
     type_label = contact_type.title()
 
     html = f"""
-    {FONT_IMPORT}
     <div style="background: #f8f9fa; padding: 40px 20px; font-family: 'IBM Plex Sans', Arial, Helvetica, sans-serif;">
         <div style="max-width: 560px; margin: 0 auto; background: #fff; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.04);">
             {_brand_header()}
@@ -445,7 +433,6 @@ def send_user_contact_confirmation(to_email):
     """Confirm to user that their message was received."""
 
     html = f"""
-    {FONT_IMPORT}
     <div style="background: #f8f9fa; padding: 40px 20px; font-family: 'IBM Plex Sans', Arial, Helvetica, sans-serif;">
         <div style="max-width: 560px; margin: 0 auto; background: #fff; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.04);">
             {_brand_header()}
