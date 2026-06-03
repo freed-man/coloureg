@@ -691,7 +691,7 @@
                     <td style="color: #666; font-size: 13px; white-space: nowrap;">{{ s.timestamp|date:"M j Y, H:i" }}</td>
                     <td>{{ s.vehicle_title|default:"—" }}</td>
                     <td>{{ s.registration }}</td>
-                    <td style="word-break: break-all;">{{ s.vin|default:"—" }}</td>
+                    <td style="white-space: nowrap;">{{ s.vin|default:"—" }}</td>
                     <td>{{ s.colour|default:"—" }}</td>
                     <td>
                         {% if s.paint_code %}
