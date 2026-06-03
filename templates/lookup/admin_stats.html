@@ -66,7 +66,7 @@
     }
     .stats-table th {
         text-align: left;
-        padding: 8px 0;
+        padding: 8px 12px 8px 0;
         color: #666;
         font-weight: 600;
         font-size: 12px;
@@ -74,8 +74,13 @@
         letter-spacing: 0.5px;
         border-bottom: 1px solid #eee;
     }
+    /* Last column doesn't need right-padding (no neighbour to separate from). */
+    .stats-table th:last-child,
+    .stats-table td:last-child {
+        padding-right: 0;
+    }
     .stats-table td {
-        padding: 10px 0;
+        padding: 10px 12px 10px 0;
         border-bottom: 0.5px solid #f0f0f0;
     }
     .stats-table tr:last-child td {
