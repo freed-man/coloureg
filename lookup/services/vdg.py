@@ -215,6 +215,16 @@ def _parse_vehicle_fields(results):
     model_details = results.get('ModelDetails', {}) or {}
     model_identification = model_details.get('ModelIdentification', {}) or {}
 
+    # EU type-approval category (M1 passenger, N1/N2/N3 commercial). pl24 needs
+    # this to route commercial vehicles (Sprinters, Transits) to the right
+    # catalogue — without it they mis-route and burn the full fallback chain
+    # (observed ~60s timeout vs ~3s when the category is supplied). Lives at
+    # ModelDetails.ModelClassification.TypeApprovalCategory; may be absent on
+    # vehicles VDG has no ModelDetails for, in which case we pass '' and pl24
+    # falls back to treating it as passenger.
+    model_classification = model_details.get('ModelClassification', {}) or {}
+    category = (model_classification.get('TypeApprovalCategory', '') or '').strip()
+
     # Make and model: prefer VDG's curated ModelDetails (clean casing like
     # 'BMW', 'Volkswagen', '730Ld SE Auto'). Only fall back to DvlaMake/DvlaModel
     # when ModelDetails has no value, and clean those because DVLA always
@@ -329,6 +339,7 @@ def _parse_vehicle_fields(results):
         'fuel_type': fuel_display,
         'transmission': transmission,
         'engine_description': engine_description,
+        'category': category,
     }
 
 
