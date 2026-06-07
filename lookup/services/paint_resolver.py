@@ -17,20 +17,21 @@ whichever produces a code first:
      misses the VDG retry can't.
 
 Design notes:
-  - Both run on threads and we take the FIRST that returns a usable paint code.
-    If the VDG retry hits, we use it immediately (faster, and the pl24 result
-    is simply ignored when it lands). If the retry misses, we wait for pl24.
-    If both miss, the caller falls through to the manual-lookup offer.
+  - Both run on threads and we take the FIRST that returns a usable paint code,
+    with a deterministic preference for the VDG retry when both produce a code
+    (it's cheaper — already paid for — and faster). See resolve_paint for how
+    the preference is enforced even when both finish in the same wait() batch.
   - This function is SYNCHRONOUS and may block for up to ~PL24_TIMEOUT seconds.
     It is intended to be called from the background/status path (where the user
     is already looking at their vehicle data), NOT inline in the main lookup
     request.
   - Nothing here raises on a miss; failures degrade to "no paint found" so the
-    caller always gets a clean result dict.
+    caller always gets a clean result dict (or None).
 """
 
 import concurrent.futures
 import os
+import time
 
 import requests
 
@@ -46,10 +47,16 @@ PL24_BASE_URL = os.environ.get(
 PL24_API_KEY = os.environ.get('PL24_API_KEY', '')
 
 # How long to wait on the pl24 scrape before giving up. pl24's own internal
-# ceiling is ~60s (worst-case fallback chain); we allow a little more so a
-# legitimately slow-but-successful scrape isn't cut off by our client. The
-# VDG retry, being fast, effectively short-circuits this whenever it hits.
-PL24_TIMEOUT = float(os.environ.get('PL24_CLIENT_TIMEOUT_S', '70'))
+# ceiling is ~60s (worst-case fallback chain). 35s is a deliberate ergonomic
+# compromise: long enough to catch most successful scrapes, short enough that a
+# both-miss case surfaces the manual-lookup offer reasonably quickly rather than
+# leaving the user watching a spinner for over a minute. Tune via env if needed.
+PL24_TIMEOUT = float(os.environ.get('PL24_CLIENT_TIMEOUT_S', '35'))
+
+# requests timeout as (connect, read): cap connection setup tightly (the pl24
+# service is on the same platform/region, so a slow connect means trouble), and
+# allow the read to run up to the overall budget for the scrape itself.
+_PL24_HTTP_TIMEOUT = (5.0, PL24_TIMEOUT)
 
 
 def _vdg_retry(registration):
@@ -82,7 +89,7 @@ def _pl24_lookup(vin, make, category=None):
     try:
         resp = requests.get(
             f'{PL24_BASE_URL}/lookup-paint',
-            params=params, headers=headers, timeout=PL24_TIMEOUT,
+            params=params, headers=headers, timeout=_PL24_HTTP_TIMEOUT,
         )
     except requests.exceptions.RequestException:
         return None
@@ -117,32 +124,36 @@ def resolve_paint(registration, vin, make, category=None):
          'all_paint_codes', ...}
     or None if no paint could be recovered by either path.
 
-    Both paths run concurrently. The VDG retry usually finishes first; if it
-    yields paint we return immediately. If the retry misses, we wait for pl24
-    up to the deadline. If both miss (or the deadline passes), None.
+    Preference: when BOTH paths produce a code, the VDG-retry result wins (it's
+    cheaper and already paid for). This holds even if both futures complete in
+    the same wait() batch — we explicitly inspect the VDG future before the pl24
+    future within a batch, rather than relying on set-iteration order.
 
-    The total wait is hard-bounded by PL24_TIMEOUT: we do NOT use the
-    ThreadPoolExecutor as a context manager, because its __exit__ blocks until
-    all worker threads finish — which would let a slow/hung pl24 thread make
-    this function hang far past the timeout. Instead we wait on the futures
-    with an explicit deadline and then shut the executor down WITHOUT waiting
-    (cancel_futures=True, wait=False), abandoning any straggler. The abandoned
-    pl24 thread's underlying HTTP request has its own timeout and will end on
-    its own; we just stop caring about it at the deadline.
+    Timeout: the total wait is hard-bounded by PL24_TIMEOUT. We deliberately do
+    NOT use the ThreadPoolExecutor as a context manager, because its __exit__
+    blocks until all worker threads finish — which would let a slow/hung pl24
+    thread make this function hang far past the timeout. Instead we wait on the
+    futures with an explicit deadline, then shut the executor down WITHOUT
+    waiting (wait=False, cancel_futures=True), abandoning any straggler. The
+    abandoned pl24 thread's HTTP request has its own timeout and ends on its own.
     """
-    import time as _time
-
     ex = concurrent.futures.ThreadPoolExecutor(max_workers=2)
     try:
         f_vdg = ex.submit(_vdg_retry, registration)
         f_pl24 = ex.submit(_pl24_lookup, vin, make, category)
 
-        deadline = _time.monotonic() + PL24_TIMEOUT
+        deadline = time.monotonic() + PL24_TIMEOUT
         pending = {f_vdg, f_pl24}
         pl24_result = None
 
+        def _result_or_none(fut):
+            try:
+                return fut.result()
+            except Exception:  # noqa: BLE001  (any worker failure -> no paint)
+                return None
+
         while pending:
-            remaining = deadline - _time.monotonic()
+            remaining = deadline - time.monotonic()
             if remaining <= 0:
                 break  # deadline hit — stop waiting, abandon stragglers
             done, pending = concurrent.futures.wait(
@@ -152,28 +163,29 @@ def resolve_paint(registration, vin, make, category=None):
             if not done:
                 break  # wait timed out with nothing newly completed
 
-            for fut in done:
-                try:
-                    result = fut.result()
-                except Exception:  # noqa: BLE001
-                    result = None
-                if result is None:
-                    continue
-                if result.get('source') == 'vdg_retry':
-                    # VDG retry recovered paint — fastest path, use immediately.
-                    return result
-                # pl24 found paint. Prefer the VDG retry only if it's still
-                # pending AND could still hit — but the retry is the faster
-                # path, so if pl24 finished first the retry has almost certainly
-                # already returned None. Use pl24's result.
-                pl24_result = result
+            # Enforce the VDG-over-pl24 preference within this batch: if the VDG
+            # future is among the just-completed ones and produced paint, that
+            # wins outright — regardless of whether pl24 also completed here.
+            if f_vdg in done:
+                vdg_result = _result_or_none(f_vdg)
+                if vdg_result is not None:
+                    return vdg_result
+
+            # VDG didn't (yet) yield paint. If pl24 completed in this batch with
+            # a code, hold it; we return it below unless a later batch produces
+            # a VDG hit first (it won't, since VDG either completed here without
+            # paint or is still pending and is the faster path anyway).
+            if f_pl24 in done:
+                p = _result_or_none(f_pl24)
+                if p is not None:
+                    pl24_result = p
 
             if pl24_result is not None:
                 return pl24_result
 
         return pl24_result  # None unless pl24 produced a code before the deadline
     finally:
-        # Do NOT block on stragglers. cancel_futures cancels any not-yet-started
-        # work; wait=False means we don't join running threads. A pl24 thread
+        # Do NOT block on stragglers. wait=False means we don't join running
+        # threads; cancel_futures cancels any not-yet-started work. A pl24 thread
         # still mid-request is abandoned and ends when its own HTTP timeout fires.
         ex.shutdown(wait=False, cancel_futures=True)
