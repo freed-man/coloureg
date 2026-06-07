@@ -250,7 +250,7 @@ def send_user_paint_code(to_email, registration, vehicle_title, vin_masked, colo
                     </tr>
                     <tr style="border-top: 1px solid #eee;">
                         <td style="padding: 12px 0; color: #666; font-size: 14px;">VIN</td>
-                        <td style="padding: 12px 0; color: #1a1a1a; font-size: 14px;">{vin_masked or '—'}</td>
+                        <td style="padding: 12px 0; color: #1a1a1a; font-size: 14px; word-break: break-all; overflow-wrap: break-word;">{vin_masked or '—'}</td>
                     </tr>
                     <tr style="border-top: 1px solid #eee;">
                         <td style="padding: 12px 0; color: #666; font-size: 14px;">Colour</td>
@@ -302,15 +302,15 @@ def send_admin_failure_notification(registration, vehicle_title, vin_full, colou
                     </tr>
                     <tr style="border-bottom: 1px solid #eee;">
                         <td style="padding: 10px 16px 10px 0; color: #666; font-size: 13px;">VIN</td>
-                        <td style="padding: 10px 0; color: #1a1a1a; font-size: 14px; font-family: 'IBM Plex Sans', Arial, Helvetica, sans-serif;">{vin_full or '—'}</td>
+                        <td style="padding: 10px 0; color: #1a1a1a; font-size: 14px; font-family: 'IBM Plex Sans', Arial, Helvetica, sans-serif; word-break: break-all; overflow-wrap: break-word;">{vin_full or '—'}</td>
                     </tr>
                     <tr style="border-bottom: 1px solid #eee;">
                         <td style="padding: 10px 16px 10px 0; color: #666; font-size: 13px;">Colour</td>
                         <td style="padding: 10px 0; color: #1a1a1a; font-size: 14px;">{colour or '—'}</td>
                     </tr>
                     <tr>
-                        <td style="padding: 10px 16px 10px 0; color: #666; font-size: 13px;">User</td>
-                        <td style="padding: 10px 0;"><a href="mailto:{user_email}" style="color: #003399; font-size: 14px;">{user_email}</a></td>
+                        <td style="padding: 10px 16px 10px 0; color: #666; font-size: 13px; vertical-align: top;">User</td>
+                        <td style="padding: 10px 0; word-break: break-all; overflow-wrap: break-word;"><a href="mailto:{user_email}" style="color: #003399; font-size: 14px; word-break: break-all; overflow-wrap: break-word;">{user_email}</a></td>
                     </tr>
                 </table>
 
@@ -356,7 +356,7 @@ def send_user_pending_notification(to_email, registration, vehicle_title, vin_ma
                     </tr>
                     <tr style="border-bottom: 1px solid #eee;">
                         <td style="padding: 10px 16px 10px 0; color: #666; font-size: 13px;">VIN</td>
-                        <td style="padding: 10px 0; color: #1a1a1a; font-size: 14px;">{vin_masked or '—'}</td>
+                        <td style="padding: 10px 0; color: #1a1a1a; font-size: 14px; word-break: break-all; overflow-wrap: break-word;">{vin_masked or '—'}</td>
                     </tr>
                     <tr>
                         <td style="padding: 10px 16px 10px 0; color: #666; font-size: 13px;">Colour</td>
@@ -401,8 +401,8 @@ def send_admin_contact_message(contact_type, user_email, message):
                         <td style="padding: 10px 0; color: #1a1a1a; font-size: 14px;">{type_label}</td>
                     </tr>
                     <tr style="border-bottom: 1px solid #eee;">
-                        <td style="padding: 10px 16px 10px 0; color: #666; font-size: 13px;">From</td>
-                        <td style="padding: 10px 0;"><a href="mailto:{user_email}" style="color: #003399; font-size: 14px;">{user_email}</a></td>
+                        <td style="padding: 10px 16px 10px 0; color: #666; font-size: 13px; vertical-align: top;">From</td>
+                        <td style="padding: 10px 0; word-break: break-all; overflow-wrap: break-word;"><a href="mailto:{user_email}" style="color: #003399; font-size: 14px; word-break: break-all; overflow-wrap: break-word;">{user_email}</a></td>
                     </tr>
                 </table>
 
