@@ -20,6 +20,27 @@ DEBUG = os.environ.get('DEVELOPMENT', '') == 'True'
 
 ALLOWED_HOSTS = ['127.0.0.1', 'localhost', '.herokuapp.com', '.coloureg.com', '.coloureg.co.uk']
 
+# Railway provides the service's public domain in RAILWAY_PUBLIC_DOMAIN
+# (e.g. 'coloureg-production.up.railway.app'). Append it so the app serves
+# correctly on the Railway URL during the migration test, before DNS is
+# pointed at it. Harmless on Heroku (the var is simply absent there).
+_railway_domain = os.environ.get('RAILWAY_PUBLIC_DOMAIN', '').strip()
+if _railway_domain:
+    ALLOWED_HOSTS.append(_railway_domain)
+
+# CSRF_TRUSTED_ORIGINS: Django 4+ requires the request's Origin to be trusted
+# for any POST over HTTPS (the reg-lookup submit, email submit, admin manual
+# -lookup actions). Behind Railway's proxy on a new domain, POSTs would 403
+# without this. We trust the real domains always, plus the Railway domain when
+# present. Scheme is required in this setting (unlike ALLOWED_HOSTS).
+CSRF_TRUSTED_ORIGINS = [
+    'https://*.coloureg.com',
+    'https://*.coloureg.co.uk',
+    'https://*.herokuapp.com',
+]
+if _railway_domain:
+    CSRF_TRUSTED_ORIGINS.append(f'https://{_railway_domain}')
+
 # Application definition
 
 INSTALLED_APPS = [

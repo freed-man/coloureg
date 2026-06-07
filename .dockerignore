@@ -1,0 +1,26 @@
+# Secrets / local-only config — never bake into the image (Railway injects
+# real values as env vars at runtime).
+env.py
+.env
+
+# Local SQLite dev DB (production uses Neon via DATABASE_URL).
+db.sqlite3
+
+# Collected static is regenerated in the build; don't ship a stale copy.
+staticfiles/
+
+# Python cruft
+__pycache__/
+*.pyc
+*.pyo
+
+# Local envs / editor / VCS
+.venv/
+venv/
+.vscode/
+.idea/
+.git/
+.gitignore
+
+# OS noise
+.DS_Store
