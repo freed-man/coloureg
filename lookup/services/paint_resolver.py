@@ -46,12 +46,16 @@ PL24_BASE_URL = os.environ.get(
 ).rstrip('/')
 PL24_API_KEY = os.environ.get('PL24_API_KEY', '')
 
-# How long to wait on the pl24 scrape before giving up. pl24's own internal
-# ceiling is ~60s (worst-case fallback chain). 35s is a deliberate ergonomic
-# compromise: long enough to catch most successful scrapes, short enough that a
-# both-miss case surfaces the manual-lookup offer reasonably quickly rather than
-# leaving the user watching a spinner for over a minute. Tune via env if needed.
-PL24_TIMEOUT = float(os.environ.get('PL24_CLIENT_TIMEOUT_S', '35'))
+# How long resolve_paint waits for pl24 before giving up. Set just ABOVE pl24's
+# own internal ceiling (~60s worst case, when it walks the full fallback chain:
+# catalog -> commercial sibling -> Classic sibling -> dashboard). Matching it
+# this way means pl24 always gets to finish its own attempt before we abandon
+# it — capping lower would truncate exactly the slow commercial-vehicle lookups
+# pl24 exists to rescue, throwing away codes it would have found seconds later.
+# The long wait is acceptable because resolve_paint runs in the background while
+# the user already sees their vehicle data; the results page communicates the
+# wait ("checking manufacturer database...") rather than appearing frozen.
+PL24_TIMEOUT = float(os.environ.get('PL24_CLIENT_TIMEOUT_S', '65'))
 
 # requests timeout as (connect, read): cap connection setup tightly (the pl24
 # service is on the same platform/region, so a slow connect means trouble), and
