@@ -118,36 +118,62 @@ def resolve_paint(registration, vin, make, category=None):
     or None if no paint could be recovered by either path.
 
     Both paths run concurrently. The VDG retry usually finishes first; if it
-    yields paint we return immediately and let the pl24 future resolve and be
-    discarded. If the retry misses, we wait for pl24. If both miss, None.
+    yields paint we return immediately. If the retry misses, we wait for pl24
+    up to the deadline. If both miss (or the deadline passes), None.
+
+    The total wait is hard-bounded by PL24_TIMEOUT: we do NOT use the
+    ThreadPoolExecutor as a context manager, because its __exit__ blocks until
+    all worker threads finish — which would let a slow/hung pl24 thread make
+    this function hang far past the timeout. Instead we wait on the futures
+    with an explicit deadline and then shut the executor down WITHOUT waiting
+    (cancel_futures=True, wait=False), abandoning any straggler. The abandoned
+    pl24 thread's underlying HTTP request has its own timeout and will end on
+    its own; we just stop caring about it at the deadline.
     """
-    with concurrent.futures.ThreadPoolExecutor(max_workers=2) as ex:
+    import time as _time
+
+    ex = concurrent.futures.ThreadPoolExecutor(max_workers=2)
+    try:
         f_vdg = ex.submit(_vdg_retry, registration)
         f_pl24 = ex.submit(_pl24_lookup, vin, make, category)
-        futures = {f_vdg: 'vdg_retry', f_pl24: 'pl24'}
 
+        deadline = _time.monotonic() + PL24_TIMEOUT
+        pending = {f_vdg, f_pl24}
         pl24_result = None
-        # Process whichever finishes first. Prefer the VDG retry when it hits
-        # (faster path); fall back to pl24's result if the retry missed.
-        for fut in concurrent.futures.as_completed(futures, timeout=PL24_TIMEOUT + 5):
-            which = futures[fut]
-            try:
-                result = fut.result()
-            except Exception:  # noqa: BLE001
-                result = None
-            if result is None:
-                continue
-            if which == 'vdg_retry':
-                # VDG retry recovered paint — use it now; pl24 future (if still
-                # running) is abandoned when the executor exits.
-                return result
-            else:
-                # pl24 found paint. Hold it: if the VDG retry is still running
-                # it might also hit and we'd prefer it, but as_completed gives us
-                # whatever finished first. Since the retry is the faster path,
-                # if pl24 finished first the retry has very likely already
-                # missed (returned None above) — so just use pl24.
+
+        while pending:
+            remaining = deadline - _time.monotonic()
+            if remaining <= 0:
+                break  # deadline hit — stop waiting, abandon stragglers
+            done, pending = concurrent.futures.wait(
+                pending, timeout=remaining,
+                return_when=concurrent.futures.FIRST_COMPLETED,
+            )
+            if not done:
+                break  # wait timed out with nothing newly completed
+
+            for fut in done:
+                try:
+                    result = fut.result()
+                except Exception:  # noqa: BLE001
+                    result = None
+                if result is None:
+                    continue
+                if result.get('source') == 'vdg_retry':
+                    # VDG retry recovered paint — fastest path, use immediately.
+                    return result
+                # pl24 found paint. Prefer the VDG retry only if it's still
+                # pending AND could still hit — but the retry is the faster
+                # path, so if pl24 finished first the retry has almost certainly
+                # already returned None. Use pl24's result.
                 pl24_result = result
+
+            if pl24_result is not None:
                 return pl24_result
 
-    return None
+        return pl24_result  # None unless pl24 produced a code before the deadline
+    finally:
+        # Do NOT block on stragglers. cancel_futures cancels any not-yet-started
+        # work; wait=False means we don't join running threads. A pl24 thread
+        # still mid-request is abandoned and ends when its own HTTP timeout fires.
+        ex.shutdown(wait=False, cancel_futures=True)
