@@ -48,15 +48,13 @@ RUN SECRET_KEY=build-time-only-not-used DEVELOPMENT=False \
 EXPOSE 8000
 
 # Run gunicorn, binding Railway's $PORT. Shell form so $PORT expands.
-# Bind to [::] (IPv6 all-interfaces), NOT 0.0.0.0 (IPv4-only): Railway's internal
-# network — including the deploy-time healthcheck probe — runs over IPv6, so an
-# IPv4-only bind makes the probe's connection fail ("service unavailable") even
-# though the app is healthy. [::] is dual-stack: it accepts both IPv6 and IPv4
-# connections, so this serves the public IPv4 traffic AND the internal IPv6
-# healthcheck. (This, plus the .railway.internal entry in ALLOWED_HOSTS, is what
-# lets Railway's /health/ probe reach Django and get a 200.)
-# Worker/timeout tuning: a couple of workers is plenty for this app's traffic;
-# the long-running paint work will be offloaded to pl24, not handled in a web
-# worker, so a generous request timeout isn't required here. Adjust workers via
-# the WEB_CONCURRENCY env var if needed (gunicorn reads it automatically).
-CMD ["sh", "-c", "gunicorn coloureg.wsgi --bind [::]:${PORT} --workers ${WEB_CONCURRENCY:-2} --access-logfile - --error-logfile -"]
+# Bind to [::] (IPv6 dual-stack) for Railway's internal network — see the
+# healthcheck notes above. --timeout 90: the /lookup-status endpoint runs the
+# paint recovery (parallel VDG-retry + pl24) synchronously, which can take up to
+# ~65s on a slow/commercial vehicle. Gunicorn's DEFAULT worker timeout is 30s, so
+# without this it kills the worker mid-request (SystemExit / worker abort) before
+# the recovery finishes. 90s sits comfortably above the ~65s ceiling. (Railway
+# itself has no 30s router limit — this is purely gunicorn's own worker timeout,
+# which is why it bit us even after leaving Heroku.) Tune workers via the
+# WEB_CONCURRENCY env var if needed (gunicorn reads it automatically).
+CMD ["sh", "-c", "gunicorn coloureg.wsgi --bind [::]:${PORT} --workers ${WEB_CONCURRENCY:-2} --timeout 90 --access-logfile - --error-logfile -"]
