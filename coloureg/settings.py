@@ -20,17 +20,26 @@ DEBUG = os.environ.get('DEVELOPMENT', '') == 'True'
 
 ALLOWED_HOSTS = ['127.0.0.1', 'localhost', '.herokuapp.com', '.coloureg.com', '.coloureg.co.uk']
 
-# Railway provides the service's public domain in RAILWAY_PUBLIC_DOMAIN
-# (e.g. 'coloureg-production.up.railway.app'). Append it so the app serves
-# correctly on the Railway URL during the migration test, before DNS is
-# pointed at it. Harmless on Heroku (the var is simply absent there).
+# The Railway-assigned public URL (e.g. 'coloureg-production.up.railway.app').
+# Allow the whole '.up.railway.app' suffix so direct hits to that URL are
+# accepted. We can't rely on RAILWAY_PUBLIC_DOMAIN for this: once a custom
+# domain (coloureg.com) is attached, Railway sets RAILWAY_PUBLIC_DOMAIN to the
+# custom domain, so the original *.up.railway.app URL would otherwise fall out
+# of ALLOWED_HOSTS and throw DisallowedHost (noise in Sentry, and the URL would
+# 400). Harmless on Heroku (just an extra never-matched suffix there).
+ALLOWED_HOSTS.append('.up.railway.app')
+
+# Railway provides the service's current public domain in RAILWAY_PUBLIC_DOMAIN
+# (the custom domain once attached, otherwise the *.up.railway.app URL). Append
+# it too so whatever Railway considers canonical is always allowed. Harmless on
+# Heroku (the var is simply absent there).
 _railway_domain = os.environ.get('RAILWAY_PUBLIC_DOMAIN', '').strip()
 if _railway_domain:
     ALLOWED_HOSTS.append(_railway_domain)
 
 # Private service-to-service traffic uses the *.railway.internal domain (this is
-# also what coloureg will use to call pl24 privately later). Allow it. The
-# healthcheck probe's own (internal) Host header is handled separately by
+# also what coloureg uses to call pl24 privately). Allow it. The healthcheck
+# probe's own (internal) Host header is handled separately by
 # HealthCheckMiddleware, which answers /health/ before host validation runs, so
 # we don't need to enumerate the probe's host here.
 ALLOWED_HOSTS.append('.railway.internal')
