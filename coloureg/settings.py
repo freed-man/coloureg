@@ -28,6 +28,19 @@ _railway_domain = os.environ.get('RAILWAY_PUBLIC_DOMAIN', '').strip()
 if _railway_domain:
     ALLOWED_HOSTS.append(_railway_domain)
 
+# Railway's internal healthcheck probe and private-network traffic do NOT use
+# the public domain — they arrive with an internal Host header (e.g. the
+# *.railway.internal service address or a healthcheck host on the 100.64.0.0/10
+# internal range). Without these allowed, Django rejects the healthcheck with
+# 400 DisallowedHost, which Railway reads as a failed healthcheck and the deploy
+# never goes live. Allow the private network domain (covers the internal
+# healthcheck and any future private service-to-service calls). The private
+# RAILWAY_PRIVATE_DOMAIN env var is set automatically by Railway when present.
+ALLOWED_HOSTS.append('.railway.internal')
+_railway_private = os.environ.get('RAILWAY_PRIVATE_DOMAIN', '').strip()
+if _railway_private:
+    ALLOWED_HOSTS.append(_railway_private)
+
 # CSRF_TRUSTED_ORIGINS: Django 4+ requires the request's Origin to be trusted
 # for any POST over HTTPS (the reg-lookup submit, email submit, admin manual
 # -lookup actions). Behind Railway's proxy on a new domain, POSTs would 403
