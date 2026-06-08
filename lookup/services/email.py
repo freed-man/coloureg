@@ -343,7 +343,7 @@ def send_user_pending_notification(to_email, registration, vehicle_title, vin_ma
             <div style="padding: 40px 32px;">
                 <h1 style="margin: 0 0 12px; font-size: 22px; color: #1a1a1a; font-weight: 600;">Thanks — we're on it</h1>
                 <p style="margin: 0 0 24px; color: #4a4a4a; font-size: 15px; line-height: 1.6;">
-                    The manufacturer's servers didn't respond in time. We'll retrieve the paint code directly from the manufacturer database and email it to you within 12 hours.
+                    The manufacturer's servers didn't respond in time. We'll retrieve the paint code directly from the manufacturer database and email it to you within 1 hour.
                 </p>
                 <table style="width: 100%; border-collapse: collapse; margin-bottom: 24px;">
                     <tr style="border-bottom: 1px solid #eee;">
@@ -439,7 +439,7 @@ def send_user_contact_confirmation(to_email):
             <div style="padding: 40px 32px;">
                 <h1 style="margin: 0 0 12px; font-size: 22px; color: #1a1a1a; font-weight: 600;">Thanks for getting in touch</h1>
                 <p style="margin: 0 0 16px; color: #4a4a4a; font-size: 15px; line-height: 1.6;">
-                    We've received your message and will get back to you within 12 hours.
+                    We've received your message and will get back to you within 1 hour.
                 </p>
                 <div style="background: #f0f4ff; border-left: 3px solid #003399; padding: 16px 20px; border-radius: 4px;">
                     <p style="margin: 0; color: #003399; font-size: 13px;">

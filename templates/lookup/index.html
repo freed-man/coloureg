@@ -500,12 +500,10 @@
         form.style.display = 'none';
         loader.classList.add('active');
 
-        // Three honest stages — message stays put until next threshold is hit.
-        // 0s: initial, already in DOM
-        // 15s: still working honestly
-        // 30s: server slow honestly
-        var stage15 = "Still working on it...";
-        var stage30 = "Manufacturer servers are slow today, hang tight...";
+        // Two honest stages — message stays put until the 15s threshold is hit.
+        // 0s:  initial ("Connecting to manufacturer server...", already in DOM)
+        // 15s: reassure during a genuinely slow lookup
+        var stage15 = "Manufacturer servers are slow today, hang tight...";
 
         function fadeTo(text, isStuck) {
             msgEl.style.opacity = '0';
@@ -516,11 +514,10 @@
             }, 300);
         }
 
-        var t15 = setTimeout(function() { fadeTo(stage15, false); }, 15000);
-        var t30 = setTimeout(function() { fadeTo(stage30, true); },  30000);
+        var t15 = setTimeout(function() { fadeTo(stage15, true); }, 15000);
 
-        // Stash handles on the form so the pageshow handler can clear them on back-navigation.
-        form._loaderTimers = [t15, t30];
+        // Stash handle on the form so the pageshow handler can clear it on back-navigation.
+        form._loaderTimers = [t15];
     });
 
     // Reset loader state on page show (covers back-button navigation from a bfcache).

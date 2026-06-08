@@ -111,6 +111,79 @@
             padding: 1.5rem 1rem;
         }
     }
+
+    /* ---- Paint-recovery pending state ---- */
+    /* The signature 16-dot tumbling paint sphere, matched to the homepage loader. */
+    .lookup-spinner {
+        position: relative;
+        width: 140px;
+        height: 140px;
+        transform-style: preserve-3d;
+        animation: spinner-tumble 5s linear infinite;
+    }
+    .lookup-spinner .dot {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        width: 18px;
+        height: 18px;
+        margin: -9px 0 0 -9px;
+        border-radius: 50%;
+        box-shadow: 0 2px 6px rgba(0, 0, 0, 0.25);
+        transform-style: preserve-3d;
+    }
+    .lookup-spinner .dot:nth-child(1)  { background: #C8102E; transform: rotateY(0deg)   rotateX(0deg)   translateZ(52px); }
+    .lookup-spinner .dot:nth-child(2)  { background: #FF6B35; transform: rotateY(45deg)  rotateX(0deg)   translateZ(52px); }
+    .lookup-spinner .dot:nth-child(3)  { background: #F4B400; transform: rotateY(90deg)  rotateX(0deg)   translateZ(52px); }
+    .lookup-spinner .dot:nth-child(4)  { background: #B8E23E; transform: rotateY(135deg) rotateX(0deg)   translateZ(52px); }
+    .lookup-spinner .dot:nth-child(5)  { background: #0F9D58; transform: rotateY(180deg) rotateX(0deg)   translateZ(52px); }
+    .lookup-spinner .dot:nth-child(6)  { background: #00C2A8; transform: rotateY(225deg) rotateX(0deg)   translateZ(52px); }
+    .lookup-spinner .dot:nth-child(7)  { background: #2196F3; transform: rotateY(270deg) rotateX(0deg)   translateZ(52px); }
+    .lookup-spinner .dot:nth-child(8)  { background: #003399; transform: rotateY(315deg) rotateX(0deg)   translateZ(52px); }
+    .lookup-spinner .dot:nth-child(9)  { background: #6f42c1; transform: rotateY(22deg)  rotateX(55deg)  translateZ(52px); }
+    .lookup-spinner .dot:nth-child(10) { background: #E91E63; transform: rotateY(112deg) rotateX(55deg)  translateZ(52px); }
+    .lookup-spinner .dot:nth-child(11) { background: #FF8FA3; transform: rotateY(202deg) rotateX(55deg)  translateZ(52px); }
+    .lookup-spinner .dot:nth-child(12) { background: #B5651D; transform: rotateY(292deg) rotateX(55deg)  translateZ(52px); }
+    .lookup-spinner .dot:nth-child(13) { background: #6D4C41; transform: rotateY(67deg)  rotateX(-55deg) translateZ(52px); }
+    .lookup-spinner .dot:nth-child(14) { background: #8B0000; transform: rotateY(157deg) rotateX(-55deg) translateZ(52px); }
+    .lookup-spinner .dot:nth-child(15) { background: #1a1a1a; transform: rotateY(247deg) rotateX(-55deg) translateZ(52px); }
+    .lookup-spinner .dot:nth-child(16) { background: #E8E8E8; border: 1px solid rgba(0,0,0,0.08); transform: rotateY(337deg) rotateX(-55deg) translateZ(52px); }
+    @keyframes spinner-tumble {
+        from { transform: rotateY(0deg)   rotateX(0deg); }
+        to   { transform: rotateY(360deg) rotateX(720deg); }
+    }
+    .paint-pending-message {
+        font-family: 'IBM Plex Sans', sans-serif;
+        font-size: 18px;
+        font-weight: 500;
+        color: #333;
+        text-align: center;
+        margin: 0;
+        max-width: 340px;
+        line-height: 1.4;
+        transition: opacity 0.3s ease;
+    }
+    @media (max-width: 480px) {
+        .lookup-spinner { width: 110px; height: 110px; }
+        .lookup-spinner .dot { width: 14px; height: 14px; margin: -7px 0 0 -7px; }
+        .lookup-spinner .dot:nth-child(1)  { transform: rotateY(0deg)   rotateX(0deg)   translateZ(40px); }
+        .lookup-spinner .dot:nth-child(2)  { transform: rotateY(45deg)  rotateX(0deg)   translateZ(40px); }
+        .lookup-spinner .dot:nth-child(3)  { transform: rotateY(90deg)  rotateX(0deg)   translateZ(40px); }
+        .lookup-spinner .dot:nth-child(4)  { transform: rotateY(135deg) rotateX(0deg)   translateZ(40px); }
+        .lookup-spinner .dot:nth-child(5)  { transform: rotateY(180deg) rotateX(0deg)   translateZ(40px); }
+        .lookup-spinner .dot:nth-child(6)  { transform: rotateY(225deg) rotateX(0deg)   translateZ(40px); }
+        .lookup-spinner .dot:nth-child(7)  { transform: rotateY(270deg) rotateX(0deg)   translateZ(40px); }
+        .lookup-spinner .dot:nth-child(8)  { transform: rotateY(315deg) rotateX(0deg)   translateZ(40px); }
+        .lookup-spinner .dot:nth-child(9)  { transform: rotateY(22deg)  rotateX(55deg)  translateZ(40px); }
+        .lookup-spinner .dot:nth-child(10) { transform: rotateY(112deg) rotateX(55deg)  translateZ(40px); }
+        .lookup-spinner .dot:nth-child(11) { transform: rotateY(202deg) rotateX(55deg)  translateZ(40px); }
+        .lookup-spinner .dot:nth-child(12) { transform: rotateY(292deg) rotateX(55deg)  translateZ(40px); }
+        .lookup-spinner .dot:nth-child(13) { transform: rotateY(67deg)  rotateX(-55deg) translateZ(40px); }
+        .lookup-spinner .dot:nth-child(14) { transform: rotateY(157deg) rotateX(-55deg) translateZ(40px); }
+        .lookup-spinner .dot:nth-child(15) { transform: rotateY(247deg) rotateX(-55deg) translateZ(40px); }
+        .lookup-spinner .dot:nth-child(16) { transform: rotateY(337deg) rotateX(-55deg) translateZ(40px); }
+        .paint-pending-message { font-size: 16px; }
+    }
 </style>
 {% endblock %}
 
@@ -178,8 +251,9 @@
                 <img src="{% static 'images/palette.png' %}" alt="" height="40" class="me-2">Paint Code
             </h2>
 
-            <div class="card paint-card">
+            <div class="card paint-card" id="paint-card">
                 {% if paint_code %}
+                <div id="paint-found-state">
                     {% if all_paint_codes|length > 1 %}
                         {% for item in all_paint_codes %}
                         {% if item.hex %}<div class="paint-swatch-bar" style="background: {{ item.hex }};"></div>{% endif %}
@@ -205,17 +279,39 @@
                             {% endif %}
                         </div>
                     {% endif %}
+                </div>
+                {% elif paint_pending %}
+                {# Paint not in the first VDG response, but a VIN exists, so a       #}
+                {# recovery (parallel VDG-retry + pl24) is running. Show the spinner #}
+                {# and poll /lookup-status; JS swaps in the found- or missed-state.  #}
+                <div id="paint-pending-state">
+                    <div class="card-body">
+                        <div class="d-flex flex-column align-items-center justify-content-center py-4" style="gap: 18px;">
+                            <div class="lookup-spinner" aria-hidden="true">
+                                <span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="dot"></span>
+                                <span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="dot"></span>
+                                <span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="dot"></span>
+                                <span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="dot"></span>
+                            </div>
+                            <p class="paint-pending-message" id="paint-pending-message" aria-live="polite">
+                                Found your {{ make }} — now finding the paint code&hellip;
+                            </p>
+                        </div>
+                    </div>
+                </div>
                 {% else %}
-                <div class="card-body">
-                    <div class="d-flex align-items-center justify-content-center py-4" style="gap: 16px;">
-                        <div style="font-size: 2.5rem; color: #C8102E; line-height: 1;">⚠</div>
-                        <div>
-                            <p class="mb-1" style="font-size: 1.1rem; color: #333;">
-                                {{ make }} servers timed out
-                            </p>
-                            <p class="mb-0" style="color: #888; font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.5px;">
-                                (request a manual lookup below)
-                            </p>
+                <div id="paint-missed-state">
+                    <div class="card-body">
+                        <div class="d-flex align-items-center justify-content-center py-4" style="gap: 16px;">
+                            <div style="font-size: 2.5rem; color: #C8102E; line-height: 1;">&#9888;</div>
+                            <div>
+                                <p class="mb-1" style="font-size: 1.1rem; color: #333;">
+                                    {{ make }} servers timed out
+                                </p>
+                                <p class="mb-0" style="color: #888; font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.5px;">
+                                    (request a manual lookup below)
+                                </p>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -223,7 +319,14 @@
             </div>
 
             {% if paint_code %}
-            <p class="paint-disclaimer">
+            <p class="paint-disclaimer" id="paint-disclaimer">
+                Paint codes provided as-is from third-party sources.
+                Verify against your vehicle's paint code label before ordering paint.
+                <a href="{% url 'disclaimer' %}">Read more</a>
+            </p>
+            {% elif paint_pending %}
+            {# Hidden until JS confirms paint was recovered, then revealed. #}
+            <p class="paint-disclaimer" id="paint-disclaimer" style="display: none;">
                 Paint codes provided as-is from third-party sources.
                 Verify against your vehicle's paint code label before ordering paint.
                 <a href="{% url 'disclaimer' %}">Read more</a>
@@ -231,7 +334,7 @@
             {% endif %}
 
             {% if search_id %}
-            <div id="email-section" class="mx-auto mt-4" style="max-width: 540px;">
+            <div id="email-section" class="mx-auto mt-4" style="max-width: 540px;{% if paint_pending %} display: none;{% endif %}">
                 {% if email_submitted %}
                 <div class="card" style="border: 2px solid #22c55e; background: #f0fdf4;">
                     <div class="card-body text-center py-4">
@@ -245,7 +348,7 @@
                             {% if paint_code %}
                             Paint code sent to <strong>{{ email_submitted }}</strong>
                             {% else %}
-                            We'll email <strong>{{ email_submitted }}</strong> within 12 hours
+                            We'll email <strong>{{ email_submitted }}</strong> within 1 hour
                             {% endif %}
                         </p>
                     </div>
@@ -258,7 +361,7 @@
                         {% else %}
                         <h5 class="mb-3 fw-semibold" style="display: flex; gap: 8px; align-items: baseline;"><span>✉️</span><span>No problem — we'll find it</span></h5>
                         <p class="mb-3" style="font-size: 0.95rem; color: #555;">
-                            Sorry for the inconvenience, we'll check {{ make }}'s database manually and email you the code within 12 hours.
+                            Sorry for the inconvenience, we'll check {{ make }}'s database manually and email you the code within 1 hour.
                         </p>
                         {% endif %}
                         <form method="POST" action="{% url 'submit_email' %}#email-section" class="d-flex gap-2">
@@ -287,6 +390,175 @@
             el.scrollIntoView({ behavior: 'instant', block: 'center' });
         }
     });
+</script>
+{% endif %}
+
+{% if paint_pending and search_id %}
+{# Paint-recovery poller: the page rendered with the vehicle shown and a spinner #}
+{# in the paint card. Poll /lookup-status until the parallel VDG-retry + pl24    #}
+{# recovery resolves, then swap in the found- or missed-state and reveal the     #}
+{# email form in the matching mode. Degrades to the manual-lookup offer on        #}
+{# timeout or error, so the user is never stuck on a spinner.                     #}
+<script>
+(function () {
+    var STATUS_URL = "{% url 'lookup_status' search_id %}";
+    var MAKE = {{ make|escapejs|default:"''" }} || "your vehicle";
+
+    var POLL_INTERVAL_MS = 3000;   // gap between polls
+    var MAX_WAIT_MS      = 70000;  // give up a little after the backend's ~65s ceiling
+    var started = Date.now();
+    var stopped = false;
+
+    function el(id) { return document.getElementById(id); }
+
+    function escapeHtml(s) {
+        return String(s == null ? '' : s)
+            .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+    }
+
+    // Build one paint block's HTML (swatch + code + optional canonical/description).
+    function paintBlockHtml(code, hex, canonical, description) {
+        var html = '';
+        if (hex) {
+            html += '<div class="paint-swatch-bar" style="background: ' + escapeHtml(hex) + ';"></div>';
+        }
+        html += '<div class="paint-block">';
+        html += '<div class="paint-code">' + escapeHtml(code) + '</div>';
+        if (canonical && canonical !== code) {
+            html += '<p class="paint-alt">also: ' + escapeHtml(canonical) + '</p>';
+        }
+        if (description) {
+            html += '<p class="paint-desc">' + escapeHtml(description) + '</p>';
+        }
+        html += '</div>';
+        return html;
+    }
+
+    // Render the recovered paint into the paint card.
+    function showFound(data) {
+        var card = el('paint-card');
+        if (!card) return;
+        var html = '';
+        var list = data.all_paint_codes;
+        if (list && list.length > 1) {
+            for (var i = 0; i < list.length; i++) {
+                var it = list[i] || {};
+                html += paintBlockHtml(it.code, it.hex, it.canonical, it.description);
+            }
+        } else {
+            html += paintBlockHtml(
+                data.paint_code, data.paint_hex, data.canonical_code, data.paint_description
+            );
+        }
+        card.innerHTML = '<div id="paint-found-state">' + html + '</div>';
+
+        // Reveal the disclaimer (it was rendered hidden during the pending state).
+        var disc = el('paint-disclaimer');
+        if (disc) disc.style.display = '';
+
+        revealEmail(true);
+    }
+
+    // Render the "servers timed out / manual lookup" state into the paint card.
+    function showMissed() {
+        var card = el('paint-card');
+        if (!card) return;
+        card.innerHTML =
+            '<div id="paint-missed-state"><div class="card-body">' +
+              '<div class="d-flex align-items-center justify-content-center py-4" style="gap: 16px;">' +
+                '<div style="font-size: 2.5rem; color: #C8102E; line-height: 1;">&#9888;</div>' +
+                '<div>' +
+                  '<p class="mb-1" style="font-size: 1.1rem; color: #333;">' + escapeHtml(MAKE) + ' servers timed out</p>' +
+                  '<p class="mb-0" style="color: #888; font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.5px;">(request a manual lookup below)</p>' +
+                '</div>' +
+              '</div>' +
+            '</div></div>';
+
+        revealEmail(false);
+    }
+
+    // Reveal the email section in the correct mode. `found` => "email me this code";
+    // otherwise => the manual-lookup ("we'll find it") offer.
+    function revealEmail(found) {
+        var section = el('email-section');
+        if (!section) return;
+
+        // If the user already submitted (shouldn't happen mid-poll, but be safe),
+        // leave the existing confirmation card alone.
+        if (section.querySelector('form') === null) {
+            section.style.display = '';
+            return;
+        }
+
+        var heading, blurb, button;
+        if (found) {
+            heading = '<span>\u2709\uFE0F</span><span>Email me this code</span>';
+            blurb = '';
+            button = 'Email me';
+        } else {
+            heading = '<span>\u2709\uFE0F</span><span>No problem &mdash; we\'ll find it</span>';
+            blurb = '<p class="mb-3" style="font-size: 0.95rem; color: #555;">Sorry for the inconvenience, we\'ll check ' +
+                    escapeHtml(MAKE) + '\'s database manually and email you the code within 1 hour.</p>';
+            button = 'Request code';
+        }
+
+        var form = section.querySelector('form');
+        var card = section.querySelector('.card .card-body');
+        if (card && form) {
+            // Rebuild the heading + blurb above the (preserved) form, so the CSRF
+            // token and hidden search_id input stay intact.
+            var formHtml = form.outerHTML.replace(
+                /(<button[^>]*>)([\s\S]*?)(<\/button>)/,
+                '$1' + button + '$3'
+            );
+            card.innerHTML =
+                '<h5 class="' + (found ? 'mb-2' : 'mb-3') + ' fw-semibold" style="display: flex; gap: 8px; align-items: baseline;">' + heading + '</h5>' +
+                blurb + formHtml;
+        }
+        section.style.display = '';
+    }
+
+    function finish(fn) {
+        if (stopped) return;
+        stopped = true;
+        fn();
+    }
+
+    function poll() {
+        if (stopped) return;
+
+        if (Date.now() - started > MAX_WAIT_MS) {
+            finish(showMissed);   // safety net: never leave the spinner forever
+            return;
+        }
+
+        fetch(STATUS_URL, { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+            .then(function (r) { return r.json(); })
+            .then(function (data) {
+                if (stopped) return;
+                var s = data && data.status;
+                if (s === 'found' || s === 'already_resolved') {
+                    finish(function () { showFound(data); });
+                } else if (s === 'not_found') {
+                    finish(showMissed);
+                } else {
+                    // 'error' or anything unexpected: keep trying until MAX_WAIT_MS,
+                    // then fall back to the manual offer.
+                    setTimeout(poll, POLL_INTERVAL_MS);
+                }
+            })
+            .catch(function () {
+                if (stopped) return;
+                setTimeout(poll, POLL_INTERVAL_MS);  // transient network blip; retry
+            });
+    }
+
+    // Kick off shortly after load (the backend resolution is already running).
+    document.addEventListener('DOMContentLoaded', function () {
+        setTimeout(poll, 1200);
+    });
+})();
 </script>
 {% endif %}
 {% endblock %}
