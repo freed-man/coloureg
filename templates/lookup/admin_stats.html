@@ -473,8 +473,8 @@
         }
         .recent-empty { color: #ccc; }
 
-        /* Provider/source badges — one colour per origin so you can see at a
-           glance where each paint code came from. */
+        /* Provider/source badges — all one colour (VDG blue) for a consistent
+           look; the badge label itself says which source it was. */
         .provider-badge {
             display: inline-block;
             padding: 2px 8px;
@@ -484,11 +484,9 @@
             white-space: nowrap;
             text-transform: uppercase;
             letter-spacing: 0.3px;
+            background: #e3f2fd;
+            color: #1565c0;
         }
-        .provider-vdg          { background: #e3f2fd; color: #1565c0; }  /* VDG — blue */
-        .provider-vdg_retry    { background: #ede7f6; color: #5e35b1; }  /* VDG retry — purple */
-        .provider-partslink24  { background: #e8f5e9; color: #2e7d32; }  /* pl24 — green */
-        .provider-manual       { background: #fff3e0; color: #e65100; }  /* manual — orange */
 
         /* EU category badge next to the vehicle. Commercial classes (N1/N2/N3)
            are highlighted since they're the ones routed specially to pl24. */
