@@ -9,7 +9,7 @@ from django.db.models import Count, Avg, Q
 from django.db.models.functions import TruncDate
 from django.http import JsonResponse
 from django.utils import timezone
-from django.views.decorators.http import require_POST
+from django.views.decorators.http import require_POST, require_GET
 from django_ratelimit.core import is_ratelimited
 from .models import Search, PaintSwatch
 from .services.vdg import (
@@ -19,6 +19,7 @@ from .services.vdg import (
     VdgError,
     VdgNotFoundError,
 )
+from .services.paint_resolver import resolve_paint
 from .services.email import (
     send_user_paint_code,
     send_admin_failure_notification,
@@ -234,6 +235,11 @@ def index(request):
             fuel_type = vdg_data.get('fuel_type', '')
             transmission = vdg_data.get('transmission', '')
             engine_description = vdg_data.get('engine_description', '')
+            # EU type-approval category (M1/N1/N2/N3) — needed by pl24 to route
+            # commercial vehicles to the right catalogue in the paint-miss
+            # fallback. Carried through the session so the status endpoint can
+            # pass it on without a second VDG call.
+            category = vdg_data.get('category', '')
         else:
             # --- FALLBACK: DVLA + MOT ---
             dvla = get_dvla_data(registration)
@@ -315,6 +321,13 @@ def index(request):
             'all_paint_codes': all_paint_codes,
             'make_logo': make_logo,
             'search_id': search.id,
+            # EU category for pl24 routing in the fallback (see status endpoint).
+            'category': category,
+            # paint_pending: True when VDG returned a vehicle but no paint, so
+            # the results page should poll /lookup-status to try the parallel
+            # VDG-retry + pl24 fallback. False when we already have paint (or no
+            # vehicle at all) — nothing to resolve.
+            'paint_pending': bool(vin) and not paint_code,
         }
 
         return redirect('results')
@@ -408,9 +421,151 @@ def results(request):
         'canonical_code': canonical_code,
         'search_id': vehicle_data.get('search_id'),
         'email_submitted': email_submitted,
+        # True when VDG returned a vehicle but no paint: the template shows the
+        # "finding your paint code" state and polls /lookup-status. Only true if
+        # we don't already have a paint_code here.
+        'paint_pending': bool(vehicle_data.get('paint_pending')) and not paint_code,
     }
 
     return render(request, 'lookup/results.html', context)
+
+
+@require_GET
+def health(request):
+    """Liveness endpoint for Railway's healthcheck. Returns a plain 200 and is
+    exempt from the HTTPS redirect (SECURE_SSL_REDIRECT would otherwise turn a
+    plain-HTTP probe into a 301, which the healthcheck reads as a failure). Kept
+    deliberately trivial — it does NOT touch the database, so it reflects "the
+    web process is up and serving", which is what a liveness probe wants."""
+    return JsonResponse({'status': 'ok'})
+
+
+@require_GET
+def lookup_status(request, search_id):
+    """Background paint-resolution endpoint, polled by the results page when the
+    initial VDG call returned a vehicle but no paint.
+
+    Runs the parallel VDG-retry + pl24 fallback (resolve_paint) and returns the
+    outcome as JSON. Because resolve_paint can take up to ~65s (pl24's worst
+    case), this is a single, potentially long-held request — viable on Railway,
+    which has no 30s router timeout. The results page shows the vehicle data
+    immediately and only this request waits, so the user is never blocked.
+
+    Response shapes:
+      {"status": "found",     "source": "...", "paint_code": "...",
+       "paint_description": "...", "paint_hex": "...", "canonical_code": "..."}
+      {"status": "not_found"}                      -- both paths missed
+      {"status": "already_resolved", ...}          -- paint was found earlier
+      {"status": "error"}                          -- unexpected failure
+
+    Idempotency: if the Search row already has a paint_code (a previous poll
+    resolved it, or it was never actually pending), we return it without
+    re-running the fallback or re-charging VDG.
+    """
+    # Pull the vehicle context from the session, not query params: the VIN/make
+    # /category came from VDG and we don't want them spoofable via the URL, and
+    # it ties the request to this user's own just-completed lookup.
+    vehicle_data = request.session.get('vehicle_data') or {}
+
+    # Validate that this status request matches the session's current lookup.
+    if str(vehicle_data.get('search_id')) != str(search_id):
+        return JsonResponse({'status': 'error', 'detail': 'unknown search'},
+                            status=404)
+
+    # Idempotency / guard: if we already have paint (resolved on a prior poll,
+    # or this was never a paint-miss), return it; never re-run the fallback.
+    if vehicle_data.get('paint_code'):
+        return JsonResponse({
+            'status': 'already_resolved',
+            'paint_code': vehicle_data.get('paint_code'),
+            'paint_description': vehicle_data.get('paint_description', ''),
+        })
+
+    if not vehicle_data.get('paint_pending'):
+        return JsonResponse({'status': 'not_found'})
+
+    vin = vehicle_data.get('vin', '')
+    make = vehicle_data.get('make', '')
+    category = vehicle_data.get('category', '')
+    registration = vehicle_data.get('registration', '')
+
+    try:
+        result = resolve_paint(registration, vin, make, category)
+    except Exception:  # noqa: BLE001 — never let a fallback failure 500 the poll
+        return JsonResponse({'status': 'error'}, status=200)
+
+    if not result:
+        # Both paths missed. Mark the Search row so analytics reflect the miss,
+        # and clear the pending flag so further polls short-circuit.
+        _record_paint_miss(search_id)
+        vehicle_data['paint_pending'] = False
+        request.session['vehicle_data'] = vehicle_data
+        request.session.modified = True
+        return JsonResponse({'status': 'not_found'})
+
+    # Paint recovered. Persist to the Search row, update the session so the page
+    # (and any reload) now shows it, and return it with a swatch lookup.
+    paint_code = result.get('paint_code', '')
+    paint_description = result.get('paint_description', '')
+    source = result.get('source', '')
+    all_paint_codes = result.get('all_paint_codes', [])
+
+    paint_hex, paint_name, canonical_code = PaintSwatch.lookup_with_canonical(
+        manufacturer=make,
+        paint_code=paint_code,
+        model=vehicle_data.get('model', ''),
+        year=vehicle_data.get('year'),
+        vdg_colour=vehicle_data.get('colour', ''),
+    )
+
+    _record_paint_hit(search_id, paint_code, paint_description, source)
+
+    vehicle_data['paint_code'] = paint_code
+    vehicle_data['paint_description'] = paint_description
+    vehicle_data['all_paint_codes'] = all_paint_codes
+    vehicle_data['paint_pending'] = False
+    request.session['vehicle_data'] = vehicle_data
+    request.session.modified = True
+
+    return JsonResponse({
+        'status': 'found',
+        'source': source,
+        'paint_code': paint_code,
+        'paint_description': paint_description,
+        'paint_hex': paint_hex,
+        'paint_name': paint_name,
+        'canonical_code': canonical_code,
+        'all_paint_codes': all_paint_codes,
+    })
+
+
+def _record_paint_hit(search_id, paint_code, paint_description, source):
+    """Persist a recovered paint code to the Search row. Best-effort: a DB hiccup
+    here must not break the user-facing response, so failures are swallowed."""
+    try:
+        search = Search.objects.get(id=search_id)
+    except (Search.DoesNotExist, ValueError, TypeError):
+        return
+    search.paint_code = paint_code
+    search.paint_description = paint_description
+    search.success = bool(paint_code)
+    if source == 'pl24':
+        search.provider = Search.PROVIDER_PARTSLINK24
+    elif source == 'vdg_retry':
+        search.provider = Search.PROVIDER_VDG
+    search.save(update_fields=['paint_code', 'paint_description', 'success',
+                               'provider'])
+
+
+def _record_paint_miss(search_id):
+    """Record that the fallback ran and found nothing. Best-effort."""
+    try:
+        search = Search.objects.get(id=search_id)
+    except (Search.DoesNotExist, ValueError, TypeError):
+        return
+    # success stays False (the default); nothing to set unless you later add a
+    # 'fallback_attempted' field. Touch nothing destructive.
+    return
 
 
 @require_POST

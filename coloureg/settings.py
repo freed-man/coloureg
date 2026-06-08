@@ -149,6 +149,12 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 # Production security settings
 if not DEBUG:
     SECURE_SSL_REDIRECT = True
+    # Exempt the health endpoint from the HTTPS redirect. Railway's internal
+    # healthcheck probe may hit the service over plain HTTP; without this,
+    # SECURE_SSL_REDIRECT turns that into a 301 and the healthcheck reads it as
+    # a failure (this is exactly what blocked the earlier Railway deploy). The
+    # pattern is matched against the path without the leading slash.
+    SECURE_REDIRECT_EXEMPT = [r'^health/$']
     SESSION_COOKIE_SECURE = True
     CSRF_COOKIE_SECURE = True
     SECURE_HSTS_SECONDS = 31536000
