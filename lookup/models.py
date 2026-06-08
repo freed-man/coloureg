@@ -7,11 +7,13 @@ class Search(models.Model):
     """Logs every paint code lookup."""
 
     PROVIDER_VDG = 'vdg'
+    PROVIDER_VDG_RETRY = 'vdg_retry'
     PROVIDER_PARTSLINK24 = 'partslink24'
     PROVIDER_MANUAL = 'manual'
     PROVIDER_NONE = 'none'
     PROVIDER_CHOICES = [
         (PROVIDER_VDG, 'VDG'),
+        (PROVIDER_VDG_RETRY, 'VDG (retry)'),
         (PROVIDER_PARTSLINK24, 'Partslink24'),
         (PROVIDER_MANUAL, 'Manual'),
         (PROVIDER_NONE, 'None'),
@@ -36,6 +38,12 @@ class Search(models.Model):
     year = models.IntegerField(null=True, blank=True)
     colour = models.CharField(max_length=50, blank=True, default='')
     vehicle_title = models.CharField(max_length=200, blank=True, default='')
+    # EU type-approval category from VDG (M1 passenger car, N1/N2/N3 commercial
+    # van/truck). Used to route the pl24 fallback (commercial vehicles live in a
+    # different part of the catalogue); stored so the dashboard can correlate
+    # vehicle class with recovery time and pl24's hit rate. Empty when VDG didn't
+    # provide it.
+    category = models.CharField(max_length=8, blank=True, default='', db_index=True)
 
     # From VDG
     vin = models.CharField(max_length=17, blank=True, default='')
@@ -62,6 +70,23 @@ class Search(models.Model):
     vdg_balance_after_call = models.DecimalField(
         max_digits=10, decimal_places=2, null=True, blank=True
     )
+
+    # Stage 2 — automatic paint recovery (the /lookup-status fallback).
+    # When the first VDG call returns a vehicle but no paint, the results page
+    # polls /lookup-status, which races a 2nd VDG bundle call against the pl24
+    # scraper and takes whichever returns paint first. These fields log what that
+    # recovery did, so the dashboard can measure its hit rate and attribution:
+    #   recovery_attempted    — did the /lookup-status recovery run at all?
+    #   vdg_retry_returned    — did the 2nd (retry) VDG call return paint?
+    #   pl24_attempted        — was the pl24 scraper queried?
+    #   pl24_returned         — did pl24 return paint?
+    #   recovery_duration_ms  — wall-clock time the recovery took (ms); lets us
+    #                           spot slow commercial-vehicle lookups.
+    recovery_attempted = models.BooleanField(default=False)
+    vdg_retry_returned = models.BooleanField(default=False)
+    pl24_attempted = models.BooleanField(default=False)
+    pl24_returned = models.BooleanField(default=False)
+    recovery_duration_ms = models.IntegerField(null=True, blank=True)
 
     # Email / manual fallback
     email = models.EmailField(blank=True, default='')

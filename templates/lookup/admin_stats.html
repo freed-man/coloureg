@@ -473,6 +473,38 @@
         }
         .recent-empty { color: #ccc; }
 
+        /* Provider/source badges — one colour per origin so you can see at a
+           glance where each paint code came from. */
+        .provider-badge {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 10px;
+            font-size: 11px;
+            font-weight: 600;
+            white-space: nowrap;
+            text-transform: uppercase;
+            letter-spacing: 0.3px;
+        }
+        .provider-vdg          { background: #e3f2fd; color: #1565c0; }  /* VDG — blue */
+        .provider-vdg_retry    { background: #ede7f6; color: #5e35b1; }  /* VDG retry — purple */
+        .provider-partslink24  { background: #e8f5e9; color: #2e7d32; }  /* pl24 — green */
+        .provider-manual       { background: #fff3e0; color: #e65100; }  /* manual — orange */
+
+        /* EU category badge next to the vehicle. Commercial classes (N1/N2/N3)
+           are highlighted since they're the ones routed specially to pl24. */
+        .cat-badge {
+            display: inline-block;
+            margin-left: 6px;
+            padding: 1px 6px;
+            border-radius: 8px;
+            font-size: 10px;
+            font-weight: 600;
+            background: #eceff1;
+            color: #607d8b;
+            vertical-align: middle;
+        }
+        .cat-badge.cat-commercial { background: #fff8e1; color: #f57f17; }
+
         /* Responsive: below 768px, swap the table for stacked cards.
            Hide the table, show the card list. The two structures are siblings in markup. */
         .recent-cards { display: none; }
@@ -687,6 +719,7 @@
                     <th>Colour</th>
                     <th>Paint code</th>
                     <th>Description</th>
+                    <th style="text-align: center;">Source</th>
                     <th style="text-align: center;">Outcome</th>
                 </tr>
             </thead>
@@ -694,7 +727,10 @@
                 {% for s in recent_all_lookups %}
                 <tr>
                     <td style="color: #666; font-size: 13px; white-space: nowrap;">{{ s.timestamp|date:"M j Y, H:i" }}</td>
-                    <td>{{ s.vehicle_title|default:"—" }}</td>
+                    <td>
+                        {{ s.vehicle_title|default:"—" }}
+                        {% if s.category %}<span class="cat-badge{% if s.category != 'M1' %} cat-commercial{% endif %}" title="EU type-approval category">{{ s.category }}</span>{% endif %}
+                    </td>
                     <td>{{ s.registration }}</td>
                     <td style="white-space: nowrap;">{{ s.vin|default:"—" }}</td>
                     <td>{{ s.colour|default:"—" }}</td>
@@ -713,6 +749,13 @@
                         {% endif %}
                     </td>
                     <td style="text-align: center;">
+                        {% if s.provider and s.provider != 'none' %}
+                        <span class="provider-badge provider-{{ s.provider }}">{{ s.get_provider_display }}</span>
+                        {% else %}
+                        <span class="recent-empty">—</span>
+                        {% endif %}
+                    </td>
+                    <td style="text-align: center;">
                         {% if s.paint_code %}
                         <span class="outcome-tick" title="Paint code returned">✓</span>
                         {% else %}
@@ -721,7 +764,7 @@
                     </td>
                 </tr>
                 {% empty %}
-                <tr><td colspan="8" style="color: #999; text-align: center; padding: 24px 0;">No lookups yet</td></tr>
+                <tr><td colspan="9" style="color: #999; text-align: center; padding: 24px 0;">No lookups yet</td></tr>
                 {% endfor %}
             </tbody>
         </table>
@@ -738,13 +781,18 @@
                     <span class="outcome-cross" title="No paint code">✗</span>
                     {% endif %}
                 </div>
-                <div class="recent-card-title">{{ s.vehicle_title|default:"—" }}</div>
+                <div class="recent-card-title">{{ s.vehicle_title|default:"—" }}{% if s.category %}<span class="cat-badge{% if s.category != 'M1' %} cat-commercial{% endif %}">{{ s.category }}</span>{% endif %}</div>
                 <div class="recent-card-meta">{{ s.registration }} · {{ s.vin|default:"no VIN" }}</div>
                 <div class="recent-card-meta">{{ s.colour|default:"—" }}</div>
                 {% if s.paint_code or s.paint_description %}
                 <div class="recent-card-paint">
                     {% if s.paint_code %}<span class="recent-paint-code">{{ s.paint_code }}</span>{% endif %}
                     {% if s.paint_description %}<span class="recent-paint-desc">{{ s.paint_description }}</span>{% endif %}
+                </div>
+                {% endif %}
+                {% if s.provider and s.provider != 'none' %}
+                <div class="recent-card-meta" style="margin-top: 6px;">
+                    <span class="provider-badge provider-{{ s.provider }}">{{ s.get_provider_display }}</span>
                 </div>
                 {% endif %}
             </div>

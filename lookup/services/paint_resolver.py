@@ -119,7 +119,7 @@ def _pl24_lookup(vin, make, category=None):
     }
 
 
-def resolve_paint(registration, vin, make, category=None):
+def resolve_paint(registration, vin, make, category=None, telemetry=None):
     """Race the VDG bundle-retry and the pl24 scrape; return the first usable
     paint result, or None if neither recovers a code.
 
@@ -127,6 +127,15 @@ def resolve_paint(registration, vin, make, category=None):
         {'source': 'vdg_retry'|'pl24', 'paint_code', 'paint_description',
          'all_paint_codes', ...}
     or None if no paint could be recovered by either path.
+
+    Optional telemetry: if a dict is passed, it is populated (in place) with what
+    each path did, for logging on the Search row:
+        {'recovery_attempted': True,
+         'vdg_retry_returned': bool,   # did the 2nd VDG call return paint?
+         'pl24_attempted': True,       # pl24 is always queried in the race
+         'pl24_returned': bool,        # did pl24 return paint?
+         'duration_ms': int}           # wall-clock time of the recovery
+    The return value is unchanged whether or not telemetry is supplied.
 
     Preference: when BOTH paths produce a code, the VDG-retry result wins (it's
     cheaper and already paid for). This holds even if both futures complete in
@@ -142,6 +151,15 @@ def resolve_paint(registration, vin, make, category=None):
     abandoned pl24 thread's HTTP request has its own timeout and ends on its own.
     """
     ex = concurrent.futures.ThreadPoolExecutor(max_workers=2)
+    _t = telemetry if telemetry is not None else {}
+    _start = time.monotonic()
+    # Recovery telemetry, finalised in the `finally` block so it is written no
+    # matter which return path (or timeout) we take. pl24 and vdg-retry are both
+    # always submitted, so "attempted" is True for both once we get here.
+    _t['recovery_attempted'] = True
+    _t['vdg_retry_returned'] = False
+    _t['pl24_attempted'] = True
+    _t['pl24_returned'] = False
     try:
         f_vdg = ex.submit(_vdg_retry, registration)
         f_pl24 = ex.submit(_pl24_lookup, vin, make, category)
@@ -173,6 +191,7 @@ def resolve_paint(registration, vin, make, category=None):
             if f_vdg in done:
                 vdg_result = _result_or_none(f_vdg)
                 if vdg_result is not None:
+                    _t['vdg_retry_returned'] = True
                     return vdg_result
 
             # VDG didn't (yet) yield paint. If pl24 completed in this batch with
@@ -182,6 +201,7 @@ def resolve_paint(registration, vin, make, category=None):
             if f_pl24 in done:
                 p = _result_or_none(f_pl24)
                 if p is not None:
+                    _t['pl24_returned'] = True
                     pl24_result = p
 
             if pl24_result is not None:
@@ -193,3 +213,4 @@ def resolve_paint(registration, vin, make, category=None):
         # threads; cancel_futures cancels any not-yet-started work. A pl24 thread
         # still mid-request is abandoned and ends when its own HTTP timeout fires.
         ex.shutdown(wait=False, cancel_futures=True)
+        _t['duration_ms'] = int((time.monotonic() - _start) * 1000)

@@ -224,6 +224,9 @@ def index(request):
         fuel_type = ''
         transmission = ''
         engine_description = ''
+        # EU type-approval category (M1/N1/N2/N3). Only VDG provides it; default
+        # empty so the DVLA fallback branch (which doesn't set it) is safe.
+        category = ''
 
         # Use VDG vehicle data if it returned successfully, else fall back to DVLA+MOT
         if vdg_data and vdg_data.get('vehicle_returned'):
@@ -235,10 +238,6 @@ def index(request):
             fuel_type = vdg_data.get('fuel_type', '')
             transmission = vdg_data.get('transmission', '')
             engine_description = vdg_data.get('engine_description', '')
-            # EU type-approval category (M1/N1/N2/N3) — needed by pl24 to route
-            # commercial vehicles to the right catalogue in the paint-miss
-            # fallback. Carried through the session so the status endpoint can
-            # pass it on without a second VDG call.
             category = vdg_data.get('category', '')
         else:
             # --- FALLBACK: DVLA + MOT ---
@@ -275,6 +274,7 @@ def index(request):
         search.colour = colour
         search.vin = vin or ''
         search.vehicle_title = vehicle_title
+        search.category = category
 
         # --- Paint code (from same combined response) ---
         paint_code = None
@@ -479,14 +479,18 @@ def lookup_status(request, search_id):
     category = vehicle_data.get('category', '')
     registration = vehicle_data.get('registration', '')
 
+    telemetry = {}
     try:
-        result = resolve_paint(registration, vin, make, category)
+        result = resolve_paint(registration, vin, make, category, telemetry=telemetry)
     except Exception:  # noqa: BLE001 — never let a fallback failure 500 the poll
+        _record_recovery(search_id, telemetry)
         return JsonResponse({'status': 'error'}, status=200)
 
     if not result:
-        # Both paths missed. Clear the pending flag so further polls short-
-        # circuit, and tell the page to surface the manual-lookup offer.
+        # Both paths missed. Log what the recovery did (for the dashboard), clear
+        # the pending flag so further polls short-circuit, and tell the page to
+        # surface the manual-lookup offer.
+        _record_recovery(search_id, telemetry)
         vehicle_data['paint_pending'] = False
         request.session['vehicle_data'] = vehicle_data
         request.session.modified = True
@@ -507,7 +511,7 @@ def lookup_status(request, search_id):
         vdg_colour=vehicle_data.get('colour', ''),
     )
 
-    _record_paint_hit(search_id, paint_code, paint_description, source)
+    _record_paint_hit(search_id, paint_code, paint_description, source, telemetry)
 
     vehicle_data['paint_code'] = paint_code
     vehicle_data['paint_description'] = paint_description
@@ -528,9 +532,26 @@ def lookup_status(request, search_id):
     })
 
 
-def _record_paint_hit(search_id, paint_code, paint_description, source):
-    """Persist a recovered paint code to the Search row. Best-effort: a DB hiccup
-    here must not break the user-facing response, so failures are swallowed."""
+def _apply_recovery_telemetry(search, telemetry):
+    """Copy recovery telemetry (from resolve_paint) onto a Search instance.
+    Returns the list of field names touched, for a targeted update_fields save."""
+    if not telemetry:
+        return []
+    search.recovery_attempted = bool(telemetry.get('recovery_attempted'))
+    search.vdg_retry_returned = bool(telemetry.get('vdg_retry_returned'))
+    search.pl24_attempted = bool(telemetry.get('pl24_attempted'))
+    search.pl24_returned = bool(telemetry.get('pl24_returned'))
+    dur = telemetry.get('duration_ms')
+    if dur is not None:
+        search.recovery_duration_ms = int(dur)
+    return ['recovery_attempted', 'vdg_retry_returned', 'pl24_attempted',
+            'pl24_returned', 'recovery_duration_ms']
+
+
+def _record_paint_hit(search_id, paint_code, paint_description, source, telemetry=None):
+    """Persist a recovered paint code (and the recovery telemetry) to the Search
+    row in one save. Best-effort: a DB hiccup here must not break the user-facing
+    response, so failures are swallowed."""
     try:
         search = Search.objects.get(id=search_id)
     except (Search.DoesNotExist, ValueError, TypeError):
@@ -541,9 +562,22 @@ def _record_paint_hit(search_id, paint_code, paint_description, source):
     if source == 'pl24':
         search.provider = Search.PROVIDER_PARTSLINK24
     elif source == 'vdg_retry':
-        search.provider = Search.PROVIDER_VDG
-    search.save(update_fields=['paint_code', 'paint_description', 'success',
-                               'provider'])
+        search.provider = Search.PROVIDER_VDG_RETRY
+    fields = ['paint_code', 'paint_description', 'success', 'provider']
+    fields += _apply_recovery_telemetry(search, telemetry)
+    search.save(update_fields=fields)
+
+
+def _record_recovery(search_id, telemetry):
+    """Persist just the recovery telemetry (for the both-missed / error paths,
+    where no paint was found). Best-effort."""
+    try:
+        search = Search.objects.get(id=search_id)
+    except (Search.DoesNotExist, ValueError, TypeError):
+        return
+    fields = _apply_recovery_telemetry(search, telemetry)
+    if fields:
+        search.save(update_fields=fields)
 
 
 @require_POST
@@ -774,6 +808,19 @@ def admin_stats(request):
         .order_by('-timestamp')
     )
 
+    # Provider breakdown — where did the paint code come from? Single aggregate.
+    provider_breakdown = Search.objects.aggregate(
+        prov_vdg=Count('id', filter=Q(provider=Search.PROVIDER_VDG)),
+        prov_vdg_retry=Count('id', filter=Q(provider=Search.PROVIDER_VDG_RETRY)),
+        prov_pl24=Count('id', filter=Q(provider=Search.PROVIDER_PARTSLINK24)),
+        prov_manual=Count('id', filter=Q(provider=Search.PROVIDER_MANUAL)),
+        prov_none=Count('id', filter=Q(provider=Search.PROVIDER_NONE)),
+        # Recovery funnel: of the lookups where the recovery ran, how did it do?
+        recovery_runs=Count('id', filter=Q(recovery_attempted=True)),
+        recovery_pl24_hits=Count('id', filter=Q(pl24_returned=True)),
+        recovery_vdg_retry_hits=Count('id', filter=Q(vdg_retry_returned=True)),
+    )
+
     # All recent lookups (success + failure) for the unified history table
     recent_all_lookups = (
         Search.objects.exclude(make='')
@@ -854,6 +901,7 @@ def admin_stats(request):
         'estimated_cost': estimated_cost,
         'vdg_balance': vdg_balance,
         'vdg_balance_at': vdg_balance_at,
+        'provider_breakdown': provider_breakdown,
     }
 
     return render(request, 'lookup/admin_stats.html', context)
