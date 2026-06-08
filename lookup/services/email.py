@@ -293,7 +293,7 @@ def send_admin_failure_notification(registration, vehicle_title, vin_full, colou
             <div style="padding: 32px;">
                 <table style="width: 100%; border-collapse: collapse; margin-bottom: 24px;">
                     <tr style="border-bottom: 1px solid #eee;">
-                        <td style="padding: 10px 16px 10px 0; color: #666; font-size: 13px; width: 100px;">Vehicle</td>
+                        <td style="padding: 10px 16px 10px 0; color: #666; font-size: 13px; width: 64px;">Vehicle</td>
                         <td style="padding: 10px 0; color: #1a1a1a; font-size: 14px;">{vehicle_title or '—'}</td>
                     </tr>
                     <tr style="border-bottom: 1px solid #eee;">
@@ -302,7 +302,7 @@ def send_admin_failure_notification(registration, vehicle_title, vin_full, colou
                     </tr>
                     <tr style="border-bottom: 1px solid #eee;">
                         <td style="padding: 10px 16px 10px 0; color: #666; font-size: 13px;">VIN</td>
-                        <td style="padding: 10px 0; color: #1a1a1a; font-size: 14px; font-family: 'IBM Plex Sans', Arial, Helvetica, sans-serif; word-break: break-all; overflow-wrap: break-word;">{vin_full or '—'}</td>
+                        <td style="padding: 10px 0; color: #1a1a1a; font-size: 14px; font-family: 'IBM Plex Sans', Arial, Helvetica, sans-serif; overflow-wrap: break-word;">{vin_full or '—'}</td>
                     </tr>
                     <tr style="border-bottom: 1px solid #eee;">
                         <td style="padding: 10px 16px 10px 0; color: #666; font-size: 13px;">Colour</td>
