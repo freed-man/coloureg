@@ -28,14 +28,11 @@ _railway_domain = os.environ.get('RAILWAY_PUBLIC_DOMAIN', '').strip()
 if _railway_domain:
     ALLOWED_HOSTS.append(_railway_domain)
 
-# Railway's internal healthcheck probe and private-network traffic do NOT use
-# the public domain — they arrive with an internal Host header (e.g. the
-# *.railway.internal service address or a healthcheck host on the 100.64.0.0/10
-# internal range). Without these allowed, Django rejects the healthcheck with
-# 400 DisallowedHost, which Railway reads as a failed healthcheck and the deploy
-# never goes live. Allow the private network domain (covers the internal
-# healthcheck and any future private service-to-service calls). The private
-# RAILWAY_PRIVATE_DOMAIN env var is set automatically by Railway when present.
+# Private service-to-service traffic uses the *.railway.internal domain (this is
+# also what coloureg will use to call pl24 privately later). Allow it. The
+# healthcheck probe's own (internal) Host header is handled separately by
+# HealthCheckMiddleware, which answers /health/ before host validation runs, so
+# we don't need to enumerate the probe's host here.
 ALLOWED_HOSTS.append('.railway.internal')
 _railway_private = os.environ.get('RAILWAY_PRIVATE_DOMAIN', '').strip()
 if _railway_private:
@@ -69,6 +66,10 @@ INSTALLED_APPS = [
 ]
 
 MIDDLEWARE = [
+    # First: answer /health/ before host validation / SSL redirect run, so
+    # Railway's internal healthcheck probe (which uses an internal Host header
+    # not in ALLOWED_HOSTS) gets a clean 200 instead of a 400 DisallowedHost.
+    'lookup.middleware.HealthCheckMiddleware',
     'django.middleware.security.SecurityMiddleware',
     'whitenoise.middleware.WhiteNoiseMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
