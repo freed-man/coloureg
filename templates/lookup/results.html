@@ -348,7 +348,7 @@
                             {% if paint_code %}
                             Paint code sent to <strong>{{ email_submitted }}</strong>
                             {% else %}
-                            We'll email <strong>{{ email_submitted }}</strong> within 1 hour
+                            We'll email <strong>{{ email_submitted }}</strong>, usually within 1 hour
                             {% endif %}
                         </p>
                     </div>
@@ -361,7 +361,7 @@
                         {% else %}
                         <h5 class="mb-3 fw-semibold" style="display: flex; gap: 8px; align-items: baseline;"><span>✉️</span><span>No problem — we'll find it</span></h5>
                         <p class="mb-3" style="font-size: 0.95rem; color: #555;">
-                            Sorry for the inconvenience, we'll check {{ make }}'s database manually and email you the code within 1 hour.
+                            Sorry for the inconvenience, we'll check {{ make }}'s database manually and email you the code, usually within 1 hour.
                         </p>
                         {% endif %}
                         <form method="POST" action="{% url 'submit_email' %}#email-section" class="d-flex gap-2">
@@ -499,7 +499,7 @@
         } else {
             heading = '<span>\u2709\uFE0F</span><span>No problem &mdash; we\'ll find it</span>';
             blurb = '<p class="mb-3" style="font-size: 0.95rem; color: #555;">Sorry for the inconvenience, we\'ll check ' +
-                    escapeHtml(MAKE) + '\'s database manually and email you the code within 1 hour.</p>';
+                    escapeHtml(MAKE) + '\'s database manually and email you the code, usually within 1 hour.</p>';
             button = 'Request code';
         }
 
