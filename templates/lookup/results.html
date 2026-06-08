@@ -394,19 +394,22 @@
 {% endif %}
 
 {% if paint_pending and search_id %}
-{# Paint-recovery poller: the page rendered with the vehicle shown and a spinner #}
-{# in the paint card. Poll /lookup-status until the parallel VDG-retry + pl24    #}
-{# recovery resolves, then swap in the found- or missed-state and reveal the     #}
-{# email form in the matching mode. Degrades to the manual-lookup offer on        #}
-{# timeout or error, so the user is never stuck on a spinner.                     #}
+{# Paint-recovery: the page rendered with the vehicle shown and a spinner in the #}
+{# paint card. Fire /lookup-status ONCE (it runs the parallel VDG-retry + pl24   #}
+{# recovery synchronously, up to ~65s), await the single response, then swap in  #}
+{# the found- or missed-state and reveal the email form in the matching mode.    #}
+{# Degrades to the manual-lookup offer on timeout or error, so the user is never #}
+{# left on the spinner. We deliberately do NOT poll repeatedly — each call re-   #}
+{# runs the full (paid, pl24-serialised) recovery, which piles up and never      #}
+{# settles.                                                                       #}
 <script>
 (function () {
     var STATUS_URL = "{% url 'lookup_status' search_id %}";
-    var MAKE = {{ make|escapejs|default:"''" }} || "your vehicle";
+    var MAKE = "{{ make|escapejs }}" || "your vehicle";
 
-    var POLL_INTERVAL_MS = 3000;   // gap between polls
-    var MAX_WAIT_MS      = 70000;  // give up a little after the backend's ~65s ceiling
-    var started = Date.now();
+    // A bit above the backend's ~65s recovery ceiling, so a slow-but-successful
+    // lookup isn't aborted just before it returns.
+    var MAX_WAIT_MS = 75000;
     var stopped = false;
 
     function el(id) { return document.getElementById(id); }
@@ -525,38 +528,46 @@
         fn();
     }
 
-    function poll() {
+    // The /lookup-status endpoint DOES the recovery work synchronously (parallel
+    // VDG-retry + pl24), which can take up to ~65s on a slow/commercial vehicle.
+    // So we fire it exactly ONCE and await that single response — we must NOT poll
+    // it repeatedly, because each call re-runs the full recovery (re-charging VDG
+    // and queueing behind pl24's single warm session), which piles up and never
+    // settles. A client-side AbortController guarantees we stop waiting and show
+    // the manual offer even if the request hangs past our ceiling.
+    function runRecovery() {
         if (stopped) return;
 
-        if (Date.now() - started > MAX_WAIT_MS) {
-            finish(showMissed);   // safety net: never leave the spinner forever
-            return;
-        }
+        var controller = new AbortController();
+        var killer = setTimeout(function () { controller.abort(); }, MAX_WAIT_MS);
 
-        fetch(STATUS_URL, { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+        fetch(STATUS_URL, {
+            headers: { 'X-Requested-With': 'XMLHttpRequest' },
+            signal: controller.signal
+        })
             .then(function (r) { return r.json(); })
             .then(function (data) {
+                clearTimeout(killer);
                 if (stopped) return;
                 var s = data && data.status;
                 if (s === 'found' || s === 'already_resolved') {
                     finish(function () { showFound(data); });
-                } else if (s === 'not_found') {
-                    finish(showMissed);
                 } else {
-                    // 'error' or anything unexpected: keep trying until MAX_WAIT_MS,
-                    // then fall back to the manual offer.
-                    setTimeout(poll, POLL_INTERVAL_MS);
+                    // 'not_found', 'error', or anything unexpected → manual offer.
+                    finish(showMissed);
                 }
             })
             .catch(function () {
-                if (stopped) return;
-                setTimeout(poll, POLL_INTERVAL_MS);  // transient network blip; retry
+                // Network error, or we aborted at MAX_WAIT_MS: show the manual offer
+                // so the user is never left on the spinner.
+                clearTimeout(killer);
+                finish(showMissed);
             });
     }
 
-    // Kick off shortly after load (the backend resolution is already running).
+    // Fire once, shortly after load.
     document.addEventListener('DOMContentLoaded', function () {
-        setTimeout(poll, 1200);
+        setTimeout(runRecovery, 600);
     });
 })();
 </script>
