@@ -431,16 +431,6 @@ def results(request):
 
 
 @require_GET
-def health(request):
-    """Liveness endpoint for Railway's healthcheck. Returns a plain 200 and is
-    exempt from the HTTPS redirect (SECURE_SSL_REDIRECT would otherwise turn a
-    plain-HTTP probe into a 301, which the healthcheck reads as a failure). Kept
-    deliberately trivial — it does NOT touch the database, so it reflects "the
-    web process is up and serving", which is what a liveness probe wants."""
-    return JsonResponse({'status': 'ok'})
-
-
-@require_GET
 def lookup_status(request, search_id):
     """Background paint-resolution endpoint, polled by the results page when the
     initial VDG call returned a vehicle but no paint.
@@ -495,9 +485,8 @@ def lookup_status(request, search_id):
         return JsonResponse({'status': 'error'}, status=200)
 
     if not result:
-        # Both paths missed. Mark the Search row so analytics reflect the miss,
-        # and clear the pending flag so further polls short-circuit.
-        _record_paint_miss(search_id)
+        # Both paths missed. Clear the pending flag so further polls short-
+        # circuit, and tell the page to surface the manual-lookup offer.
         vehicle_data['paint_pending'] = False
         request.session['vehicle_data'] = vehicle_data
         request.session.modified = True
@@ -555,17 +544,6 @@ def _record_paint_hit(search_id, paint_code, paint_description, source):
         search.provider = Search.PROVIDER_VDG
     search.save(update_fields=['paint_code', 'paint_description', 'success',
                                'provider'])
-
-
-def _record_paint_miss(search_id):
-    """Record that the fallback ran and found nothing. Best-effort."""
-    try:
-        search = Search.objects.get(id=search_id)
-    except (Search.DoesNotExist, ValueError, TypeError):
-        return
-    # success stays False (the default); nothing to set unless you later add a
-    # 'fallback_attempted' field. Touch nothing destructive.
-    return
 
 
 @require_POST
