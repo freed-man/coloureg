@@ -488,21 +488,6 @@
             color: #2e7d32;
         }
 
-        /* EU category badge next to the vehicle. Commercial classes (N1/N2/N3)
-           are highlighted since they're the ones routed specially to pl24. */
-        .cat-badge {
-            display: inline-block;
-            margin-left: 6px;
-            padding: 1px 6px;
-            border-radius: 8px;
-            font-size: 10px;
-            font-weight: 600;
-            background: #eceff1;
-            color: #607d8b;
-            vertical-align: middle;
-        }
-        .cat-badge.cat-commercial { background: #fff8e1; color: #f57f17; }
-
         /* Responsive: below 768px, swap the table for stacked cards.
            Hide the table, show the card list. The two structures are siblings in markup. */
         .recent-cards { display: none; }
@@ -725,10 +710,7 @@
                 {% for s in recent_all_lookups %}
                 <tr>
                     <td style="color: #666; font-size: 13px; white-space: nowrap;">{{ s.timestamp|date:"M j Y, H:i" }}</td>
-                    <td>
-                        {{ s.vehicle_title|default:"—" }}
-                        {% if s.category %}<span class="cat-badge{% if s.category != 'M1' %} cat-commercial{% endif %}" title="EU type-approval category">{{ s.category }}</span>{% endif %}
-                    </td>
+                    <td>{{ s.vehicle_title|default:"—" }}</td>
                     <td>{{ s.registration }}</td>
                     <td style="white-space: nowrap;">{{ s.vin|default:"—" }}</td>
                     <td>{{ s.colour|default:"—" }}</td>
@@ -779,7 +761,7 @@
                     <span class="outcome-cross" title="No paint code">✗</span>
                     {% endif %}
                 </div>
-                <div class="recent-card-title">{{ s.vehicle_title|default:"—" }}{% if s.category %}<span class="cat-badge{% if s.category != 'M1' %} cat-commercial{% endif %}">{{ s.category }}</span>{% endif %}</div>
+                <div class="recent-card-title">{{ s.vehicle_title|default:"—" }}</div>
                 <div class="recent-card-meta">{{ s.registration }} · {{ s.vin|default:"no VIN" }}</div>
                 <div class="recent-card-meta">{{ s.colour|default:"—" }}</div>
                 {% if s.paint_code or s.paint_description %}
