@@ -32,6 +32,14 @@ from .services.email import (
 
 
 def get_client_ip(request):
+    # All traffic is proxied through Cloudflare (orange-cloud), which sets
+    # CF-Connecting-IP to the single real client IP. Trust that first.
+    # X-Forwarded-For is unreliable here: Cloudflare appends its edge IP and
+    # Railway's proxy rewrites the chain, so the visitor isn't dependably the
+    # first entry (that's why logs were showing 172.6x Cloudflare IPs).
+    cf_ip = request.META.get('HTTP_CF_CONNECTING_IP')
+    if cf_ip:
+        return cf_ip.strip()
     x_forwarded_for = request.META.get('HTTP_X_FORWARDED_FOR')
     if x_forwarded_for:
         return x_forwarded_for.split(',')[0].strip()
