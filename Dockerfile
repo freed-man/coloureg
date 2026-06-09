@@ -49,12 +49,29 @@ EXPOSE 8000
 
 # Run gunicorn, binding Railway's $PORT. Shell form so $PORT expands.
 # Bind to [::] (IPv6 dual-stack) for Railway's internal network — see the
-# healthcheck notes above. --timeout 90: the /lookup-status endpoint runs the
-# paint recovery (parallel VDG-retry + pl24) synchronously, which can take up to
-# ~65s on a slow/commercial vehicle. Gunicorn's DEFAULT worker timeout is 30s, so
-# without this it kills the worker mid-request (SystemExit / worker abort) before
-# the recovery finishes. 90s sits comfortably above the ~65s ceiling. (Railway
-# itself has no 30s router limit — this is purely gunicorn's own worker timeout,
-# which is why it bit us even after leaving Heroku.) Tune workers via the
-# WEB_CONCURRENCY env var if needed (gunicorn reads it automatically).
-CMD ["sh", "-c", "gunicorn coloureg.wsgi --bind [::]:${PORT} --workers ${WEB_CONCURRENCY:-2} --timeout 90 --access-logfile - --error-logfile -"]
+# healthcheck notes above.
+#
+# --worker-class gthread + --threads: the /lookup-status endpoint runs the paint
+# recovery synchronously and can WAIT up to ~65s (mostly idle, blocked on the
+# pl24 HTTP call). With plain sync workers, each such wait ties up an ENTIRE
+# worker doing nothing — so with only 2 sync workers, 2 simultaneous paint-miss
+# recoveries would freeze the whole site (no worker free for the homepage, other
+# lookups, even the healthcheck). Threaded workers fix this: a thread parked
+# waiting on pl24 yields to other threads, so one worker can serve many requests
+# while some are mid-recovery. The work is I/O-bound (waiting on network), which
+# is exactly what threads handle well. 2 workers x 8 threads = 16 concurrent
+# requests; the workers give multi-core + crash isolation, the threads give cheap
+# concurrency for the long waits. NOTE: this does NOT change the pl24 bottleneck
+# (pl24 still serves one scrape at a time on its single login) — people waiting
+# on pl24 still queue there, but they no longer block everyone else's requests.
+#
+# --timeout 90: /lookup-status can legitimately run ~65s on a slow/commercial
+# vehicle (pl24's worst-case fallback walk). Gunicorn's DEFAULT 30s worker
+# timeout would kill it mid-request (SystemExit / worker abort) before it
+# finishes, so we raise it above the ~65s ceiling. (Railway itself has no 30s
+# router limit — this is purely gunicorn's own worker timeout.)
+#
+# Tune via env: WEB_CONCURRENCY (workers/processes) and WEB_THREADS (threads per
+# worker). On a small instance, watch memory — each WORKER is a full process;
+# threads are cheap by comparison.
+CMD ["sh", "-c", "gunicorn coloureg.wsgi --bind [::]:${PORT} --worker-class gthread --workers ${WEB_CONCURRENCY:-2} --threads ${WEB_THREADS:-8} --timeout 90 --access-logfile - --error-logfile -"]
