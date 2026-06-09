@@ -183,6 +183,38 @@ def _clean_case(s):
     return s.title() if s and s.isupper() else s
 
 
+# Marque names that are acronyms/initialisms and must stay uppercase. When the
+# make comes from DVLA's ALL-CAPS field, _clean_case().title() would mangle these
+# ('BMW' -> 'Bmw', 'MG' -> 'Mg'), so we correct them back after title-casing.
+# Keyed by the title-cased form for a cheap exact-match lookup.
+_ACRONYM_MAKES = {
+    'Bmw': 'BMW',
+    'Mg': 'MG',
+    'Amg': 'AMG',
+    'Ds': 'DS',          # DS Automobiles
+    'Gmc': 'GMC',
+    'Bac': 'BAC',
+    'Ktm': 'KTM',
+    'Tvr': 'TVR',
+    'Fso': 'FSO',
+    'Saab': 'Saab',      # not an acronym, but commonly miscased — kept correct
+    'Byd': 'BYD',
+    'Man': 'MAN',        # MAN commercial vehicles
+}
+
+
+def fix_make_case(make):
+    """Correct acronym marques mangled by title-casing (e.g. 'Bmw' -> 'BMW').
+
+    Applied to the make field only (not model — model strings like 'Bmw' don't
+    occur, and applying acronym rules to models risks false positives). A no-op
+    for makes that are already correct or not in the acronym set.
+    """
+    if not make:
+        return make
+    return _ACRONYM_MAKES.get(make, make)
+
+
 def _doc_succeeded(doc):
     """A document inside Results.* is considered to have returned data when
     its StatusCode is 0 (Success). VDG occasionally returns a top-level
@@ -236,6 +268,7 @@ def _parse_vehicle_fields(results):
         make = make_from_model.strip()
     else:
         make = _clean_case(identification.get('DvlaMake', ''))
+    make = fix_make_case(make)
 
     if model_from_model:
         model = model_from_model.strip()

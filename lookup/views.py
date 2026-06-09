@@ -16,6 +16,7 @@ from .services.vdg import (
     get_combined_lookup,
     smart_title,
     normalize_fuel_type,
+    fix_make_case,
     VdgError,
     VdgNotFoundError,
 )
@@ -202,9 +203,14 @@ def index(request):
         # same £0.50 cost.
         vdg_data = None
         latest_balance = None
+        # We always attempt the combined call. The OUTCOME is captured by:
+        #   success + paint     -> vehicle_returned=True,  paint_returned=True
+        #   success + no paint  -> vehicle_returned=True,  paint_returned=False
+        #   VDG failure/error   -> vehicle_returned=False, paint_returned=False,
+        #                          error_message set (so a failure is distinguishable
+        #                          from a successful-but-paintless lookup).
         try:
             vdg_data = get_combined_lookup(registration)
-            search.vdg_combined_called = True
             if vdg_data:
                 # Per-document tracking: each doc has its own StatusCode
                 # inside the response, exposed by vdg.py as boolean flags.
@@ -213,7 +219,8 @@ def index(request):
                 if vdg_data.get('balance') is not None:
                     latest_balance = vdg_data.get('balance')
         except (VdgError, VdgNotFoundError) as e:
-            search.vdg_combined_called = True
+            # vehicle_returned / paint_returned stay False (their defaults), and
+            # the error is recorded — together these mark a VDG failure.
             search.error_message = f'VDG: {str(e)[:200]}'
 
         make = ''
@@ -257,7 +264,7 @@ def index(request):
                 )
                 return redirect('index')
 
-            make = (dvla.get('make', '') or '').title()
+            make = fix_make_case((dvla.get('make', '') or '').title())
             year = dvla.get('yearOfManufacture')
             colour = (dvla.get('colour', '') or '').title()
             fuel_type = normalize_fuel_type(dvla.get('fuelType', ''))
@@ -742,9 +749,8 @@ def admin_stats(request):
         # Email pipeline
         with_email=Count('id', filter=~Q(email='')),
         emails_sent_count=Count('id', filter=Q(email_sent=True)),
-        # VDG cost flags (per-document returned counts, plus combined-call count)
+        # VDG cost flags (per-document returned counts)
         vdg_vehicle_returned_count=Count('id', filter=Q(vdg_vehicle_returned=True)),
-        vdg_combined_count=Count('id', filter=Q(vdg_combined_called=True)),
         vdg_paint_returned_count=Count('id', filter=Q(vdg_paint_returned=True)),
         # Average lookup duration (filtered nulls handled by Avg)
         avg_duration_ms=Avg('lookup_duration_ms'),
@@ -852,8 +858,10 @@ def admin_stats(request):
     # times we were billed for X".
     vdg_vehicle_calls = top_metrics['vdg_vehicle_returned_count']
     # Paint is initially billed on every combined call where the package was
-    # requested. The refund happens after if no paint code came back.
-    vdg_paint_calls = top_metrics['vdg_combined_count']
+    # requested. Every search makes exactly one combined call, so the number of
+    # paint-billed calls equals the total search count. The refund happens after
+    # if no paint code came back.
+    vdg_paint_calls = top_metrics['total']
     paint_calls_returned = top_metrics['vdg_paint_returned_count']
     paint_refunds_count = vdg_paint_calls - paint_calls_returned
 

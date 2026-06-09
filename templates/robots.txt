@@ -6,5 +6,6 @@ Disallow: /results/
 Disallow: /submit-email/
 Disallow: /submit-contact/
 Disallow: /paige/
+Disallow: /health/
 
 Sitemap: https://coloureg.com/sitemap.xml

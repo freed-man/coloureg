@@ -38,11 +38,12 @@ import requests
 from .vdg import get_combined_lookup, VdgError
 
 
-# pl24 service base URL + auth. In production these point at the pl24 Railway
-# service. PL24_BASE_URL can be the private address (http://pl24.railway.internal
-# :PORT) once coloureg+pl24 are both on Railway, or the public URL for testing.
+# pl24 service base URL + auth. In production PL24_BASE_URL is set to the private
+# Railway address (http://pl24.railway.internal:8080) — pl24's public domain has
+# been removed, so the default below points at the private address too (a missing
+# env var should fail toward the real, private service, not a dead public URL).
 PL24_BASE_URL = os.environ.get(
-    'PL24_BASE_URL', 'https://pl24-production.up.railway.app'
+    'PL24_BASE_URL', 'http://pl24.railway.internal:8080'
 ).rstrip('/')
 PL24_API_KEY = os.environ.get('PL24_API_KEY', '')
 

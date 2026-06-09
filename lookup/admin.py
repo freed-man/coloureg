@@ -16,7 +16,8 @@ class SearchAdmin(admin.ModelAdmin):
     list_filter = (
         'success',
         'provider',
-        'vdg_combined_called',
+        'recovery_attempted',
+        'pl24_returned',
         'vdg_vehicle_returned',
         'vdg_paint_returned',
         'email_sent',
@@ -38,11 +39,13 @@ class SearchAdmin(admin.ModelAdmin):
         'timestamp',
         'ip_address',
         'user_agent',
+        'device',
         'registration',
         'make',
         'model',
         'year',
         'colour',
+        'category',
         'vehicle_title',
         'vin',
         'paint_code',
@@ -51,19 +54,23 @@ class SearchAdmin(admin.ModelAdmin):
         'success',
         'error_message',
         'lookup_duration_ms',
-        'vdg_combined_called',
         'vdg_vehicle_returned',
         'vdg_paint_returned',
         'vdg_balance_after_call',
+        'recovery_attempted',
+        'vdg_retry_returned',
+        'pl24_attempted',
+        'pl24_returned',
+        'recovery_duration_ms',
         'email',
         'email_sent',
     )
     fieldsets = (
         ('Search Info', {
-            'fields': ('timestamp', 'ip_address', 'user_agent', 'registration')
+            'fields': ('timestamp', 'ip_address', 'user_agent', 'device', 'registration')
         }),
         ('Vehicle Data', {
-            'fields': ('vehicle_title', 'make', 'model', 'year', 'colour', 'vin')
+            'fields': ('vehicle_title', 'make', 'model', 'year', 'colour', 'category', 'vin')
         }),
         ('Paint Code', {
             'fields': ('paint_code', 'paint_description')
@@ -73,10 +80,18 @@ class SearchAdmin(admin.ModelAdmin):
         }),
         ('Cost Tracking', {
             'fields': (
-                'vdg_combined_called',
-                'vdg_vehicle_returned',
+                        'vdg_vehicle_returned',
                 'vdg_paint_returned',
                 'vdg_balance_after_call',
+            )
+        }),
+        ('Recovery (paint-miss fallback)', {
+            'fields': (
+                'recovery_attempted',
+                'vdg_retry_returned',
+                'pl24_attempted',
+                'pl24_returned',
+                'recovery_duration_ms',
             )
         }),
         ('Manual Fallback', {
