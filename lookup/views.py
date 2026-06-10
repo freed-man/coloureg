@@ -626,17 +626,24 @@ def _record_recovery(search_id, telemetry):
 
 
 def _record_name_only(search_id, paint_description, telemetry=None):
-    """Persist a name-only recovery: a colour name with NO code. Stores the
-    description and the recovery telemetry, but deliberately does NOT set
-    `success` or `provider` — a name without a code is not a code recovery, so it
-    must not count as a hit in admin stats. The `recovery_name_only` flag (set via
-    the telemetry helper) is what marks it. Best-effort."""
+    """Persist a name-only recovery: a colour name with NO code (e.g. Ford
+    passenger, Jaguar, some Kia — partslink24 carries the name, not a code).
+
+    Counts as a SUCCESS for the customer's purposes — we found their colour — so
+    `success=True` and `provider=partslink24` (the SOURCE the name came from).
+    The `recovery_name_only` flag (set via the telemetry helper) is KEPT so the
+    distinction "name only vs. real code" survives in the data: admin stats can
+    separate them if needed, and a future learned code=name DB must only learn
+    from rows that actually had a code. The OUTCOME column shows a plain green
+    tick regardless. Best-effort — a DB hiccup must not break the response."""
     try:
         search = Search.objects.get(id=search_id)
     except (Search.DoesNotExist, ValueError, TypeError):
         return
     search.paint_description = paint_description
-    fields = ['paint_description']
+    search.success = True
+    search.provider = Search.PROVIDER_PARTSLINK24
+    fields = ['paint_description', 'success', 'provider']
     fields += _apply_recovery_telemetry(search, telemetry)
     search.save(update_fields=fields)
 

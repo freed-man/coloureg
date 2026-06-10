@@ -736,10 +736,10 @@
                         {% endif %}
                     </td>
                     <td style="text-align: center;">
-                        {% if s.paint_code %}
-                        <span class="outcome-tick" title="Paint code returned">✓</span>
+                        {% if s.success %}
+                        <span class="outcome-tick" title="Colour found">✓</span>
                         {% else %}
-                        <span class="outcome-cross" title="No paint code">✗</span>
+                        <span class="outcome-cross" title="Not found">✗</span>
                         {% endif %}
                     </td>
                 </tr>
@@ -755,10 +755,10 @@
             <div class="recent-card">
                 <div class="recent-card-row1">
                     <span class="recent-card-date">{{ s.timestamp|date:"M j Y, H:i" }}</span>
-                    {% if s.paint_code %}
-                    <span class="outcome-tick" title="Paint code returned">✓</span>
+                    {% if s.success %}
+                    <span class="outcome-tick" title="Colour found">✓</span>
                     {% else %}
-                    <span class="outcome-cross" title="No paint code">✗</span>
+                    <span class="outcome-cross" title="Not found">✗</span>
                     {% endif %}
                 </div>
                 <div class="recent-card-title">{{ s.vehicle_title|default:"—" }}</div>
