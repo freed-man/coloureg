@@ -79,13 +79,20 @@ class Search(models.Model):
     #   recovery_attempted    — did the /lookup-status recovery run at all?
     #   vdg_retry_returned    — did the 2nd (retry) VDG call return paint?
     #   pl24_attempted        — was the pl24 scraper queried?
-    #   pl24_returned         — did pl24 return paint?
+    #   pl24_returned         — did pl24 return a usable CODE?
+    #   recovery_name_only    — did pl24 return a colour NAME but no code? (a
+    #                           partial result: we show + can email the name, but
+    #                           it is NOT a code recovery, so `success` stays
+    #                           False and `provider` is not set to partslink24.
+    #                           Kept distinct so admin stats don't count it as a
+    #                           full hit.)
     #   recovery_duration_ms  — wall-clock time the recovery took (ms); lets us
     #                           spot slow commercial-vehicle lookups.
     recovery_attempted = models.BooleanField(default=False)
     vdg_retry_returned = models.BooleanField(default=False)
     pl24_attempted = models.BooleanField(default=False)
     pl24_returned = models.BooleanField(default=False)
+    recovery_name_only = models.BooleanField(default=False)
     recovery_duration_ms = models.IntegerField(null=True, blank=True)
 
     # Email / manual fallback

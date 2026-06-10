@@ -105,17 +105,28 @@ def _pl24_lookup(vin, make, category=None):
     except ValueError:
         return None
     code = (data.get('paint_code') or '').strip()
-    if not code:
+    desc = (data.get('paint_description') or '').strip()
+    # Keep the result if pl24 returned EITHER a code OR a colour name. The
+    # name-only case (code == '' but desc set) covers brands partslink24 carries
+    # a colour name but no code for (Ford passenger, Jaguar, older Land Rover,
+    # some Kia) — pl24's `name_only` outcome. It's a confident match (pl24 read
+    # the right vehicle's colour row; the brand just has no code field), so the
+    # name is worth surfacing even without a code. Only a result with neither is
+    # a true miss.
+    if not code and not desc:
         return None
+    name_only = (code == '' and bool(desc))
     return {
         'source': 'pl24',
-        'paint_code': code,
-        'paint_description': data.get('paint_description', ''),
+        'paint_code': code,                 # may be '' for name-only
+        'paint_description': desc,
+        'name_only': name_only,
         # pl24 returns one code; keep the shape consistent with VDG's list form.
+        # A name-only result has no code, so it contributes no code block.
         'all_paint_codes': [{
             'code': code,
-            'description': data.get('paint_description', ''),
-        }],
+            'description': desc,
+        }] if code else [],
         'via': data.get('via', ''),
     }
 
@@ -134,14 +145,21 @@ def resolve_paint(registration, vin, make, category=None, telemetry=None):
         {'recovery_attempted': True,
          'vdg_retry_returned': bool,   # did the 2nd VDG call return paint?
          'pl24_attempted': True,       # pl24 is always queried in the race
-         'pl24_returned': bool,        # did pl24 return paint?
+         'pl24_returned': bool,        # did pl24 return a usable CODE?
+         'pl24_name_only': bool,       # did pl24 return a name but NO code?
          'duration_ms': int}           # wall-clock time of the recovery
     The return value is unchanged whether or not telemetry is supplied.
 
-    Preference: when BOTH paths produce a code, the VDG-retry result wins (it's
-    cheaper and already paid for). This holds even if both futures complete in
-    the same wait() batch — we explicitly inspect the VDG future before the pl24
-    future within a batch, rather than relying on set-iteration order.
+    Preference / ordering of results (strongest first):
+      1. A real CODE wins. When both paths produce a code, the VDG-retry result
+         wins (cheaper, already paid for). This holds even if both futures
+         complete in the same wait() batch — we inspect the VDG future before the
+         pl24 future within a batch, not relying on set-iteration order.
+      2. A pl24 name-only result (colour name, no code) is a FALLBACK: it is held
+         aside and returned ONLY if neither path produces a real code before the
+         deadline. A late real code must still be able to beat it, so name-only
+         never short-circuits the wait.
+      3. Otherwise None (a true miss).
 
     Timeout: the total wait is hard-bounded by PL24_TIMEOUT. We deliberately do
     NOT use the ThreadPoolExecutor as a context manager, because its __exit__
@@ -161,13 +179,15 @@ def resolve_paint(registration, vin, make, category=None, telemetry=None):
     _t['vdg_retry_returned'] = False
     _t['pl24_attempted'] = True
     _t['pl24_returned'] = False
+    _t['pl24_name_only'] = False
     try:
         f_vdg = ex.submit(_vdg_retry, registration)
         f_pl24 = ex.submit(_pl24_lookup, vin, make, category)
 
         deadline = time.monotonic() + PL24_TIMEOUT
         pending = {f_vdg, f_pl24}
-        pl24_result = None
+        pl24_code_result = None      # pl24 returned a real CODE (short-circuits)
+        pl24_name_only_result = None  # pl24 returned a name but NO code (fallback)
 
         def _result_or_none(fut):
             try:
@@ -195,20 +215,31 @@ def resolve_paint(registration, vin, make, category=None, telemetry=None):
                     _t['vdg_retry_returned'] = True
                     return vdg_result
 
-            # VDG didn't (yet) yield paint. If pl24 completed in this batch with
-            # a code, hold it; we return it below unless a later batch produces
-            # a VDG hit first (it won't, since VDG either completed here without
-            # paint or is still pending and is the faster path anyway).
+            # VDG didn't (yet) yield paint. Inspect pl24 if it completed in this
+            # batch. A real CODE wins immediately (subject only to a VDG code,
+            # already handled above). A name-only result (colour name, no code)
+            # is held aside as a FALLBACK — we do NOT return it here, because a
+            # real code from a still-pending VDG-retry must be able to beat it.
             if f_pl24 in done:
                 p = _result_or_none(f_pl24)
                 if p is not None:
-                    _t['pl24_returned'] = True
-                    pl24_result = p
+                    if p.get('name_only'):
+                        _t['pl24_name_only'] = True
+                        pl24_name_only_result = p
+                    else:
+                        _t['pl24_returned'] = True
+                        pl24_code_result = p
 
-            if pl24_result is not None:
-                return pl24_result
+            # A real pl24 code is good enough to stop on (VDG had its chance above
+            # in this batch). A name-only result is NOT — keep waiting for a code
+            # while anything is still pending; the loop exits naturally when
+            # nothing remains and we fall through to the name-only fallback.
+            if pl24_code_result is not None:
+                return pl24_code_result
 
-        return pl24_result  # None unless pl24 produced a code before the deadline
+        # No real code from either path. Surface the pl24 name-only result if we
+        # got one (a partial but useful answer), else None (a true miss).
+        return pl24_name_only_result
     finally:
         # Do NOT block on stragglers. wait=False means we don't join running
         # threads; cancel_futures cancels any not-yet-started work. A pl24 thread

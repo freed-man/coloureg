@@ -440,6 +440,14 @@ def results(request):
         # "finding your paint code" state and polls /lookup-status. Only true if
         # we don't already have a paint_code here.
         'paint_pending': bool(vehicle_data.get('paint_pending')) and not paint_code,
+        # True when a prior recovery resolved to name-only (colour name, no code).
+        # Lets a page reload re-render the name-only card instead of re-polling.
+        # Only meaningful when there's no code and we're not pending.
+        'paint_name_only': (
+            bool(vehicle_data.get('paint_name_only'))
+            and not paint_code
+            and not bool(vehicle_data.get('paint_pending'))
+        ),
     }
 
     return render(request, 'lookup/results.html', context)
@@ -511,6 +519,27 @@ def lookup_status(request, search_id):
         request.session.modified = True
         return JsonResponse({'status': 'not_found'})
 
+    # Name-only: pl24 returned a colour NAME but no code (e.g. Ford passenger,
+    # Jaguar, older Land Rover, some Kia — partslink24 carries the name, not a
+    # code). This is a partial result: we show the customer the colour name and
+    # offer to email the exact code once found manually. It is NOT a code
+    # recovery, so `success` stays False and `provider` is left unset — only the
+    # name-only telemetry flag records it (keeps admin stats honest).
+    if result.get('name_only'):
+        paint_description = result.get('paint_description', '')
+        _record_name_only(search_id, paint_description, telemetry)
+        # Persist the name to the session so a reload re-shows it, but keep
+        # paint_code empty and clear pending so further polls short-circuit.
+        vehicle_data['paint_description'] = paint_description
+        vehicle_data['paint_name_only'] = True
+        vehicle_data['paint_pending'] = False
+        request.session['vehicle_data'] = vehicle_data
+        request.session.modified = True
+        return JsonResponse({
+            'status': 'name_only',
+            'paint_description': paint_description,
+        })
+
     # Paint recovered. Persist to the Search row, update the session so the page
     # (and any reload) now shows it, and return it with a swatch lookup.
     paint_code = result.get('paint_code', '')
@@ -556,11 +585,12 @@ def _apply_recovery_telemetry(search, telemetry):
     search.vdg_retry_returned = bool(telemetry.get('vdg_retry_returned'))
     search.pl24_attempted = bool(telemetry.get('pl24_attempted'))
     search.pl24_returned = bool(telemetry.get('pl24_returned'))
+    search.recovery_name_only = bool(telemetry.get('pl24_name_only'))
     dur = telemetry.get('duration_ms')
     if dur is not None:
         search.recovery_duration_ms = int(dur)
     return ['recovery_attempted', 'vdg_retry_returned', 'pl24_attempted',
-            'pl24_returned', 'recovery_duration_ms']
+            'pl24_returned', 'recovery_name_only', 'recovery_duration_ms']
 
 
 def _record_paint_hit(search_id, paint_code, paint_description, source, telemetry=None):
@@ -593,6 +623,22 @@ def _record_recovery(search_id, telemetry):
     fields = _apply_recovery_telemetry(search, telemetry)
     if fields:
         search.save(update_fields=fields)
+
+
+def _record_name_only(search_id, paint_description, telemetry=None):
+    """Persist a name-only recovery: a colour name with NO code. Stores the
+    description and the recovery telemetry, but deliberately does NOT set
+    `success` or `provider` — a name without a code is not a code recovery, so it
+    must not count as a hit in admin stats. The `recovery_name_only` flag (set via
+    the telemetry helper) is what marks it. Best-effort."""
+    try:
+        search = Search.objects.get(id=search_id)
+    except (Search.DoesNotExist, ValueError, TypeError):
+        return
+    search.paint_description = paint_description
+    fields = ['paint_description']
+    fields += _apply_recovery_telemetry(search, telemetry)
+    search.save(update_fields=fields)
 
 
 @require_POST

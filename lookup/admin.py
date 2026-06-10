@@ -18,6 +18,7 @@ class SearchAdmin(admin.ModelAdmin):
         'provider',
         'recovery_attempted',
         'pl24_returned',
+        'recovery_name_only',
         'vdg_vehicle_returned',
         'vdg_paint_returned',
         'email_sent',
@@ -61,6 +62,7 @@ class SearchAdmin(admin.ModelAdmin):
         'vdg_retry_returned',
         'pl24_attempted',
         'pl24_returned',
+        'recovery_name_only',
         'recovery_duration_ms',
         'email',
         'email_sent',
@@ -91,6 +93,7 @@ class SearchAdmin(admin.ModelAdmin):
                 'vdg_retry_returned',
                 'pl24_attempted',
                 'pl24_returned',
+                'recovery_name_only',
                 'recovery_duration_ms',
             )
         }),

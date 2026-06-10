@@ -73,6 +73,26 @@
         margin: 0;
         font-weight: 400;
     }
+    /* Name-only state: pl24 found the colour NAME but no code. The name takes
+       the headline slot (where the code normally sits) but is deliberately
+       styled as a NAME — sans-serif, not the monospace code look — so a customer
+       can't mistake "Most Yellow" for a code to type into a paint supplier. */
+    .paint-name-only {
+        font-family: 'IBM Plex Sans', sans-serif;
+        font-size: 40px;
+        font-weight: 600;
+        line-height: 1.1;
+        margin: 0 0 10px;
+        color: #1a1a1a;
+    }
+    .paint-name-only-status {
+        font-family: 'IBM Plex Sans', sans-serif;
+        font-size: 15px;
+        color: #888;
+        margin: 0;
+        font-weight: 400;
+        line-height: 1.5;
+    }
     .paint-alt {
         font-family: 'IBM Plex Sans', sans-serif;
         font-size: 15px;
@@ -103,6 +123,9 @@
         .paint-code {
             font-size: 44px;
             letter-spacing: 2px;
+        }
+        .paint-name-only {
+            font-size: 30px;
         }
         .paint-swatch-bar {
             height: 64px;
@@ -299,6 +322,19 @@
                         </div>
                     </div>
                 </div>
+                {% elif paint_name_only %}
+                {# A prior recovery found the colour NAME but no code. Render the #}
+                {# name in the headline slot (styled as a name, not a code) with  #}
+                {# a status line. Mirrors the JS showNameOnly() for reloads.      #}
+                <div id="paint-name-only-state">
+                    <div class="paint-block">
+                        <div class="paint-name-only">{{ paint_description }}</div>
+                        <p class="paint-name-only-status">
+                            That&rsquo;s the manufacturer name for your car&rsquo;s paint.
+                            Want the exact paint code too? Leave your email and we&rsquo;ll send it.
+                        </p>
+                    </div>
+                </div>
                 {% else %}
                 <div id="paint-missed-state">
                     <div class="card-body">
@@ -358,6 +394,12 @@
                     <div class="card-body p-4">
                         {% if paint_code %}
                         <h5 class="mb-2 fw-semibold" style="display: flex; gap: 8px; align-items: baseline;"><span>✉️</span><span>Email me this code</span></h5>
+                        {% elif paint_name_only %}
+                        <h5 class="mb-3 fw-semibold" style="display: flex; gap: 8px; align-items: baseline;"><span>✉️</span><span>Want the exact code?</span></h5>
+                        <p class="mb-3" style="font-size: 0.95rem; color: #555;">
+                            We found your colour name but not the manufacturer code yet.
+                            Leave your email and we'll look it up and send it, usually within 1 hour.
+                        </p>
                         {% else %}
                         <h5 class="mb-3 fw-semibold" style="display: flex; gap: 8px; align-items: baseline;"><span>✉️</span><span>No problem — we'll find it</span></h5>
                         <p class="mb-3" style="font-size: 0.95rem; color: #555;">
@@ -369,7 +411,7 @@
                             <input type="hidden" name="search_id" value="{{ search_id }}">
                             <input type="email" name="email" class="form-control" placeholder="your@email.com" required>
                             <button type="submit" class="btn btn-dark text-nowrap">
-                                {% if paint_code %}Email me{% else %}Request code{% endif %}
+                                {% if paint_code %}Email me{% elif paint_name_only %}Send me the code{% else %}Request code{% endif %}
                             </button>
                         </form>
                     </div>
@@ -481,11 +523,38 @@
         revealEmail(false);
     }
 
-    // Reveal the email section in the correct mode. `found` => "email me this code";
-    // otherwise => the manual-lookup ("we'll find it") offer.
-    function revealEmail(found) {
+    // Render the name-only state: pl24 found the colour NAME but no code. The
+    // name goes in the headline slot (styled as a name, not a code), with a
+    // quiet status line below. The email form is revealed in name-only mode
+    // ("leave your email, we'll send the exact code").
+    function showNameOnly(data) {
+        var card = el('paint-card');
+        if (!card) return;
+        var name = (data && data.paint_description) || '';
+        card.innerHTML =
+            '<div id="paint-name-only-state"><div class="paint-block">' +
+              '<div class="paint-name-only">' + escapeHtml(name) + '</div>' +
+              '<p class="paint-name-only-status">' +
+                'That\u2019s the manufacturer name for your car\u2019s paint. ' +
+                'Want the exact paint code too? Leave your email and we\u2019ll send it.' +
+              '</p>' +
+            '</div></div>';
+
+        revealEmail('name_only');
+    }
+
+    // Reveal the email section in the correct mode:
+    //   true / 'found'  => "email me this code" (we have the code)
+    //   'name_only'     => "leave your email and we'll send the exact code"
+    //                      (we have the colour name but not the code yet)
+    //   false / 'missed'=> the manual-lookup ("we'll find it") offer
+    function revealEmail(mode) {
         var section = el('email-section');
         if (!section) return;
+
+        // Normalise: accept the legacy boolean (true=found) and string modes.
+        if (mode === true) mode = 'found';
+        else if (mode === false) mode = 'missed';
 
         // If the user already submitted (shouldn't happen mid-poll, but be safe),
         // leave the existing confirmation card alone.
@@ -494,16 +563,25 @@
             return;
         }
 
-        var heading, blurb, button;
-        if (found) {
+        var heading, blurb, button, headingMargin;
+        if (mode === 'found') {
             heading = '<span>\u2709\uFE0F</span><span>Email me this code</span>';
             blurb = '';
             button = 'Email me';
+            headingMargin = 'mb-2';
+        } else if (mode === 'name_only') {
+            heading = '<span>\u2709\uFE0F</span><span>Want the exact code?</span>';
+            blurb = '<p class="mb-3" style="font-size: 0.95rem; color: #555;">' +
+                    'We found your colour name but not the manufacturer code yet. ' +
+                    'Leave your email and we\'ll look it up and send it, usually within 1 hour.</p>';
+            button = 'Send me the code';
+            headingMargin = 'mb-3';
         } else {
             heading = '<span>\u2709\uFE0F</span><span>No problem &mdash; we\'ll find it</span>';
             blurb = '<p class="mb-3" style="font-size: 0.95rem; color: #555;">Sorry for the inconvenience, we\'ll check ' +
                     escapeHtml(MAKE) + '\'s database manually and email you the code, usually within 1 hour.</p>';
             button = 'Request code';
+            headingMargin = 'mb-3';
         }
 
         var form = section.querySelector('form');
@@ -516,7 +594,7 @@
                 '$1' + button + '$3'
             );
             card.innerHTML =
-                '<h5 class="' + (found ? 'mb-2' : 'mb-3') + ' fw-semibold" style="display: flex; gap: 8px; align-items: baseline;">' + heading + '</h5>' +
+                '<h5 class="' + headingMargin + ' fw-semibold" style="display: flex; gap: 8px; align-items: baseline;">' + heading + '</h5>' +
                 blurb + formHtml;
         }
         section.style.display = '';
@@ -552,6 +630,8 @@
                 var s = data && data.status;
                 if (s === 'found' || s === 'already_resolved') {
                     finish(function () { showFound(data); });
+                } else if (s === 'name_only') {
+                    finish(function () { showNameOnly(data); });
                 } else {
                     // 'not_found', 'error', or anything unexpected → manual offer.
                     finish(showMissed);
