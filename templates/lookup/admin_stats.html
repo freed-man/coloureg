@@ -64,6 +64,14 @@
         border-collapse: collapse;
         font-size: 14px;
     }
+    /* Wrap any wide table so it scrolls sideways on a narrow viewport instead of
+       overflowing/crushing. Mainly matters when "Desktop site" is forced on a
+       phone (the recent-lookups table is too wide to fit) and on narrow desktop
+       windows. The normal mobile view still swaps to stacked cards below 768px. */
+    .table-scroll {
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+    }
     .stats-table th {
         text-align: left;
         padding: 8px 12px 8px 0;
@@ -213,6 +221,7 @@
         <!-- Top makes -->
         <div class="panel">
             <h3>Top searched makes</h3>
+            <div class="table-scroll">
             <table class="stats-table">
                 <thead>
                     <tr>
@@ -231,11 +240,13 @@
                     {% endfor %}
                 </tbody>
             </table>
+            </div>
         </div>
 
         <!-- Top regs -->
         <div class="panel">
             <h3>Top searched registrations</h3>
+            <div class="table-scroll">
             <table class="stats-table">
                 <thead>
                     <tr>
@@ -254,6 +265,7 @@
                     {% endfor %}
                 </tbody>
             </table>
+            </div>
         </div>
     </div>
 
@@ -261,6 +273,7 @@
         <!-- Top failed makes -->
         <div class="panel">
             <h3>Top makes with no paint code</h3>
+            <div class="table-scroll">
             <table class="stats-table">
                 <thead>
                     <tr>
@@ -279,6 +292,7 @@
                     {% endfor %}
                 </tbody>
             </table>
+            </div>
         </div>
 
         <!-- Device breakdown -->
@@ -693,6 +707,7 @@
         <h3>Recent paint code lookups</h3>
 
         <!-- Desktop/tablet table (>768px). CSS hides this below 768px. -->
+        <div class="table-scroll">
         <table class="stats-table recent-table">
             <thead>
                 <tr>
@@ -751,6 +766,7 @@
                 {% endfor %}
             </tbody>
         </table>
+        </div>
 
         <!-- Mobile cards (<=768px). CSS shows this only on narrow viewports. -->
         <div class="recent-cards">
