@@ -670,8 +670,12 @@ def submit_email(request):
     was_limited = is_ratelimited(
         request,
         group='email_submit',
+        # 10/h to match the lookup limit: this one form handles both "email me
+        # this found code" and "request a manual lookup" (missed result), so a
+        # user who did up to 10 lookups can act on every one of them without
+        # hitting the wall.
         key='ip',
-        rate='5/h',
+        rate='10/h',
         method='POST',
         increment=True,
     )
