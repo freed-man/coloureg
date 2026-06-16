@@ -1100,6 +1100,13 @@ def submit_manual_lookup(request):
     search.paint_description = paint_description_clean
     search.provider = Search.PROVIDER_MANUAL
     search.success = True  # paint code was found (manually) and emailed
+    # Clear the name-only flag: this row may have started as a pl24 name-only
+    # result (◐), but a real CODE has now been found manually, so it's a full
+    # success (✓). The OUTCOME column checks recovery_name_only BEFORE success,
+    # so leaving it set would keep showing ◐ despite the code being filled.
+    # (provider stays MANUAL — that's where the CODE came from; partslink24 only
+    # supplied the name, which is still preserved in paint_description.)
+    search.recovery_name_only = False
     search.manual_lookup_completed = True
     search.email_sent = True
     search.save()
