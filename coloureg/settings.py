@@ -47,6 +47,20 @@ _railway_private = os.environ.get('RAILWAY_PRIVATE_DOMAIN', '').strip()
 if _railway_private:
     ALLOWED_HOSTS.append(_railway_private)
 
+# Rate limiting (django-ratelimit) — resolve the REAL visitor IP, not Cloudflare's.
+# All traffic is Cloudflare-proxied, so request.META['REMOTE_ADDR'] (the library's
+# default for key='ip') is a Cloudflare EDGE node IP, shared across many unrelated
+# visitors. Keying limits on that would let strangers share one counter (innocent
+# users blocked by others' activity) and weaken protection. CF-Connecting-IP is the
+# single real client IP Cloudflare sets (unspoofable when proxied), matching what
+# get_client_ip() uses for logging — so the limits and the logs agree on "who".
+# Falls back to REMOTE_ADDR if the header is somehow absent (direct origin hit).
+def RATELIMIT_IP_META_KEY(request):
+    return (
+        request.META.get('HTTP_CF_CONNECTING_IP')
+        or request.META.get('REMOTE_ADDR', '')
+    )
+
 # CSRF_TRUSTED_ORIGINS: Django 4+ requires the request's Origin to be trusted
 # for any POST over HTTPS (the reg-lookup submit, email submit, admin manual
 # -lookup actions). Behind Railway's proxy on a new domain, POSTs would 403
