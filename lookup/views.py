@@ -11,7 +11,7 @@ from django.http import JsonResponse
 from django.utils import timezone
 from django.views.decorators.http import require_POST, require_GET
 from django_ratelimit.core import is_ratelimited
-from .models import Search, PaintSwatch
+from .models import Search, PaintLookup
 from .services.vdg import (
     get_combined_lookup,
     smart_title,
@@ -380,7 +380,7 @@ def results(request):
     colour_for_lookup = vehicle_data.get('colour', '')
 
     if paint_code:
-        paint_hex, paint_name, canonical_code = PaintSwatch.lookup_with_canonical(
+        paint_hex, paint_name, canonical_code = PaintLookup.lookup_with_canonical(
             manufacturer=make,
             paint_code=paint_code,
             model=model,
@@ -406,7 +406,7 @@ def results(request):
             item['hex'] = paint_hex
             item['canonical'] = canonical_code
             continue
-        item_hex, _item_name, item_canonical = PaintSwatch.lookup_with_canonical(
+        item_hex, _item_name, item_canonical = PaintLookup.lookup_with_canonical(
             manufacturer=make,
             paint_code=item_code,
             model=model,
@@ -547,7 +547,7 @@ def lookup_status(request, search_id):
     source = result.get('source', '')
     all_paint_codes = result.get('all_paint_codes', [])
 
-    paint_hex, paint_name, canonical_code = PaintSwatch.lookup_with_canonical(
+    paint_hex, paint_name, canonical_code = PaintLookup.lookup_with_canonical(
         manufacturer=make,
         paint_code=paint_code,
         model=vehicle_data.get('model', ''),
@@ -693,7 +693,7 @@ def submit_email(request):
 
     if search.paint_code:
         # Look up swatch (hex) and canonical code so the email matches the website UI
-        paint_hex, _paint_name, canonical_code = PaintSwatch.lookup_with_canonical(
+        paint_hex, _paint_name, canonical_code = PaintLookup.lookup_with_canonical(
             manufacturer=search.make,
             paint_code=search.paint_code,
             model=search.model,
@@ -1069,7 +1069,7 @@ def submit_manual_lookup(request):
     paint_description_clean = smart_title(paint_description) if paint_description else ''
 
     # Look up swatch (hex) and canonical code so the email matches the website UI
-    paint_hex, _paint_name, canonical_code = PaintSwatch.lookup_with_canonical(
+    paint_hex, _paint_name, canonical_code = PaintLookup.lookup_with_canonical(
         manufacturer=search.make,
         paint_code=paint_code,
         model=search.model,

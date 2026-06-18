@@ -38,6 +38,58 @@ import requests
 from .vdg import get_combined_lookup, VdgError
 
 
+def _enrich_from_lookup(result, make):
+    """Fill gaps in a provider result from the PaintLookup table, BEHIND the
+    live race (we only fill what VDG/pl24 didn't return).
+
+    Two directions:
+      - code but blank description  -> fill the colour name  (reliable: a code
+        is 1:1 with a colour within a make)
+      - colour name but blank code  -> fill the code, but ONLY if the name maps
+        to exactly one code within the make (names are 1:many, so ambiguous
+        names are left as-is — a wrong code is worse than none); this also
+        clears the name_only flag so it counts as a full result
+
+    Always attaches a hex swatch when one is available for the resolved code.
+    Never raises; enrichment failure must never break the result. Returns the
+    (possibly mutated) result dict, or the original unchanged on miss/None.
+    """
+    if not result or not make:
+        return result
+    try:
+        # Import here to avoid a circular import at module load.
+        from lookup.models import PaintLookup
+
+        code = (result.get('paint_code') or '').strip()
+        desc = (result.get('paint_description') or '').strip()
+
+        if code and not desc:
+            # code -> name (+ swatch)
+            hex_val, name, _canon = PaintLookup.lookup_with_canonical(
+                manufacturer=make, paint_code=code,
+            )
+            if name:
+                result['paint_description'] = name
+            if hex_val and not result.get('paint_hex'):
+                result['paint_hex'] = hex_val
+
+        elif desc and not code:
+            # name -> code (conservative: unique match only)
+            found_code, hex_val, _canon_name = PaintLookup.code_from_name(
+                manufacturer=make, colour_name=desc,
+            )
+            if found_code:
+                result['paint_code'] = found_code
+                if hex_val and not result.get('paint_hex'):
+                    result['paint_hex'] = hex_val
+                # a code was found → no longer a name-only result
+                if result.get('name_only'):
+                    result['name_only'] = False
+    except Exception:
+        pass
+    return result
+
+
 # pl24 service base URL + auth. In production PL24_BASE_URL is set to the private
 # Railway address (http://pl24.railway.internal:8080) — pl24's public domain has
 # been removed, so the default below points at the private address too (a missing
@@ -213,7 +265,7 @@ def resolve_paint(registration, vin, make, category=None, telemetry=None):
                 vdg_result = _result_or_none(f_vdg)
                 if vdg_result is not None:
                     _t['vdg_retry_returned'] = True
-                    return vdg_result
+                    return _enrich_from_lookup(vdg_result, make)
 
             # VDG didn't (yet) yield paint. Inspect pl24 if it completed in this
             # batch. A real CODE wins immediately (subject only to a VDG code,
@@ -235,11 +287,13 @@ def resolve_paint(registration, vin, make, category=None, telemetry=None):
             # while anything is still pending; the loop exits naturally when
             # nothing remains and we fall through to the name-only fallback.
             if pl24_code_result is not None:
-                return pl24_code_result
+                return _enrich_from_lookup(pl24_code_result, make)
 
         # No real code from either path. Surface the pl24 name-only result if we
         # got one (a partial but useful answer), else None (a true miss).
-        return pl24_name_only_result
+        # Enrichment may upgrade a name-only result to a full code if the colour
+        # name maps unambiguously to a single code in our table.
+        return _enrich_from_lookup(pl24_name_only_result, make)
     finally:
         # Do NOT block on stragglers. wait=False means we don't join running
         # threads; cancel_futures cancels any not-yet-started work. A pl24 thread
