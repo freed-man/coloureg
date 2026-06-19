@@ -258,6 +258,14 @@ class PaintLookup(models.Model):
     # code -> swatch (hex + name)  [the reliable direction]
     # ------------------------------------------------------------------
 
+    # Makes that prefix paint codes with a leading 'L' at the factory (e.g. the
+    # body code 'X7W' is stored as 'LX7W'). VDG/partslink24 report the code
+    # WITHOUT that leading L, so a VW/Audi lookup can miss on the exact code.
+    # Scoped to VW + Audi ONLY — there ~86-89% of codes carry the L (so "they
+    # dropped the L" is a sound inference). NOT applied to Seat/Porsche/Skoda,
+    # where the L-prefix is rare (~8-22%) and the inference would be a guess.
+    LEADING_L_MAKES = {'volkswagen', 'audi'}
+
     @classmethod
     def lookup(cls, manufacturer, paint_code, model=None, year=None, vdg_colour=None):
         """Find the row for (manufacturer, code). Returns a PaintLookup or None.
@@ -267,15 +275,43 @@ class PaintLookup(models.Model):
         The `model`, `year`, `vdg_colour` params are accepted for call-site
         compatibility with the old PaintSwatch.lookup signature but are not
         needed to disambiguate (there is at most one row per code).
+
+        VW/Audi leading-L fallback: if the plain code(s) don't match, retry each
+        variant with a leading 'L' (see LEADING_L_MAKES). This is tried ONLY
+        after the exact/split variants miss, and a given variant's L-form is only
+        used when the plain form is ABSENT — so it can never override a correct
+        exact match, and never collides with the solid-vs-metallic finish
+        variants (those have BOTH forms present, so exact wins). This also
+        recovers compound two-tone codes like 'B4B4/B9A' → split → 'B9A' →
+        'LB9A', since the split parts are among the variants.
         """
         if not manufacturer or not paint_code:
             return None
 
         mfr_norm = cls.normalize_manufacturer(manufacturer)
-        for code in cls.normalize_code_variants(paint_code):
+        variants = cls.normalize_code_variants(paint_code)
+
+        # 1) Exact / split variants (the normal, reliable path).
+        for code in variants:
             match = cls.objects.filter(manufacturer=mfr_norm, code=code).first()
             if match:
                 return match
+
+        # 2) VW/Audi leading-L fallback (only when the plain form is absent).
+        if mfr_norm in cls.LEADING_L_MAKES:
+            for code in variants:
+                # Prepend one 'L'. This is safe even when `code` already starts
+                # with 'L' (the body code itself can be e.g. 'L5M', stored at the
+                # factory as 'LL5M'): step 1 already confirmed the plain form has
+                # no row, and there are no cases where both 'LX' and 'LLX' exist
+                # as different colours — so the plain-absent check is the real
+                # guard, not a no-double-L rule.
+                match = cls.objects.filter(
+                    manufacturer=mfr_norm, code='L' + code
+                ).first()
+                if match:
+                    return match
+
         return None
 
     @classmethod
