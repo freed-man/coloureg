@@ -95,6 +95,20 @@ class Search(models.Model):
     recovery_name_only = models.BooleanField(default=False)
     recovery_duration_ms = models.IntegerField(null=True, blank=True)
 
+    # Which part (if any) was filled from the PaintLookup database rather than
+    # returned by the provider: 'code' (name→code), 'name' (code→name), or ''
+    # (provider supplied everything / nothing filled).
+    ENRICHED_NONE = ''
+    ENRICHED_CODE = 'code'
+    ENRICHED_NAME = 'name'
+    ENRICHED_CHOICES = [
+        (ENRICHED_NONE, 'Not enriched'),
+        (ENRICHED_CODE, 'Code from database'),
+        (ENRICHED_NAME, 'Name from database'),
+    ]
+    enriched_from = models.CharField(
+        max_length=8, choices=ENRICHED_CHOICES, blank=True, default='')
+
     # Email / manual fallback
     email = models.EmailField(blank=True, default='')
     email_sent = models.BooleanField(default=False)

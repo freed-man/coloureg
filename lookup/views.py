@@ -20,7 +20,7 @@ from .services.vdg import (
     VdgError,
     VdgNotFoundError,
 )
-from .services.paint_resolver import resolve_paint
+from .services.paint_resolver import resolve_paint, _enrich_from_lookup
 from .services.email import (
     send_user_paint_code,
     send_admin_failure_notification,
@@ -310,9 +310,20 @@ def index(request):
             paint_code = vdg_data.get('paint_code', '')
             paint_description = vdg_data.get('paint_description', '')
             all_paint_codes = vdg_data.get('all_paint_codes', [])
+            # Behind the provider result: if VDG gave a code but no name (or a
+            # name but no code), fill the gap from our PaintLookup database and
+            # record which part we supplied. Most VDG hits return both, so this
+            # usually does nothing.
+            _enriched = _enrich_from_lookup(
+                {'paint_code': paint_code, 'paint_description': paint_description},
+                make,
+            )
+            paint_code = _enriched.get('paint_code', paint_code)
+            paint_description = _enriched.get('paint_description', paint_description)
             search.paint_code = paint_code
             search.paint_description = paint_description
             search.provider = Search.PROVIDER_VDG
+            search.enriched_from = _enriched.get('enriched_from', '')
 
         # Save latest VDG balance
         if latest_balance is not None:
@@ -562,6 +573,7 @@ def lookup_status(request, search_id):
     paint_description = result.get('paint_description', '')
     source = result.get('source', '')
     all_paint_codes = result.get('all_paint_codes', [])
+    enriched_from = result.get('enriched_from', '')
 
     paint_hex, paint_name, canonical_code = PaintLookup.lookup_with_canonical(
         manufacturer=make,
@@ -571,7 +583,8 @@ def lookup_status(request, search_id):
         vdg_colour=vehicle_data.get('colour', ''),
     )
 
-    _record_paint_hit(search_id, paint_code, paint_description, source, telemetry)
+    _record_paint_hit(search_id, paint_code, paint_description, source, telemetry,
+                      enriched_from=enriched_from)
 
     vehicle_data['paint_code'] = paint_code
     vehicle_data['paint_description'] = paint_description
@@ -609,7 +622,8 @@ def _apply_recovery_telemetry(search, telemetry):
             'pl24_returned', 'recovery_name_only', 'recovery_duration_ms']
 
 
-def _record_paint_hit(search_id, paint_code, paint_description, source, telemetry=None):
+def _record_paint_hit(search_id, paint_code, paint_description, source, telemetry=None,
+                      enriched_from=''):
     """Persist a recovered paint code (and the recovery telemetry) to the Search
     row in one save. Best-effort: a DB hiccup here must not break the user-facing
     response, so failures are swallowed."""
@@ -624,8 +638,18 @@ def _record_paint_hit(search_id, paint_code, paint_description, source, telemetr
         search.provider = Search.PROVIDER_PARTSLINK24
     elif source == 'vdg_retry':
         search.provider = Search.PROVIDER_VDG_RETRY
-    fields = ['paint_code', 'paint_description', 'success', 'provider']
+    search.enriched_from = enriched_from or ''
+    fields = ['paint_code', 'paint_description', 'success', 'provider', 'enriched_from']
     fields += _apply_recovery_telemetry(search, telemetry)
+    # We have a real code here (this is the paint-hit path), so this is a FULL
+    # result, not name-only — even if pl24 originally returned a name that our
+    # PaintLookup enrichment then resolved to a code. The OUTCOME column checks
+    # recovery_name_only BEFORE success, so it must be cleared or the row would
+    # wrongly show ◐ instead of a green ✓.
+    if paint_code:
+        search.recovery_name_only = False
+        if 'recovery_name_only' not in fields:
+            fields.append('recovery_name_only')
     search.save(update_fields=fields)
 
 

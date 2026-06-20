@@ -24,6 +24,16 @@
         border-radius: 10px;
         background: #fafafa;
     }
+    /* When the banner wraps (narrow screens), centre the status + button */
+    @media (max-width: 600px) {
+        .maint-toggle {
+            justify-content: center;
+            text-align: center;
+        }
+        .maint-toggle-status {
+            justify-content: center;
+        }
+    }
     .maint-toggle.is-on {
         border-color: #EF9F27;
         background: #FAEEDA;
@@ -536,6 +546,7 @@
         /* Outcome badges in the recent-lookups table */
         .outcome-tick { color: #2e7d32; font-weight: 600; font-size: 16px; }
         .outcome-partial { color: #2e7d32; font-weight: 600; font-size: 17px; }
+        .db-badge { display: inline-block; font-size: 10px; font-weight: 600; color: #185FA5; background: #E6F1FB; border: 0.5px solid #85B7EB; border-radius: 4px; padding: 1px 5px; vertical-align: middle; letter-spacing: 0.5px; }
         .outcome-cross { color: #c62828; font-weight: 600; font-size: 16px; }
 
         /* Recent paint code lookups: paint code + wrap-friendly description.
@@ -803,14 +814,14 @@
                     <td>{{ s.colour|default:"—" }}</td>
                     <td>
                         {% if s.paint_code %}
-                        <span class="recent-paint-code">{{ s.paint_code }}</span>
+                        <span class="recent-paint-code">{{ s.paint_code }}</span>{% if s.enriched_from == 'code' %} <span class="db-badge" title="Code filled from coloureg's paint database">DB</span>{% endif %}
                         {% else %}
                         <span class="recent-empty">—</span>
                         {% endif %}
                     </td>
                     <td>
                         {% if s.paint_description %}
-                        <span class="recent-paint-desc">{{ s.paint_description }}</span>
+                        <span class="recent-paint-desc">{{ s.paint_description }}</span>{% if s.enriched_from == 'name' %} <span class="db-badge" title="Name filled from coloureg's paint database">DB</span>{% endif %}
                         {% else %}
                         <span class="recent-empty">—</span>
                         {% endif %}

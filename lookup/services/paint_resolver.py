@@ -70,6 +70,8 @@ def _enrich_from_lookup(result, make):
             )
             if name:
                 result['paint_description'] = name
+                # the NAME was supplied by our database, not the provider
+                result['enriched_from'] = 'name'
             if hex_val and not result.get('paint_hex'):
                 result['paint_hex'] = hex_val
 
@@ -80,6 +82,8 @@ def _enrich_from_lookup(result, make):
             )
             if found_code:
                 result['paint_code'] = found_code
+                # the CODE was supplied by our database, not the provider
+                result['enriched_from'] = 'code'
                 if hex_val and not result.get('paint_hex'):
                     result['paint_hex'] = hex_val
                 # a code was found → no longer a name-only result

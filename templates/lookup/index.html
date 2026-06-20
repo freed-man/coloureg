@@ -128,43 +128,31 @@
 
     /* Maintenance / lookups-paused state (shown when maintenance_mode is on) */
     .maintenance-state {
-        max-width: 470px;
+        max-width: 300px;
         margin: 0 auto;
+        width: 100%;
+        padding: 0 16px;
     }
-    .maint-field {
-        display: flex;
-        gap: 8px;
-        justify-content: center;
-        margin-bottom: 22px;
+    /* Locked variant of the real search field: same .search-form design, greyed */
+    .search-form.is-locked {
+        background: rgba(245, 245, 245, 0.85);
+        border-color: rgba(0, 0, 0, 0.12);
+        cursor: not-allowed;
     }
-    .maint-plate {
-        display: flex;
-        align-items: center;
-        background: #f0f0f0;
-        border: 1px solid #e0e0e0;
-        border-radius: 7px;
-        padding: 12px 17px;
-        font-family: var(--font-sans, sans-serif);
-        font-weight: 700;
-        letter-spacing: 1px;
-        color: #aaa;
-        opacity: 0.6;
+    .search-form.is-locked .search-input {
+        color: #bbb;
+        cursor: not-allowed;
     }
-    .maint-input {
-        flex: 1;
-        max-width: 240px;
-        background: #f7f7f7;
-        border: 1px solid #e5e5e5;
-        border-radius: 7px;
-        padding: 12px 16px;
+    .search-btn-locked {
         display: flex;
         align-items: center;
         justify-content: center;
-        color: #ccc;
-        font-size: 16px;
+        background: #e6e6e6;
+        color: #999;
         cursor: not-allowed;
     }
     .maint-notice {
+        margin-top: 18px;
         background: #FAEEDA;
         border: 0.5px solid #EF9F27;
         border-radius: 10px;
@@ -190,6 +178,12 @@
         font-size: 13px;
         color: #854F0B;
         line-height: 1.5;
+    }
+    /* The second sentence of the notice sits on its own line on wider screens;
+       on narrow screens it flows into one paragraph with the first. */
+    .maint-notice-body .nb-break { display: block; }
+    @media (max-width: 480px) {
+        .maint-notice-body .nb-break { display: inline; }
     }
 
     /* Tablet and below */
@@ -387,15 +381,15 @@
                 <div class="search-container">
                     {% if maintenance_mode %}
                     <div class="maintenance-state" role="status">
-                        <div class="maint-field" aria-hidden="true">
-                            <span class="maint-plate">GB</span>
-                            <span class="maint-input"><i class="fas fa-lock"></i></span>
+                        <div class="search-form is-locked" aria-hidden="true">
+                            <input type="text" class="search-input" disabled placeholder="">
+                            <span class="search-btn search-btn-locked"><i class="fas fa-lock"></i></span>
                         </div>
                         <div class="maint-notice">
                             <i class="fas fa-tools maint-notice-icon" aria-hidden="true"></i>
                             <div>
                                 <div class="maint-notice-title">Offline for maintenance</div>
-                                <div class="maint-notice-body">Paint lookups are temporarily paused. Please try again in a little while.</div>
+                                <div class="maint-notice-body">Paint lookups are temporarily paused.<span class="nb-break"> Please try again in a little while.</span></div>
                             </div>
                         </div>
                     </div>
