@@ -448,3 +448,38 @@ class PaintLookup(models.Model):
             return None, None, None
         except Exception:
             return None, None, None
+
+# =============================================================================
+# SiteConfig — a single-row table holding site-wide runtime toggles that need to
+# be flippable WITHOUT a redeploy (e.g. the maintenance / lookups-paused switch).
+# Always accessed via SiteConfig.get() which returns (and lazily creates) the one
+# row. Edited from the admin-stats dashboard.
+# =============================================================================
+
+
+class SiteConfig(models.Model):
+    """Singleton holding runtime site toggles."""
+
+    # When True: the homepage shows the "offline for maintenance" state (locked
+    # field + notice) and the backend REFUSES to run any lookup — so no VDG spend
+    # can occur even via a direct POST. Flip from /admin-stats/.
+    maintenance_mode = models.BooleanField(default=False)
+
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = 'Site configuration'
+        verbose_name_plural = 'Site configuration'
+
+    def __str__(self):
+        return f"SiteConfig(maintenance_mode={self.maintenance_mode})"
+
+    @classmethod
+    def get(cls):
+        """Return the single config row, creating it on first use.
+
+        Never raises for a missing row. Cheap (single PK fetch); fine to call on
+        every request. We pin pk=1 so there's only ever one row.
+        """
+        obj, _ = cls.objects.get_or_create(pk=1)
+        return obj

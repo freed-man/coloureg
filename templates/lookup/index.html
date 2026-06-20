@@ -126,6 +126,72 @@
         transition: background 1s ease-in-out;
     }
 
+    /* Maintenance / lookups-paused state (shown when maintenance_mode is on) */
+    .maintenance-state {
+        max-width: 470px;
+        margin: 0 auto;
+    }
+    .maint-field {
+        display: flex;
+        gap: 8px;
+        justify-content: center;
+        margin-bottom: 22px;
+    }
+    .maint-plate {
+        display: flex;
+        align-items: center;
+        background: #f0f0f0;
+        border: 1px solid #e0e0e0;
+        border-radius: 7px;
+        padding: 12px 17px;
+        font-family: var(--font-sans, sans-serif);
+        font-weight: 700;
+        letter-spacing: 1px;
+        color: #aaa;
+        opacity: 0.6;
+    }
+    .maint-input {
+        flex: 1;
+        max-width: 240px;
+        background: #f7f7f7;
+        border: 1px solid #e5e5e5;
+        border-radius: 7px;
+        padding: 12px 16px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: #ccc;
+        font-size: 16px;
+        cursor: not-allowed;
+    }
+    .maint-notice {
+        background: #FAEEDA;
+        border: 0.5px solid #EF9F27;
+        border-radius: 10px;
+        padding: 14px 18px;
+        display: flex;
+        gap: 12px;
+        align-items: flex-start;
+        text-align: left;
+    }
+    .maint-notice-icon {
+        font-size: 18px;
+        color: #854F0B;
+        margin-top: 2px;
+        flex-shrink: 0;
+    }
+    .maint-notice-title {
+        font-weight: 600;
+        font-size: 14px;
+        color: #633806;
+        margin-bottom: 3px;
+    }
+    .maint-notice-body {
+        font-size: 13px;
+        color: #854F0B;
+        line-height: 1.5;
+    }
+
     /* Tablet and below */
     @media (max-width: 768px) {
         .main-title {
@@ -319,6 +385,21 @@
         <div class="row justify-content-center">
             <div class="col-md-8">
                 <div class="search-container">
+                    {% if maintenance_mode %}
+                    <div class="maintenance-state" role="status">
+                        <div class="maint-field" aria-hidden="true">
+                            <span class="maint-plate">GB</span>
+                            <span class="maint-input"><i class="fas fa-lock"></i></span>
+                        </div>
+                        <div class="maint-notice">
+                            <i class="fas fa-tools maint-notice-icon" aria-hidden="true"></i>
+                            <div>
+                                <div class="maint-notice-title">Offline for maintenance</div>
+                                <div class="maint-notice-body">Paint lookups are temporarily paused. Please try again in a little while.</div>
+                            </div>
+                        </div>
+                    </div>
+                    {% else %}
                     <form method="POST" action="{% url 'index' %}" class="search-form" id="lookup-form">
                         {% csrf_token %}
                         <input type="text" class="search-input" id="reg-input"
@@ -348,6 +429,7 @@
                         </div>
                         <p class="lookup-message" id="lookup-message">Connecting to manufacturer server...</p>
                     </div>
+                    {% endif %}
                 </div>
             </div>
         </div>
@@ -394,13 +476,18 @@
         searchBtn.style.background = random;
     }
 
-    cycleBtnColour();
-    setInterval(cycleBtnColour, 1000);
+    if (searchBtn) {
+        cycleBtnColour();
+        setInterval(cycleBtnColour, 1000);
+    }
 </script>
 <script>
     var regInput = document.getElementById('reg-input');
     var lookupForm = document.getElementById('lookup-form');
 
+    // In maintenance mode the search form isn't rendered — skip all of the
+    // form-dependent JS (typewriter placeholder, submit handler, loader reset).
+    if (regInput && lookupForm) {
     var text = 'enter your reg to find your paint code...';
     var pi = 0;
     var pDeleting = false;
@@ -540,5 +627,6 @@
             msgEl.textContent = 'Connecting to manufacturer server...';
         }
     });
+    }
 </script>
 {% endblock %}

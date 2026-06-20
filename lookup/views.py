@@ -11,7 +11,7 @@ from django.http import JsonResponse
 from django.utils import timezone
 from django.views.decorators.http import require_POST, require_GET
 from django_ratelimit.core import is_ratelimited
-from .models import Search, PaintLookup
+from .models import Search, PaintLookup, SiteConfig
 from .services.vdg import (
     get_combined_lookup,
     smart_title,
@@ -170,7 +170,18 @@ def parse_device(user_agent):
 
 
 def index(request):
+    # Maintenance switch (flippable from /admin-stats/, no redeploy). When on,
+    # the homepage shows the locked "offline for maintenance" state AND the
+    # backend refuses to run any lookup here — so a direct POST can't bypass the
+    # greyed field or spend any VDG credit.
+    maintenance = SiteConfig.get().maintenance_mode
+
     if request.method == 'POST':
+        if maintenance:
+            # Refuse silently-but-clearly: no VDG call, no Search row, just
+            # re-render the maintenance page. (Covers direct/scripted POSTs.)
+            return render(request, 'lookup/index.html', {'maintenance_mode': True})
+
         was_limited = is_ratelimited(
             request,
             group='lookup',
@@ -347,7 +358,7 @@ def index(request):
 
         return redirect('results')
 
-    return render(request, 'lookup/index.html')
+    return render(request, 'lookup/index.html', {'maintenance_mode': maintenance})
 
 
 def paige(request):
@@ -484,6 +495,11 @@ def lookup_status(request, search_id):
     if str(vehicle_data.get('search_id')) != str(search_id):
         return JsonResponse({'status': 'error', 'detail': 'unknown search'},
                             status=404)
+
+    # Maintenance switch: if lookups are paused, do NOT run the recovery race
+    # (VDG-retry / pl24) — that would spend money. Report no result.
+    if SiteConfig.get().maintenance_mode:
+        return JsonResponse({'status': 'not_found'})
 
     # Idempotency / guard: if we already have paint (resolved on a prior poll,
     # or this was never a paint-miss), return it; never re-run the fallback.
@@ -794,6 +810,20 @@ def submit_contact(request):
 @staff_member_required
 def admin_stats(request):
     """Admin-only stats dashboard."""
+    # Maintenance toggle: a POST from the dashboard's switch flips the
+    # site-wide maintenance flag (lookups paused). Redirect-after-POST so a
+    # refresh doesn't re-submit. staff-only via the decorator above.
+    if request.method == 'POST' and request.POST.get('action') == 'toggle_maintenance':
+        cfg = SiteConfig.get()
+        cfg.maintenance_mode = not cfg.maintenance_mode
+        cfg.save(update_fields=['maintenance_mode', 'updated_at'])
+        messages.success(
+            request,
+            'Maintenance mode ON — lookups are paused.' if cfg.maintenance_mode
+            else 'Maintenance mode OFF — lookups are live again.'
+        )
+        return redirect('admin_stats')
+
     now = timezone.now()
     today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
     week_ago = now - timedelta(days=7)
@@ -975,6 +1005,7 @@ def admin_stats(request):
         'vdg_balance': vdg_balance,
         'vdg_balance_at': vdg_balance_at,
         'provider_breakdown': provider_breakdown,
+        'maintenance_mode': SiteConfig.get().maintenance_mode,
     }
 
     return render(request, 'lookup/admin_stats.html', context)

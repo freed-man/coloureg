@@ -11,6 +11,55 @@
         font-family: 'IBM Plex Sans', sans-serif;
         padding: 20px 0 40px;
     }
+    /* Maintenance toggle banner */
+    .maint-toggle {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 16px;
+        flex-wrap: wrap;
+        padding: 14px 18px;
+        margin-bottom: 1.5rem;
+        border: 1px solid #e0e0e0;
+        border-radius: 10px;
+        background: #fafafa;
+    }
+    .maint-toggle.is-on {
+        border-color: #EF9F27;
+        background: #FAEEDA;
+    }
+    .maint-toggle-status {
+        display: flex;
+        align-items: flex-start;
+        gap: 12px;
+    }
+    .maint-dot {
+        width: 11px;
+        height: 11px;
+        border-radius: 50%;
+        background: #1D9E75;
+        margin-top: 5px;
+        flex-shrink: 0;
+    }
+    .maint-toggle.is-on .maint-dot {
+        background: #EF9F27;
+    }
+    .maint-toggle-title {
+        font-weight: 600;
+        font-size: 15px;
+        color: #222;
+    }
+    .maint-toggle.is-on .maint-toggle-title {
+        color: #633806;
+    }
+    .maint-toggle-sub {
+        font-size: 13px;
+        color: #666;
+        margin-top: 2px;
+    }
+    .maint-toggle.is-on .maint-toggle-sub {
+        color: #854F0B;
+    }
     .stats-grid {
         display: grid;
         grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
@@ -163,6 +212,28 @@
     <div class="d-flex justify-content-between align-items-center mb-4">
         <h1 style="font-family: 'IBM Plex Sans', sans-serif; font-weight: 700; margin: 0;">Stats</h1>
         <a href="/admin/" class="btn btn-outline-dark btn-sm">Django Admin</a>
+    </div>
+
+    <!-- Maintenance toggle: pauses all lookups site-wide (no VDG spend) -->
+    <div class="maint-toggle {% if maintenance_mode %}is-on{% endif %}">
+        <div class="maint-toggle-status">
+            <span class="maint-dot"></span>
+            <div>
+                <div class="maint-toggle-title">
+                    {% if maintenance_mode %}Maintenance mode is ON{% else %}Maintenance mode is off{% endif %}
+                </div>
+                <div class="maint-toggle-sub">
+                    {% if maintenance_mode %}Lookups are paused — visitors see the offline notice and no VDG calls run.{% else %}Lookups are live. Turn on to pause lookups and show the offline notice.{% endif %}
+                </div>
+            </div>
+        </div>
+        <form method="post" action="{% url 'admin_stats' %}" style="margin:0;">
+            {% csrf_token %}
+            <input type="hidden" name="action" value="toggle_maintenance">
+            <button type="submit" class="btn btn-sm {% if maintenance_mode %}btn-success{% else %}btn-danger{% endif %}">
+                {% if maintenance_mode %}Turn lookups back ON{% else %}Pause lookups{% endif %}
+            </button>
+        </form>
     </div>
 
     <!-- Top metrics: row 1 = volume -->
