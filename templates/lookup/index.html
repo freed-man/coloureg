@@ -196,7 +196,10 @@
        Narrow screen: cap back to the field width and collapse into one wrapping
        paragraph. */
     .maint-notice-body .nb-line { display: block; white-space: nowrap; }
-    @media (max-width: 480px) {
+    /* Keep each sentence on its own line down to small phones. Only on genuinely
+       narrow screens (≤360px, e.g. 320px devices) does the longest sentence stop
+       fitting — there we collapse to one wrapping paragraph to avoid overflow. */
+    @media (max-width: 360px) {
         .search-container--maint { max-width: 300px; }
         .maint-notice { width: auto; max-width: 100%; }
         .maint-notice-body .nb-line { display: inline; white-space: normal; }
