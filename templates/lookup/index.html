@@ -128,13 +128,17 @@
 
     /* Maintenance / lookups-paused state (shown when maintenance_mode is on) */
     .maintenance-state {
-        max-width: 300px;
-        margin: 0 auto;
         width: 100%;
+        margin: 0 auto;
         padding: 0 16px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
     }
-    /* Locked variant of the real search field: same .search-form design, greyed */
-    .search-form.is-locked {
+    /* The locked field keeps the real search-field width */
+    .maintenance-state .search-form.is-locked {
+        width: 100%;
+        max-width: 300px;
         background: rgba(245, 245, 245, 0.85);
         border-color: rgba(0, 0, 0, 0.12);
         cursor: not-allowed;
@@ -153,6 +157,8 @@
     }
     .maint-notice {
         margin-top: 18px;
+        width: fit-content;
+        max-width: 100%;
         background: #FAEEDA;
         border: 0.5px solid #EF9F27;
         border-radius: 10px;
@@ -179,9 +185,14 @@
         color: #854F0B;
         line-height: 1.5;
     }
-    /* The second sentence of the notice sits on its own line on wider screens;
-       on narrow screens it flows into one paragraph with the first. */
-    .maint-notice-body .nb-break { display: block; }
+    /* Big screen: each sentence on its own line, the box hugging the longer
+       sentence (no empty space). Narrow screen: collapse into one paragraph and
+       let it wrap. */
+    .maint-notice-body .nb-line { display: block; white-space: nowrap; }
+    @media (max-width: 480px) {
+        .maint-notice { width: auto; max-width: 300px; }
+        .maint-notice-body .nb-line { display: inline; white-space: normal; }
+    }
     @media (max-width: 480px) {
         .maint-notice-body .nb-break { display: inline; }
     }
@@ -389,7 +400,7 @@
                             <i class="fas fa-tools maint-notice-icon" aria-hidden="true"></i>
                             <div>
                                 <div class="maint-notice-title">Offline for maintenance</div>
-                                <div class="maint-notice-body">Paint lookups are temporarily paused.<span class="nb-break"> Please try again in a little while.</span></div>
+                                <div class="maint-notice-body"><span class="nb-line">Paint lookups are temporarily paused.</span> <span class="nb-line">Please try again in a little while.</span></div>
                             </div>
                         </div>
                     </div>
