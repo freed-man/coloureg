@@ -5,7 +5,7 @@ from datetime import timedelta
 from django.shortcuts import render, redirect
 from django.contrib import messages
 from django.contrib.admin.views.decorators import staff_member_required
-from django.db.models import Count, Avg, Q
+from django.db.models import Count, Avg, Q, Sum
 from django.db.models.functions import TruncDate
 from django.http import JsonResponse
 from django.utils import timezone
@@ -237,6 +237,10 @@ def index(request):
                 search.vdg_paint_returned = vdg_data.get('paint_returned', False)
                 if vdg_data.get('balance') is not None:
                     latest_balance = vdg_data.get('balance')
+                # Record the REAL amount VDG billed this call (tier-correct, net
+                # of any refund) so admin can sum exact spend.
+                if vdg_data.get('transaction_cost') is not None:
+                    search.vdg_transaction_cost = vdg_data.get('transaction_cost')
         except (VdgError, VdgNotFoundError) as e:
             # vehicle_returned / paint_returned stay False (their defaults), and
             # the error is recorded — together these mark a VDG failure.
@@ -871,6 +875,11 @@ def admin_stats(request):
         # VDG cost flags (per-document returned counts)
         vdg_vehicle_returned_count=Count('id', filter=Q(vdg_vehicle_returned=True)),
         vdg_paint_returned_count=Count('id', filter=Q(vdg_paint_returned=True)),
+        # Real billed spend: sum of the actual TransactionCost VDG charged, plus a
+        # count of how many rows carry it (rows from before this field existed are
+        # null and fall back to the per-document estimate below).
+        real_cost_sum=Sum('vdg_transaction_cost'),
+        real_cost_count=Count('id', filter=Q(vdg_transaction_cost__isnull=False)),
         # Average lookup duration (filtered nulls handled by Avg)
         avg_duration_ms=Avg('lookup_duration_ms'),
     )
@@ -968,26 +977,40 @@ def admin_stats(request):
 
     # VDG cost tracker
     # £0.15 per VehicleDetails (always charged when returned)
-    # £0.35 per PaintCodeDetails (refunded by VDG if no paint data returned)
-    # As of the combined-call refactor, each lookup makes ONE API call that
-    # contains both documents. Counts come from the single aggregate above.
+    # VDG cost tracker.
+    # Preferred source: the REAL amount VDG billed per lookup
+    # (vdg_transaction_cost, captured from BillingInformation.TransactionCost) —
+    # tier-correct and net of refunds, so no assumed per-document price. Rows from
+    # before that field existed are null; for those we fall back to the old
+    # per-document estimate so historical totals don't suddenly drop to zero.
     #
-    # Variable naming kept as vdg_vehicle_calls / vdg_paint_calls for backward
-    # compatibility with admin_stats.html — semantically these are now "how many
-    # times we were billed for X".
+    # Fallback estimate uses the ORIGINAL Tier-1 document prices (£0.12 vehicle +
+    # £0.33 paint are the current Tier-2 prices, but the legacy rows were billed
+    # at the Tier-1 £0.15/£0.35 they were actually charged, so the estimate stays
+    # honest for that era).
+    real_cost_sum = float(top_metrics['real_cost_sum'] or 0)
+    real_cost_count = top_metrics['real_cost_count'] or 0
+
+    # Legacy rows (no recorded cost): those before this field. Estimate them with
+    # the per-document method, scoped to ONLY the rows lacking a real cost.
+    legacy = Search.objects.filter(vdg_transaction_cost__isnull=True).aggregate(
+        n=Count('id'),
+        veh=Count('id', filter=Q(vdg_vehicle_returned=True)),
+        paint_ret=Count('id', filter=Q(vdg_paint_returned=True)),
+    )
+    legacy_n = legacy['n'] or 0
+    legacy_vehicle = round((legacy['veh'] or 0) * 0.15, 2)
+    legacy_paint_charged = round(legacy_n * 0.35, 2)
+    legacy_paint_refunds = round((legacy_n - (legacy['paint_ret'] or 0)) * 0.35, 2)
+    legacy_estimate = round(legacy_vehicle + legacy_paint_charged - legacy_paint_refunds, 2)
+
+    estimated_cost = round(real_cost_sum + legacy_estimate, 2)
+
+    # Kept for the admin template's existing labels.
     vdg_vehicle_calls = top_metrics['vdg_vehicle_returned_count']
-    # Paint is initially billed on every combined call where the package was
-    # requested. Every search makes exactly one combined call, so the number of
-    # paint-billed calls equals the total search count. The refund happens after
-    # if no paint code came back.
     vdg_paint_calls = top_metrics['total']
     paint_calls_returned = top_metrics['vdg_paint_returned_count']
     paint_refunds_count = vdg_paint_calls - paint_calls_returned
-
-    vehicle_cost = round(vdg_vehicle_calls * 0.15, 2)
-    paint_charged_total = round(vdg_paint_calls * 0.35, 2)
-    paint_refunds_amount = round(paint_refunds_count * 0.35, 2)
-    estimated_cost = round(vehicle_cost + paint_charged_total - paint_refunds_amount, 2)
 
     # Latest VDG balance (captured opportunistically from any API call)
     latest_with_balance = (
@@ -1026,6 +1049,10 @@ def admin_stats(request):
         'vehicle_cost': vehicle_cost,
         'paint_charged_total': paint_charged_total,
         'estimated_cost': estimated_cost,
+        'real_cost_sum': round(real_cost_sum, 2),
+        'real_cost_count': real_cost_count,
+        'legacy_estimate': legacy_estimate,
+        'legacy_n': legacy_n,
         'vdg_balance': vdg_balance,
         'vdg_balance_at': vdg_balance_at,
         'provider_breakdown': provider_breakdown,

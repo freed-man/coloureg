@@ -62,12 +62,20 @@ class Search(models.Model):
     # Per-document flags for the combined PaintCodeDetails call. Every search
     # makes exactly one combined call, so "was a call made" is implicit in the
     # row existing — what matters for cost is which DOCUMENTS came back:
-    # vdg_vehicle_returned  — did Results.VehicleDetails return successfully? (£0.15 charged)
-    # vdg_paint_returned    — did Results.PaintCodeDetails return ≥1 paint code? (£0.35 charged
-    #                          if False, refunded by VDG; if True, kept)
+    # vdg_vehicle_returned  — did Results.VehicleDetails return successfully?
+    # vdg_paint_returned    — did Results.PaintCodeDetails return ≥1 paint code?
+    #                          (if False, the paint portion is refunded by VDG)
     vdg_vehicle_returned = models.BooleanField(default=False)
     vdg_paint_returned = models.BooleanField(default=False)
     vdg_balance_after_call = models.DecimalField(
+        max_digits=10, decimal_places=2, null=True, blank=True
+    )
+    # The REAL amount VDG billed for this lookup (BillingInformation.
+    # TransactionCost). Authoritative and tier-correct — summing this gives exact
+    # spend with no assumed per-document price. Null on rows from before this
+    # field existed, or where VDG returned no billing block (e.g. DVLA-fallback
+    # lookups that never called VDG).
+    vdg_transaction_cost = models.DecimalField(
         max_digits=10, decimal_places=2, null=True, blank=True
     )
 

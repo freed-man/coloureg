@@ -157,7 +157,6 @@
     }
     .maint-notice {
         margin-top: 18px;
-        width: fit-content;
         max-width: 100%;
         background: #FAEEDA;
         border: 0.5px solid #EF9F27;
@@ -185,16 +184,15 @@
         color: #854F0B;
         line-height: 1.5;
     }
-    /* Big screen: each sentence on its own line, the box hugging the longer
-       sentence (no empty space). Narrow screen: collapse into one paragraph and
-       let it wrap. */
-    .maint-notice-body .nb-line { display: block; white-space: nowrap; }
+    /* Big screen: each sentence on its own line; the text column sizes to the
+       WIDEST sentence (max-content) so the amber box wraps it exactly and nothing
+       overflows. Narrow screen: collapse into one wrapping paragraph. */
+    .maint-notice-text { width: max-content; max-width: 100%; }
+    .maint-notice-body .nb-line { display: block; }
     @media (max-width: 480px) {
-        .maint-notice { width: auto; max-width: 300px; }
-        .maint-notice-body .nb-line { display: inline; white-space: normal; }
-    }
-    @media (max-width: 480px) {
-        .maint-notice-body .nb-break { display: inline; }
+        .maintenance-state { max-width: 300px; }
+        .maint-notice-text { width: auto; }
+        .maint-notice-body .nb-line { display: inline; }
     }
 
     /* Tablet and below */
@@ -398,7 +396,7 @@
                         </div>
                         <div class="maint-notice">
                             <i class="fas fa-tools maint-notice-icon" aria-hidden="true"></i>
-                            <div>
+                            <div class="maint-notice-text">
                                 <div class="maint-notice-title">Offline for maintenance</div>
                                 <div class="maint-notice-body"><span class="nb-line">Paint lookups are temporarily paused.</span> <span class="nb-line">Please try again in a little while.</span></div>
                             </div>

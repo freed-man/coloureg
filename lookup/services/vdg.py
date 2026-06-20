@@ -94,6 +94,18 @@ def _extract_balance(data):
     return billing.get('AccountBalance')
 
 
+def _extract_transaction_cost(data):
+    """Extract the REAL amount VDG billed for this call (BillingInformation.
+    TransactionCost). This is the authoritative per-lookup cost — already
+    tier-correct and already net of any per-document refund VDG applied — so
+    summing it gives exact spend without assuming any per-document price.
+    Returns a float, or None if absent."""
+    if not data:
+        return None
+    billing = data.get('BillingInformation', {}) or {}
+    return billing.get('TransactionCost')
+
+
 def smart_title(text):
     """Title-case a string for paint descriptions.
 
@@ -421,6 +433,7 @@ def get_combined_lookup(registration):
       - 'vehicle_returned': bool — Results.VehicleDetails StatusCode == 0
       - 'paint_returned':   bool — Results.PaintCodeDetails returned ≥1 paint code
       - 'balance': float — VDG account balance after this call (or None)
+      - 'transaction_cost': float — the real amount VDG billed this call (or None)
 
     Returns None if VDG reports the vehicle was not found at all.
     Raises VdgError on HTTP / config / unexpected-payload errors.
@@ -444,6 +457,7 @@ def get_combined_lookup(registration):
         'vehicle_returned': vehicle_returned,
         'paint_returned': paint_returned,
         'balance': _extract_balance(data),
+        'transaction_cost': _extract_transaction_cost(data),
     }
 
     # Always pull what we can from each document, even on partial success.
