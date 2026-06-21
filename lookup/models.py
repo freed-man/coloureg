@@ -423,11 +423,27 @@ class PaintLookup(models.Model):
         when it is unambiguous.
 
         Colour names are 1:many with codes (one make can have many 'grey's), so
-        this returns a code ONLY when exactly one code matches the normalised
-        name within the make (optionally after collapsing dash-suffix variants
-        of a single base code, e.g. 'B554P-L'/'B554P-S' -> 'B554P'). If the name
-        maps to several genuinely different codes, returns None — a wrong code
-        is worse than none.
+        this returns a code ONLY when the candidates collapse to a single paint.
+        Three collapse rules are tried, strongest-evidence first; if none yields
+        a single code the name is genuinely ambiguous and we return None — a
+        wrong code is worse than none.
+
+        Resolution order:
+          1. Exactly one matching code -> return it.
+          2. Dash-suffix variants of one base ('B554P-L'/'B554P-S' -> 'B554P').
+          3. Prefix variants: one code is a strict prefix of all the others
+             (Ford 'FLVA' / 'FLVAWWA' — the same paint in a bare vs suffixed code
+             convention) -> return the shortest (the canonical base). Safe because
+             genuinely different codes ('001'/'826') have no prefix relationship.
+          4. If the full candidate set is still ambiguous, retry rules 1-3 on just
+             the rows whose PRIMARY name equals the query — i.e. paints actually
+             *named* this, excluding ones that merely list it as a secondary alias
+             (e.g. a 'Stealth' search ignores 'Slate Grau' which only aliases
+             Stealth). If that narrower set resolves, use it.
+
+        Each step only ever NARROWS toward a single code; it never invents a match
+        the base logic wouldn't have found, so this can only turn previously
+        ambiguous (declined) names into resolved ones, never the reverse.
 
         Returns (code, hex, canonical_name) or (None, None, None).
         """
@@ -452,24 +468,68 @@ class PaintLookup(models.Model):
             if not rows:
                 return None, None, None
 
-            codes = {r.code for r in rows}
+            # Try to collapse the full candidate set to a single code.
+            resolved = cls._collapse_to_single_code(rows)
+            if resolved is not None:
+                return resolved
 
-            if len(codes) == 1:
-                r = rows[0]
-                return r.code, (r.hex or None), r.name
-
-            # Try collapsing dash-suffix variants to a single base code
-            bases = {c.split('-')[0] for c in codes}
-            if len(bases) == 1:
-                base = next(iter(bases))
-                # prefer an exact row for the base code if present, else any row
-                exact = next((r for r in rows if r.code == base), rows[0])
-                return base, (exact.hex or None), exact.name
+            # Still ambiguous across the full set. Retry on just the rows whose
+            # PRIMARY name matches the query — paints actually named this, not
+            # ones that only alias it. (normalize_name on the stored primary name
+            # so the comparison matches the same way the query was normalised.)
+            primary_rows = [
+                r for r in rows
+                if cls.normalize_name(r.name or '') == name_norm
+            ]
+            if primary_rows and len(primary_rows) < len(rows):
+                resolved = cls._collapse_to_single_code(primary_rows)
+                if resolved is not None:
+                    return resolved
 
             # Genuinely ambiguous — decline
             return None, None, None
         except Exception:
             return None, None, None
+
+    @staticmethod
+    def _collapse_to_single_code(rows):
+        """Try to reduce a set of matching rows to one code via (in order):
+        exact-single, dash-suffix collapse, then prefix collapse. Returns
+        (code, hex, name) if the rows resolve to a single paint, else None.
+
+        Pure/stateless helper for code_from_name; never raises on normal input.
+        """
+        codes = {r.code for r in rows}
+
+        # 1. Exactly one code.
+        if len(codes) == 1:
+            r = rows[0]
+            return r.code, (r.hex or None), r.name
+
+        # 2. Dash-suffix variants of a single base ('B554P-L'/'B554P-S').
+        bases = {c.split('-')[0] for c in codes}
+        if len(bases) == 1:
+            base = next(iter(bases))
+            exact = next((r for r in rows if r.code == base), rows[0])
+            return base, (exact.hex or None), exact.name
+
+        # 3. Prefix variants: the shortest code is a strict prefix of all others
+        #    (Ford 'FLVA' prefixes 'FLVAWWA'). Same paint, two code conventions —
+        #    return the shortest (canonical bare code). Genuinely different codes
+        #    have no prefix relationship, so this can't merge unrelated paints.
+        ordered = sorted(codes, key=len)
+        shortest = ordered[0]
+        if all(c.startswith(shortest) for c in ordered):
+            # Prefer a row that has the bare code (it may carry hex/canonical
+            # name); fall back to the row with the most complete data.
+            exact = next((r for r in rows if r.code == shortest), None)
+            if exact is None:
+                # No row for the bare code itself — use a suffixed row's hex/name
+                # but still return the canonical short code.
+                exact = next((r for r in rows if r.hex), rows[0])
+            return shortest, (exact.hex or None), exact.name
+
+        return None
 
 # =============================================================================
 # SiteConfig — a single-row table holding site-wide runtime toggles that need to
