@@ -654,6 +654,15 @@ def _record_paint_hit(search_id, paint_code, paint_description, source, telemetr
         search.recovery_name_only = False
         if 'recovery_name_only' not in fields:
             fields.append('recovery_name_only')
+        # If this coded result came from pl24, count it as a pl24 hit — including
+        # the case where pl24 returned a NAME that our database then resolved to a
+        # code. The raw telemetry flags that as pl24_name_only (no code), which
+        # would otherwise leave pl24_returned False and undercount pl24's real
+        # contribution in the recovery_pl24_hits stat.
+        if source == 'pl24':
+            search.pl24_returned = True
+            if 'pl24_returned' not in fields:
+                fields.append('pl24_returned')
     search.save(update_fields=fields)
 
 
@@ -975,8 +984,6 @@ def admin_stats(request):
         device_counts[row['device']] = row['count']
     device_total = sum(device_counts.values())
 
-    # VDG cost tracker
-    # £0.15 per VehicleDetails (always charged when returned)
     # VDG cost tracker.
     # Preferred source: the REAL amount VDG billed per lookup
     # (vdg_transaction_cost, captured from BillingInformation.TransactionCost) —
