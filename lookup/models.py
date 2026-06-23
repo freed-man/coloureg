@@ -222,15 +222,9 @@ class PaintLookup(models.Model):
         MUST match the rules paintscraper used to build `normalized_names`
         (accent-fold to ASCII, lowercase, punctuation stripped, finish words
         removed) — otherwise name->code lookups will silently miss. The merge
-        pipeline is the single source of truth; this mirrors it. If that
-        pipeline's rules change, update this to match.
-
-        NOTE: the merge strips a longer finish/qualifier word list than the one
-        below (e.g. it also drops 'satin' and some non-English finish words), so a
-        handful of names still normalise slightly differently here. That residual
-        drift is known and low-impact (providers return mostly clean English
-        names); closing it fully requires the merge's exact word list. The accent
-        fold below is the high-value, zero-risk part and is matched exactly.
+        pipeline is the single source of truth; this mirrors it (accent fold +
+        the merge's exact finish-word list). If that pipeline's rules change,
+        update this to match.
         """
         if not text:
             return ''
@@ -242,9 +236,20 @@ class PaintLookup(models.Model):
         # which the merge also does (ß -> space), so they stay in sync.
         t = unicodedata.normalize('NFKD', t)
         t = ''.join(c for c in t if not unicodedata.combining(c))
-        # strip finish/qualifier words
-        for w in ('metallic', 'mica', 'pearl', 'pearlescent', 'matt', 'matte',
-                  'gloss', 'solid', 'effect', 'met.', 'met'):
+        # Strip finish/qualifier words — this list MUST match the merge's exact
+        # set (the merge stripped all of these when building normalized_names, so
+        # the query must strip them too or accented/finish-suffixed names silently
+        # miss). Ordered longest-first so multi-token words ('clearcoat' before
+        # 'coat', 'metallise' before 'met') are removed before their substrings.
+        # Expanding this list cannot produce a WRONG code: the data already made
+        # the name-conflation when it stripped these, and code_from_name declines
+        # on any residual ambiguity — so the worst case is a decline, never a
+        # wrong answer (same risk class as the long-standing 'metallic'/'pearl'
+        # stripping).
+        for w in ('clearcoat', 'pearlescent', 'metalizado', 'metallise',
+                  'metalise', 'tricoat', 'metallic', 'metalic', 'perlato',
+                  'nacre', 'pearl', 'perl', 'satin', 'solid', 'gloss', 'matte',
+                  'matt', 'mica', 'effect', 'tri', 'coat', 'uni', 'met'):
             t = re.sub(r'\b' + re.escape(w) + r'\b', ' ', t)
         # strip punctuation
         t = re.sub(r'[^a-z0-9 ]', ' ', t)
