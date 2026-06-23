@@ -1,4 +1,5 @@
 import re
+import unicodedata
 
 from django.db import models
 
@@ -219,14 +220,28 @@ class PaintLookup(models.Model):
         """Normalise a colour NAME for the name->code direction.
 
         MUST match the rules paintscraper used to build `normalized_names`
-        (lowercase, punctuation stripped, finish words removed) — otherwise
-        name->code lookups will silently miss. The merge pipeline is the single
-        source of truth; this mirrors it. If that pipeline's rules change,
-        update this to match.
+        (accent-fold to ASCII, lowercase, punctuation stripped, finish words
+        removed) — otherwise name->code lookups will silently miss. The merge
+        pipeline is the single source of truth; this mirrors it. If that
+        pipeline's rules change, update this to match.
+
+        NOTE: the merge strips a longer finish/qualifier word list than the one
+        below (e.g. it also drops 'satin' and some non-English finish words), so a
+        handful of names still normalise slightly differently here. That residual
+        drift is known and low-impact (providers return mostly clean English
+        names); closing it fully requires the merge's exact word list. The accent
+        fold below is the high-value, zero-risk part and is matched exactly.
         """
         if not text:
             return ''
         t = text.strip().lower()
+        # Fold accents to base ASCII (ü->u, ê->e, ã->a, ...) to match how the merge
+        # built normalized_names. NFKD splits an accented char into base+combining
+        # mark; dropping the combining marks leaves the base letter. Chars NFKD
+        # doesn't decompose (e.g. ß) fall through to the punctuation strip below,
+        # which the merge also does (ß -> space), so they stay in sync.
+        t = unicodedata.normalize('NFKD', t)
+        t = ''.join(c for c in t if not unicodedata.combining(c))
         # strip finish/qualifier words
         for w in ('metallic', 'mica', 'pearl', 'pearlescent', 'matt', 'matte',
                   'gloss', 'solid', 'effect', 'met.', 'met'):
