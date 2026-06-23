@@ -197,6 +197,13 @@ class PaintLookup(models.Model):
     # Manufacturer aliases — VDG/DVLA brand name → how the scraped data stores it.
     MANUFACTURER_ALIASES = {
         'mercedesbenz': 'mercedes',  # VDG 'Mercedes-Benz' → DB 'mercedes'
+        # Range Rover is a Land Rover model line, not a separate marque. The paint
+        # data folds all 'rangerover' rows into 'landrover' (same codes, same hex),
+        # so a provider returning make 'Range Rover' must route to 'landrover' where
+        # the rows now live — otherwise these lookups hit an empty make key and miss.
+        # (Note: 'blmcrover', the British-Leyland-era bucket, is deliberately kept
+        # separate — it is NOT folded here.)
+        'rangerover': 'landrover',
     }
 
     @staticmethod
