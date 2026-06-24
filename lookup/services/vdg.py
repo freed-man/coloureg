@@ -388,18 +388,52 @@ def _parse_vehicle_fields(results):
     }
 
 
+# Provider "codes" that are actually finish / qualifier words, not paint codes.
+# VDG occasionally returns one of these in the Code field (observed: 'METALLIC'
+# for a Ford Moondust Silver) — useless to a customer as a "paint code", and
+# because it is non-blank it also BLOCKS DB enrichment (which only fills blank
+# codes), so the real code in our table never gets a chance to fill in. We treat
+# such a value as no-code. Matched WHOLE-STRING and case-insensitively only, so a
+# real code that merely contains or is suffixed by a finish token (e.g. Ford
+# 'BMZEWWA', chipex 'PNMAF') is never affected. Verified against the full
+# PaintLookup table: none of these collide with a legitimate code. Kept to
+# unambiguous full words — short fragments ('MET', 'UNI', 'TRI') are excluded so
+# a genuine short code can never be blanked (wrong code is worse than no code).
+_FINISH_WORD_CODES = frozenset({
+    'METALLIC', 'METALIC', 'METAL', 'NONMETALLIC', 'NON-METALLIC',
+    'SOLID', 'PEARL', 'PEARLESCENT', 'MICA', 'SATIN', 'GLOSS',
+    'MATT', 'MATTE', 'EFFECT', 'STANDARD', 'BASECOAT', 'CLEARCOAT',
+})
+
+
+def _clean_paint_code(raw):
+    """Uppercase + strip a provider paint code, returning '' if it is really a
+    finish word (see _FINISH_WORD_CODES) rather than a code. Whole-string match
+    only — never strips a finish token out of a longer, legitimate code."""
+    code = (raw or '').strip().upper()
+    return '' if code in _FINISH_WORD_CODES else code
+
+
 def _parse_paint_fields(results):
     """Extract paint code(s) from Results.PaintCodeDetails.
 
     Returns dict with:
-      - 'code': primary paint code (first in list), '' if none
-      - 'description': primary paint description, '' if none
-      - 'all_codes': list of all paint codes [{code, description}, ...]
+      - 'code': primary paint code — the first entry that carries a REAL code,
+        '' if none
+      - 'description': that entry's paint description, '' if none
+      - 'all_codes': list of paint codes [{code, description}, ...] — only
+        entries that carry a real code (a finish-word entry contributes none)
 
     Paint codes are .upper()'d on the way out — manufacturer convention is
-    always upper-case, but VDG occasionally returns mixed case for some
-    Ford codes (e.g. 'Pn4lr'). Uppercasing at this boundary means every
-    downstream consumer (DB, email, display) sees consistent caps.
+    always upper-case, but VDG occasionally returns mixed case for some Ford
+    codes (e.g. 'Pn4lr'). Uppercasing at this boundary means every downstream
+    consumer (DB, email, display) sees consistent caps. A "code" that is actually
+    a finish word ('METALLIC', 'SOLID', ...) is blanked here (see
+    _clean_paint_code) so it never displays and never blocks DB enrichment; the
+    entry's description (the colour name) is preserved so name->code enrichment
+    can still run. Picking the primary from the first entry that has a real code
+    also means a stray finish-word entry listed first no longer hides a genuine
+    code that follows it.
     """
     paint_details = results.get('PaintCodeDetails', {}) or {}
     paint_list = paint_details.get('PaintCodeList', []) or []
@@ -407,18 +441,26 @@ def _parse_paint_fields(results):
     if not paint_list:
         return {'code': '', 'description': '', 'all_codes': []}
 
-    all_codes = [
+    cleaned = [
         {
-            'code': (p.get('Code', '') or '').strip().upper(),
+            'code': _clean_paint_code(p.get('Code', '')),
             'description': smart_title(p.get('Description', '')),
         }
         for p in paint_list
     ]
 
-    first = paint_list[0]
+    # The codes list for the multi-code display carries only real codes; a
+    # finish-word entry has no code block (same shape as a name-only result).
+    all_codes = [c for c in cleaned if c['code']]
+
+    # Primary = the first entry that actually has a code. If every code was a
+    # finish word, fall back to the first entry so its description (the colour
+    # name) still flows to enrichment / the name-only path, with code ''.
+    primary = next((c for c in cleaned if c['code']), cleaned[0])
+
     return {
-        'code': (first.get('Code', '') or '').strip().upper(),
-        'description': smart_title(first.get('Description', '')),
+        'code': primary['code'],
+        'description': primary['description'],
         'all_codes': all_codes,
     }
 
