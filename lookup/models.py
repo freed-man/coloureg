@@ -444,6 +444,35 @@ class PaintLookup(models.Model):
     # name -> code  [the conservative direction]
     # ------------------------------------------------------------------
 
+    # Hand-verified name->code overrides, checked BEFORE the general matcher in
+    # code_from_name(). Scope is deliberately tiny: the only (make, colour) pairs
+    # that actually appear as live name-only (the matcher's declined / partial
+    # case) lookups in the admin log and are genuinely ambiguous to the matcher
+    # below, but which we have verified by hand to resolve to a single code. This
+    # is the small, zero-leak-risk alternative to a full cross-ref canonical merge.
+    #   - Keys are LIGHT-normalized only (lowercase + single-spaced); they are NOT
+    #     run through normalize_name(), because that strips finish words and would
+    #     collapse 'santorini black pearl' into 'santorini black', re-merging the
+    #     distinct Pearl into the metallic.
+    #   - 'santorini black pearl' -> PBF is a GUARD: without it the matcher would
+    #     resolve a Pearl lookup to the metallic PAB. (PBF is the correct bare code
+    #     for that pearl; note its stored name is the older 'Sumatra Black Pearl'.)
+    CURATED_NAME_OVERRIDES = {
+        'landrover': {
+            'santorini black': 'PAB',
+            'santorini black metallic': 'PAB',
+            'santorini black pearl': 'PBF',
+            'varesine blue': 'JJA',
+            'varesine blue metallic': 'JJA',
+        },
+    }
+
+    @staticmethod
+    def _light_normalize_name(colour_name):
+        """Lowercase + trim + collapse internal whitespace. Deliberately does NOT
+        strip finish words (cf. normalize_name) so 'pearl'/'metallic' survive."""
+        return re.sub(r'\s+', ' ', (colour_name or '').strip().lower())
+
     @classmethod
     def code_from_name(cls, manufacturer, colour_name):
         """Given a colour NAME (and make), return a single paint code — but ONLY
@@ -478,6 +507,20 @@ class PaintLookup(models.Model):
             return None, None, None
         try:
             mfr_norm = cls.normalize_manufacturer(manufacturer)
+
+            # Curated overrides first (see CURATED_NAME_OVERRIDES). Matched on the
+            # LIGHT-normalized name so finish words survive; on a hit we resolve the
+            # code through the normal code->name lookup so the returned hex/name
+            # come straight from the data. If the override code somehow doesn't
+            # resolve, fall through to the general matcher rather than guess.
+            override = cls.CURATED_NAME_OVERRIDES.get(mfr_norm)
+            if override:
+                hit = override.get(cls._light_normalize_name(colour_name))
+                if hit:
+                    row = cls.lookup(manufacturer, hit)
+                    if row is not None:
+                        return row.code, row.hex, row.name
+
             name_norm = cls.normalize_name(colour_name)
             if not name_norm:
                 return None, None, None
