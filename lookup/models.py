@@ -465,6 +465,17 @@ class PaintLookup(models.Model):
             'varesine blue': 'JJA',
             'varesine blue metallic': 'JJA',
         },
+        'ford': {
+            # 'Frozen White' (= German 'Frostweiss') comes back name-only from
+            # partslink24 and the matcher can't choose among ~10 chipex catalog
+            # SKUs for what is a single white (#E0EEEF). 7VTAWWA is the code the
+            # providers and manual resolutions actually return for it. This is the
+            # only Ford name-only colour with both recurring live volume and a
+            # confident canonical; the rest (Moondust, Panther Black, etc.) have
+            # uncertain or genuinely ambiguous codes and are left to decline.
+            'frozen white': '7VTAWWA',
+            'frozen white solid': '7VTAWWA',
+        },
     }
 
     @staticmethod
