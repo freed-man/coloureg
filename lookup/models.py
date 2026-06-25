@@ -475,14 +475,37 @@ class PaintLookup(models.Model):
             # uncertain or genuinely ambiguous codes and are left to decline.
             'frozen white': '7VTAWWA',
             'frozen white solid': '7VTAWWA',
+            # Further name-only Ford colours, each cross-verified by both repo chats
+            # against paint_lookup.json and the provider returns. Most are a SINGLE
+            # paint the matcher can't collapse (a same-named chipex 'PN' code or a
+            # short code sits in the candidate set); the override just returns one
+            # valid code for the paint. Keys are light-normalized (parens dropped),
+            # so a provider '(Metallic)' finish lands on the '... metallic' key.
+            'scuba': '8CLC',
+            'scuba metallic': '8CLC',
+            'midnight sky': 'BMZE',
+            'morello': '8RTE',
+            # Panther Black is genuinely TWO paints (51 RGB apart), so it's a split,
+            # not one canonical: solid #222327 -> PNJAB (provider-confirmed), pearl
+            # #090C11 -> 17V. Plain name defaults to the confirmed solid; the
+            # 'metallic'/'pearl' finishes route to the pearl. (The pearl code is the
+            # clearest pearl-cluster code but is not itself provider-confirmed.)
+            'panther black': 'PNJAB',
+            'panther black solid': 'PNJAB',
+            'panther black metallic': '17V',
+            'panther black pearl': '17V',
         },
     }
 
     @staticmethod
     def _light_normalize_name(colour_name):
-        """Lowercase + trim + collapse internal whitespace. Deliberately does NOT
-        strip finish words (cf. normalize_name) so 'pearl'/'metallic' survive."""
-        return re.sub(r'\s+', ' ', (colour_name or '').strip().lower())
+        """Lowercase + trim + collapse internal whitespace, and drop parentheses so a
+        provider finish in parens ('Scuba (Metallic)') lands on the same key as the
+        bare form ('scuba metallic'). Deliberately does NOT strip finish words (cf.
+        normalize_name) so 'pearl'/'metallic' survive to distinguish paint variants
+        (e.g. Panther Black solid vs pearl)."""
+        s = (colour_name or '').strip().lower().replace('(', ' ').replace(')', ' ')
+        return re.sub(r'\s+', ' ', s).strip()
 
     @classmethod
     def code_from_name(cls, manufacturer, colour_name):
