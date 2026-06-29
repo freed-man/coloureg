@@ -485,6 +485,15 @@ class PaintLookup(models.Model):
             'scuba metallic': '8CLC',
             'midnight sky': 'BMZE',
             'morello': '8RTE',
+            # 'Magnetic' (= 'Cinza Moscou' / 'Magnetic Grau') is one dark-grey paint
+            # (#383838) wearing 7 codes the matcher can't collapse. PN4DQ is the
+            # strongest row: exact name 'Magnetic', the dominant #383838 (5 of 7
+            # codes agree on it), and a PN-code — the format providers return for
+            # Ford. A live recurring name-only lookup. (Not provider-confirmed for
+            # this colour, but the cleanest canonical; FM6E is the pv base but
+            # carries no hex, so it would return a code with no swatch.)
+            'magnetic': 'PN4DQ',
+            'magnetic metallic': 'PN4DQ',
             # Panther Black is genuinely TWO paints (51 RGB apart), so it's a split,
             # not one canonical: solid #222327 -> PNJAB (provider-confirmed), pearl
             # #090C11 -> 17V. Plain name defaults to the confirmed solid; the
