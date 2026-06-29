@@ -494,6 +494,15 @@ class PaintLookup(models.Model):
             # carries no hex, so it would return a code with no swatch.)
             'magnetic': 'PN4DQ',
             'magnetic metallic': 'PN4DQ',
+            # 'Moondust Silver' (= 'Gris Lunaire') is one silver (#C0C1C3) under 7
+            # codes the matcher can't collapse. PNZJB is PROVIDER-CONFIRMED — VDG-retry
+            # returned it for a Moondust Silver Ford (reg Y25SBS, code straight from the
+            # provider, enriched_from='' so not DB-filled) — so it's anchored like
+            # PNJAB, not a guess. (Parked earlier on a hex-spread doubt; the exact-name
+            # codes all agree on #C0C1C3, the spread was just colorndrive's 'Gris
+            # Lunaire Metallic' variants.)
+            'moondust silver': 'PNZJB',
+            'moondust silver metallic': 'PNZJB',
             # Panther Black is genuinely TWO paints (51 RGB apart), so it's a split,
             # not one canonical: solid #222327 -> PNJAB (provider-confirmed), pearl
             # #090C11 -> 17V. Plain name defaults to the confirmed solid; the
