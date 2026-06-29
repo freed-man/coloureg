@@ -830,6 +830,8 @@
                         <span class="outcome-partial" title="Colour name found — no code">◐</span>
                         {% elif s.success %}
                         <span class="outcome-tick" title="Colour found">✓</span>
+                        {% elif s.paint_description %}
+                        <span class="outcome-partial" title="Colour name found — no code">◐</span>
                         {% else %}
                         <span class="outcome-cross" title="Not found">✗</span>
                         {% endif %}
@@ -852,6 +854,8 @@
                     <span class="outcome-partial" title="Colour name found — no code">◐</span>
                     {% elif s.success %}
                     <span class="outcome-tick" title="Colour found">✓</span>
+                    {% elif s.paint_description %}
+                    <span class="outcome-partial" title="Colour name found — no code">◐</span>
                     {% else %}
                     <span class="outcome-cross" title="Not found">✗</span>
                     {% endif %}
@@ -861,8 +865,8 @@
                 <div class="recent-card-meta">{{ s.colour|default:"—" }}</div>
                 {% if s.paint_code or s.paint_description %}
                 <div class="recent-card-paint">
-                    {% if s.paint_code %}<span class="recent-paint-code">{{ s.paint_code }}</span>{% endif %}
-                    {% if s.paint_description %}<span class="recent-paint-desc">{{ s.paint_description }}</span>{% endif %}
+                    {% if s.paint_code %}<span class="recent-paint-code">{{ s.paint_code }}</span>{% if s.enriched_from == 'code' %} <span class="db-badge" title="Code filled from coloureg's paint database">DB</span>{% endif %}{% endif %}
+                    {% if s.paint_description %}<span class="recent-paint-desc">{{ s.paint_description }}</span>{% if s.enriched_from == 'name' %} <span class="db-badge" title="Name filled from coloureg's paint database">DB</span>{% endif %}{% endif %}
                 </div>
                 {% endif %}
                 {% if s.provider and s.provider != 'none' %}
