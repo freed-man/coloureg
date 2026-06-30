@@ -186,7 +186,7 @@ def index(request):
             request,
             group='lookup',
             key='ip',
-            rate='10/h',
+            rate='3/h',
             method='POST',
             increment=True,
         )
@@ -723,12 +723,16 @@ def submit_email(request):
     was_limited = is_ratelimited(
         request,
         group='email_submit',
-        # 10/h to match the lookup limit: this one form handles both "email me
-        # this found code" and "request a manual lookup" (missed result), so a
-        # user who did up to 10 lookups can act on every one of them without
-        # hitting the wall.
+        # Matched to the lookup limit (3/h). NOT redundant with it: although the
+        # happy path reaches here only after a lookup, search_id arrives as a POST
+        # param and Search.id is an auto-increment integer, so this endpoint is
+        # reachable directly with enumerated ids and no lookup at all — the lookup
+        # limit gates Search *creation*, not access here. The missed-result branch
+        # below emails ADMIN_EMAIL, so leaving this open would let enumerated old
+        # misses flood the admin inbox. A user capped at 3 lookups never needs a
+        # 4th action here, so the cap only ever bites the abuse path.
         key='ip',
-        rate='10/h',
+        rate='3/h',
         method='POST',
         increment=True,
     )
