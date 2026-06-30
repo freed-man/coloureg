@@ -508,6 +508,41 @@
         }
         .mlq-form button.dismiss-btn:hover { background: #fff5f6; border-color: #c8102e; }
         .mlq-form button.dismiss-btn:disabled { color: #ccc; border-color: #eee; cursor: not-allowed; }
+        .mlq-form .note-body { flex: 1 1 100%; }
+        .mlq-form .note-toggle {
+            align-self: center;
+            background: none;
+            border: none;
+            color: #003399;
+            font-family: 'IBM Plex Sans', sans-serif;
+            font-size: 11px;
+            font-weight: 500;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            cursor: pointer;
+            padding: 0 4px;
+            white-space: nowrap;
+        }
+        .mlq-form .note-toggle:hover { text-decoration: underline; }
+        .mlq-form .note-lbl {
+            color: #888;
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 6px;
+        }
+        .mlq-form .note-body textarea {
+            width: 100%;
+            box-sizing: border-box;
+            padding: 8px 12px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            font-family: 'IBM Plex Sans', sans-serif;
+            font-size: 14px;
+            min-height: 62px;
+            resize: vertical;
+        }
+        .mlq-form .note-body textarea::placeholder { color: #aaa; font-size: 13px; }
         .mlq-empty {
             color: #999;
             text-align: center;
@@ -766,6 +801,11 @@
                     {% csrf_token %}
                     <input type="text" name="paint_code" placeholder="paint code" required>
                     <input type="text" name="paint_description" placeholder="description">
+                    <div class="note-body" hidden>
+                        <div class="note-lbl">Note (optional) — added to the email</div>
+                        <textarea name="message" maxlength="1000" placeholder="Sourced this from the main dealer — happy to help if anything's unclear."></textarea>
+                    </div>
+                    <button type="button" class="note-toggle">+ Add a note</button>
                     <button type="submit" class="send-btn">Send</button>
                     <button type="button" class="dismiss-btn">×</button>
                 </form>
@@ -1170,6 +1210,25 @@
                 dismissBtn.disabled = false;
                 sendBtn.textContent = 'Send';
             });
+        });
+
+        // Optional-note toggle. Collapsed by default; collapsing also clears the
+        // field so a hidden note never sends (what you see is what goes out).
+        list.addEventListener('click', function(e) {
+            if (!e.target.matches('.note-toggle')) return;
+            var toggle = e.target;
+            var form = toggle.closest('.mlq-form');
+            var body = form.querySelector('.note-body');
+            var ta = body.querySelector('textarea');
+            if (body.hidden) {
+                body.hidden = false;
+                toggle.textContent = '− Remove note';
+                ta.focus();
+            } else {
+                ta.value = '';
+                body.hidden = true;
+                toggle.textContent = '+ Add a note';
+            }
         });
 
         // Dismiss handler — confirm, then POST and animate out

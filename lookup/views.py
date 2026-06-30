@@ -1123,6 +1123,9 @@ def submit_manual_lookup(request):
     # We .upper() here so admin typos don't end up as mixed-case in the DB.
     paint_code = (request.POST.get('paint_code') or '').strip().upper()
     paint_description = (request.POST.get('paint_description') or '').strip()
+    # Optional free-text note from the admin, included in the email's "A note
+    # from us" block. Transient — used only to compose the email, never stored.
+    message = (request.POST.get('message') or '').strip()
 
     if not search_id or not paint_code:
         return JsonResponse({'success': False, 'error': 'Search ID and paint code are required.'}, status=400)
@@ -1141,6 +1144,11 @@ def submit_manual_lookup(request):
         return JsonResponse({
             'success': False,
             'error': f'Paint description too long ({len(paint_description)} chars, max 200).',
+        }, status=400)
+    if len(message) > 1000:
+        return JsonResponse({
+            'success': False,
+            'error': f'Note too long ({len(message)} chars, max 1000).',
         }, status=400)
 
     try:
@@ -1177,6 +1185,7 @@ def submit_manual_lookup(request):
         paint_description=paint_description_clean,
         canonical_code=canonical_code,
         paint_hex=paint_hex,
+        message=message,
     )
 
     if not sent:

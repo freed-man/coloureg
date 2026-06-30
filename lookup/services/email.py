@@ -1,5 +1,6 @@
 """Email sending via Resend."""
 import base64
+import html as html_lib
 import logging
 import os
 import resend
@@ -187,7 +188,7 @@ def send_custom_message(to_email, subject, markdown_body):
     }, context='custom_message')
 
 
-def send_user_paint_code(to_email, registration, vehicle_title, vin_masked, colour, paint_code, paint_description, canonical_code=None, paint_hex=None):
+def send_user_paint_code(to_email, registration, vehicle_title, vin_masked, colour, paint_code, paint_description, canonical_code=None, paint_hex=None, message=''):
     """Email user the found paint code.
 
     If canonical_code is provided and differs from paint_code, the email displays
@@ -222,6 +223,23 @@ def send_user_paint_code(to_email, registration, vehicle_title, vin_masked, colo
     else:
         canonical_html = ''
 
+    # Optional 'A note from us' block — only rendered when the admin typed a note
+    # on the manual-lookup form. Escaped (staff-entered, but still untrusted as
+    # HTML) and newlines preserved. Blank message -> no block -> identical to the
+    # standard email. Matches the results-page brand accent (#003399).
+    if message and message.strip():
+        safe_message = html_lib.escape(message.strip()).replace('\n', '<br>')
+        note_html = (
+            '<div style="border: 1px solid #e7e7e7; border-radius: 8px; '
+            'padding: 15px 18px; margin-bottom: 24px; background: #fcfcfd;">'
+            '<div style="font-size: 11px; font-weight: 600; letter-spacing: 0.8px; '
+            'text-transform: uppercase; color: #003399; margin-bottom: 8px;">A note from us</div>'
+            f'<div style="color: #444; font-size: 14px; line-height: 1.55;">{safe_message}</div>'
+            '</div>'
+        )
+    else:
+        note_html = ''
+
     html = f"""
     <div style="background: #f8f9fa; padding: 40px 20px; font-family: 'IBM Plex Sans', Arial, Helvetica, sans-serif;">
         <div style="max-width: 560px; margin: 0 auto; background: #fff; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.04);">
@@ -239,6 +257,7 @@ def send_user_paint_code(to_email, registration, vehicle_title, vin_masked, colo
                     {canonical_html}
                     {f'<div style="margin-top: 12px; color: #666; font-size: 14px; letter-spacing: 0.5px;">{paint_description}</div>' if paint_description else ''}
                 </div>
+                {note_html}
                 <table style="width: 100%; border-collapse: collapse;">
                     <tr>
                         <td style="padding: 12px 0; color: #666; font-size: 14px; width: 120px;">Vehicle</td>
