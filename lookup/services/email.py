@@ -10,6 +10,18 @@ from django.conf import settings
 logger = logging.getLogger(__name__)
 
 
+def _esc(value):
+    """HTML-escape a value for safe interpolation into email HTML bodies.
+
+    Belt-and-braces against HTML/attribute injection from user-controlled values
+    (registration, email address, contact message, VDG fields). Returns '' for
+    falsy input so existing `{_esc(x) or '—'}` fallbacks still render the dash.
+    Email subjects are plain text (not HTML) and reg/email are validated at the
+    input boundary, so subjects are intentionally left un-escaped.
+    """
+    return html_lib.escape(str(value)) if value else ''
+
+
 def _client():
     """Initialize Resend client with API key."""
     resend.api_key = settings.RESEND_API_KEY
@@ -217,7 +229,7 @@ def send_user_paint_code(to_email, registration, vehicle_title, vin_masked, colo
         canonical_html = (
             f'<div style="margin-top: 8px; color: #999; font-size: 13px; '
             f'letter-spacing: 0.3px; font-style: italic;">'
-            f'also: {canonical_code}'
+            f'also: {_esc(canonical_code)}'
             f'</div>'
         )
     else:
@@ -252,28 +264,28 @@ def send_user_paint_code(to_email, registration, vehicle_title, vin_masked, colo
                 {swatch_html}
                 <div style="background: #f8f9fa; padding: 32px; border-radius: {box_radius}; text-align: center; margin-bottom: 24px;">
                     <div style="font-family: 'IBM Plex Mono', 'Courier New', Courier, monospace; font-size: 42px; font-weight: 700; letter-spacing: 3px; color: #1a1a1a; font-feature-settings: 'zero' 0;">
-                        {paint_code}
+                        {_esc(paint_code)}
                     </div>
                     {canonical_html}
-                    {f'<div style="margin-top: 12px; color: #666; font-size: 14px; letter-spacing: 0.5px;">{paint_description}</div>' if paint_description else ''}
+                    {f'<div style="margin-top: 12px; color: #666; font-size: 14px; letter-spacing: 0.5px;">{_esc(paint_description)}</div>' if paint_description else ''}
                 </div>
                 {note_html}
                 <table style="width: 100%; border-collapse: collapse;">
                     <tr>
                         <td style="padding: 12px 0; color: #666; font-size: 14px; width: 120px;">Vehicle</td>
-                        <td style="padding: 12px 0; color: #1a1a1a; font-size: 14px;">{vehicle_title or '—'}</td>
+                        <td style="padding: 12px 0; color: #1a1a1a; font-size: 14px;">{_esc(vehicle_title) or '—'}</td>
                     </tr>
                     <tr style="border-top: 1px solid #eee;">
                         <td style="padding: 12px 0; color: #666; font-size: 14px;">Registration</td>
-                        <td style="padding: 12px 0; color: #1a1a1a; font-size: 14px;">{registration}</td>
+                        <td style="padding: 12px 0; color: #1a1a1a; font-size: 14px;">{_esc(registration)}</td>
                     </tr>
                     <tr style="border-top: 1px solid #eee;">
                         <td style="padding: 12px 0; color: #666; font-size: 14px;">VIN</td>
-                        <td style="padding: 12px 0; color: #1a1a1a; font-size: 14px; word-break: break-all; overflow-wrap: break-word;">{vin_masked or '—'}</td>
+                        <td style="padding: 12px 0; color: #1a1a1a; font-size: 14px; word-break: break-all; overflow-wrap: break-word;">{_esc(vin_masked) or '—'}</td>
                     </tr>
                     <tr style="border-top: 1px solid #eee;">
                         <td style="padding: 12px 0; color: #666; font-size: 14px;">Colour</td>
-                        <td style="padding: 12px 0; color: #1a1a1a; font-size: 14px;">{colour or '—'}</td>
+                        <td style="padding: 12px 0; color: #1a1a1a; font-size: 14px;">{_esc(colour) or '—'}</td>
                     </tr>
                 </table>
             </div>
@@ -313,23 +325,23 @@ def send_admin_failure_notification(registration, vehicle_title, vin_full, colou
                 <table style="width: 100%; border-collapse: collapse; margin-bottom: 24px;">
                     <tr style="border-bottom: 1px solid #eee;">
                         <td style="padding: 10px 16px 10px 0; color: #666; font-size: 13px; width: 64px;">Vehicle</td>
-                        <td style="padding: 10px 0; color: #1a1a1a; font-size: 14px;">{vehicle_title or '—'}</td>
+                        <td style="padding: 10px 0; color: #1a1a1a; font-size: 14px;">{_esc(vehicle_title) or '—'}</td>
                     </tr>
                     <tr style="border-bottom: 1px solid #eee;">
                         <td style="padding: 10px 16px 10px 0; color: #666; font-size: 13px;">Registration</td>
-                        <td style="padding: 10px 0; color: #1a1a1a; font-size: 14px;">{registration}</td>
+                        <td style="padding: 10px 0; color: #1a1a1a; font-size: 14px;">{_esc(registration)}</td>
                     </tr>
                     <tr style="border-bottom: 1px solid #eee;">
                         <td style="padding: 10px 16px 10px 0; color: #666; font-size: 13px;">VIN</td>
-                        <td style="padding: 10px 0; color: #1a1a1a; font-size: 14px; font-family: 'IBM Plex Sans', Arial, Helvetica, sans-serif; overflow-wrap: break-word;">{vin_full or '—'}</td>
+                        <td style="padding: 10px 0; color: #1a1a1a; font-size: 14px; font-family: 'IBM Plex Sans', Arial, Helvetica, sans-serif; overflow-wrap: break-word;">{_esc(vin_full) or '—'}</td>
                     </tr>
                     <tr style="border-bottom: 1px solid #eee;">
                         <td style="padding: 10px 16px 10px 0; color: #666; font-size: 13px;">Colour</td>
-                        <td style="padding: 10px 0; color: #1a1a1a; font-size: 14px;">{colour or '—'}</td>
+                        <td style="padding: 10px 0; color: #1a1a1a; font-size: 14px;">{_esc(colour) or '—'}</td>
                     </tr>
                     <tr>
                         <td style="padding: 10px 16px 10px 0; color: #666; font-size: 13px; vertical-align: top;">User</td>
-                        <td style="padding: 10px 0; word-break: break-all; overflow-wrap: break-word;"><a href="mailto:{user_email}" style="color: #003399; font-size: 14px; word-break: break-all; overflow-wrap: break-word;">{user_email}</a></td>
+                        <td style="padding: 10px 0; word-break: break-all; overflow-wrap: break-word;"><a href="mailto:{_esc(user_email)}" style="color: #003399; font-size: 14px; word-break: break-all; overflow-wrap: break-word;">{_esc(user_email)}</a></td>
                     </tr>
                 </table>
 
@@ -367,19 +379,19 @@ def send_user_pending_notification(to_email, registration, vehicle_title, vin_ma
                 <table style="width: 100%; border-collapse: collapse; margin-bottom: 24px;">
                     <tr style="border-bottom: 1px solid #eee;">
                         <td style="padding: 10px 16px 10px 0; color: #666; font-size: 13px; width: 100px;">Vehicle</td>
-                        <td style="padding: 10px 0; color: #1a1a1a; font-size: 14px;">{vehicle_title or '—'}</td>
+                        <td style="padding: 10px 0; color: #1a1a1a; font-size: 14px;">{_esc(vehicle_title) or '—'}</td>
                     </tr>
                     <tr style="border-bottom: 1px solid #eee;">
                         <td style="padding: 10px 16px 10px 0; color: #666; font-size: 13px;">Registration</td>
-                        <td style="padding: 10px 0; color: #1a1a1a; font-size: 14px;">{registration}</td>
+                        <td style="padding: 10px 0; color: #1a1a1a; font-size: 14px;">{_esc(registration)}</td>
                     </tr>
                     <tr style="border-bottom: 1px solid #eee;">
                         <td style="padding: 10px 16px 10px 0; color: #666; font-size: 13px;">VIN</td>
-                        <td style="padding: 10px 0; color: #1a1a1a; font-size: 14px; word-break: break-all; overflow-wrap: break-word;">{vin_masked or '—'}</td>
+                        <td style="padding: 10px 0; color: #1a1a1a; font-size: 14px; word-break: break-all; overflow-wrap: break-word;">{_esc(vin_masked) or '—'}</td>
                     </tr>
                     <tr>
                         <td style="padding: 10px 16px 10px 0; color: #666; font-size: 13px;">Colour</td>
-                        <td style="padding: 10px 0; color: #1a1a1a; font-size: 14px;">{colour or '—'}</td>
+                        <td style="padding: 10px 0; color: #1a1a1a; font-size: 14px;">{_esc(colour) or '—'}</td>
                     </tr>
                 </table>
                 <div style="background: #f0f4ff; border-left: 3px solid #003399; padding: 16px 20px; border-radius: 4px;">
@@ -411,22 +423,22 @@ def send_admin_contact_message(contact_type, user_email, message):
         <div style="max-width: 560px; margin: 0 auto; background: #fff; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.04);">
             {_brand_header()}
             <div style="background: #003399; padding: 16px; text-align: center;">
-                <span style="color: #fff; font-size: 14px; font-weight: 600; letter-spacing: 1px; text-transform: uppercase;">New {type_label} Message</span>
+                <span style="color: #fff; font-size: 14px; font-weight: 600; letter-spacing: 1px; text-transform: uppercase;">New {_esc(type_label)} Message</span>
             </div>
             <div style="padding: 32px;">
                 <table style="width: 100%; border-collapse: collapse; margin-bottom: 24px;">
                     <tr style="border-bottom: 1px solid #eee;">
                         <td style="padding: 10px 16px 10px 0; color: #666; font-size: 13px; width: 80px;">Type</td>
-                        <td style="padding: 10px 0; color: #1a1a1a; font-size: 14px;">{type_label}</td>
+                        <td style="padding: 10px 0; color: #1a1a1a; font-size: 14px;">{_esc(type_label)}</td>
                     </tr>
                     <tr style="border-bottom: 1px solid #eee;">
                         <td style="padding: 10px 16px 10px 0; color: #666; font-size: 13px; vertical-align: top;">From</td>
-                        <td style="padding: 10px 0; word-break: break-all; overflow-wrap: break-word;"><a href="mailto:{user_email}" style="color: #003399; font-size: 14px; word-break: break-all; overflow-wrap: break-word;">{user_email}</a></td>
+                        <td style="padding: 10px 0; word-break: break-all; overflow-wrap: break-word;"><a href="mailto:{_esc(user_email)}" style="color: #003399; font-size: 14px; word-break: break-all; overflow-wrap: break-word;">{_esc(user_email)}</a></td>
                     </tr>
                 </table>
 
                 <div style="background: #f8f9fa; padding: 20px; border-radius: 8px; margin-bottom: 16px;">
-                    <p style="margin: 0; color: #1a1a1a; font-size: 14px; line-height: 1.6; white-space: pre-wrap;">{message}</p>
+                    <p style="margin: 0; color: #1a1a1a; font-size: 14px; line-height: 1.6; white-space: pre-wrap;">{_esc(message)}</p>
                 </div>
 
                 <p style="margin: 0; color: #999; font-size: 12px;">

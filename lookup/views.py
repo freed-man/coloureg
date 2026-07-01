@@ -1,10 +1,13 @@
 import os
+import re
 import time
 import requests
 from datetime import timedelta
 from django.shortcuts import render, redirect
 from django.contrib import messages
 from django.contrib.admin.views.decorators import staff_member_required
+from django.core.exceptions import ValidationError
+from django.core.validators import validate_email
 from django.db.models import Count, Avg, Q, Sum
 from django.db.models.functions import TruncDate
 from django.http import JsonResponse
@@ -203,6 +206,17 @@ def index(request):
 
         if not registration:
             messages.error(request, 'Please enter a registration number.')
+            return redirect('index')
+
+        # Reject anything that isn't a plausible UK plate (alphanumeric, <=8).
+        # Runs BEFORE the VDG call (no spend on junk input), keeps the value
+        # within the registration column (max_length=10 in the DB), and stops odd
+        # characters reaching the MOT API URL path or the notification emails.
+        # Real UK plates — current and older formats — are all A-Z / 0-9 and at
+        # most 7-8 characters. The PNZ282 easter-egg below still matches (it's
+        # alphanumeric), since this runs on the normalised value.
+        if not re.fullmatch(r'[A-Z0-9]{1,8}', registration):
+            messages.error(request, 'Please enter a valid registration number.')
             return redirect('index')
 
         if registration == 'PNZ282':
@@ -710,6 +724,25 @@ def submit_email(request):
         messages.error(request, 'Email address is required.')
         return redirect('results')
 
+    # Validate the email format. EmailField does NOT run validators on .save(),
+    # so without this an invalid address is stored, fails at the Resend send, and
+    # is echoed into the admin notification.
+    try:
+        validate_email(email)
+    except ValidationError:
+        messages.error(request, 'Please enter a valid email address.')
+        return redirect('results')
+
+    # Tie this submit to the user's own session lookup — the same ownership guard
+    # lookup_status uses. search_id is a guessable integer POST param with no
+    # ownership check otherwise, so an attacker could POST enumerated ids to email
+    # arbitrary searches (paint codes to attacker addresses, admin notifications
+    # to our inbox) without doing any lookup. Reject a mismatch before any DB hit.
+    session_search_id = (request.session.get('vehicle_data') or {}).get('search_id')
+    if str(session_search_id) != str(search_id):
+        messages.error(request, 'Your session has expired. Please look up your vehicle again.')
+        return redirect('index')
+
     try:
         search = Search.objects.get(id=search_id)
     except Search.DoesNotExist:
@@ -816,12 +849,28 @@ def help_page(request):
 
 @require_POST
 def submit_contact(request):
-    contact_type = request.POST.get('type', 'general').strip()
+    # Whitelist the contact type — it is echoed into the admin email's subject
+    # and body, so anything unexpected falls back to 'general'.
+    contact_type = request.POST.get('type', 'general').strip().lower()
+    if contact_type not in ('general', 'technical'):
+        contact_type = 'general'
     email = request.POST.get('email', '').strip()
     message = request.POST.get('message', '').strip()
 
     if not email or not message:
         messages.error(request, 'Email and message are required.')
+        return redirect('help')
+
+    # Validate the email format (defence-in-depth; it also feeds the admin email).
+    try:
+        validate_email(email)
+    except ValidationError:
+        messages.error(request, 'Please enter a valid email address.')
+        return redirect('help')
+
+    # Cap the message so an oversized body can't be emailed to the admin.
+    if len(message) > 5000:
+        messages.error(request, 'Message is too long (max 5000 characters).')
         return redirect('help')
 
     was_limited = is_ratelimited(
@@ -1156,11 +1205,20 @@ def submit_manual_lookup(request):
     except Search.DoesNotExist:
         return JsonResponse({'success': False, 'error': 'Search record not found.'}, status=404)
 
-    if search.manual_lookup_completed:
-        return JsonResponse({'success': False, 'error': f'Already completed for {search.registration}.'}, status=409)
-
     if not search.email:
         return JsonResponse({'success': False, 'error': f'No email on file for {search.registration}.'}, status=400)
+
+    # Atomically claim the row before sending. A single UPDATE filtered on
+    # manual_lookup_completed=False means only ONE concurrent request (or a
+    # double-click) wins; the rest see claimed==0 and 409. The claim is set
+    # BEFORE the send, but the send happens OUTSIDE any DB lock (Resend is a slow
+    # HTTP call), so we never hold a row lock across it. If the send fails we
+    # release the claim below so it can be retried.
+    claimed = Search.objects.filter(
+        id=search_id, manual_lookup_completed=False
+    ).update(manual_lookup_completed=True)
+    if not claimed:
+        return JsonResponse({'success': False, 'error': f'Already completed for {search.registration}.'}, status=409)
 
     # Title-case the description so '  glacier white-metallic ' becomes
     # 'Glacier White-Metallic' before saving and sending.
@@ -1189,26 +1247,29 @@ def submit_manual_lookup(request):
     )
 
     if not sent:
+        # Release the claim so the request can be retried after a transient email
+        # failure (we set manual_lookup_completed=True optimistically above).
+        Search.objects.filter(id=search_id).update(manual_lookup_completed=False)
         return JsonResponse({
             'success': False,
             'error': f'Failed to send email to {search.email}. Please try again.',
         }, status=502)
 
-    # Update DB only after successful send so a failed email doesn't mark complete
-    search.paint_code = paint_code
-    search.paint_description = paint_description_clean
-    search.provider = Search.PROVIDER_MANUAL
-    search.success = True  # paint code was found (manually) and emailed
-    # Clear the name-only flag: this row may have started as a pl24 name-only
-    # result (◐), but a real CODE has now been found manually, so it's a full
-    # success (✓). The OUTCOME column checks recovery_name_only BEFORE success,
-    # so leaving it set would keep showing ◐ despite the code being filled.
-    # (provider stays MANUAL — that's where the CODE came from; partslink24 only
-    # supplied the name, which is still preserved in paint_description.)
-    search.recovery_name_only = False
-    search.manual_lookup_completed = True
-    search.email_sent = True
-    search.save()
+    # Email is out — finalise the remaining fields (manual_lookup_completed was
+    # already set by the claim above). recovery_name_only is cleared because a
+    # real CODE has now been found manually: the OUTCOME column checks
+    # recovery_name_only BEFORE success, so leaving it set would keep showing ◐
+    # despite the code being filled. provider stays MANUAL — that's where the
+    # CODE came from; partslink24 only supplied the name, which is preserved in
+    # paint_description.
+    Search.objects.filter(id=search_id).update(
+        paint_code=paint_code,
+        paint_description=paint_description_clean,
+        provider=Search.PROVIDER_MANUAL,
+        success=True,
+        recovery_name_only=False,
+        email_sent=True,
+    )
 
     return JsonResponse({
         'success': True,
@@ -1239,11 +1300,14 @@ def dismiss_manual_lookup(request):
     except Search.DoesNotExist:
         return JsonResponse({'success': False, 'error': 'Search record not found.'}, status=404)
 
-    if search.manual_lookup_completed:
+    # Atomically claim the row (same pattern as submit_manual_lookup): a single
+    # filtered UPDATE means a double-click or concurrent request can't dismiss
+    # twice — the loser sees claimed==0 and 409. No send here, nothing to release.
+    claimed = Search.objects.filter(
+        id=search_id, manual_lookup_completed=False
+    ).update(manual_lookup_completed=True)
+    if not claimed:
         return JsonResponse({'success': False, 'error': f'Already actioned for {search.registration}.'}, status=409)
-
-    search.manual_lookup_completed = True
-    search.save()
 
     return JsonResponse({
         'success': True,
