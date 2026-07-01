@@ -210,6 +210,9 @@
         font-weight: 700;
         padding-top: 8px;
     }
+    #outcomes .cost-amount {
+        color: #1a1a1a;
+    }
     .cost-total .cost-amount {
         color: #C8102E;
         font-size: 18px;
@@ -271,7 +274,7 @@
         <div class="stat-card">
             <p class="stat-label">Success rate</p>
             <p class="stat-value">{{ success_rate }}%</p>
-            <p class="stat-subvalue">{{ success_with_code }} with paint code</p>
+            <p class="stat-subvalue">{{ success_with_code }} of {{ vehicle_found }} valid lookups</p>
         </div>
         <div class="stat-card">
             <p class="stat-label">Avg lookup time</p>
@@ -287,6 +290,60 @@
             <p class="stat-subvalue">updates after each search</p>
             {% endif %}
         </div>
+    </div>
+
+    <!-- Lookup outcomes breakdown: makes the success-rate denominator legible -->
+    <div class="panel" id="outcomes">
+        <h3>Lookup outcomes</h3>
+
+            <div class="cost-row">
+                <div>
+                    <span class="cost-label">Paint code delivered</span>
+                    <span class="cost-detail">(counts toward the success rate)</span>
+                </div>
+                <span class="cost-amount">{{ success_with_code }}</span>
+            </div>
+
+            <div class="cost-row">
+                <div>
+                    <span class="cost-label">Vehicle found, no code</span>
+                    <span class="cost-detail">(searched in full and came up empty — {{ name_only_miss_count }} returned a colour name but no code)</span>
+                </div>
+                <span class="cost-amount">{{ genuine_miss_count }}</span>
+            </div>
+
+            <div class="cost-row">
+                <div>
+                    <span class="cost-label">Incomplete / not searched</span>
+                    <span class="cost-detail">(vehicle found but the code search never ran to completion — typically the tab was closed first)</span>
+                </div>
+                <span class="cost-amount">{{ incomplete_count }}</span>
+            </div>
+
+            <div class="cost-divider"></div>
+
+            <div class="cost-row cost-total">
+                <div>
+                    <span class="cost-label">Valid lookups</span>
+                    <span class="cost-detail">(success-rate base — vehicle identified)</span>
+                </div>
+                <span class="cost-amount">{{ vehicle_found }}</span>
+            </div>
+
+            <div class="cost-row">
+                <div>
+                    <span class="cost-label">Excluded — no vehicle</span>
+                    <span class="cost-detail">(mistyped or non-existent regs — not counted as failures)</span>
+                </div>
+                <span class="cost-amount">{{ no_vehicle_count }}</span>
+            </div>
+
+            <div class="cost-divider"></div>
+
+            <div class="cost-row cost-total">
+                <span class="cost-label">Total lookups logged</span>
+                <span class="cost-amount">{{ total_searches }}</span>
+            </div>
     </div>
 
     <!-- Daily chart -->

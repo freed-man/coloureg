@@ -931,6 +931,28 @@ def admin_stats(request):
         month=Count('id', filter=Q(timestamp__gte=month_ago)),
         # Success / paint hit rate
         with_code=Count('id', filter=~Q(paint_code='')),
+        # --- Outcome buckets for a fair success rate (see success_rate below) ---
+        # vehicle_found is the new success-rate DENOMINATOR: lookups where we
+        # actually identified a vehicle (VDG or the DVLA fallback populate `make`;
+        # a not-found reg leaves it blank). Mistyped / non-existent regs are thus
+        # excluded so they don't count as paint-code failures.
+        vehicle_found=Count('id', filter=~Q(make='')),
+        no_vehicle=Count('id', filter=Q(make='')),
+        # Of the vehicle-found rows with no code: a "genuine miss" is one where the
+        # recovery pipeline actually RAN to completion (attempted + a duration
+        # recorded) and still found nothing; "incomplete" is everything else —
+        # recovery never ran or never finished (typically the user left before the
+        # results page could fire it). Split so the dashboard shows them apart.
+        genuine_miss=Count('id', filter=(
+            ~Q(make='') & Q(paint_code='')
+            & Q(recovery_attempted=True) & Q(recovery_duration_ms__isnull=False)
+        )),
+        incomplete=Count('id', filter=(
+            ~Q(make='') & Q(paint_code='')
+            & ~(Q(recovery_attempted=True) & Q(recovery_duration_ms__isnull=False))
+        )),
+        # Sub-count: vehicle found and a colour NAME recovered, but still no code.
+        name_only_miss=Count('id', filter=Q(recovery_name_only=True) & Q(paint_code='')),
         # Email pipeline
         with_email=Count('id', filter=~Q(email='')),
         emails_sent_count=Count('id', filter=Q(email_sent=True)),
@@ -950,7 +972,16 @@ def admin_stats(request):
     week_searches = top_metrics['week']
     month_searches = top_metrics['month']
     success_with_code = top_metrics['with_code']
-    success_rate = (success_with_code / total_searches * 100) if total_searches > 0 else 0
+    # Success rate is now measured against lookups where we FOUND a vehicle, not
+    # every row: a mistyped or non-existent reg (no vehicle) isn't a paint-code
+    # failure, so it's excluded from the denominator. The outcome buckets are
+    # surfaced on the dashboard so the composition stays visible.
+    vehicle_found = top_metrics['vehicle_found']
+    no_vehicle_count = top_metrics['no_vehicle']
+    genuine_miss_count = top_metrics['genuine_miss']
+    incomplete_count = top_metrics['incomplete']
+    name_only_miss_count = top_metrics['name_only_miss']
+    success_rate = (success_with_code / vehicle_found * 100) if vehicle_found > 0 else 0
     total_emails = top_metrics['with_email']
     emails_sent = top_metrics['emails_sent_count']
     conversion_rate = (total_emails / total_searches * 100) if total_searches > 0 else 0
@@ -1088,6 +1119,11 @@ def admin_stats(request):
         'month_searches': month_searches,
         'success_rate': round(success_rate, 1),
         'success_with_code': success_with_code,
+        'vehicle_found': vehicle_found,
+        'no_vehicle_count': no_vehicle_count,
+        'genuine_miss_count': genuine_miss_count,
+        'incomplete_count': incomplete_count,
+        'name_only_miss_count': name_only_miss_count,
         'avg_duration_s': avg_duration_s,
         'chart_labels': chart_labels,
         'chart_data': chart_data,
