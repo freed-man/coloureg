@@ -526,7 +526,7 @@ class PaintLookup(models.Model):
         return re.sub(r'\s+', ' ', s).strip()
 
     @classmethod
-    def code_from_name(cls, manufacturer, colour_name):
+    def code_from_name(cls, manufacturer, colour_name, model=None):
         """Given a colour NAME (and make), return a single paint code — but ONLY
         when it is unambiguous.
 
@@ -548,6 +548,11 @@ class PaintLookup(models.Model):
              *named* this, excluding ones that merely list it as a secondary alias
              (e.g. a 'Stealth' search ignores 'Slate Grau' which only aliases
              Stealth). If that narrower set resolves, use it.
+          5. If STILL ambiguous and the vehicle's `model` is known, narrow to the
+             rows whose models_list includes that model, then retry rules 1-4 on
+             that subset. This resolves names that map to different codes on
+             different models (Ford 'Ruby Red' -> DSTEWTA on a Mondeo but 5R on a
+             Figo; 'Midnight' -> 9AZCWWA on a Ka).
 
         Each step only ever NARROWS toward a single code; it never invents a match
         the base logic wouldn't have found, so this can only turn previously
@@ -608,6 +613,31 @@ class PaintLookup(models.Model):
                 if resolved is not None:
                     return resolved
 
+            # Still ambiguous. If we know the vehicle's MODEL, prefer the code(s)
+            # whose models_list actually includes it. This resolves names that map
+            # to different codes on different models (Ford 'Ruby Red' is DSTEWTA on
+            # a Mondeo but 5R on a Figo; 'Midnight' is 9AZCWWA on a Ka). It runs
+            # only when the name is otherwise ambiguous and only ever NARROWS, so
+            # it can turn a declined name into a resolved one, never the reverse.
+            if model:
+                model_rows = [
+                    r for r in rows if cls._model_matches(model, r.models_list)
+                ]
+                if model_rows and len(model_rows) < len(rows):
+                    resolved = cls._collapse_to_single_code(model_rows)
+                    if resolved is not None:
+                        return resolved
+                    # Model-matched set still ambiguous — narrow again to the rows
+                    # PRIMARY-named this colour and retry.
+                    primary_model_rows = [
+                        r for r in model_rows
+                        if cls.normalize_name(r.name or '') == name_norm
+                    ]
+                    if primary_model_rows:
+                        resolved = cls._collapse_to_single_code(primary_model_rows)
+                        if resolved is not None:
+                            return resolved
+
             # Genuinely ambiguous — decline
             return None, None, None
         except Exception:
@@ -652,6 +682,30 @@ class PaintLookup(models.Model):
             return shortest, (exact.hex or None), exact.name
 
         return None
+
+    @staticmethod
+    def _model_matches(vehicle_model, models_list):
+        """True if the looked-up vehicle's model corresponds to one of the model
+        tags stored on a PaintLookup row.
+
+        models_list holds short normalised tags ('ka', 'mondeo', 'fiestast'); the
+        vehicle model is the full trim string ('Mondeo ST-Line X TDCi'). A tag
+        matches when it is a prefix of the alphanumeric-normalised vehicle model —
+        model names lead the trim, so 'mondeo' prefixes 'mondeostlinex…' and 'ka'
+        prefixes 'kazetec', while 'kuga' never matches a Ka. Used only as an
+        ambiguity tiebreaker, so an occasional near-miss just leaves the name
+        unresolved (declined), never mis-resolved.
+        """
+        if not vehicle_model or not models_list:
+            return False
+        vm = re.sub(r'[^a-z0-9]', '', str(vehicle_model).lower())
+        if not vm:
+            return False
+        for tag in models_list:
+            t = re.sub(r'[^a-z0-9]', '', str(tag).lower())
+            if t and vm.startswith(t):
+                return True
+        return False
 
 # =============================================================================
 # SiteConfig — a single-row table holding site-wide runtime toggles that need to

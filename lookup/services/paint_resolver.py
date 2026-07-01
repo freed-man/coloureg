@@ -38,7 +38,7 @@ import requests
 from .vdg import get_combined_lookup, VdgError
 
 
-def _enrich_from_lookup(result, make):
+def _enrich_from_lookup(result, make, model=None):
     """Fill gaps in a provider result from the PaintLookup table, BEHIND the
     live race (we only fill what VDG/pl24 didn't return).
 
@@ -78,7 +78,7 @@ def _enrich_from_lookup(result, make):
         elif desc and not code:
             # name -> code (conservative: unique match only)
             found_code, hex_val, _canon_name = PaintLookup.code_from_name(
-                manufacturer=make, colour_name=desc,
+                manufacturer=make, colour_name=desc, model=model,
             )
             if found_code:
                 result['paint_code'] = found_code
@@ -187,7 +187,7 @@ def _pl24_lookup(vin, make, category=None):
     }
 
 
-def resolve_paint(registration, vin, make, category=None, telemetry=None):
+def resolve_paint(registration, vin, make, category=None, telemetry=None, model=None):
     """Race the VDG bundle-retry and the pl24 scrape; return the first usable
     paint result, or None if neither recovers a code.
 
@@ -269,7 +269,7 @@ def resolve_paint(registration, vin, make, category=None, telemetry=None):
                 vdg_result = _result_or_none(f_vdg)
                 if vdg_result is not None:
                     _t['vdg_retry_returned'] = True
-                    return _enrich_from_lookup(vdg_result, make)
+                    return _enrich_from_lookup(vdg_result, make, model)
 
             # VDG didn't (yet) yield paint. Inspect pl24 if it completed in this
             # batch. A real CODE wins immediately (subject only to a VDG code,
@@ -291,13 +291,13 @@ def resolve_paint(registration, vin, make, category=None, telemetry=None):
             # while anything is still pending; the loop exits naturally when
             # nothing remains and we fall through to the name-only fallback.
             if pl24_code_result is not None:
-                return _enrich_from_lookup(pl24_code_result, make)
+                return _enrich_from_lookup(pl24_code_result, make, model)
 
         # No real code from either path. Surface the pl24 name-only result if we
         # got one (a partial but useful answer), else None (a true miss).
         # Enrichment may upgrade a name-only result to a full code if the colour
         # name maps unambiguously to a single code in our table.
-        return _enrich_from_lookup(pl24_name_only_result, make)
+        return _enrich_from_lookup(pl24_name_only_result, make, model)
     finally:
         # Do NOT block on stragglers. wait=False means we don't join running
         # threads; cancel_futures cancels any not-yet-started work. A pl24 thread

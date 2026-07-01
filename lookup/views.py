@@ -335,6 +335,7 @@ def index(request):
             _enriched = _enrich_from_lookup(
                 {'paint_code': paint_code, 'paint_description': paint_description},
                 make,
+                model,
             )
             paint_code = _enriched.get('paint_code', paint_code)
             paint_description = _enriched.get('paint_description', paint_description)
@@ -549,7 +550,7 @@ def lookup_status(request, search_id):
 
     telemetry = {}
     try:
-        result = resolve_paint(registration, vin, make, category, telemetry=telemetry)
+        result = resolve_paint(registration, vin, make, category, telemetry=telemetry, model=vehicle_data.get('model', ''))
     except Exception:  # noqa: BLE001 — never let a fallback failure 500 the poll
         _record_recovery(search_id, telemetry)
         return JsonResponse({'status': 'error'}, status=200)
