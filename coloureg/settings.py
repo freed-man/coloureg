@@ -198,8 +198,18 @@ if not DEBUG:
 # When DEBUG=True (local development), GA is suppressed regardless of this value.
 GA_MEASUREMENT_ID = os.environ.get('GA_MEASUREMENT_ID', '')
 
-# Whitenoise compression for static files
-STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
+# Whitenoise compression + cache-busting manifest for static files.
+# Django 5.1 removed the old STATICFILES_STORAGE setting, so it must be
+# configured via STORAGES (the 'default' entry keeps Django's normal file
+# storage; only 'staticfiles' is overridden).
+STORAGES = {
+    'default': {
+        'BACKEND': 'django.core.files.storage.FileSystemStorage',
+    },
+    'staticfiles': {
+        'BACKEND': 'whitenoise.storage.CompressedManifestStaticFilesStorage',
+    },
+}
 
 # Email configuration (Resend)
 RESEND_API_KEY = os.environ.get('RESEND_API_KEY', '')
