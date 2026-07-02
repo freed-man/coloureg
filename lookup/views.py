@@ -933,10 +933,11 @@ def admin_stats(request):
         # Success / paint hit rate
         with_code=Count('id', filter=~Q(paint_code='')),
         # --- Outcome buckets for a fair success rate (see success_rate below) ---
-        # vehicle_found is the new success-rate DENOMINATOR: lookups where we
-        # actually identified a vehicle (VDG or the DVLA fallback populate `make`;
-        # a not-found reg leaves it blank). Mistyped / non-existent regs are thus
-        # excluded so they don't count as paint-code failures.
+        # vehicle_found: lookups where we actually identified a vehicle (VDG or
+        # the DVLA fallback populate `make`; a not-found reg leaves it blank).
+        # Mistyped / non-existent regs are excluded so they don't count as
+        # paint-code failures. The success-rate denominator is narrower still —
+        # see the definitive-outcome rule where success_rate is computed.
         vehicle_found=Count('id', filter=~Q(make='')),
         no_vehicle=Count('id', filter=Q(make='')),
         # Of the vehicle-found rows with no code: a "genuine miss" is one where the
@@ -973,16 +974,24 @@ def admin_stats(request):
     week_searches = top_metrics['week']
     month_searches = top_metrics['month']
     success_with_code = top_metrics['with_code']
-    # Success rate is now measured against lookups where we FOUND a vehicle, not
-    # every row: a mistyped or non-existent reg (no vehicle) isn't a paint-code
-    # failure, so it's excluded from the denominator. The outcome buckets are
-    # surfaced on the dashboard so the composition stays visible.
     vehicle_found = top_metrics['vehicle_found']
     no_vehicle_count = top_metrics['no_vehicle']
     genuine_miss_count = top_metrics['genuine_miss']
     incomplete_count = top_metrics['incomplete']
     name_only_miss_count = top_metrics['name_only_miss']
-    success_rate = (success_with_code / vehicle_found * 100) if vehicle_found > 0 else 0
+    # Success rate counts only lookups that reached a DEFINITIVE outcome: either
+    # a paint code was delivered (by any provider), or a vehicle was found and
+    # the recovery pipeline ran to completion and still came up empty (a genuine
+    # miss). Rows are excluded when no vehicle was identified (mistyped reg —
+    # not a paint failure) or when the search never completed (the user left
+    # before recovery could fire — which also covers all rows from before the
+    # recovery leg existed, since they never had one to run). The rule is
+    # self-scoping: no launch dates or era cutoffs needed.
+    searched_to_completion = success_with_code + genuine_miss_count
+    success_rate = (
+        (success_with_code / searched_to_completion * 100)
+        if searched_to_completion > 0 else 0
+    )
     total_emails = top_metrics['with_email']
     emails_sent = top_metrics['emails_sent_count']
     conversion_rate = (total_emails / total_searches * 100) if total_searches > 0 else 0
@@ -1121,6 +1130,7 @@ def admin_stats(request):
         'success_rate': round(success_rate, 1),
         'success_with_code': success_with_code,
         'vehicle_found': vehicle_found,
+        'searched_to_completion': searched_to_completion,
         'no_vehicle_count': no_vehicle_count,
         'genuine_miss_count': genuine_miss_count,
         'incomplete_count': incomplete_count,

@@ -210,8 +210,85 @@
         font-weight: 700;
         padding-top: 8px;
     }
-    #outcomes .cost-amount {
+    /* Lookup-outcomes panel: proportion bar + funnel tree + rate strip */
+    .oc-bar {
+        display: flex;
+        height: 14px;
+        border-radius: 7px;
+        overflow: hidden;
+        margin: 2px 0 16px;
+        background: #F3F4F6;
+    }
+    .oc-bar span {
+        display: block;
+        height: 100%;
+    }
+    .oc-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: baseline;
+        gap: 12px;
+        padding: 7px 0;
+        font-size: 14px;
+    }
+    .oc-top .oc-label,
+    .oc-top .oc-num {
+        font-weight: 700;
+        font-size: 15px;
+    }
+    .oc-label {
         color: #1a1a1a;
+        font-weight: 500;
+    }
+    .oc-detail {
+        color: #999;
+        font-size: 12px;
+        margin-left: 6px;
+    }
+    .oc-num {
+        color: #1a1a1a;
+        font-weight: 600;
+        font-variant-numeric: tabular-nums;
+        white-space: nowrap;
+    }
+    .oc-dot {
+        display: inline-block;
+        width: 9px;
+        height: 9px;
+        border-radius: 50%;
+        margin-right: 8px;
+    }
+    .oc-group {
+        margin-left: 5px;
+        padding-left: 16px;
+        border-left: 2px solid #ececec;
+    }
+    .oc-tag {
+        display: inline-block;
+        font-size: 10px;
+        font-weight: 700;
+        letter-spacing: .04em;
+        text-transform: uppercase;
+        padding: 2px 8px;
+        border-radius: 999px;
+        margin-left: 8px;
+        vertical-align: 1px;
+    }
+    .oc-tag.success { background: #E4F3ED; color: #177E5E; }
+    .oc-tag.fail    { background: #F9E7EA; color: #C8102E; }
+    .oc-tag.excl    { background: #EFF1F4; color: #7A828C; }
+    .oc-rate {
+        margin-top: 12px;
+        padding: 10px 14px;
+        background: #F0F4FA;
+        border: 1px solid #DCE5F3;
+        border-radius: 8px;
+        font-size: 13.5px;
+        color: #26436B;
+    }
+    .oc-rate strong {
+        color: #003399;
+        font-size: 16px;
     }
     .cost-total .cost-amount {
         color: #C8102E;
@@ -274,7 +351,7 @@
         <div class="stat-card">
             <p class="stat-label">Success rate</p>
             <p class="stat-value">{{ success_rate }}%</p>
-            <p class="stat-subvalue">{{ success_with_code }} of {{ vehicle_found }} valid lookups</p>
+            <p class="stat-subvalue">{{ success_with_code }} of {{ searched_to_completion }} completed searches</p>
         </div>
         <div class="stat-card">
             <p class="stat-label">Avg lookup time</p>
@@ -292,58 +369,74 @@
         </div>
     </div>
 
-    <!-- Lookup outcomes breakdown: makes the success-rate denominator legible -->
+    <!-- Lookup outcomes: a funnel from every logged lookup down to the two
+         definitive buckets that form the success rate. Colours match the bar:
+         green counts as a success, red counts as a failure, grey is excluded
+         from the rate (no vehicle, or the search never ran to completion). -->
     <div class="panel" id="outcomes">
         <h3>Lookup outcomes</h3>
 
-            <div class="cost-row">
+        {% if total_searches %}
+        <div class="oc-bar" aria-hidden="true">
+            <span style="width: {% widthratio success_with_code total_searches 100 %}%; background: #1D9E75;"></span>
+            <span style="width: {% widthratio genuine_miss_count total_searches 100 %}%; background: #C8102E;"></span>
+            <span style="width: {% widthratio incomplete_count total_searches 100 %}%; background: #B9C0C9;"></span>
+            <span style="width: {% widthratio no_vehicle_count total_searches 100 %}%; background: #E4E7EB;"></span>
+        </div>
+        {% endif %}
+
+        <div class="oc-row oc-top">
+            <span class="oc-label">Total lookups logged</span>
+            <span class="oc-num">{{ total_searches }}</span>
+        </div>
+
+        <div class="oc-group">
+            <div class="oc-row">
                 <div>
-                    <span class="cost-label">Paint code delivered</span>
-                    <span class="cost-detail">(counts toward the success rate)</span>
+                    <span class="oc-dot" style="background: #E4E7EB;"></span><span class="oc-label">No vehicle found</span><span class="oc-tag excl">excluded</span>
+                    <span class="oc-detail">mistyped or non-existent reg — not a paint failure</span>
                 </div>
-                <span class="cost-amount">{{ success_with_code }}</span>
+                <span class="oc-num">{{ no_vehicle_count }}</span>
             </div>
 
-            <div class="cost-row">
+            <div class="oc-row">
                 <div>
-                    <span class="cost-label">Vehicle found, no code</span>
-                    <span class="cost-detail">(searched in full and came up empty — {{ name_only_miss_count }} returned a colour name but no code)</span>
+                    <span class="oc-label">Vehicle identified</span>
                 </div>
-                <span class="cost-amount">{{ genuine_miss_count }}</span>
+                <span class="oc-num">{{ vehicle_found }}</span>
             </div>
 
-            <div class="cost-row">
-                <div>
-                    <span class="cost-label">Incomplete / not searched</span>
-                    <span class="cost-detail">(vehicle found but the code search never ran to completion — typically the tab was closed first)</span>
+            <div class="oc-group">
+                <div class="oc-row">
+                    <div>
+                        <span class="oc-dot" style="background: #1D9E75;"></span><span class="oc-label">Paint code delivered</span><span class="oc-tag success">counts &middot; success</span>
+                    </div>
+                    <span class="oc-num">{{ success_with_code }}</span>
                 </div>
-                <span class="cost-amount">{{ incomplete_count }}</span>
-            </div>
 
-            <div class="cost-divider"></div>
-
-            <div class="cost-row cost-total">
-                <div>
-                    <span class="cost-label">Valid lookups</span>
-                    <span class="cost-detail">(success-rate base — vehicle identified)</span>
+                <div class="oc-row">
+                    <div>
+                        <span class="oc-dot" style="background: #C8102E;"></span><span class="oc-label">Searched fully, no code</span><span class="oc-tag fail">counts &middot; failure</span>
+                        <span class="oc-detail">every provider ran and came up empty — {{ name_only_miss_count }} got a colour name but no code</span>
+                    </div>
+                    <span class="oc-num">{{ genuine_miss_count }}</span>
                 </div>
-                <span class="cost-amount">{{ vehicle_found }}</span>
-            </div>
 
-            <div class="cost-row">
-                <div>
-                    <span class="cost-label">Excluded — no vehicle</span>
-                    <span class="cost-detail">(mistyped or non-existent regs — not counted as failures)</span>
+                <div class="oc-row">
+                    <div>
+                        <span class="oc-dot" style="background: #B9C0C9;"></span><span class="oc-label">Search never completed</span><span class="oc-tag excl">excluded</span>
+                        <span class="oc-detail">vehicle found but the code search never finished — typically the tab was closed first</span>
+                    </div>
+                    <span class="oc-num">{{ incomplete_count }}</span>
                 </div>
-                <span class="cost-amount">{{ no_vehicle_count }}</span>
             </div>
+        </div>
 
-            <div class="cost-divider"></div>
-
-            <div class="cost-row cost-total">
-                <span class="cost-label">Total lookups logged</span>
-                <span class="cost-amount">{{ total_searches }}</span>
-            </div>
+        <div class="oc-rate">
+            Success rate = codes delivered &divide; searches run to completion
+            = {{ success_with_code }} &divide; {{ searched_to_completion }} =
+            <strong>{{ success_rate }}%</strong>
+        </div>
     </div>
 
     <!-- Daily chart -->
