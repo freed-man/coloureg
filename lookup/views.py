@@ -1143,7 +1143,7 @@ def admin_stats(request):
     # All recent lookups (success + failure) for the unified history table
     recent_all_lookups = (
         Search.objects.exclude(make='')
-        .order_by('-timestamp')[:20]
+        .order_by('-timestamp')[:50]
     )
 
     # (total_emails, emails_sent, conversion_rate computed in top_metrics above)
