@@ -23,7 +23,7 @@ from .services.vdg import (
     VdgError,
     VdgNotFoundError,
 )
-from .services.paint_resolver import resolve_paint, _enrich_from_lookup
+from .services.paint_resolver import resolve_paint, _enrich_from_lookup, PL24_TIMEOUT
 from .services.email import (
     send_user_paint_code,
     send_admin_failure_notification,
@@ -548,6 +548,27 @@ def lookup_status(request, search_id):
     category = vehicle_data.get('category', '')
     registration = vehicle_data.get('registration', '')
 
+    # --- Atomic claim: only ONE request may run the (paid) recovery ---------
+    # Two CONCURRENT polls for the same search (two tabs on the results page,
+    # or a refresh while the first poll is still in flight) would both pass
+    # the session checks above and both run resolve_paint — a duplicate paid
+    # VDG retry and a duplicate pl24 scrape for one vehicle. Same TOCTOU shape
+    # as the manual-lookup double-click, so it gets the same fix: one filtered
+    # UPDATE claims the row and exactly one request wins. The claim reuses
+    # recovery_attempted (which completion writes anyway), shifting its
+    # meaning from "a recovery ran" to "a recovery ran or is running". The
+    # stats' definitive-outcome rule is unaffected: it also requires
+    # recovery_duration_ms, which is still written only on completion. If the
+    # winning process dies mid-recovery (kill/redeploy), the claim stays taken
+    # and later polls fall through to the waiter below, time out, and surface
+    # the manual-lookup offer — the row completes by hand rather than by a
+    # fresh automatic spend.
+    claimed = Search.objects.filter(
+        id=search_id, paint_code='', recovery_attempted=False,
+    ).update(recovery_attempted=True)
+    if not claimed:
+        return _wait_for_recovery_result(search_id)
+
     telemetry = {}
     try:
         result = resolve_paint(registration, vin, make, category, telemetry=telemetry, model=vehicle_data.get('model', ''))
@@ -622,6 +643,67 @@ def lookup_status(request, search_id):
         'canonical_code': canonical_code,
         'all_paint_codes': all_paint_codes,
     })
+
+
+RECOVERY_WAIT_POLL_S = 2.0
+
+
+def _wait_for_recovery_result(search_id):
+    """A concurrent poll LOST the recovery claim: another request for this same
+    search is already running resolve_paint. Instead of running a duplicate
+    (paid) recovery, watch the Search row until the winner's outcome lands and
+    return it in exactly the response shapes the winner's request produces, so
+    the page's JS needs no new states. Deliberately read-only on the session:
+    the winning request owns all session writes (saving a stale copy from here
+    would clobber them; the winner has already persisted the outcome to the
+    session by the time it lands on the row, so a later page reload is safe).
+
+    If the winner never completes (its process was killed mid-recovery), the
+    deadline lapses and we return status=error — the page then shows the
+    manual-lookup offer, which is the correct fallback for a recovery that
+    can no longer finish on its own."""
+    deadline = time.monotonic() + PL24_TIMEOUT + 10
+    while time.monotonic() < deadline:
+        try:
+            row = Search.objects.get(id=search_id)
+        except (Search.DoesNotExist, ValueError, TypeError):
+            return JsonResponse({'status': 'error'}, status=200)
+        if row.paint_code:
+            paint_hex, paint_name, canonical_code = PaintLookup.lookup_with_canonical(
+                manufacturer=row.make,
+                paint_code=row.paint_code,
+                model=row.model,
+                year=row.year,
+                vdg_colour=row.colour,
+            )
+            if row.provider == Search.PROVIDER_PARTSLINK24:
+                source = 'pl24'
+            elif row.provider == Search.PROVIDER_VDG_RETRY:
+                source = 'vdg_retry'
+            else:
+                source = row.provider or ''
+            return JsonResponse({
+                'status': 'found',
+                'source': source,
+                'paint_code': row.paint_code,
+                'paint_description': row.paint_description,
+                'paint_hex': paint_hex,
+                'paint_name': paint_name,
+                'canonical_code': canonical_code,
+                # Multi-code detail lives in the winner's session write; the
+                # single recovered code is what matters here and is complete.
+                'all_paint_codes': [],
+            })
+        if row.recovery_duration_ms is not None:
+            # Recovery finished without a code.
+            if row.recovery_name_only and row.paint_description:
+                return JsonResponse({
+                    'status': 'name_only',
+                    'paint_description': row.paint_description,
+                })
+            return JsonResponse({'status': 'not_found'})
+        time.sleep(RECOVERY_WAIT_POLL_S)
+    return JsonResponse({'status': 'error'}, status=200)
 
 
 def _apply_recovery_telemetry(search, telemetry):
