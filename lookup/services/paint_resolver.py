@@ -138,6 +138,45 @@ def _vdg_retry(registration):
     }
 
 
+# VW model lines whose paint data lives in partslink24's COMMERCIAL catalogue
+# regardless of the EU type-approval class VDG reports. The Caddy is the
+# canonical case: a Caddy Life is type-approved M1 (passenger MPV), so VDG's
+# category is "correct" — but partslink24 files every Caddy under Volkswagen
+# Commercial Vehicles, so an M1 routing sends pl24 to a catalogue that cannot
+# resolve it. Matched as a prefix of the model string ("Caddy Maxi C20 Life"
+# starts with "caddy"). Model name is the primary signal; the WV1 VIN prefix
+# (VW Commercial Vehicles' WMI — data-confirmed 16/16 commercial in our
+# traffic) is a belt-and-braces catch for commercial VWs with unusual model
+# strings. WV2/WV3 are deliberately NOT used: WV2 is ambiguous (car-derived
+# vans) and WV3 is unverified.
+_VW_COMMERCIAL_MODELS = (
+    'transporter', 'caddy', 'crafter', 'amarok', 'caravelle', 'multivan',
+)
+
+
+def _route_category(make, model, vin, category):
+    """The category pl24 should receive for this vehicle.
+
+    Fixes the one known misroute: VW commercial lines that VDG classes as M1
+    (or leaves unclassed), which sends pl24 to the passenger catalogue where
+    their paint doesn't exist. Only ever upgrades ''/M1 to N1, and only for
+    Volkswagen: an explicit non-passenger class (N1/N2/N3) from VDG is trusted
+    as-is, and other makes are untouched. The Search row keeps VDG's raw
+    category — this routing applies solely at the pl24 boundary.
+    """
+    cat = (category or '').strip().upper()
+    if cat and cat != 'M1':
+        return category
+    mk = (make or '').strip().lower()
+    if not (mk.startswith('volkswagen') or mk == 'vw'):
+        return category
+    m = (model or '').strip().lower()
+    if any(m.startswith(t) for t in _VW_COMMERCIAL_MODELS) \
+            or (vin or '').strip().upper().startswith('WV1'):
+        return 'N1'
+    return category
+
+
 def _pl24_lookup(vin, make, category=None):
     """Call the pl24 service. Returns a paint dict if pl24 found a code, else
     None. Never raises — network/HTTP/timeout errors degrade to None."""
@@ -238,7 +277,12 @@ def resolve_paint(registration, vin, make, category=None, telemetry=None, model=
     _t['pl24_name_only'] = False
     try:
         f_vdg = ex.submit(_vdg_retry, registration)
-        f_pl24 = ex.submit(_pl24_lookup, vin, make, category)
+        # Category is routed (not raw): VW commercial lines misfiled as M1 by
+        # VDG are sent to pl24 as N1 so the lookup hits the right catalogue
+        # first time. See _route_category.
+        f_pl24 = ex.submit(
+            _pl24_lookup, vin, make, _route_category(make, model, vin, category)
+        )
 
         deadline = time.monotonic() + PL24_TIMEOUT
         pending = {f_vdg, f_pl24}
