@@ -512,6 +512,18 @@ class PaintLookup(models.Model):
             'panther black solid': 'PNJAB',
             'panther black metallic': '17V',
             'panther black pearl': '17V',
+            # 'Kinetic Blue' comes back name-only from partslink24 and maps to 5
+            # codes the matcher can't collapse (9DSE has no hex; BDU #004A81 and
+            # CDUCWWA #00487B are both EcoSport-tagged dark blues; BDUWWA/VBM are a
+            # brighter #0080C0). The model tiebreaker narrows to BDU + CDUCWWA but
+            # can't choose between them. BDU is Ford-retail-CONFIRMED: Ford's own
+            # shop sells this paint as "Kinetic Blue, Colour Code BDU" (part
+            # 2573827) -> anchored like DDSEWTA/9SSEWTA, not a guess. BDU (not the
+            # research's other 'master' 9DSE) because 9DSE carries no hex, so it
+            # would return a code with no swatch; BDU has #004A81 and the EcoSport
+            # tag. Override returns BDU regardless of the other four candidates.
+            'kinetic blue': 'BDU',
+            'kinetic blue metallic': 'BDU',
         },
     }
 
