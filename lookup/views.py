@@ -450,6 +450,16 @@ def index(request):
             # vehicle_returned / paint_returned stay False (their defaults), and
             # the error is recorded — together these mark a VDG failure.
             search.error_message = f'VDG: {str(e)[:200]}'
+        except Exception as e:  # noqa: BLE001 — trust boundary
+            # VDG is an external system whose response shape we don't control.
+            # A structurally unexpected payload (a null inside PaintCodeList, a
+            # field that becomes a string, an API revision) would otherwise raise
+            # an AttributeError straight out of the parser and 500 the page —
+            # after VDG has already charged us. Treat anything unexpected as
+            # "provider failed" so we degrade to the DVLA/MOT fallback instead,
+            # and log it so a genuine API change is visible rather than silent.
+            logger.exception('VDG returned an unparseable payload for %s', registration)
+            search.error_message = f'VDG: unparseable response ({type(e).__name__})'
 
         make = ''
         model = ''
@@ -2149,6 +2159,9 @@ def perform_lookup_core(registration, request_meta=None):
                 search.vdg_transaction_cost = vdg_data.get('transaction_cost')
     except (VdgError, VdgNotFoundError) as e:
         search.error_message = f'VDG: {str(e)[:200]}'
+    except Exception as e:  # noqa: BLE001 — trust boundary, see index()
+        logger.exception('VDG returned an unparseable payload for %s', registration)
+        search.error_message = f'VDG: unparseable response ({type(e).__name__})'
 
     make = model = colour = fuel_type = transmission = engine_description = ''
     category = ''

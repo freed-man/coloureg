@@ -1,9 +1,12 @@
+import logging
 import re
 import unicodedata
 from decimal import Decimal
 
 from django.core.cache import caches
 from django.db import models
+
+logger = logging.getLogger(__name__)
 
 
 class Search(models.Model):
@@ -152,6 +155,34 @@ class Search(models.Model):
     # gave. It is therefore excluded from the success-rate denominator and
     # reported separately. In paid mode it is unambiguously a no-charge.
     no_code_available = models.BooleanField(default=False)
+
+    def save(self, *args, **kwargs):
+        """Truncate over-length text before it reaches the database.
+
+        Every string on this row originates from an external system (VDG, DVLA,
+        MOT, partslink24) or from a user, and Postgres enforces varchar limits
+        strictly — an over-length value raises DataError and 500s the request,
+        after the paid API call has already been made. SQLite does not enforce
+        them, so this class of failure is invisible in local development and
+        only appears in production.
+
+        Truncating is the right trade: a clipped model name is a cosmetic loss,
+        a failed save loses the lookup entirely AND the money spent on it. The
+        clip is logged so a systematically over-length field is visible rather
+        than silently shortened.
+        """
+        for field in self._meta.fields:
+            max_length = getattr(field, 'max_length', None)
+            if not max_length:
+                continue
+            value = getattr(self, field.name, None)
+            if isinstance(value, str) and len(value) > max_length:
+                logger.warning(
+                    'Search.%s exceeded max_length (%d > %d) and was truncated',
+                    field.name, len(value), max_length,
+                )
+                setattr(self, field.name, value[:max_length])
+        super().save(*args, **kwargs)
 
     class Meta:
         ordering = ['-timestamp']
