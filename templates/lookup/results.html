@@ -474,20 +474,32 @@
         if (el) {
             el.scrollIntoView({ behavior: 'instant', block: 'center' });
         }
-        // paint16: reveal the optional context fields. Collapsed by default so
-        // the email capture stays a one-field ask; anyone who wants to help us
-        // help them can open it.
-        var toggle = document.getElementById('extra-context-toggle');
-        var extra = document.getElementById('extra-context');
-        if (toggle && extra) {
-            toggle.addEventListener('click', function() {
-                extra.hidden = !extra.hidden;
-                toggle.textContent = extra.hidden ? '+ Add details or a photo' : '− Hide details';
-            });
-        }
     });
 </script>
 {% endif %}
+
+{% comment %}
+   paint16: toggle for the optional "details or a photo" fields on the manual
+   request. Deliberately OUTSIDE any conditional block: it previously lived
+   inside the email-submitted branch, which only renders AFTER an email has been
+   submitted — so the button rendered but its handler never did, and the control
+   was dead on every normal visit.
+
+   Delegated from `document` rather than bound to the button, because when a
+   recovery finishes without a code the email section is rebuilt via
+   card.innerHTML plus form.outerHTML, which destroys and recreates this button.
+   A directly-bound listener would be lost at exactly the moment it matters most.
+{% endcomment %}
+<script>
+    document.addEventListener('click', function (e) {
+        var toggle = e.target.closest ? e.target.closest('#extra-context-toggle') : null;
+        if (!toggle) return;
+        var extra = document.getElementById('extra-context');
+        if (!extra) return;
+        extra.hidden = !extra.hidden;
+        toggle.textContent = extra.hidden ? '+ Add details or a photo' : '\u2212 Hide details';
+    });
+</script>
 
 {% if paint_pending and search_id %}
 {# Paint-recovery: the page rendered with the vehicle shown and a spinner in the #}
