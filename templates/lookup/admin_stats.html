@@ -173,7 +173,7 @@
     }
     .chart-wrapper-small {
         position: relative;
-        height: 220px;
+        height: 300px;
     }
     .cost-row {
         display: flex;
@@ -339,10 +339,9 @@
                     {% if site_config.budget_tripped %}— TRIPPED (lookups paused today){% endif %}
                 </div>
                 <div class="maint-toggle-sub">
-                    Spent today (net): <strong>£{{ spend_today|floatformat:2 }}</strong>
-                    of £{{ site_config.daily_budget_gbp|floatformat:2 }}
-                    {% if site_config.daily_budget_gbp == 0 %}(limit disabled){% endif %}
-                    — resets at midnight London time. Saving a new amount re-arms the breaker.
+                    <strong>£{{ spend_today|floatformat:2 }}</strong> of
+                    £{{ site_config.daily_budget_gbp|floatformat:2 }} spent today{% if site_config.daily_budget_gbp == 0 %} (no limit set){% endif %}. Resets at midnight.
+                    {% if site_config.budget_tripped %}Saving a new amount re-arms the breaker.{% endif %}
                 </div>
             </div>
         </div>
@@ -359,42 +358,6 @@
         </form>
     </div>
 
-    <!-- Blocklists: refuse specific regs / IPs / user-agent fragments before any
-         spend. Reg is the strong lever (abusers reuse regs); IP + UA are
-         scalpels — a rotating attacker walks around both. One entry per line
-         (or comma-separated). UA matching is case-insensitive substring. -->
-    <div class="maint-toggle" style="margin-top: 12px; align-items: flex-start;">
-        <form method="post" action="{% url 'admin_stats' %}" style="margin:0; width:100%;">
-            {% csrf_token %}
-            <input type="hidden" name="action" value="save_blocklists">
-            <div class="maint-toggle-title" style="margin-bottom:8px;">Blocklists</div>
-            <div class="row g-2">
-                <div class="col-md-4">
-                    <label class="form-label" style="font-size:12px; color:#666;">Registrations</label>
-                    <textarea class="form-control form-control-sm" rows="4" name="blocked_regs"
-                              placeholder="EJ19VKN&#10;CN14TGU">{{ site_config.blocked_regs }}</textarea>
-                </div>
-                <div class="col-md-4">
-                    <label class="form-label" style="font-size:12px; color:#666;">IP addresses</label>
-                    <textarea class="form-control form-control-sm" rows="4" name="blocked_ips"
-                              placeholder="1.2.3.4">{{ site_config.blocked_ips }}</textarea>
-                </div>
-                <div class="col-md-4">
-                    <label class="form-label" style="font-size:12px; color:#666;">User-agent fragments</label>
-                    <textarea class="form-control form-control-sm" rows="4" name="blocked_user_agents"
-                              placeholder="Chrome/126.0 Safari">{{ site_config.blocked_user_agents }}</textarea>
-                </div>
-            </div>
-            <div style="margin-top:8px; display:flex; justify-content:space-between; align-items:center;">
-                <span style="font-size:12px; color:#999;">
-                    VRM cache: {{ vrm_cache_count }} regs stored ·
-                    {{ vrm_cache_hits }} free repeat{{ vrm_cache_hits|pluralize }} served
-                    (each saved a VDG call)
-                </span>
-                <button type="submit" class="btn btn-sm btn-outline-dark">Save blocklists</button>
-            </div>
-        </form>
-    </div>
     <!-- Payments master switch (F). Requires Stripe env keys too — the view
          checks both, so flipping this without keys leaves lookups free. -->
     <div class="maint-toggle {% if payments_enabled %}is-on{% endif %}" style="margin-top: 12px;">
@@ -477,6 +440,53 @@
             <p class="stat-subvalue">updates after each search</p>
             {% endif %}
         </div>
+    </div>
+
+    <div class="panel">
+        <h3>VDG API costs</h3>
+
+            <div class="cost-row">
+                <div>
+                    <span class="cost-label">Billed spend</span>
+                    <span class="cost-detail">({{ real_cost_count }} lookups, actual amounts charged by VDG)</span>
+                </div>
+                <span class="cost-amount">£{{ real_cost_sum|floatformat:2 }}</span>
+            </div>
+
+            {% if legacy_n > 0 %}
+            <div class="cost-row">
+                <div>
+                    <span class="cost-label">Earlier lookups (estimated)</span>
+                    <span class="cost-detail">({{ legacy_n }} lookups from before per-call cost was recorded)</span>
+                </div>
+                <span class="cost-amount">£{{ legacy_estimate|floatformat:2 }}</span>
+            </div>
+            {% endif %}
+
+            <div class="cost-divider"></div>
+
+            <div class="cost-row cost-total">
+                <span class="cost-label">Total</span>
+                <span class="cost-amount">£{{ estimated_cost|floatformat:2 }}</span>
+            </div>
+
+            {% if vrm_cache_count %}
+            {% comment %}
+               Cache savings belong with costs, not with blocklists: this is money
+               NOT spent. A hit is a repeat lookup answered from storage, so it
+               cost nothing at VDG.
+            {% endcomment %}
+            <div class="cost-row" style="margin-top: 14px; border-top: 1px dashed #e5e5e5; padding-top: 14px;">
+                <div>
+                    <span class="cost-label" style="color: #1b7f4d;">Saved by the cache</span>
+                    <span class="cost-detail">
+                        ({{ vrm_cache_hits }} repeat lookup{{ vrm_cache_hits|pluralize }} answered from
+                        {{ vrm_cache_count }} stored registration{{ vrm_cache_count|pluralize }} — no VDG call made)
+                    </span>
+                </div>
+                <span class="cost-amount" style="color: #1b7f4d;">£{{ cache_saved|floatformat:2 }}</span>
+            </div>
+            {% endif %}
     </div>
 
     <!-- Lookup outcomes: a funnel from every logged lookup down to the two
@@ -673,36 +683,7 @@
     </div>
 
     <!-- Cost tracker -->
-    <div class="panel">
-        <h3>VDG API costs</h3>
-
-            <div class="cost-row">
-                <div>
-                    <span class="cost-label">Billed spend</span>
-                    <span class="cost-detail">({{ real_cost_count }} lookups, actual amounts charged by VDG)</span>
-                </div>
-                <span class="cost-amount">£{{ real_cost_sum|floatformat:2 }}</span>
-            </div>
-
-            {% if legacy_n > 0 %}
-            <div class="cost-row">
-                <div>
-                    <span class="cost-label">Earlier lookups (estimated)</span>
-                    <span class="cost-detail">({{ legacy_n }} lookups from before per-call cost was recorded)</span>
-                </div>
-                <span class="cost-amount">£{{ legacy_estimate|floatformat:2 }}</span>
-            </div>
-            {% endif %}
-
-            <div class="cost-divider"></div>
-
-            <div class="cost-row cost-total">
-                <span class="cost-label">Total</span>
-                <span class="cost-amount">£{{ estimated_cost|floatformat:2 }}</span>
-            </div>
-    </div>
-
-    <!-- Recent manual lookup queue -->
+        <!-- Recent manual lookup queue -->
     <style>
         .mlq-card {
             background: #fafafa;
@@ -1128,6 +1109,7 @@
                     <th>Paint code</th>
                     <th>Description</th>
                     <th style="text-align: center;">Source</th>
+                    <th style="text-align: right; white-space: nowrap;">Cost</th>
                     <th style="text-align: center;">Outcome</th>
                 </tr>
             </thead>
@@ -1166,6 +1148,25 @@
                         <span class="recent-empty">—</span>
                         {% endif %}
                     </td>
+                    {% comment %}
+                       Per-lookup cost — the cheapest way to read what the pipeline
+                       actually did on each row:
+                         0.38  clean first-pass hit
+                         0.46  recovery ran and won
+                         0.16  recovery ran and lost
+                         0.00  served from cache, no VDG call
+                         —     VDG returned nothing, so the billing block was
+                               discarded and the true cost is unknown
+                    {% endcomment %}
+                    <td style="text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums;">
+                        {% if s.provider == 'cache' %}
+                        <span style="color: #1b7f4d;">£0.00</span>
+                        {% elif s.vdg_transaction_cost is not None %}
+                        <span style="color: {% if s.vdg_transaction_cost >= 0.40 %}#a05a00{% else %}#666{% endif %};">£{{ s.vdg_transaction_cost|floatformat:2 }}</span>
+                        {% else %}
+                        <span style="color: #ccc;">—</span>
+                        {% endif %}
+                    </td>
                     <td style="text-align: center;">
                         {% if s.recovery_name_only %}
                         <span class="outcome-partial" title="Colour name found — no code">◐</span>
@@ -1180,7 +1181,7 @@
                 </tr>
                 {% if s.manual_note or s.customer_message %}
                 <tr class="note-detail" id="note-{{ s.id }}" hidden>
-                    <td colspan="9" style="background: #fafbfc; padding: 14px 18px;">
+                    <td colspan="10" style="background: #fafbfc; padding: 14px 18px;">
                         {% if s.customer_message %}
                         <div style="margin-bottom: 10px;">
                             <div style="font-size: 11px; font-weight: 600; letter-spacing: 0.6px; text-transform: uppercase; color: #666; margin-bottom: 4px;">Customer said</div>
@@ -1197,7 +1198,7 @@
                 </tr>
                 {% endif %}
                 {% empty %}
-                <tr><td colspan="9" style="color: #999; text-align: center; padding: 24px 0;">No lookups yet</td></tr>
+                <tr><td colspan="10" style="color: #999; text-align: center; padding: 24px 0;">No lookups yet</td></tr>
                 {% endfor %}
             </tbody>
         </table>
@@ -1238,6 +1239,36 @@
             <div style="color: #999; text-align: center; padding: 24px 0;">No lookups yet</div>
             {% endfor %}
         </div>
+    </div>
+
+    <!-- Blocklists: refuse specific regs / IPs / user-agent fragments before any
+         spend. Reg is the strong lever (abusers reuse regs); IP + UA are
+         scalpels — a rotating attacker walks around both. One entry per line
+         (or comma-separated). UA matching is case-insensitive substring. -->
+    <div class="maint-toggle" style="margin-top: 12px; align-items: flex-start;">
+        <form method="post" action="{% url 'admin_stats' %}" style="margin:0; width:100%;">
+            {% csrf_token %}
+            <input type="hidden" name="action" value="save_blocklists">
+            <div class="maint-toggle-title" style="margin-bottom:8px;">Blocklists</div>
+            <div class="row g-2">
+                <div class="col-md-6">
+                    <label class="form-label" style="font-size:12px; color:#666;">Registrations</label>
+                    <textarea class="form-control form-control-sm" rows="4" name="blocked_regs"
+                              placeholder="EJ19VKN&#10;CN14TGU">{{ site_config.blocked_regs }}</textarea>
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label" style="font-size:12px; color:#666;">IP addresses</label>
+                    <textarea class="form-control form-control-sm" rows="4" name="blocked_ips"
+                              placeholder="1.2.3.4">{{ site_config.blocked_ips }}</textarea>
+                </div>
+            </div>
+            <div style="margin-top:8px; display:flex; justify-content:space-between; align-items:center;">
+                <span style="font-size:12px; color:#999;">
+                    Registrations are the reliable lever — abusers reuse them. IPs rotate, so treat that list as a scalpel.
+                </span>
+                <button type="submit" class="btn btn-sm btn-outline-dark">Save blocklists</button>
+            </div>
+        </form>
     </div>
 
     <!-- Compose email — staff-only one-off branded emails -->
@@ -1449,10 +1480,15 @@
         options: {
             responsive: true,
             maintainAspectRatio: false,
-            cutout: '60%',
+            // Bigger ring (smaller cutout) and legend BELOW rather than to the
+            // right: a right-hand legend squeezed the doughnut into the left
+            // half of its box, so it read as small and off-centre. Below, it
+            // uses the full width and sits in the middle.
+            cutout: '48%',
+            layout: { padding: 8 },
             plugins: {
                 legend: {
-                    position: 'right',
+                    position: 'bottom',
                     labels: { boxWidth: 14, font: { size: 13 } }
                 }
             }

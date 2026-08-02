@@ -255,10 +255,8 @@ def index(request):
         # IP + reg once here and reuse them below. The response is a generic
         # error — we don't tell a blocked client why.
         client_ip = get_client_ip(request)
-        client_ua = request.META.get('HTTP_USER_AGENT', '')
         posted_reg = request.POST.get('registration', '').strip().upper().replace(' ', '')
         if (config.is_ip_blocked(client_ip)
-                or config.is_ua_blocked(client_ua)
                 or (posted_reg and config.is_reg_blocked(posted_reg))):
             messages.error(
                 request,
@@ -698,9 +696,7 @@ def vehicle_make(request):
 
     config = SiteConfig.get()
     client_ip = get_client_ip(request)
-    if (config.is_ip_blocked(client_ip)
-            or config.is_ua_blocked(request.META.get('HTTP_USER_AGENT', ''))
-            or config.is_reg_blocked(registration)):
+    if config.is_ip_blocked(client_ip) or config.is_reg_blocked(registration):
         return JsonResponse({})
 
     # Separate, roomier bucket than the 3/h lookup limit — a typo shouldn't cost
@@ -1470,12 +1466,8 @@ def admin_stats(request):
         cfg = SiteConfig.get()
         cfg.blocked_regs = (request.POST.get('blocked_regs') or '').strip()
         cfg.blocked_ips = (request.POST.get('blocked_ips') or '').strip()
-        cfg.blocked_user_agents = (request.POST.get('blocked_user_agents') or '').strip()
-        cfg.save(update_fields=[
-            'blocked_regs', 'blocked_ips', 'blocked_user_agents', 'updated_at',
-        ])
-        n = (len(cfg.blocked_reg_set()) + len(cfg.blocked_ip_set())
-             + len(cfg.blocked_ua_list()))
+        cfg.save(update_fields=['blocked_regs', 'blocked_ips', 'updated_at'])
+        n = len(cfg.blocked_reg_set()) + len(cfg.blocked_ip_set())
         messages.success(request, f'Blocklists saved ({n} entries active).')
         return redirect('admin_stats')
 
@@ -1748,6 +1740,9 @@ def admin_stats(request):
     vdg_balance = latest_with_balance.vdg_balance_after_call if latest_with_balance else None
     vdg_balance_at = latest_with_balance.timestamp if latest_with_balance else None
 
+    _cache_hits = VrmCache.objects.aggregate(h=Sum('hit_count'))['h'] or 0
+    _avg_real_cost = float(real_cost_sum / real_cost_count) if real_cost_count else 0.0
+
     context = {
         'total_searches': total_searches,
         'today_searches': today_searches,
@@ -1801,7 +1796,12 @@ def admin_stats(request):
         'site_config': SiteConfig.get(),
         'spend_today': spend_today(),
         'vrm_cache_count': VrmCache.objects.count(),
-        'vrm_cache_hits': VrmCache.objects.aggregate(h=Sum('hit_count'))['h'] or 0,
+        'vrm_cache_hits': _cache_hits,
+        # What those hits saved: each was a repeat lookup answered from storage,
+        # so it cost nothing at VDG. Valued at the average real cost of the
+        # lookups we DID pay for, rather than a hardcoded tier price — that way
+        # it stays accurate if the tier changes.
+        'cache_saved': round(_cache_hits * _avg_real_cost, 2),
         'payments_enabled': SiteConfig.get().payments_enabled,
         'payments_configured': payments_configured(),
     }
@@ -2255,11 +2255,10 @@ def start_paid_lookup(request):
         return redirect('index')
 
     client_ip = get_client_ip(request)
-    client_ua = request.META.get('HTTP_USER_AGENT', '')
     registration = request.POST.get('registration', '').strip().upper().replace(' ', '')
 
     # Same front-door guards as the free flow.
-    if (config.is_ip_blocked(client_ip) or config.is_ua_blocked(client_ua)
+    if (config.is_ip_blocked(client_ip)
             or (registration and config.is_reg_blocked(registration))):
         messages.error(request, 'Sorry, we could not process that request.')
         return redirect('index')

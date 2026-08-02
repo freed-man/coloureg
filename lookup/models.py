@@ -885,11 +885,10 @@ class SiteConfig(models.Model):
 
     # --- Blocklists (A) -----------------------------------------------------
     # Newline- or comma-separated lists, edited in /admin-stats/. Checked at the
-    # very top of the lookup POST, before any spend. All three are best-effort:
+    # very top of the lookup POST, before any spend. Both are best-effort:
     # a determined abuser rotates IPs and UAs (we have direct evidence of both),
-    # so the reg list is the strong one (he reuses regs); IP/UA are scalpels for
-    # the lazy case. Matching is exact for regs/IPs and case-insensitive
-    # substring for UA fragments.
+    # so the reg list is the strong one (abusers reuse regs); IP is a scalpel
+    # for the lazy case. Matching is exact for both.
     blocked_regs = models.TextField(
         blank=True, default='',
         help_text='Registrations to refuse (one per line or comma-separated).'
@@ -898,11 +897,13 @@ class SiteConfig(models.Model):
         blank=True, default='',
         help_text='IP addresses to refuse (one per line or comma-separated).'
     )
-    blocked_user_agents = models.TextField(
-        blank=True, default='',
-        help_text='User-agent substrings to refuse (one per line). '
-                  'Case-insensitive match.'
-    )
+    # NOTE: user-agent blocking was deliberately removed. It was the weakest of
+    # the three (an attacker rewrites a UA string in one line — we watched that
+    # happen twice) AND the most dangerous, because an over-broad fragment like
+    # "Chrome" would silently block most real browsers with no validation and no
+    # obvious symptom. Where it genuinely earned its keep was at Cloudflare, at
+    # the edge, before traffic reaches Django at all — which is the right layer
+    # for it. Duplicating it here added risk without adding capability.
 
     # --- Payments (F) -------------------------------------------------------
     # Master switch for the paid-lookup flow. Defaults False so the payment code
@@ -938,10 +939,6 @@ class SiteConfig(models.Model):
     def blocked_ip_set(self):
         return set(self._parse_list(self.blocked_ips))
 
-    def blocked_ua_list(self):
-        """Lowercased UA substrings to match against (case-insensitive)."""
-        return [u.lower() for u in self._parse_list(self.blocked_user_agents)]
-
     def is_reg_blocked(self, registration):
         if not registration:
             return False
@@ -951,12 +948,6 @@ class SiteConfig(models.Model):
         if not ip:
             return False
         return ip in self.blocked_ip_set()
-
-    def is_ua_blocked(self, user_agent):
-        if not user_agent:
-            return False
-        ua = user_agent.lower()
-        return any(frag in ua for frag in self.blocked_ua_list())
 
     def save(self, *args, **kwargs):
         """Persist, then refresh the get() cache so mutations are visible
