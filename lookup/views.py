@@ -277,6 +277,14 @@ def index(request):
         if not verify_turnstile(
             request.POST.get('cf-turnstile-response', ''), client_ip
         ):
+            # Record the refusal. Without this a Turnstile rejection is a pure
+            # ABSENCE — the user sees an error and nothing anywhere shows a
+            # lookup was refused, so a widget silently failing for some browser
+            # would look identical to a quiet day. Cloudflare's own analytics
+            # report challenge outcomes, but they can't tell us which of OUR
+            # lookups were turned away. Logged as a Search row (no VDG call, no
+            # cost) so the count sits alongside real volume on one dashboard.
+            _record_turnstile_block(request, client_ip)
             messages.error(
                 request,
                 'We could not verify your browser. Please reload the page '
@@ -284,6 +292,9 @@ def index(request):
             )
             return render(request, 'lookup/index.html', {
                 'turnstile_site_key': dj_settings.TURNSTILE_SITE_KEY,
+                'payments_on': payments_active(config),
+                'payments_configured': payments_configured(),
+                'lookup_price': dj_settings.LOOKUP_PRICE_PENCE / 100.0,
             })
 
         # --- Daily budget breaker (A) --------------------------------------
@@ -741,6 +752,37 @@ def vehicle_make(request):
     if dvla and dvla.get('make'):
         return JsonResponse({'make': fix_make_case((dvla.get('make') or '').title())})
     return JsonResponse({})
+
+
+def _record_turnstile_block(request, client_ip):
+    """Log a lookup refused by Turnstile, so refusals are countable.
+
+    Deliberately a Search row rather than only a log line: it puts the count on
+    the same dashboard as real lookup volume, which is what makes the signal
+    readable. A rise in blocks alongside a fall in lookups is unambiguous; two
+    separate dashboards correlated by eye is not.
+
+    Marked provider='none' with success=False and no make, so it lands in the
+    EXCLUDED bucket of the success rate — a refused request never reached the
+    pipeline, so counting it as a failure would understate how well the pipeline
+    is doing. Best-effort: a logging failure must never break the refusal.
+    """
+    try:
+        Search.objects.create(
+            registration=(request.POST.get('registration') or '')
+                .strip().upper().replace(' ', '')[:10],
+            ip_address=client_ip,
+            user_agent=request.META.get('HTTP_USER_AGENT', ''),
+            device=parse_device(request.META.get('HTTP_USER_AGENT', '')),
+            provider=Search.PROVIDER_NONE,
+            success=False,
+            error_message='turnstile_blocked',
+            # No duration: nothing was looked up, so a timing figure here would
+            # be noise in the avg-lookup-time metric rather than information.
+            lookup_duration_ms=None,
+        )
+    except Exception:
+        logger.exception('Could not record a Turnstile block')
 
 
 @require_GET
@@ -1841,6 +1883,15 @@ def admin_stats(request):
         'provider_breakdown': provider_breakdown,
         # --- paint16 metrics ---
         'no_code_available_count': no_code_available_count,
+        # Lookups refused by Turnstile. Expected to be near-zero and made up of
+        # bots; a rise here alongside a fall in real volume is the signature of
+        # the widget failing for genuine users.
+        'turnstile_blocks_today': Search.objects.filter(
+            timestamp__gte=today_start, error_message__contains='turnstile_blocked'
+        ).count(),
+        'turnstile_blocks_week': Search.objects.filter(
+            timestamp__gte=week_ago, error_message__contains='turnstile_blocked'
+        ).count(),
         # Payments that were authorised but never captured — the customer got
         # their code and we didn't get paid. Should always be zero; if it isn't,
         # those rows need chasing in Stripe.
@@ -2352,6 +2403,7 @@ def start_paid_lookup(request):
         return redirect('index')
 
     if not verify_turnstile(request.POST.get('cf-turnstile-response', ''), client_ip):
+        _record_turnstile_block(request, client_ip)
         messages.error(request, 'We could not verify your browser. Please reload and try again.')
         return redirect('index')
     if not re.fullmatch(r'[A-Z0-9]{1,8}', registration or ''):

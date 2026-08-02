@@ -420,6 +420,19 @@
             <p class="stat-value">{{ success_rate }}%</p>
             <p class="stat-subvalue">{{ success_with_code }} of {{ searched_to_completion }} completed searches</p>
         </div>
+        {% if turnstile_blocks_week %}
+        {% comment %}
+           Only rendered when non-zero. Expected to be bots; a rise here at the
+           same time as a fall in real lookups is the signature of the widget
+           failing for genuine users, which is otherwise invisible — a refused
+           lookup produces no result and no error anyone sees.
+        {% endcomment %}
+        <div class="stat-card">
+            <p class="stat-label">Blocked by Turnstile</p>
+            <p class="stat-value">{{ turnstile_blocks_today }}</p>
+            <p class="stat-subvalue">today · {{ turnstile_blocks_week }} in the last 7 days</p>
+        </div>
+        {% endif %}
         {% if capture_failures %}
         <div class="stat-card" style="border: 1px solid #C8102E;">
             <p class="stat-label" style="color: #C8102E;">Payments not taken</p>
