@@ -493,7 +493,10 @@ def get_combined_lookup(registration):
         'transmission', 'engine_description'  -- vehicle/model fields
       - 'paint_code', 'paint_description', 'all_paint_codes'  -- paint fields
       - 'vehicle_returned': bool — Results.VehicleDetails StatusCode == 0
-      - 'paint_returned':   bool — Results.PaintCodeDetails returned ≥1 paint code
+      - 'paint_returned':   bool — Results.PaintCodeDetails succeeded AND returned
+                            ≥1 paint ENTRY. An entry can carry a colour name with
+                            an empty code, so this being True does not guarantee
+                            'paint_code' is non-empty.
       - 'balance': float — VDG account balance after this call (or None)
       - 'transaction_cost': float — the real amount VDG billed this call (or None)
 
