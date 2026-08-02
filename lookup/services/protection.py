@@ -37,10 +37,21 @@ from django.db.models import Sum, Q
 from django.utils import timezone
 
 
-# How long a cached VRM result stays fresh. Paint codes don't change; the TTL
-# exists only to bound the cherished-transfer edge case (a reg reassigned to a
-# different vehicle). 30 days is a comfortable margin.
-VRM_CACHE_TTL_DAYS = 30
+# How long a cached VRM result stays fresh.
+#
+# Paint codes are factory-fixed, so this TTL isn't about the code going out of
+# date — it bounds two other things: a cherished-plate transfer moving a reg to
+# a different vehicle, and the delay before a corrected entry (a new curated
+# override, a fixed upstream record) reaches customers.
+#
+# Set from the real repeat-lookup distribution rather than a guess. Of 88
+# repeat lookups of an already-cached reg: 56% came back within an hour, 78%
+# within a day, 95.5% within 7 days, 98.9% within 30. Dropping 30 -> 7 gives up
+# 3 cache hits (about 75p across the whole dataset) and cuts the staleness
+# window by three quarters. Nearly all the value is in the first day anyway —
+# someone checking a reg twice in an afternoon, or a body shop returning to the
+# same car — so the long tail was buying almost nothing.
+VRM_CACHE_TTL_DAYS = 7
 
 # How long a FAILED lookup is remembered. Much shorter than a success: a miss
 # might only be a miss because VDG flaked or was slow that second (the data shows

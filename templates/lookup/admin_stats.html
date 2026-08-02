@@ -420,6 +420,13 @@
             <p class="stat-value">{{ success_rate }}%</p>
             <p class="stat-subvalue">{{ success_with_code }} of {{ searched_to_completion }} completed searches</p>
         </div>
+        {% if capture_failures %}
+        <div class="stat-card" style="border: 1px solid #C8102E;">
+            <p class="stat-label" style="color: #C8102E;">Payments not taken</p>
+            <p class="stat-value" style="color: #C8102E;">{{ capture_failures }}</p>
+            <p class="stat-subvalue">code delivered but Stripe capture failed — chase these</p>
+        </div>
+        {% endif %}
         {% if no_code_available_count %}
         <div class="stat-card">
             <p class="stat-label">No code exists</p>

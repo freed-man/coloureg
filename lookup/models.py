@@ -854,8 +854,12 @@ class VrmCache(models.Model):
     A registration's factory paint code is effectively immutable, so serving a
     stored result is safe; freshness is bounded by VRM_CACHE_TTL_DAYS purely to
     cover the rare cherished-plate transfer (a reg moved to a different vehicle).
-    Freshness is enforced at read time by comparing `updated_at`, so no purge job
-    is required — though prune_old_data may trim old rows opportunistically.
+    Freshness is enforced at read time by comparing `updated_at`, so an expired
+    entry is IGNORED rather than deleted — the next lookup goes live and
+    update_or_create recycles the same row, so stale entries never accumulate as
+    duplicates. prune_old_data deletes rows for registrations that are never
+    looked up again (which also stops a VIN outliving the Search row it came
+    from, per the retention policy).
     """
 
     registration = models.CharField(max_length=10, unique=True, db_index=True)

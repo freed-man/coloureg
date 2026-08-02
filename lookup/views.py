@@ -1804,6 +1804,11 @@ def admin_stats(request):
         'provider_breakdown': provider_breakdown,
         # --- paint16 metrics ---
         'no_code_available_count': no_code_available_count,
+        # Payments that were authorised but never captured — the customer got
+        # their code and we didn't get paid. Should always be zero; if it isn't,
+        # those rows need chasing in Stripe.
+        'capture_failures': Search.objects.filter(
+            error_message__contains='stripe_capture_failed').count(),
         'maintenance_mode': SiteConfig.get().maintenance_mode,
         # --- Protection panel (A) ---
         'site_config': SiteConfig.get(),
@@ -2304,6 +2309,50 @@ def start_paid_lookup(request):
     return redirect(session.url)
 
 
+def _append_search_note(search, note):
+    """Append a marker to Search.error_message without destroying what's there.
+
+    error_message doubles as the paid-flow idempotency key (it carries
+    `stripe_session=<id>`), so this MUST append rather than overwrite — clobbering
+    it would let the webhook and the success redirect both fulfil the same
+    session again.
+    """
+    if search is None:
+        return
+    try:
+        existing = search.error_message or ''
+        if note in existing:
+            return
+        search.error_message = (existing + ' | ' + note).strip(' |')[:500]
+        search.save(update_fields=['error_message'])
+    except Exception:
+        logger.exception('Could not append note %r to search %s', note, getattr(search, 'id', None))
+
+
+def _record_capture_outcome(search, captured, session_id):
+    """Record whether the money was actually taken.
+
+    capture() returns a bool, and it was previously discarded. That meant a
+    declined or errored capture was invisible: the customer received their paint
+    code, the row said success, and no payment had been taken — a silent revenue
+    leak with nothing to reconcile against.
+
+    We still DELIVER the code when capture fails. The lookup has already been
+    performed and paid for at VDG, and withholding the result would leave the
+    customer with neither a charge nor an answer, which is a worse outcome for
+    them and for us. Instead the failure is stamped on the row so it can be
+    chased, and logged so it surfaces in Sentry.
+    """
+    if captured:
+        return
+    logger.error(
+        'Stripe capture FAILED but a paint code was delivered '
+        '(session=%s, search=%s) — payment not taken',
+        session_id, getattr(search, 'id', None),
+    )
+    _append_search_note(search, 'stripe_capture_failed')
+
+
 def _fulfil_paid_session(session):
     """Run the lookup for a paid Checkout Session and capture or cancel the £1.
 
@@ -2408,7 +2457,7 @@ def _fulfil_paid_session(session):
             success=bool(cached.get('paint_code')),
             error_message=f'stripe_session={session_id}',
         )
-        capture(payment_intent_id)
+        _record_capture_outcome(cache_row, capture(payment_intent_id), session_id)
         payload = dict(cached)
         payload['search_id'] = cache_row.id
         payload['paint_pending'] = False
@@ -2421,12 +2470,16 @@ def _fulfil_paid_session(session):
         search.save(update_fields=['error_message'])
 
     if payload and payload.get('paint_code'):
-        # Delivered a code -> capture the £1 and cache the result.
-        capture(payment_intent_id)
+        # Delivered a code -> capture the fee and cache the result.
+        _record_capture_outcome(search, capture(payment_intent_id), session_id)
         store_vrm_payload(reg, payload)
     else:
         # No code -> the customer is NOT charged.
-        cancel(payment_intent_id)
+        if not cancel(payment_intent_id) and search is not None:
+            # A failed cancel is far less serious than a failed capture: the
+            # authorisation simply expires on Stripe's side and the customer is
+            # never charged. Worth recording so a systematic failure is visible.
+            _append_search_note(search, 'stripe_cancel_failed')
     return payload
 
 
