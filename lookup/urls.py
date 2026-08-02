@@ -13,6 +13,8 @@ urlpatterns = [
     path('help/', views.help_page, name='help'),
     path('submit-contact/', views.submit_contact, name='submit_contact'),
     path('warm/', views.warm, name='warm'),
+    # RFC 9116 — must live at exactly this path to be discoverable.
+    path('.well-known/security.txt', views.security_txt, name='security_txt'),
     path('vehicle-make/', views.vehicle_make, name='vehicle_make'),
     # --- Paid lookup flow (F, paint15). Dormant unless payments_active(). ---
     path('paid/start/', views.start_paid_lookup, name='start_paid_lookup'),

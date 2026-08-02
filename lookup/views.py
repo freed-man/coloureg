@@ -744,6 +744,29 @@ def vehicle_make(request):
 
 
 @require_GET
+def security_txt(request):
+    """Serve /.well-known/security.txt (RFC 9116).
+
+    Tells security researchers how to report a vulnerability responsibly,
+    instead of guessing at an address or posting it publicly.
+
+    Generated rather than served as a static file for one reason: RFC 9116 makes
+    `Expires` mandatory, and a file with a past expiry is treated as invalid.
+    A hardcoded date would quietly rot the moment it passed. Computing it a year
+    ahead on each request means it is always valid without anyone remembering to
+    update it.
+    """
+    expires = (timezone.now() + timedelta(days=365)).strftime('%Y-%m-%dT%H:%M:%S.000Z')
+    body = (
+        f"Contact: mailto:{dj_settings.DEFAULT_FROM_EMAIL}\n"
+        f"Expires: {expires}\n"
+        "Preferred-Languages: en\n"
+        "Canonical: https://coloureg.com/.well-known/security.txt\n"
+    )
+    return HttpResponse(body, content_type='text/plain; charset=utf-8')
+
+
+@require_GET
 def warm(request):
     """Pre-warm the database connection so a lookup doesn't pay a cold start.
 

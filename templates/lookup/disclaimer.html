@@ -12,7 +12,14 @@
             <h1 class="mb-3" style="font-size: 2rem; font-weight: 600; color: #1a1a1a;">
                 Disclaimer
             </h1>
-            <p class="text-muted mb-4" style="font-size: 0.9rem;">Last updated: May 6, 2026</p>
+            {% comment %}
+   Update this whenever the text below changes materially — the notice
+   itself promises it. Deliberately hardcoded rather than generated: a
+   date that renders as "today" on every visit would be meaningless, and
+   the point of this line is to tell a returning reader whether the terms
+   have moved since they last looked.
+{% endcomment %}
+            <p class="text-muted mb-4" style="font-size: 0.9rem;">Last updated: August 2, 2026</p>
 
             <p style="font-size: 1.05rem; line-height: 1.7; color: #333;">
                 {% if payments_on %}

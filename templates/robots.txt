@@ -7,5 +7,6 @@ Disallow: /submit-email/
 Disallow: /submit-contact/
 Disallow: /paige/
 Disallow: /health/
+Allow: /.well-known/security.txt
 
 Sitemap: https://coloureg.com/sitemap.xml
