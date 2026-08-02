@@ -1460,6 +1460,20 @@ def admin_stats(request):
         except (InvalidOperation, ValueError):
             messages.error(request, 'Budget must be a number (0 disables the limit).')
             return redirect('admin_stats')
+        # Upper bound. The column is numeric(8,2), so anything at or above
+        # 1,000,000 is unstorable: Postgres raises DataError and 500s this save,
+        # while SQLite accepts it and then fails on every subsequent read — which
+        # would break SiteConfig.get(), and that runs on every request.
+        # 10,000 is far above any plausible daily VDG budget (a heavy day is
+        # ~£20 against a balance in the low hundreds), so a larger number is a
+        # mistyped zero rather than an intention.
+        if value > Decimal('10000'):
+            messages.error(
+                request,
+                'That budget looks like a typo — the daily limit is capped at '
+                '£10,000. Enter a smaller amount, or 0 to disable the limit.'
+            )
+            return redirect('admin_stats')
         cfg.daily_budget_gbp = value
         cfg.budget_tripped = False
         cfg.budget_tripped_date = None
