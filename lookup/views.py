@@ -705,7 +705,10 @@ def vehicle_make(request):
         return JsonResponse({})
 
     # 1. Anything we already hold?
-    cached = get_cached_vrm_payload(registration)
+    # count_hit=False: this is a name lookup for the loading message, not a
+    # lookup being served from cache. Counting it would double the dashboard's
+    # "free repeats served" figure.
+    cached = get_cached_vrm_payload(registration, count_hit=False)
     if cached and cached.get('make'):
         return JsonResponse({'make': cached['make']})
 

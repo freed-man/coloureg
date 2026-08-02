@@ -97,7 +97,7 @@ def budget_exceeded(config, now=None):
     return spend_today(now) >= budget
 
 
-def get_cached_vrm_payload(registration, now=None):
+def get_cached_vrm_payload(registration, now=None, count_hit=True):
     """Return a fresh cached results payload (dict) for this reg, or None.
 
     Freshness is enforced here by comparing updated_at against the TTL, so stale
@@ -116,8 +116,13 @@ def get_cached_vrm_payload(registration, now=None):
         return None
     if entry.updated_at < cutoff:
         return None  # stale — treat as miss; next live lookup refreshes it
-    # Count the hit without racing on the whole row.
-    VrmCache.objects.filter(pk=entry.pk).update(hit_count=entry.hit_count + 1)
+    # Count the hit without racing on the whole row — but ONLY when this read is
+    # actually serving a lookup. The /vehicle-make/ endpoint also reads the cache
+    # (to name the manufacturer in the loading message), and counting that would
+    # double every figure: one real lookup fired both paths, so "free repeats
+    # served" advanced by 2 each time.
+    if count_hit:
+        VrmCache.objects.filter(pk=entry.pk).update(hit_count=entry.hit_count + 1)
     return dict(entry.payload or {})
 
 

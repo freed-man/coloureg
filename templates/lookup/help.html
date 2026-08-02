@@ -71,7 +71,7 @@
       "name": "Why does coloureg cost £1?",
       "acceptedAnswer": {
         "@type": "Answer",
-        "text": "Every lookup runs against live manufacturer and vehicle databases that charge us for each search, plus the servers, data feeds, domains and software that keep coloureg fast and accurate. The £1 keeps it running and independent — no ads, no signup, and we never sell your data. If we can't find your code, you don't pay."
+        "text": "Every lookup runs against live manufacturer and vehicle databases that charge us for each search, plus the servers, data feeds, domains and software that keep coloureg fast and accurate. The £{{ lookup_price|floatformat:2 }} keeps it running and independent — no ads, no signup, and we never sell your data. If we can't find your code, you don't pay."
       }
     }
   ]
@@ -297,19 +297,18 @@
 
                 <div class="faq-item">
                     <button class="faq-toggle" type="button" aria-expanded="false" aria-controls="faq-8">
-                    <button class="faq-toggle-btn" onclick="toggleFaq(8)">
                         {% if payments_on %}
-                        <span class="faq-question">Why does <span class="coloureg-brand">colou<strong>reg</strong></span> cost £1?</span>
+                        <span class="faq-question">Why does <span class="coloureg-brand">colou<strong>reg</strong></span> cost £{{ lookup_price|floatformat:2 }}?</span>
                         {% else %}
-                        <span class="faq-question">Is <span class="coloureg-brand">colou<strong>reg</strong></span> really free?</span>
+                        <span class="faq-question">Is <span class="coloureg-brand">colou<strong>reg</strong></span> free?</span>
                         {% endif %}
                         <span class="faq-icon">▼</span>
                     </button>
                     <div class="faq-answer" id="faq-8" style="display: none;">
                         {% if payments_on %}
-                        <p>Every lookup runs against live manufacturer and vehicle databases that charge us for each search — and behind those sit the servers, the data feeds, the domains and the software that keep <span class="coloureg-brand">colou<strong>reg</strong></span> fast and accurate. It genuinely costs money to return each code, on top of a lot of time spent building and maintaining the tool. The £1 keeps it running and independent — which means no ads, no signup, and we never sell your data. <strong>And if we can't find your code, you don't pay.</strong></p>
+                        <p>Every lookup runs against live manufacturer and vehicle databases that charge us for each search — and behind those sit the servers, the data feeds, the domains and the software that keep <span class="coloureg-brand">colou<strong>reg</strong></span> fast and accurate. It genuinely costs money to return each code, on top of a lot of time spent building and maintaining the tool. The £{{ lookup_price|floatformat:2 }} keeps it running and independent — which means no ads, no signup, and we never sell your data. <strong>And if we can't find your code, you don't pay.</strong></p>
                         {% else %}
-                        <p>Yes — <span class="coloureg-brand">colou<strong>reg</strong></span> is free right now. But running it isn't: there's the cloud server, the database, the domains, the email service, and per-lookup charges from third-party data providers. This is currently free while we finish testing, but as costs grow a small per-lookup fee may become necessary. Nothing will change without warning.</p>
+                        <p>It's free at the moment while we finish testing — but running it isn't free for us: every lookup is charged by the data providers, on top of the servers, databases, domains and email service behind it. A charge of £{{ lookup_price|floatformat:2 }} per lookup will apply soon, and you'll only ever pay when we actually find your paint code. Nothing will change without warning.</p>
                         {% endif %}
                     </div>
                 </div>
