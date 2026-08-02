@@ -307,7 +307,16 @@ class PaintLookup(models.Model):
         # on any residual ambiguity — so the worst case is a decline, never a
         # wrong answer (same risk class as the long-standing 'metallic'/'pearl'
         # stripping).
-        for w in ('clearcoat', 'pearlescent', 'metalizado', 'metallise',
+        # 'exterior paint' and 'paintwork' are partslink24 WRAPPER words, not
+        # finishes: it returns Jaguar/Land Rover names as "Exterior Paint - X"
+        # and Vauxhall/Opel names as "Metallic X Paintwork". Left in place they
+        # defeat the name lookup entirely — 'Metallic Voltaic Blue Paintwork'
+        # missed while a bare 'Voltaic Blue' resolved to 23D. Verified safe:
+        # NEITHER phrase appears in any of the 120,465 stored colour names, so
+        # stripping them can only remove noise, never part of a real name.
+        # Listed before the shorter finish words so the phrase is consumed whole.
+        for w in PaintLookup.PROVIDER_WRAPPER_WORDS + (
+                  'clearcoat', 'pearlescent', 'metalizado', 'metallise',
                   'metalise', 'tricoat', 'metallic', 'metalic', 'perlato',
                   'nacre', 'pearl', 'perl', 'satin', 'solid', 'gloss', 'matte',
                   'matt', 'mica', 'effect', 'tri', 'coat', 'uni', 'met'):
@@ -626,6 +635,16 @@ class PaintLookup(models.Model):
         },
     }
 
+    # partslink24 wraps colour names in provider boilerplate: Jaguar/Land Rover
+    # come back as "Exterior Paint - X", Vauxhall/Opel as "Metallic X Paintwork".
+    # These are NOT finishes — they carry no colour meaning — so both normalisers
+    # strip them. Kept as one constant because the two normalisers must agree:
+    # normalize_name feeds the name->code index, _light_normalize_name feeds the
+    # curated-override lookup, and a name stripped by one but not the other
+    # silently misses in whichever path it wasn't stripped in.
+    # Verified safe: neither phrase appears in any of the 120,465 stored names.
+    PROVIDER_WRAPPER_WORDS = ('exterior paint', 'paintwork')
+
     @staticmethod
     def _light_normalize_name(colour_name):
         """Lowercase + trim + collapse internal whitespace, and drop parentheses so a
@@ -634,6 +653,11 @@ class PaintLookup(models.Model):
         normalize_name) so 'pearl'/'metallic' survive to distinguish paint variants
         (e.g. Panther Black solid vs pearl)."""
         s = (colour_name or '').strip().lower().replace('(', ' ').replace(')', ' ')
+        # Strip provider wrapper boilerplate only — finish words must survive here.
+        for w in PaintLookup.PROVIDER_WRAPPER_WORDS:
+            s = re.sub(r'\b' + re.escape(w) + r'\b', ' ', s)
+        # A stripped prefix can leave a dangling separator ("- santorini black").
+        s = re.sub(r'^[\s\-–—:,]+|[\s\-–—:,]+$', ' ', s)
         return re.sub(r'\s+', ' ', s).strip()
 
     @classmethod
