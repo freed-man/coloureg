@@ -18,7 +18,7 @@ SECRET_KEY = os.environ.get('SECRET_KEY')
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = os.environ.get('DEVELOPMENT', '') == 'True'
 
-ALLOWED_HOSTS = ['127.0.0.1', 'localhost', '.herokuapp.com', '.coloureg.com', '.coloureg.co.uk']
+ALLOWED_HOSTS = ['127.0.0.1', 'localhost', '.coloureg.com', '.coloureg.co.uk']
 
 # The Railway-assigned public URL (e.g. 'coloureg-production.up.railway.app').
 # Allow the whole '.up.railway.app' suffix so direct hits to that URL are
@@ -26,13 +26,13 @@ ALLOWED_HOSTS = ['127.0.0.1', 'localhost', '.herokuapp.com', '.coloureg.com', '.
 # domain (coloureg.com) is attached, Railway sets RAILWAY_PUBLIC_DOMAIN to the
 # custom domain, so the original *.up.railway.app URL would otherwise fall out
 # of ALLOWED_HOSTS and throw DisallowedHost (noise in Sentry, and the URL would
-# 400). Harmless on Heroku (just an extra never-matched suffix there).
+# 400).
 ALLOWED_HOSTS.append('.up.railway.app')
 
 # Railway provides the service's current public domain in RAILWAY_PUBLIC_DOMAIN
 # (the custom domain once attached, otherwise the *.up.railway.app URL). Append
-# it too so whatever Railway considers canonical is always allowed. Harmless on
-# Heroku (the var is simply absent there).
+# it too so whatever Railway considers canonical is always allowed. Absent
+# outside Railway, in which case this is a no-op.
 _railway_domain = os.environ.get('RAILWAY_PUBLIC_DOMAIN', '').strip()
 if _railway_domain:
     ALLOWED_HOSTS.append(_railway_domain)
@@ -66,10 +66,16 @@ def RATELIMIT_IP_META_KEY(request):
 # -lookup actions). Behind Railway's proxy on a new domain, POSTs would 403
 # without this. We trust the real domains always, plus the Railway domain when
 # present. Scheme is required in this setting (unlike ALLOWED_HOSTS).
+# NOTE (paint17): all Heroku entries removed, from here AND from ALLOWED_HOSTS
+# above. They were residue from the original Heroku deploy that this project
+# migrated off; nothing runs there. The CSRF one mattered more than the hosts
+# one: 'https://*.herokuapp.com' trusted the Origin of EVERY app on a shared
+# third-party domain for state-changing POSTs here. The CSRF token check still
+# stood behind it so it was not a live hole, but a wildcard over a domain
+# anyone can deploy to has no business in this list.
 CSRF_TRUSTED_ORIGINS = [
     'https://*.coloureg.com',
     'https://*.coloureg.co.uk',
-    'https://*.herokuapp.com',
 ]
 if _railway_domain:
     CSRF_TRUSTED_ORIGINS.append(f'https://{_railway_domain}')
@@ -216,9 +222,10 @@ RESEND_API_KEY = os.environ.get('RESEND_API_KEY', '')
 DEFAULT_FROM_EMAIL = os.environ.get('DEFAULT_FROM_EMAIL', 'hello@coloureg.com')
 ADMIN_EMAIL = os.environ.get('ADMIN_EMAIL', 'hello@coloureg.com')
 
-# Upload ceiling. Manual-lookup photos are validated and capped at 8 MB in
-# lookup/services/uploads.py; Django rejects the request outright if it exceeds
-# this first, so it must be at least as large. Nothing is written to disk —
+# Upload ceiling. Manual-lookup photos are validated and capped at 10 MB in
+# lookup/services/uploads.py (MAX_UPLOAD_BYTES — this comment said 8 MB and was
+# wrong); Django rejects the request outright if it exceeds this first, so it
+# must be at least as large. Nothing is written to disk —
 # files are held in memory for the request and attached to the outgoing email.
 DATA_UPLOAD_MAX_MEMORY_SIZE = 12 * 1024 * 1024
 FILE_UPLOAD_MAX_MEMORY_SIZE = 12 * 1024 * 1024
@@ -232,9 +239,19 @@ FILE_UPLOAD_MAX_MEMORY_SIZE = 12 * 1024 * 1024
 # POST without a valid token are rejected for free.
 TURNSTILE_SITE_KEY = os.environ.get('TURNSTILE_SITE_KEY', '')
 TURNSTILE_SECRET_KEY = os.environ.get('TURNSTILE_SECRET_KEY', '')
+# Optional hostname pinning (paint17). Cloudflare's siteverify response reports
+# the hostname the token was issued for; when this list is non-empty,
+# verify_turnstile() rejects tokens from anything else. Comma-separated, e.g.
+# 'coloureg.com,www.coloureg.com'. Left EMPTY by default and therefore inert —
+# an incorrect list would reject every lookup, so populate it deliberately, not
+# as part of a deploy that changes other things.
+TURNSTILE_ALLOWED_HOSTNAMES = [
+    h.strip() for h in os.environ.get('TURNSTILE_ALLOWED_HOSTNAMES', '').split(',')
+    if h.strip()
+]
 
 # --- Stripe (F, paint15) ------------------------------------------------------
-# Payment scaffolding for the £1-per-lookup flow. Fully built and testable
+# Payment scaffolding for the paid-lookup flow (see LOOKUP_PRICE_PENCE below). Fully built and testable
 # against Stripe TEST keys, but gated twice: these env vars must be set AND
 # SiteConfig.payments_enabled must be flipped in /admin-stats/ (defaults False).
 # Until both are true the site behaves exactly as today (free lookups).
@@ -244,7 +261,9 @@ TURNSTILE_SECRET_KEY = os.environ.get('TURNSTILE_SECRET_KEY', '')
 STRIPE_PUBLISHABLE_KEY = os.environ.get('STRIPE_PUBLISHABLE_KEY', '')
 STRIPE_SECRET_KEY = os.environ.get('STRIPE_SECRET_KEY', '')
 STRIPE_WEBHOOK_SECRET = os.environ.get('STRIPE_WEBHOOK_SECRET', '')
-# Price per lookup in pence (GBP). 100 = £1.00.
+# Price per lookup in pence (GBP). 100 = £1.00, so the 200 default is £2.00 —
+# which is the live price. Neighbouring comments used to describe a "£1-per-
+# lookup flow"; that was stale and is corrected here and in payments.py.
 LOOKUP_PRICE_PENCE = int(os.environ.get('LOOKUP_PRICE_PENCE', '200'))
 
 CACHES = {

@@ -10,7 +10,7 @@ from django.conf import settings as dj_settings
 from django.contrib import messages
 from django.contrib.admin.views.decorators import staff_member_required
 from django.core.exceptions import ValidationError
-from django.core.validators import validate_email
+from django.core.validators import validate_email, validate_ipv46_address
 from django.core.cache import caches
 from django.db import connection
 from django.db.models import Count, Avg, Q, Sum, Max, Case, When, IntegerField
@@ -41,6 +41,7 @@ from .services.protection import (
     record_miss,
     clear_miss,
     sliding_rate_limited,
+    london_day_start,
 )
 from .services.payments import (
     payments_active,
@@ -65,19 +66,58 @@ from .services.email import (
 logger = logging.getLogger(__name__)
 
 
+def _valid_ip(value):
+    """Return `value` if it is a real IPv4/IPv6 address, else None.
+
+    Search.ip_address is a GenericIPAddressField, which Postgres implements as
+    `inet`. Django does NOT validate on save() — GenericIPAddressField.
+    get_prep_value passes any string straight through — so an unparseable value
+    reaches the database and raises DataError. In index() that save happens
+    AFTER the VDG call has been billed, so the lookup 500s, the row is lost and
+    the money is spent.
+
+    SQLite types the same column as char(39) and accepts anything, which is why
+    this is invisible locally and in the battery: it only appears in production.
+
+    Reachable because these values come from request headers. CF-Connecting-IP
+    is unspoofable *through* Cloudflare (the edge overwrites it), but the origin
+    also answers directly on its Railway hostname — which the Stripe webhook
+    deliberately relies on — so a direct request can carry any value it likes.
+    """
+    if not value:
+        return None
+    try:
+        validate_ipv46_address(value)
+    except ValidationError:
+        return None
+    return value
+
+
 def get_client_ip(request):
     # All traffic is proxied through Cloudflare (orange-cloud), which sets
     # CF-Connecting-IP to the single real client IP. Trust that first.
     # X-Forwarded-For is unreliable here: Cloudflare appends its edge IP and
     # Railway's proxy rewrites the chain, so the visitor isn't dependably the
     # first entry (that's why logs were showing 172.6x Cloudflare IPs).
+    #
+    # Every candidate is validated before it is returned (see _valid_ip). A
+    # header that isn't an IP falls through to the next source rather than being
+    # trusted, and if nothing valid is found we return None: the column is
+    # nullable, and a null IP is a great deal better than a 500 on a lookup we
+    # have already paid for. Rate limiting degrades safely too — junk-IP callers
+    # all key to the same bucket, so they share one allowance between them
+    # instead of getting a fresh one per forged header.
     cf_ip = request.META.get('HTTP_CF_CONNECTING_IP')
     if cf_ip:
-        return cf_ip.strip()
+        ip = _valid_ip(cf_ip.strip())
+        if ip:
+            return ip
     x_forwarded_for = request.META.get('HTTP_X_FORWARDED_FOR')
     if x_forwarded_for:
-        return x_forwarded_for.split(',')[0].strip()
-    return request.META.get('REMOTE_ADDR')
+        ip = _valid_ip(x_forwarded_for.split(',')[0].strip())
+        if ip:
+            return ip
+    return _valid_ip(request.META.get('REMOTE_ADDR'))
 
 
 def extract_mot_field(mot_data, field_name):
@@ -1584,7 +1624,14 @@ def admin_stats(request):
         return redirect('admin_stats')
 
     now = timezone.now()
-    today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    # London-local midnight, NOT UTC midnight (paint17). This used to be
+    # now.replace(hour=0, ...) on a UTC-aware datetime, which under BST starts
+    # the dashboard's day at 01:00 London while the budget breaker's day (see
+    # protection.london_day_start) starts at 00:00. Lookups in that hour counted
+    # toward the breaker but were missing from the "today" card — two panels
+    # side by side quietly disagreeing, every day from late March to late
+    # October. Both now read the day the same way.
+    today_start = london_day_start(now)
     week_ago = now - timedelta(days=7)
     month_ago = now - timedelta(days=30)
 
@@ -2439,6 +2486,31 @@ def start_paid_lookup(request):
     return redirect(session.url)
 
 
+def _sget(obj, key, default=None):
+    """Read a key from a Stripe response object OR a plain dict.
+
+    stripe-python 15.x StripeObject is NOT a dict subclass and has no .get():
+    it supports obj['key'] and obj.key only. Calling .get() on one raises
+    AttributeError, and every object in this flow — Session, its nested
+    metadata, the expanded PaymentIntent, and the webhook Event — is one.
+
+    That mattered: the paid flow was written entirely against .get() and tested
+    against plain dict fixtures, so it passed the battery while failing on the
+    first real Stripe response. Routing every read through here keeps both
+    shapes working, so the dict-based tests stay valid AND production works.
+
+    Missing keys and explicit nulls both return `default`, matching dict.get()
+    semantics closely enough that call sites read the same either way.
+    """
+    if obj is None:
+        return default
+    try:
+        value = obj[key]
+    except (KeyError, IndexError, TypeError, AttributeError):
+        return default
+    return default if value is None else value
+
+
 def _append_search_note(search, note):
     """Append a marker to Search.error_message without destroying what's there.
 
@@ -2494,14 +2566,40 @@ def _fulfil_paid_session(session):
     """
     if session is None:
         return None
-    reg = (session.get('metadata') or {}).get('registration')
-    pi = session.get('payment_intent')
-    payment_intent_id = pi if isinstance(pi, str) else (pi or {}).get('id')
+    reg = _sget(_sget(session, 'metadata'), 'registration')
+    pi = _sget(session, 'payment_intent')
+    payment_intent_id = pi if isinstance(pi, str) else _sget(pi, 'id')
     if not reg or not payment_intent_id:
         return None
 
+    # --- The customer must actually have paid (paint17) --------------------
+    # In `payment` mode Stripe creates the PaymentIntent when the SESSION is
+    # created, not when the card is authorised. So an ABANDONED session still
+    # carries a registration and a PaymentIntent id and sailed past the check
+    # above: we ran a billable VDG lookup, failed the capture, and — because
+    # _record_capture_outcome deliberately still delivers on a capture failure —
+    # handed over the paint code for free. Repeatable by anyone: start a paid
+    # lookup, copy the cs_... id out of the Checkout URL, close the tab, then
+    # request /paid/success/?session_id=... The 3/hour limit is deliberately off
+    # on the paid path, so only the daily budget breaker bounded it.
+    #
+    # NOT `payment_status == 'paid'`: with capture_method='manual' a correctly
+    # authorised session reports 'unpaid' right up until we capture it, so that
+    # check would reject every legitimate payment. The two signals that actually
+    # mean "authorised and waiting for our capture" are the session being
+    # complete and the intent being requires_capture.
+    if _sget(session, 'status') != 'complete':
+        return None
+    pi_status = None if isinstance(pi, str) else _sget(pi, 'status')
+    # pi_status is None when the caller passed an unexpanded session (the raw
+    # webhook payload carries the intent as a bare id string). The session being
+    # 'complete' is sufficient on its own there — Stripe only marks it complete
+    # once payment succeeds — so we don't reject for want of the expansion.
+    if pi_status is not None and pi_status not in ('requires_capture', 'succeeded'):
+        return None
+
     # Idempotency: if we've already fulfilled this session, return its payload.
-    session_id = session.get('id')
+    session_id = _sget(session, 'id')
 
     # --- Concurrency guard (paint16b) --------------------------------------
     # The success redirect and the Stripe webhook fire at essentially the same
@@ -2656,10 +2754,10 @@ def stripe_webhook(request):
     event = construct_webhook_event(request.body, request.META.get('HTTP_STRIPE_SIGNATURE', ''))
     if event is None:
         return HttpResponse(status=400)
-    if event.get('type') == 'checkout.session.completed':
-        session = event['data']['object']
+    if _sget(event, 'type') == 'checkout.session.completed':
+        session = _sget(_sget(event, 'data'), 'object')
         # Re-retrieve expanded so payment_intent is an id we can capture/cancel.
-        full = get_session(session.get('id'))
+        full = get_session(_sget(session, 'id'))
         try:
             _fulfil_paid_session(full or session)
         except Exception:

@@ -1,6 +1,7 @@
 import logging
 import re
 import unicodedata
+from collections import namedtuple
 from decimal import Decimal
 
 from django.core.cache import caches
@@ -218,6 +219,28 @@ class Search(models.Model):
 class PaintLookup(models.Model):
     """A paint colour row keyed by manufacturer + code (1:1 with a colour)."""
 
+    # Lightweight row used by code_from_name (paint17). The matcher has to pull
+    # an ENTIRE make into Python to test names — 4,081 rows for Ford — and
+    # building full model instances for all of them, each decoding four
+    # JSONFields, dominated the cost: ~338ms and 6.2MB peak to find nine
+    # matches. Fetching plain tuples and wrapping them in a namedtuple is ~2.8x
+    # faster for ~40% of the memory, and because a namedtuple keeps ATTRIBUTE
+    # access (r.code, r.hex, r.name, r.models_list) the downstream helpers —
+    # _collapse_to_single_code and _model_matches — are untouched.
+    #
+    # Verified data-equivalent, not assumed: all 120,465 rows across all 281
+    # makes come back with identical values AND identical types (the JSONFields
+    # decode to real lists either way).
+    #
+    # It also sidesteps the trap in the .only() approach this replaces, where
+    # reading any field outside the deferred set silently costs a query PER ROW.
+    # These tuples simply have no other fields to read.
+    _MATCH_FIELDS = ('code', 'hex', 'name', 'normalized_names', 'models_list')
+    _MatchRow = namedtuple('_MatchRow', _MATCH_FIELDS)
+    # Positional index used to test the name before paying for the namedtuple.
+    # Derived from the field list so the two cannot drift apart.
+    _MATCH_NAMES_IDX = _MATCH_FIELDS.index('normalized_names')
+
     # Lookup keys (normalised: lowercase mfr / uppercase code)
     manufacturer = models.CharField(max_length=64, db_index=True)
     code = models.CharField(max_length=64, db_index=True)
@@ -411,23 +434,38 @@ class PaintLookup(models.Model):
         variants = cls.normalize_code_variants(paint_code)
 
         # 1) Exact / split variants (the normal, reliable path).
+        # ONE query for all variants instead of one per variant (paint17). A
+        # compound code like 'B4B4/B9A' produced three round-trips here and six
+        # with the L-fallback below, each a full hop to Neon from its 0.25 CU
+        # floor — and results() repeats the whole thing per entry in
+        # all_paint_codes, so a three-code vehicle cost ten queries just for
+        # swatches. Precedence is unchanged: the loop below still walks
+        # `variants` in order and returns the first hit, exactly as the
+        # query-per-variant version did.
+        rows = {
+            r.code: r
+            for r in cls.objects.filter(manufacturer=mfr_norm, code__in=variants)
+        }
         for code in variants:
-            match = cls.objects.filter(manufacturer=mfr_norm, code=code).first()
+            match = rows.get(code)
             if match:
                 return match
 
         # 2) VW/Audi leading-L fallback (only when the plain form is absent).
         if mfr_norm in cls.LEADING_L_MAKES:
-            for code in variants:
-                # Prepend one 'L'. This is safe even when `code` already starts
-                # with 'L' (the body code itself can be e.g. 'L5M', stored at the
-                # factory as 'LL5M'): step 1 already confirmed the plain form has
-                # no row, and there are no cases where both 'LX' and 'LLX' exist
-                # as different colours — so the plain-absent check is the real
-                # guard, not a no-double-L rule.
-                match = cls.objects.filter(
-                    manufacturer=mfr_norm, code='L' + code
-                ).first()
+            l_variants = ['L' + code for code in variants]
+            l_rows = {
+                r.code: r
+                for r in cls.objects.filter(manufacturer=mfr_norm, code__in=l_variants)
+            }
+            for code in l_variants:
+                # One 'L' has been prepended above. That is safe even when the
+                # variant already starts with 'L' (the body code itself can be
+                # e.g. 'L5M', stored at the factory as 'LL5M'): step 1 already
+                # confirmed the plain form has no row, and there are no cases
+                # where both 'LX' and 'LLX' exist as different colours — so the
+                # plain-absent check is the real guard, not a no-double-L rule.
+                match = l_rows.get(code)
                 if match:
                     return match
 
@@ -735,9 +773,24 @@ class PaintLookup(models.Model):
             # None. Filtering by make is indexed and cheap (a make has at most a
             # couple thousand rows), so scanning those in Python is fast and
             # behaves identically on every database.
+            #
+            # Fetched as plain tuples and wrapped in _MatchRow (paint17) rather
+            # than as model instances — see _MATCH_FIELDS above for the
+            # measurements and the equivalence check. The name test runs on the
+            # raw tuple first, so a namedtuple is only built for rows that
+            # actually match (nine out of 4,081 for a Ford query).
+            #
+            # Deliberately NOT .iterator(): on PostgreSQL that uses a
+            # server-side cursor, which breaks behind a transaction-pooling
+            # connection pooler — exactly what Neon's -pooler endpoint is. It
+            # would buy ~13% and 1.5MB in exchange for a failure mode that
+            # depends on which Neon endpoint DATABASE_URL happens to point at.
             rows = [
-                r for r in cls.objects.filter(manufacturer=mfr_norm)
-                if name_norm in (r.normalized_names or [])
+                cls._MatchRow(*t)
+                for t in cls.objects.filter(manufacturer=mfr_norm).values_list(
+                    *cls._MATCH_FIELDS
+                )
+                if name_norm in (t[cls._MATCH_NAMES_IDX] or [])
             ]
             if not rows:
                 return None, None, None

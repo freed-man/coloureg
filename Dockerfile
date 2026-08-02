@@ -1,17 +1,16 @@
 # coloureg — Django web app container for Railway.
 #
-# Mirrors the Heroku setup (gunicorn + whitenoise + dj-database-url) so nothing
-# about how the app runs changes — only where it runs. The same Neon database
-# is used via the DATABASE_URL env var (do NOT provision a Railway Postgres;
-# copy the existing Neon connection string so all current data is retained).
+# gunicorn + whitenoise + dj-database-url. The Neon database is reached via the
+# DATABASE_URL env var (do NOT provision a Railway Postgres; copy the existing
+# Neon connection string so all current data is retained).
 #
-# Migrations are NOT run here. On Heroku the Procfile `release:` phase ran them;
-# the Railway equivalent is a Pre-Deploy Command on the service:
+# Migrations are NOT run here. The Railway mechanism is a Pre-Deploy Command on
+# the service:
 #     python manage.py migrate
 # set that in the Railway service settings (Deploy -> Pre-Deploy Command), so
-# migrations run once per deploy, separate from the web process — exactly like
-# Heroku's release phase. Running them in the container start command instead
-# would re-run on every restart and can race if scaled to >1 instance.
+# migrations run once per deploy, separate from the web process. Running them in
+# the container start command instead would re-run on every restart and can race
+# if scaled to >1 instance.
 
 # Match runtime.txt (python-3.12.7).
 FROM python:3.12-slim
@@ -44,6 +43,19 @@ COPY . .
 # needed for this step.
 RUN SECRET_KEY=build-time-only-not-used DEVELOPMENT=False \
     python manage.py collectstatic --noinput
+
+# Drop root (paint17). Everything above runs as root at BUILD time — installing
+# wheels, copying the app, writing staticfiles — and those files are left
+# world-readable, which is all whitenoise needs. Nothing is written at runtime:
+# uploads are held in memory and never persisted, and the database is remote.
+# So the running process has no reason to be root, and a container escape or an
+# RCE in a dependency is meaningfully cheaper to contain without it.
+#
+# Must come AFTER collectstatic (which writes to /app/staticfiles) and BEFORE
+# CMD. If a future step needs to write inside the image at runtime, chown that
+# path to appuser rather than moving this line back up.
+RUN useradd --create-home --uid 10001 appuser
+USER appuser
 
 EXPOSE 8000
 

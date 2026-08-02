@@ -5,10 +5,14 @@ and ~27% of lookups return no paint code. So the flow must charge the customer
 only when a result is actually delivered. Stripe's manual-capture (auth-then-
 capture) does exactly this:
 
-    1. AUTHORISE £1 (place a hold) when the customer pays at Checkout.
+    1. AUTHORISE the fee (place a hold) when the customer pays at Checkout.
     2. Run the lookup.
-    3. CAPTURE the £1 if a paint code was found.
+    3. CAPTURE the fee if a paint code was found.
     4. CANCEL the authorisation (free) if not — the customer is never charged.
+
+The amount is settings.LOOKUP_PRICE_PENCE (currently 200 = £2.00), not a
+literal anywhere in this module — earlier revisions of this docstring said £1
+throughout, which is the sort of drift that gets believed on the money path.
 
 Two independent gates keep this dormant until deliberately switched on:
   * env keys (STRIPE_SECRET_KEY etc.) must be present, AND
@@ -20,7 +24,7 @@ against Stripe TEST keys with zero effect on production behaviour.
 Fraud posture (built in, see the flow in views): Checkout is Stripe-hosted so
 Stripe owns card-testing detection and Radar; wallets (Apple/Google Pay) are
 enabled for tokenised, biometric payment; and Turnstile guards the page before
-a PaymentIntent is ever created. The £1 auth is cancelled immediately (an
+a PaymentIntent is ever created. The auth is cancelled immediately (an
 authorisation reversal, not an expiry) to stay clear of card-network limits on
 uncaptured low-value auths.
 """
@@ -69,7 +73,7 @@ def create_checkout_session(registration, success_url, cancel_url, client_ip=Non
     """Create a manual-capture Checkout Session for one lookup.
 
     Returns the Stripe Checkout Session (caller redirects to session.url), or
-    None if Stripe isn't configured. The £1 is only AUTHORISED here (capture
+    None if Stripe isn't configured. The fee is only AUTHORISED here (capture
     happens later, on a paint hit) via payment_intent_data.capture_method=manual.
     The registration is stashed in metadata so the success handler and the
     webhook can both recover which lookup this payment is for.
@@ -135,8 +139,25 @@ def create_checkout_session(registration, success_url, cancel_url, client_ip=Non
         },
         success_url=success_url,
         cancel_url=cancel_url,
-        # A paid lookup should complete promptly; don't leave holds dangling.
-        expires_at=None,
+        # NOTE (paint17): `expires_at=None` used to be passed here, under a
+        # comment about not leaving holds dangling. Removed, for two reasons.
+        #
+        # First it did nothing: stripe-python's encoder drops None parameters
+        # outright (_encode.py, `if value is None: continue`), so it was never
+        # sent and Checkout's 24-hour default applied regardless.
+        #
+        # Second — and this is the part worth remembering — the premise was
+        # wrong. expires_at governs how long the SESSION stays usable: status
+        # goes open -> expired if the customer never pays. It has nothing to do
+        # with the authorisation hold, because a hold only exists once payment
+        # succeeds, at which point status is `complete` and expiry no longer
+        # applies. Hold duration is the card network's (~7 days) and our
+        # protection against dangling ones is calling cancel() immediately on a
+        # miss, which _fulfil_paid_session does.
+        #
+        # So shortening it would buy nothing and cost something real: a customer
+        # who opens Checkout on a phone, gets interrupted, and comes back 35
+        # minutes later would find a dead page. Left at the default.
     )
     return session
 

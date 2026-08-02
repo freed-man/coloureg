@@ -33,7 +33,7 @@ Design notes
 from datetime import timedelta
 from decimal import Decimal
 
-from django.db.models import Sum, Q
+from django.db.models import F, Sum
 from django.utils import timezone
 
 
@@ -133,7 +133,13 @@ def get_cached_vrm_payload(registration, now=None, count_hit=True):
     # double every figure: one real lookup fired both paths, so "free repeats
     # served" advanced by 2 each time.
     if count_hit:
-        VrmCache.objects.filter(pk=entry.pk).update(hit_count=entry.hit_count + 1)
+        # F() expression, not entry.hit_count + 1 (paint17): the Python form is
+        # a read-modify-write and two concurrent hits on the same reg both
+        # compute the same successor, so one increment is silently lost. F()
+        # increments in the database. Only observability, but the figure feeds
+        # the "free repeats served" card and a wrong number there is worse than
+        # no number.
+        VrmCache.objects.filter(pk=entry.pk).update(hit_count=F('hit_count') + 1)
     return dict(entry.payload or {})
 
 
@@ -204,7 +210,24 @@ def verify_turnstile(token, remote_ip=None, timeout=5):
             },
             timeout=timeout,
         )
-        return bool(resp.json().get('success'))
+        data = resp.json()
+        if not data.get('success'):
+            return False
+        # Hostname pinning (paint17), OPT-IN and off by default. Cloudflare
+        # returns the hostname the token was issued for; without checking it we
+        # accept any valid token, including one solved on a different site
+        # someone controls. Sitekeys are already hostname-bound in the
+        # dashboard, so this is defence in depth — it matters most because the
+        # origin answers directly on its Railway hostname, outside Cloudflare.
+        #
+        # Empty setting -> skipped, same safe-by-default posture as the keys
+        # themselves. Getting this list wrong would reject EVERY lookup (bad
+        # token fails closed), so it stays inert until deliberately populated
+        # via TURNSTILE_ALLOWED_HOSTNAMES.
+        allowed = getattr(settings, 'TURNSTILE_ALLOWED_HOSTNAMES', None) or []
+        if allowed and (data.get('hostname') or '') not in allowed:
+            return False
+        return True
     except Exception:
         # Cloudflare verify unreachable/broken -> fail open (see docstring).
         return True
