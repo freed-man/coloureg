@@ -671,10 +671,15 @@
         </div>
 
         <!-- Device breakdown -->
-        <div class="panel">
+        {% comment %}
+           The panel is a flex column so the chart can grow into whatever height
+           the taller neighbouring panel sets, keeping the doughnut vertically
+           centred instead of pinned to the top with dead space beneath it.
+        {% endcomment %}
+        <div class="panel" style="display: flex; flex-direction: column;">
             <h3>Device breakdown</h3>
             {% if device_total > 0 %}
-            <div class="chart-wrapper-small">
+            <div class="chart-wrapper-small" style="flex: 1 1 auto; display: flex; align-items: center; min-height: 260px;">
                 <canvas id="deviceChart"></canvas>
             </div>
             {% else %}
@@ -1160,12 +1165,9 @@
                                discarded and the true cost is unknown
                     {% endcomment %}
                     <td style="text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums;">
-                        {% if s.provider == 'cache' %}
-                        <span style="color: #1b7f4d;">£0.00</span>
-                        {% elif s.vdg_transaction_cost is not None %}
-                        <span style="color: {% if s.vdg_transaction_cost >= 0.40 %}#a05a00{% else %}#666{% endif %};">£{{ s.vdg_transaction_cost|floatformat:2 }}</span>
-                        {% else %}
-                        <span style="color: #ccc;">—</span>
+                        {% if s.provider == 'cache' %}£0.00
+                        {% elif s.vdg_transaction_cost is not None %}£{{ s.vdg_transaction_cost|floatformat:2 }}
+                        {% else %}<span style="color: #ccc;">—</span>
                         {% endif %}
                     </td>
                     <td style="text-align: center;">
@@ -1471,10 +1473,29 @@
     new Chart(dctx, {
         type: 'doughnut',
         data: {
-            labels: ['Mobile', 'Tablet', 'Desktop', 'Unknown'],
+            // Built from non-zero counts only, so a device type with no traffic
+            // simply isn't drawn (rather than a zero-width sliver and a legend
+            // entry for something nobody used). Desktop first — it's the
+            // majority — then mobile, then the rest.
+            labels: [
+                {% if device_counts.desktop %}'Desktop',{% endif %}
+                {% if device_counts.mobile %}'Mobile',{% endif %}
+                {% if device_counts.tablet %}'Tablet',{% endif %}
+                {% if device_counts.unknown %}'Unknown',{% endif %}
+            ],
             datasets: [{
-                data: [{{ device_counts.mobile }}, {{ device_counts.tablet }}, {{ device_counts.desktop }}, {{ device_counts.unknown }}],
-                backgroundColor: ['#003399', '#0066cc', '#66b3ff', '#cccccc'],
+                data: [
+                    {% if device_counts.desktop %}{{ device_counts.desktop }},{% endif %}
+                    {% if device_counts.mobile %}{{ device_counts.mobile }},{% endif %}
+                    {% if device_counts.tablet %}{{ device_counts.tablet }},{% endif %}
+                    {% if device_counts.unknown %}{{ device_counts.unknown }},{% endif %}
+                ],
+                backgroundColor: [
+                    {% if device_counts.desktop %}'#003399',{% endif %}
+                    {% if device_counts.mobile %}'#66b3ff',{% endif %}
+                    {% if device_counts.tablet %}'#0066cc',{% endif %}
+                    {% if device_counts.unknown %}'#cccccc',{% endif %}
+                ],
                 borderWidth: 0,
             }]
         },
