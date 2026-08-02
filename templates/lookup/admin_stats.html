@@ -618,33 +618,6 @@
             </div>
         </div>
 
-        <!-- Top regs -->
-        <div class="panel">
-            <h3>Top searched registrations</h3>
-            <div class="table-scroll">
-            <table class="stats-table">
-                <thead>
-                    <tr>
-                        <th>Registration</th>
-                        <th class="num-col">Searches</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for item in top_regs %}
-                    <tr>
-                        <td style="font-family: monospace;">{{ item.registration }}</td>
-                        <td class="num-col">{{ item.count }}</td>
-                    </tr>
-                    {% empty %}
-                    <tr><td colspan="2" style="color: #999; text-align: center; padding: 24px 0;">No data yet</td></tr>
-                    {% endfor %}
-                </tbody>
-            </table>
-            </div>
-        </div>
-    </div>
-
-    <div class="panel-grid">
         <!-- Top failed makes -->
         <div class="panel">
             <h3>Top makes with no paint code</h3>
@@ -669,6 +642,33 @@
             </table>
             </div>
         </div>
+    </div>
+
+    <div class="panel-grid">
+        <!-- Top regs -->
+        <div class="panel">
+            <h3>Top searched registrations</h3>
+            <div class="table-scroll">
+            <table class="stats-table">
+                <thead>
+                    <tr>
+                        <th>Registration</th>
+                        <th class="num-col">Searches</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for item in top_regs %}
+                    <tr>
+                        <td style="font-family: monospace;">{{ item.registration }}</td>
+                        <td class="num-col">{{ item.count }}</td>
+                    </tr>
+                    {% empty %}
+                    <tr><td colspan="2" style="color: #999; text-align: center; padding: 24px 0;">No data yet</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            </div>
+        </div>
 
         <!-- Device breakdown -->
         {% comment %}
@@ -679,7 +679,7 @@
         <div class="panel" style="display: flex; flex-direction: column;">
             <h3>Device breakdown</h3>
             {% if device_total > 0 %}
-            <div class="chart-wrapper-small" style="flex: 1 1 auto; display: flex; align-items: center; min-height: 260px;">
+            <div class="chart-wrapper-small" style="flex: 1 1 auto; display: flex; align-items: center; min-height: 240px;">
                 <canvas id="deviceChart"></canvas>
             </div>
             {% else %}
@@ -1521,8 +1521,11 @@
             // right: a right-hand legend squeezed the doughnut into the left
             // half of its box, so it read as small and off-centre. Below, it
             // uses the full width and sits in the middle.
-            cutout: '48%',
-            layout: { padding: 8 },
+            cutout: '52%',
+            // Padding shrinks the doughnut inside its box without moving it —
+            // Chart.js draws to fill the canvas, so this is what controls the
+            // apparent size while the flex wrapper keeps it centred.
+            layout: { padding: 26 },
             plugins: {
                 legend: {
                     position: 'bottom',
