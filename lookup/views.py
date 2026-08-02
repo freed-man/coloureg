@@ -1592,7 +1592,17 @@ def admin_stats(request):
     # dashboard does ONE round-trip to Postgres instead of ~10. Each metric is
     # a conditional Count over the same Search table, so they fit naturally
     # into one SELECT with FILTER clauses.
-    top_metrics = Search.objects.aggregate(
+    # Requests refused by Turnstile are logged as Search rows (so the IP, UA and
+    # device are available when investigating), but they are NOT lookups: nothing
+    # was searched and nothing was spent. Excluding them here keeps every volume
+    # and outcome metric measuring the pipeline rather than the front door —
+    # otherwise a run of blocks would inflate daily totals and, because the rows
+    # carry no make, pile into the funnel's "no vehicle identified" bucket as
+    # though people had mistyped their registration. The blocks have their own
+    # counter instead.
+    lookups = Search.objects.exclude(error_message__contains='turnstile_blocked')
+
+    top_metrics = lookups.aggregate(
         # Volume / time windows
         total=Count('id'),
         today=Count('id', filter=Q(timestamp__gte=today_start)),
@@ -1661,7 +1671,7 @@ def admin_stats(request):
     # from BOTH sides: counting them as failures punishes us for a gap in the
     # manufacturer's data, counting them as successes claims a code we never
     # delivered. They are reported separately instead.
-    no_code_available_count = Search.objects.filter(no_code_available=True).count()
+    no_code_available_count = lookups.filter(no_code_available=True).count()
     searched_to_completion = success_with_code + genuine_miss_count
     success_rate = (
         (success_with_code / searched_to_completion * 100)
@@ -1685,7 +1695,7 @@ def admin_stats(request):
     # on the queryset, which is what the separate source query used to do at the
     # queryset level — same rows, same numbers, one fewer scan.
     daily_rows = (
-        Search.objects.filter(timestamp__gte=month_ago)
+        lookups.filter(timestamp__gte=month_ago)
         .annotate(date=TruncDate('timestamp'))
         .values('date')
         .annotate(
@@ -1781,7 +1791,7 @@ def admin_stats(request):
     # instead of iterating every Search row in Python on every render.
     device_counts = {'mobile': 0, 'tablet': 0, 'desktop': 0, 'unknown': 0}
     for row in (
-        Search.objects.exclude(device='')
+        lookups.exclude(device='')
         .values('device')
         .annotate(count=Count('id'))
     ):
