@@ -5,7 +5,9 @@ This implements the retention policy declared in the privacy notice. Run manuall
     python manage.py prune_old_data           # actually perform the scrub
     python manage.py prune_old_data --dry-run # just show what would be changed
 
-Personal fields scrubbed: ip_address, user_agent, vin, email.
+Personal fields scrubbed: ip_address, user_agent, vin, email, customer_message,
+manual_note. Also deletes stale VrmCache entries (which cache a VIN in their
+payload and would otherwise retain it indefinitely, contradicting the notice).
 Aggregate fields preserved: registration, make, model, year, colour, vehicle_title,
 paint_code, paint_description, timestamp, success, lookup_duration_ms, etc.
 
@@ -18,7 +20,8 @@ from django.core.management.base import BaseCommand
 from django.db.models import Q
 from django.utils import timezone
 
-from lookup.models import Search
+from lookup.models import Search, VrmCache
+from lookup.services.protection import VRM_CACHE_TTL_DAYS
 
 
 class Command(BaseCommand):
@@ -49,6 +52,13 @@ class Command(BaseCommand):
             | ~Q(user_agent='')
             | ~Q(vin='')
             | ~Q(email='')
+            # paint16: free text the customer wrote when requesting a manual
+            # lookup. It is arbitrary user input and therefore the field MOST
+            # likely to contain personal detail ("it's my wife's car", an
+            # address, a phone number), so it must be scrubbed like any other.
+            | ~Q(customer_message='')
+            # ...and the note we wrote back, which frequently references them.
+            | ~Q(manual_note='')
         )
         candidates = Search.objects.filter(timestamp__lt=cutoff).filter(has_personal)
 
@@ -83,8 +93,26 @@ class Command(BaseCommand):
             user_agent='',
             vin='',
             email='',
+            customer_message='',
+            manual_note='',
         )
+
+        # --- VrmCache (paint16) --------------------------------------------
+        # Cache payloads embed the VIN, so leaving them in place would retain a
+        # VIN indefinitely — directly contradicting the privacy notice's promise
+        # to scrub VINs after 12 months, and outliving the Search row it came
+        # from. Entries older than the cache TTL are already ignored at read
+        # time, so deleting them costs nothing and also stops the table growing
+        # without bound (nothing else ever removes a row).
+        stale_cutoff = timezone.now() - timedelta(days=VRM_CACHE_TTL_DAYS)
+        stale = VrmCache.objects.filter(updated_at__lt=stale_cutoff)
+        stale_count = stale.count()
+        stale.delete()
 
         self.stdout.write(self.style.SUCCESS(
             f'Scrubbed personal fields from {updated} records.'
+        ))
+        self.stdout.write(self.style.SUCCESS(
+            f'Deleted {stale_count} stale VrmCache entries '
+            f'(older than {VRM_CACHE_TTL_DAYS} days, already past their TTL).'
         ))

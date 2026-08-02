@@ -11,6 +11,7 @@ from django.contrib import messages
 from django.contrib.admin.views.decorators import staff_member_required
 from django.core.exceptions import ValidationError
 from django.core.validators import validate_email
+from django.core.cache import caches
 from django.db import connection
 from django.db.models import Count, Avg, Q, Sum, Max, Case, When, IntegerField
 from django.db.models.functions import TruncDate
@@ -224,7 +225,11 @@ def _maybe_alert_budget(config):
     try:
         send_admin_budget_alert(spend_today(), config.daily_budget_gbp)
     except Exception:
-        pass
+        # Never break the refusal path for a failed email — but do record it.
+        # A silent failure here is the worst case: the breaker has tripped and
+        # lookups are being refused, and the one person who needs to know has
+        # not been told.
+        logger.exception('Budget alert email failed to send')
 
 
 def index(request):
@@ -937,6 +942,13 @@ def lookup_status(request, search_id):
     try:
         result = resolve_paint(registration, vin, make, category, telemetry=telemetry, model=vehicle_data.get('model', ''))
     except Exception:  # noqa: BLE001 — never let a fallback failure 500 the poll
+        # Log it. Sentry only reports UNHANDLED exceptions, so without this a
+        # bug anywhere in the recovery race (two external services, threads,
+        # timeouts — the most intricate code here) would fail completely
+        # silently: the user sees a generic error, the row is stamped as
+        # attempted, and nothing indicates why. Swallowing is right; swallowing
+        # quietly is not.
+        logger.exception('Recovery failed for search_id=%s', search_id)
         _record_recovery(search_id, telemetry)
         return JsonResponse({'status': 'error'}, status=200)
 
@@ -2296,6 +2308,55 @@ def _fulfil_paid_session(session):
 
     # Idempotency: if we've already fulfilled this session, return its payload.
     session_id = session.get('id')
+
+    # --- Concurrency guard (paint16b) --------------------------------------
+    # The success redirect and the Stripe webhook fire at essentially the same
+    # moment, and both call this function. A plain "has it been done?" check is
+    # check-then-act: both can pass it before either writes, and we would run
+    # the (paid) lookup TWICE for one payment. The customer isn't charged twice
+    # — the second capture returns "already captured" — but we'd pay VDG twice
+    # and create a duplicate row.
+    #
+    # cache.add() is atomic: it inserts only if the key is absent, so exactly
+    # one caller wins. The loser waits briefly for the winner's row rather than
+    # racing it, which matters because the redirect path needs the payload to
+    # show the customer. If the winner dies mid-flight the lock expires and a
+    # later retry (Stripe re-sends webhooks) can proceed.
+    lock_key = f'fulfil-lock:{session_id}'
+    won_lock = True
+    try:
+        won_lock = caches['default'].add(lock_key, 1, 300)
+    except Exception:
+        won_lock = True  # cache unavailable -> don't block fulfilment
+
+    def _existing_payload():
+        row = Search.objects.filter(
+            registration=reg, error_message__contains=f'stripe_session={session_id}'
+        ).order_by('-id').first()
+        if not row:
+            return None
+        return {
+            'registration': reg, 'make': row.make, 'model': row.model,
+            'year': row.year, 'colour': row.colour, 'vin': row.vin,
+            'vin_masked': mask_vin(row.vin), 'vehicle_title': row.vehicle_title,
+            'paint_code': row.paint_code,
+            'paint_description': row.paint_description,
+            'all_paint_codes': [], 'make_logo': make_to_logo(row.make),
+            'category': row.category, 'search_id': row.id,
+            'paint_pending': False,
+        }
+
+    if not won_lock:
+        # Someone else is fulfilling this session right now. Poll for their
+        # result instead of duplicating the work.
+        deadline = time.monotonic() + 45
+        while time.monotonic() < deadline:
+            found = _existing_payload()
+            if found:
+                return found
+            time.sleep(1.0)
+        return _existing_payload()
+
     existing = Search.objects.filter(
         registration=reg, error_message__contains=f'stripe_session={session_id}'
     ).order_by('-id').first()

@@ -228,7 +228,7 @@ def send_user_paint_code(to_email, registration, vehicle_title, vin_masked, colo
     # Optional swatch bar — mirrors the results page UI
     if paint_hex:
         swatch_html = (
-            f'<div style="height: 80px; background: {paint_hex}; '
+            f'<div style="height: 80px; background: {_esc(paint_hex)}; '
             f'border-radius: 8px 8px 0 0;"></div>'
         )
         # Slightly adjust the box below so the rounded corners only show on bottom
