@@ -95,15 +95,35 @@ def _extract_balance(data):
 
 
 def _extract_transaction_cost(data):
-    """Extract the REAL amount VDG billed for this call (BillingInformation.
-    TransactionCost). This is the authoritative per-lookup cost — already
-    tier-correct and already net of any per-document refund VDG applied — so
-    summing it gives exact spend without assuming any per-document price.
-    Returns a float, or None if absent."""
+    """Extract the NET amount VDG actually kept for this call: the gross
+    BillingInformation.TransactionCost minus any RefundAmount VDG credited back.
+
+    Why net (and why this used to be wrong): VDG charges the full combined price
+    up front (e.g. £0.45), then, when a sub-document returns nothing, credits a
+    RefundAmount back on the SAME transaction (e.g. £0.33 refunded when
+    PaintCodeList is empty, leaving £0.12 actually billed for the vehicle data).
+    The previous version returned TransactionCost alone and claimed it was
+    "already net of any refund" — it is not. Summing the gross figure overstated
+    spend on every paint-less lookup by the refunded amount, and any downstream
+    budget/accounting that trusts this value inherited the error. We now subtract
+    RefundAmount so the returned figure matches what the account balance actually
+    moves by.
+
+    Returns a float (gross - refund), or None if no billing block is present.
+    Refund fields absent/zero -> returns the gross unchanged.
+    """
     if not data:
         return None
     billing = data.get('BillingInformation', {}) or {}
-    return billing.get('TransactionCost')
+    gross = billing.get('TransactionCost')
+    if gross is None:
+        return None
+    try:
+        refund = billing.get('RefundAmount') or 0
+        return float(gross) - float(refund)
+    except (TypeError, ValueError):
+        # Malformed numbers -> fall back to the gross value rather than crash.
+        return gross
 
 
 def smart_title(text):

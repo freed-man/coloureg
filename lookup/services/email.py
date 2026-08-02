@@ -67,15 +67,28 @@ FOOTER = """
 """
 
 
-def _attachments():
+def _attachments(extra=None):
+    """Build the Resend attachments list.
+
+    Always includes the inline brand logo (referenced by content_id in the HTML).
+    `extra` is an optional list of additional attachment dicts — used for photos
+    a customer sends with a manual-lookup request, or that we send back with a
+    reply. Each extra should look like:
+        {"filename": "label.jpg", "content": <base64 str>, "content_type": "image/jpeg"}
+    with NO content_id, so it arrives as a real attachment rather than an inline
+    image. Kept backward compatible: every existing caller passes nothing.
+    """
+    atts = []
     if LOGO_BASE64:
-        return [{
+        atts.append({
             "filename": "logo.png",
             "content": LOGO_BASE64,
             "content_id": "logo",
             "content_type": "image/png",
-        }]
-    return []
+        })
+    if extra:
+        atts.extend(extra)
+    return atts
 
 
 def _safe_send(payload, context=''):
@@ -167,7 +180,7 @@ def _make_images_responsive(html):
     return re.sub(r'<img\b([^>]*?)\s*/?\s*>', _inject, html)
 
 
-def send_custom_message(to_email, subject, markdown_body):
+def send_custom_message(to_email, subject, markdown_body, extra_attachments=None):
     """Send a custom one-off email composed via the admin compose form.
 
     `markdown_body` is converted to HTML using the standard markdown library
@@ -196,11 +209,11 @@ def send_custom_message(to_email, subject, markdown_body):
         "bcc": [settings.DEFAULT_FROM_EMAIL],
         "subject": subject,
         "html": html,
-        "attachments": _attachments(),
+        "attachments": _attachments(extra_attachments),
     }, context='custom_message')
 
 
-def send_user_paint_code(to_email, registration, vehicle_title, vin_masked, colour, paint_code, paint_description, canonical_code=None, paint_hex=None, message=''):
+def send_user_paint_code(to_email, registration, vehicle_title, vin_masked, colour, paint_code, paint_description, canonical_code=None, paint_hex=None, message='', extra_attachments=None):
     """Email user the found paint code.
 
     If canonical_code is provided and differs from paint_code, the email displays
@@ -305,14 +318,110 @@ def send_user_paint_code(to_email, registration, vehicle_title, vin_masked, colo
     return _safe_send({
         "from": settings.DEFAULT_FROM_EMAIL,
         "to": to_email,
+        # BCC ourselves so there is a permanent record of what we actually sent —
+        # the code, the description, our note, and any photo attached. Without
+        # this, a manual reply left no trace anywhere: the note was discarded and
+        # the attachment existed only in the customer's inbox. If someone later
+        # says "the code you sent was wrong", this is the evidence. Same pattern
+        # (and same reasoning) as send_custom_message.
+        "bcc": [settings.DEFAULT_FROM_EMAIL],
         "subject": f"Paint code for {registration}: {subject_code}",
         "html": html,
-        "attachments": _attachments(),
+        "attachments": _attachments(extra_attachments),
     }, context='paint_code')
 
 
-def send_admin_failure_notification(registration, vehicle_title, vin_full, colour, user_email):
-    """Email admin when paint code wasn't found and user requested manual lookup."""
+def send_user_no_code_available(to_email, registration, vehicle_title, colour, message='', extra_attachments=None):
+    """Tell the customer that no paint code exists for their vehicle (paint16).
+
+    The THIRD outcome: we searched every source — the vehicle data provider, the
+    manufacturer parts catalogues, and the dealer route — and this vehicle simply
+    has no published paint code. That is a different thing from "we couldn't find
+    it", and the customer deserves to be told so clearly rather than left with a
+    generic failure. `message` carries the explanation written in the admin panel.
+
+    BCC'd to ourselves so there is a record of exactly what was sent, same as the
+    paint-code reply.
+    """
+
+    note_block = ''
+    if message:
+        note_block = f"""
+            <div style="background: #f8f9fa; border-left: 3px solid #003399; padding: 16px 20px; margin: 24px 0;">
+                <p style="margin: 0 0 6px; color: #666; font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px;">A note from us</p>
+                <p style="margin: 0; color: #1a1a1a; font-size: 15px; line-height: 1.6; white-space: pre-wrap;">{_esc(message)}</p>
+            </div>
+        """
+
+    html = f"""
+    <div style="background: #f8f9fa; padding: 40px 20px; font-family: 'IBM Plex Sans', Arial, Helvetica, sans-serif;">
+        <div style="max-width: 560px; margin: 0 auto; background: #fff; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.04);">
+            {_brand_header()}
+            <div style="padding: 32px;">
+                <p style="margin: 0 0 20px; color: #1a1a1a; font-size: 16px; line-height: 1.6;">
+                    We looked into <strong>{_esc(registration)}</strong> by hand.
+                </p>
+                <p style="margin: 0 0 20px; color: #4a4a4a; font-size: 15px; line-height: 1.6;">
+                    Unfortunately there is no paint code published for this vehicle.
+                    We checked every source available to us, including the
+                    manufacturer records — for some vehicles the code simply was
+                    never issued or recorded.
+                </p>
+                {note_block}
+                <div style="background: #f8f9fa; border-radius: 6px; padding: 20px; margin: 24px 0;">
+                    <p style="margin: 0 0 10px; color: #666; font-size: 13px;">What you can do next</p>
+                    <p style="margin: 0; color: #1a1a1a; font-size: 14px; line-height: 1.7;">
+                        Your vehicle's paint code label is the definitive source — it is usually
+                        inside the driver's door shut, under the bonnet, or in the boot.
+                        A local factor or body shop can also match your paint directly from
+                        the panel if no code exists.
+                    </p>
+                </div>
+                <table style="width: 100%; border-collapse: collapse; margin-top: 8px;">
+                    <tr style="border-top: 1px solid #eee;">
+                        <td style="padding: 12px 0; color: #666; font-size: 14px;">Vehicle</td>
+                        <td style="padding: 12px 0; color: #1a1a1a; font-size: 14px;">{_esc(vehicle_title) or '&mdash;'}</td>
+                    </tr>
+                    <tr style="border-top: 1px solid #eee;">
+                        <td style="padding: 12px 0; color: #666; font-size: 14px;">Colour</td>
+                        <td style="padding: 12px 0; color: #1a1a1a; font-size: 14px;">{_esc(colour) or '&mdash;'}</td>
+                    </tr>
+                </table>
+            </div>
+        </div>
+        {FOOTER}
+    </div>
+    """
+
+    return _safe_send({
+        "from": settings.DEFAULT_FROM_EMAIL,
+        "to": to_email,
+        "bcc": [settings.DEFAULT_FROM_EMAIL],
+        "subject": f"About your paint code request for {registration}",
+        "html": html,
+        "attachments": _attachments(extra_attachments),
+    }, context='no_code_available')
+
+
+def send_admin_failure_notification(registration, vehicle_title, vin_full, colour, user_email, customer_message='', extra_attachments=None):
+    """Email admin when paint code wasn't found and user requested manual lookup.
+
+    `customer_message` is optional free text the customer added to the request
+    ("it's an import", "resprayed by previous owner", "estate not saloon"). It is
+    frequently the detail that turns a dead end into a found code, so it is shown
+    prominently rather than buried. `extra_attachments` carries any photo they
+    uploaded (e.g. of the paint label), which arrives attached to this email —
+    nothing is stored server-side.
+    """
+
+    message_block = ''
+    if customer_message and customer_message.strip():
+        message_block = f"""
+                <div style="background: #f0f4ff; border-left: 3px solid #003399; padding: 16px 20px; border-radius: 4px; margin-bottom: 24px;">
+                    <p style="margin: 0 0 6px; color: #003399; font-size: 11px; font-weight: 600; letter-spacing: 0.8px; text-transform: uppercase;">Customer said</p>
+                    <p style="margin: 0; color: #1a1a1a; font-size: 14px; line-height: 1.6; white-space: pre-wrap;">{_esc(customer_message.strip())}</p>
+                </div>
+        """
 
     html = f"""
     <div style="background: #f8f9fa; padding: 40px 20px; font-family: 'IBM Plex Sans', Arial, Helvetica, sans-serif;">
@@ -345,6 +454,7 @@ def send_admin_failure_notification(registration, vehicle_title, vin_full, colou
                     </tr>
                 </table>
 
+                {message_block}
                 <p style="margin: 0; color: #999; font-size: 12px;">
                     Reply to this email to respond directly to the user.
                 </p>
@@ -360,7 +470,7 @@ def send_admin_failure_notification(registration, vehicle_title, vin_full, colou
         "reply_to": user_email,
         "subject": f"Pending Request - {registration}",
         "html": html,
-        "attachments": _attachments(),
+        "attachments": _attachments(extra_attachments),
     }, context='admin_failure')
 
 
@@ -490,3 +600,55 @@ def send_user_contact_confirmation(to_email):
         "html": html,
         "attachments": _attachments(),
     }, context='user_contact_confirmation')
+
+def send_admin_budget_alert(spend_today, budget):
+    """Email admin ONCE when the daily VDG budget breaker trips (paint15).
+
+    Sent by the breaker in views.index the first time a lookup is refused
+    because today's real (refund-net) VDG spend reached the configured daily
+    budget. The caller is responsible for the once-per-day guard
+    (SiteConfig.budget_tripped / budget_tripped_date) — this function just
+    sends.
+    """
+
+    html = f"""
+    <div style="background: #f8f9fa; padding: 40px 20px; font-family: 'IBM Plex Sans', Arial, Helvetica, sans-serif;">
+        <div style="max-width: 560px; margin: 0 auto; background: #fff; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.04);">
+            {_brand_header()}
+            <div style="background: #C8102E; padding: 16px; text-align: center;">
+                <span style="color: #fff; font-size: 14px; font-weight: 600; letter-spacing: 1px; text-transform: uppercase;">Daily budget reached — lookups paused</span>
+            </div>
+            <div style="padding: 32px;">
+                <p style="margin: 0 0 20px; color: #4a4a4a; font-size: 15px; line-height: 1.6;">
+                    Today's VDG spend has reached the daily budget, so new lookups
+                    are being refused until midnight (London time). Existing pages
+                    and the admin dashboard keep working.
+                </p>
+                <table style="width: 100%; border-collapse: collapse; margin-bottom: 24px;">
+                    <tr style="border-bottom: 1px solid #eee;">
+                        <td style="padding: 10px 16px 10px 0; color: #666; font-size: 13px; width: 140px;">Spend today (net)</td>
+                        <td style="padding: 10px 0; color: #1a1a1a; font-size: 14px;">£{_esc(f'{spend_today:.2f}')}</td>
+                    </tr>
+                    <tr style="border-bottom: 1px solid #eee;">
+                        <td style="padding: 10px 16px 10px 0; color: #666; font-size: 13px;">Daily budget</td>
+                        <td style="padding: 10px 0; color: #1a1a1a; font-size: 14px;">£{_esc(f'{budget:.2f}')}</td>
+                    </tr>
+                </table>
+                <p style="margin: 0; color: #999; font-size: 12px;">
+                    To resume lookups today, raise or zero the budget in /admin-stats/.
+                    If this spend wasn't expected, check the recent lookups table for
+                    abuse before raising it.
+                </p>
+            </div>
+        </div>
+        {FOOTER}
+    </div>
+    """
+
+    return _safe_send({
+        "from": settings.DEFAULT_FROM_EMAIL,
+        "to": settings.ADMIN_EMAIL,
+        "subject": "coloureg: daily VDG budget reached — lookups paused",
+        "html": html,
+        "attachments": _attachments(),
+    }, context='admin_budget_alert')

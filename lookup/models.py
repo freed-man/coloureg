@@ -1,6 +1,8 @@
 import re
 import unicodedata
+from decimal import Decimal
 
+from django.core.cache import caches
 from django.db import models
 
 
@@ -11,12 +13,14 @@ class Search(models.Model):
     PROVIDER_VDG_RETRY = 'vdg_retry'
     PROVIDER_PARTSLINK24 = 'partslink24'
     PROVIDER_MANUAL = 'manual'
+    PROVIDER_CACHE = 'cache'
     PROVIDER_NONE = 'none'
     PROVIDER_CHOICES = [
         (PROVIDER_VDG, 'VDG'),
         (PROVIDER_VDG_RETRY, 'VDG (retry)'),
         (PROVIDER_PARTSLINK24, 'Partslink24'),
         (PROVIDER_MANUAL, 'Manual'),
+        (PROVIDER_CACHE, 'Cache'),
         (PROVIDER_NONE, 'None'),
     ]
 
@@ -122,6 +126,32 @@ class Search(models.Model):
     email = models.EmailField(blank=True, default='')
     email_sent = models.BooleanField(default=False)
     manual_lookup_completed = models.BooleanField(default=False)
+
+    # --- Manual lookup: context in both directions (paint16) ---------------
+    # What the CUSTOMER told us when requesting a manual lookup. Optional free
+    # text from the request form ("it's a Japanese import", "previous owner
+    # resprayed it", "estate not saloon"). This is often the difference between
+    # a dead end and a found code, and it used to exist only in the notification
+    # email — invisible when you came back to the row later.
+    customer_message = models.TextField(blank=True, default='')
+
+    # What WE wrote back when fulfilling the manual lookup. Previously this went
+    # straight into the outgoing email and was discarded, so there was no record
+    # of what the customer had actually been told — including any caveat
+    # ("closest match for your year", "verify against the label"). Stored so the
+    # row is a complete account of the exchange.
+    manual_note = models.TextField(blank=True, default='')
+
+    # THIRD OUTCOME STATE (paint16). Set when a manual lookup concludes that no
+    # paint code exists for this vehicle in ANY source — VDG, partslink24, and
+    # the manufacturer/dealer route all checked, and the code genuinely isn't
+    # published. This is neither a success (no code delivered) nor a failure
+    # (the pipeline worked correctly; the data does not exist). Folding it into
+    # either one corrupts the success rate: counting it as failure punishes us
+    # for the manufacturer's gap, counting it as success claims a code we never
+    # gave. It is therefore excluded from the success-rate denominator and
+    # reported separately. In paid mode it is unambiguously a no-charge.
+    no_code_available = models.BooleanField(default=False)
 
     class Meta:
         ordering = ['-timestamp']
@@ -457,6 +487,44 @@ class PaintLookup(models.Model):
     #   - 'santorini black pearl' -> PBF is a GUARD: without it the matcher would
     #     resolve a Pearl lookup to the metallic PAB. (PBF is the correct bare code
     #     for that pearl; note its stored name is the older 'Sumatra Black Pearl'.)
+    # -----------------------------------------------------------------------
+    # MODEL-AWARE overrides (paint16b).
+    #
+    # Distinct from CURATED_NAME_OVERRIDES below, which is blanket-per-make and
+    # is consulted BEFORE model matching. A blanket entry is right when a name
+    # maps to one code across the whole range (e.g. Kinetic Blue -> BDU), but
+    # WRONG when a manufacturer genuinely uses two different paints of the same
+    # name on different models. Ford 'Race Red' is the case that forced this:
+    #
+    #   BRQAWHA (#A70000)  focus, focusst, fiesta, mustang, ranger, transit*, ...
+    #   BRQAWWA (#A40000)  focus, focusst, fiesta, kuga, edge, cmax, bmax, ...
+    #
+    # Model matching already resolves the models unique to one row (Kuga and
+    # Edge -> BRQAWWA, Mustang and F-Max -> BRQAWHA). It correctly DECLINES for
+    # the 13 models listed on both, because guessing a paint code is worse than
+    # returning nothing. A blanket override would have fixed Focus while
+    # silently breaking Kuga and Edge, which currently resolve correctly.
+    #
+    # So: this table resolves a name ONLY for a specific model, leaving every
+    # other model to the existing logic. Entries must be evidenced (a
+    # manufacturer catalogue or a confirmed paint label), never inferred from a
+    # sibling model.
+    #
+    # Structure: {make: {normalised name: {model tag: code}}}
+    # Model tags use the same prefix matching as _model_matches.
+    CURATED_MODEL_OVERRIDES = {
+        'ford': {
+            'race red': {
+                # Confirmed against Roland's Ford catalogue for a 2018 Focus
+                # ST-3 (VIN WF05XXGCC5JT23802). partslink24 returns the NAME
+                # for Ford passenger cars but no code, so this is the path that
+                # turns a name-only result into a usable answer.
+                'focus': 'BRQAWHA',
+                'focusst': 'BRQAWHA',
+            },
+        },
+    }
+
     CURATED_NAME_OVERRIDES = {
         'landrover': {
             'santorini black': 'PAB',
@@ -582,6 +650,18 @@ class PaintLookup(models.Model):
             # code through the normal code->name lookup so the returned hex/name
             # come straight from the data. If the override code somehow doesn't
             # resolve, fall through to the general matcher rather than guess.
+            # Model-aware overrides first: they are strictly more specific than
+            # the blanket table, and only fire when we actually know the model.
+            if model:
+                by_name = cls.CURATED_MODEL_OVERRIDES.get(mfr_norm, {})
+                model_map = by_name.get(cls._light_normalize_name(colour_name))
+                if model_map:
+                    for tag, code in model_map.items():
+                        if cls._model_matches(model, [tag]):
+                            row = cls.lookup(manufacturer, code)
+                            if row is not None:
+                                return row.code, row.hex, row.name
+
             override = cls.CURATED_NAME_OVERRIDES.get(mfr_norm)
             if override:
                 hit = override.get(cls._light_normalize_name(colour_name))
@@ -727,13 +807,110 @@ class PaintLookup(models.Model):
 # =============================================================================
 
 
+class VrmCache(models.Model):
+    """Cached successful lookup result, keyed by registration (A).
+
+    Serves a repeat lookup of the same reg from storage instead of calling VDG,
+    so repeated lookups — the exact abuse pattern observed — cost £0. Only
+    SUCCESSFUL results (a paint code was delivered) are cached; a miss is never
+    stored, so a previously-failed reg still gets a fresh live attempt.
+
+    Stores the full results payload as JSON because several display fields
+    (fuel_type, transmission, engine_description, all_paint_codes) live only in
+    the session, not on the Search row — caching the whole payload means a cache
+    hit reconstructs a pixel-identical results page, not a degraded one.
+
+    A registration's factory paint code is effectively immutable, so serving a
+    stored result is safe; freshness is bounded by VRM_CACHE_TTL_DAYS purely to
+    cover the rare cherished-plate transfer (a reg moved to a different vehicle).
+    Freshness is enforced at read time by comparing `updated_at`, so no purge job
+    is required — though prune_old_data may trim old rows opportunistically.
+    """
+
+    registration = models.CharField(max_length=10, unique=True, db_index=True)
+    # Full session 'vehicle_data' payload minus request-specific keys
+    # (search_id / paint_pending are recomputed per request).
+    payload = models.JSONField()
+    hit_count = models.IntegerField(default=0)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True, db_index=True)
+
+    class Meta:
+        verbose_name = 'VRM cache entry'
+        verbose_name_plural = 'VRM cache entries'
+
+    def __str__(self):
+        return f"VrmCache({self.registration}, hits={self.hit_count})"
+
+
 class SiteConfig(models.Model):
-    """Singleton holding runtime site toggles."""
+    """Singleton holding runtime site toggles.
+
+    Read on effectively every request (the homepage checks maintenance_mode), so
+    get() is cached in the per-process 'local' cache to keep the DB asleep — see
+    get() below. Any code path that MUTATES the row must call save(), which
+    refreshes that cache so the change is visible immediately on the saving
+    worker and within the cache TTL (60s) on the others.
+    """
+
+    # Pinned primary key for the singleton row.
+    SINGLETON_PK = 1
+    # Cache key + TTL for get(). 60s means a maintenance flip (or a blocklist /
+    # budget edit) takes at most a minute to reach every worker — fine at the
+    # frequency these are changed, and the saving worker sees it at once because
+    # save() rewrites the cache.
+    _CACHE_KEY = 'siteconfig:singleton'
+    _CACHE_TTL = 60
 
     # When True: the homepage shows the "offline for maintenance" state (locked
     # field + notice) and the backend REFUSES to run any lookup — so no VDG spend
     # can occur even via a direct POST. Flip from /admin-stats/.
     maintenance_mode = models.BooleanField(default=False)
+
+    # --- Daily spend breaker (A) -------------------------------------------
+    # Hard ceiling on VDG spend per calendar day (London time). When the sum of
+    # today's real (refund-net) VDG cost reaches this, the backend refuses new
+    # lookups for the rest of the day — a bounded worst case even if an abuser
+    # gets past every other layer, or a bug loops. 0 disables the breaker.
+    # Editable amount box in /admin-stats/.
+    daily_budget_gbp = models.DecimalField(
+        max_digits=8, decimal_places=2, default=Decimal('50.00'),
+        help_text='Max VDG spend per day (London time). 0 = no limit.'
+    )
+    # Set True by the breaker when today's spend crossed the budget, so the
+    # admin alert email is sent only ONCE per trip rather than every blocked
+    # request. Reset automatically when a new day rolls over.
+    budget_tripped = models.BooleanField(default=False)
+    budget_tripped_date = models.DateField(null=True, blank=True)
+
+    # --- Blocklists (A) -----------------------------------------------------
+    # Newline- or comma-separated lists, edited in /admin-stats/. Checked at the
+    # very top of the lookup POST, before any spend. All three are best-effort:
+    # a determined abuser rotates IPs and UAs (we have direct evidence of both),
+    # so the reg list is the strong one (he reuses regs); IP/UA are scalpels for
+    # the lazy case. Matching is exact for regs/IPs and case-insensitive
+    # substring for UA fragments.
+    blocked_regs = models.TextField(
+        blank=True, default='',
+        help_text='Registrations to refuse (one per line or comma-separated).'
+    )
+    blocked_ips = models.TextField(
+        blank=True, default='',
+        help_text='IP addresses to refuse (one per line or comma-separated).'
+    )
+    blocked_user_agents = models.TextField(
+        blank=True, default='',
+        help_text='User-agent substrings to refuse (one per line). '
+                  'Case-insensitive match.'
+    )
+
+    # --- Payments (F) -------------------------------------------------------
+    # Master switch for the paid-lookup flow. Defaults False so the payment code
+    # can ship (fully built + tested against Stripe test mode) WITHOUT going live
+    # or changing the current free behaviour. Flip to True only once Stripe is
+    # activated and the public address/email are set. While False, the site
+    # behaves exactly as it does today (free lookups, 3/h limit enforced).
+    payments_enabled = models.BooleanField(default=False)
 
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -744,12 +921,79 @@ class SiteConfig(models.Model):
     def __str__(self):
         return f"SiteConfig(maintenance_mode={self.maintenance_mode})"
 
+    # ---- helpers for the blocklists ---------------------------------------
+    @staticmethod
+    def _parse_list(raw):
+        """Split a textarea value into a clean list of tokens (by newline or
+        comma), stripped and empties removed. Used for all three blocklists."""
+        if not raw:
+            return []
+        parts = re.split(r'[\n,]+', raw)
+        return [p.strip() for p in parts if p.strip()]
+
+    def blocked_reg_set(self):
+        """Uppercased, whitespace-stripped set of blocked registrations."""
+        return {r.upper().replace(' ', '') for r in self._parse_list(self.blocked_regs)}
+
+    def blocked_ip_set(self):
+        return set(self._parse_list(self.blocked_ips))
+
+    def blocked_ua_list(self):
+        """Lowercased UA substrings to match against (case-insensitive)."""
+        return [u.lower() for u in self._parse_list(self.blocked_user_agents)]
+
+    def is_reg_blocked(self, registration):
+        if not registration:
+            return False
+        return registration.upper().replace(' ', '') in self.blocked_reg_set()
+
+    def is_ip_blocked(self, ip):
+        if not ip:
+            return False
+        return ip in self.blocked_ip_set()
+
+    def is_ua_blocked(self, user_agent):
+        if not user_agent:
+            return False
+        ua = user_agent.lower()
+        return any(frag in ua for frag in self.blocked_ua_list())
+
+    def save(self, *args, **kwargs):
+        """Persist, then refresh the get() cache so mutations are visible
+        immediately on this worker (and within _CACHE_TTL elsewhere)."""
+        super().save(*args, **kwargs)
+        try:
+            caches['local'].set(self._CACHE_KEY, self, self._CACHE_TTL)
+        except Exception:
+            # Cache write must never break a save; a stale read self-heals in
+            # at most _CACHE_TTL seconds anyway.
+            pass
+
     @classmethod
     def get(cls):
-        """Return the single config row, creating it on first use.
+        """Return the singleton config row, cached in the per-process 'local'
+        cache for _CACHE_TTL seconds.
 
-        Never raises for a missing row. Cheap (single PK fetch); fine to call on
-        every request. We pin pk=1 so there's only ever one row.
+        The point is zero DB queries on the hot path: the homepage GET calls this
+        on every request, and without the cache each call is a Postgres round-trip
+        that resets Neon's idle timer and keeps the compute awake 24/7 (this was
+        the compute-exhaustion root cause). With the cache, a warm worker answers
+        from memory and never touches the DB, so Neon can suspend between real
+        lookups.
+
+        Falls back to a direct fetch (and populates the cache) on a miss. Never
+        raises for a missing row — pinned at pk=SINGLETON_PK, created on first use.
         """
-        obj, _ = cls.objects.get_or_create(pk=1)
+        try:
+            cached = caches['local'].get(cls._CACHE_KEY)
+            if cached is not None:
+                return cached
+        except Exception:
+            pass  # cache backend issue -> just hit the DB
+
+        obj, _ = cls.objects.get_or_create(pk=cls.SINGLETON_PK)
+        try:
+            caches['local'].set(cls._CACHE_KEY, obj, cls._CACHE_TTL)
+        except Exception:
+            pass
         return obj

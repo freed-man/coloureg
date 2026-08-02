@@ -39,7 +39,7 @@
       "name": "What manufacturers does coloureg support?",
       "acceptedAnswer": {
         "@type": "Answer",
-        "text": "Automated lookup currently supports Audi, BMW, Citroën, Cupra, Dacia, DS, Ford, Hyundai, Infiniti, Jaguar, Jeep, Kia, Land Rover, Lexus, Mazda, Mercedes-Benz, MINI, Peugeot, Renault, Saab, SEAT, Škoda, Toyota, Vauxhall, Volkswagen, and Volvo. If your make isn't listed, manual lookup may still work."
+        "text": "Automated lookup covers most manufacturers sold in the UK, including Abarth, Alfa Romeo, Alpine, Audi, Bentley, BMW, Citroën, Cupra, Dacia, DS, Fiat, Ford, Genesis, Honda, Hyundai, Infiniti, Isuzu, Iveco, Jaguar, Jeep, Kia, Land Rover, Lexus, MAN, Mazda, Mercedes-Benz, MG, MINI, Mitsubishi, Nissan, Peugeot, Porsche, Renault, Rover, SEAT, Škoda, smart, Suzuki, Tesla, Toyota, Vauxhall, Volkswagen, and Volvo. The list isn't exhaustive and coverage can't be guaranteed for every vehicle, so it's always worth checking your registration."
       }
     },
     {
@@ -63,15 +63,15 @@
       "name": "How long does the manual lookup take?",
       "acceptedAnswer": {
         "@type": "Answer",
-        "text": "Manual lookups involve querying manufacturer databases directly, sometimes by VIN. We usually email your paint code within 1 hour, though it can take a little longer during busy periods."
+        "text": "Manual lookups involve searching manufacturer records by hand, using details the automated search can't reach. We usually email your paint code within 1 hour, though it can take a little longer during busy periods."
       }
     },
     {
       "@type": "Question",
-      "name": "Is coloureg really free?",
+      "name": "Why does coloureg cost £1?",
       "acceptedAnswer": {
         "@type": "Answer",
-        "text": "Yes — coloureg is free. But running it isn't: there's the cloud server, the database, the domains, the email service, per-lookup charges from third-party data providers. Right now this is a hobby project and the costs are manageable, but as traffic grows charges may become necessary. Nothing will change without warning."
+        "text": "Every lookup runs against live manufacturer and vehicle databases that charge us for each search, plus the servers, data feeds, domains and software that keep coloureg fast and accurate. The £1 keeps it running and independent — no ads, no signup, and we never sell your data. If we can't find your code, you don't pay."
       }
     }
   ]
@@ -204,7 +204,7 @@
                         <span class="faq-icon">▼</span>
                     </button>
                     <div class="faq-answer" id="faq-3" style="display: none;">
-                        <p>A few possibilities: the manufacturer's database doesn't have data for your specific vehicle (some makes have better coverage than others), the servers were too slow to respond, or your reg returned an unusual result. In those cases, drop us your email and we'll look it up manually.</p>
+                        <p>A few possibilities: the manufacturer's database doesn't have data for your specific vehicle (some makes have better coverage than others), the servers were too slow to respond, or your reg returned an unusual result.{% if payments_on %} <strong>If we can't find your code, you don't pay.</strong> You can also request a manual lookup — we'll dig into it by hand and email your code within the hour where we can, free of charge. It's not guaranteed for every vehicle, but we'll try.{% else %} In those cases, drop us your email and we'll look it up manually.{% endif %}</p>
                     </div>
                 </div>
 
@@ -214,36 +214,53 @@
                         <span class="faq-icon">▼</span>
                     </button>
                     <div class="faq-answer" id="faq-4" style="display: none;">
-                        <p>Automated lookup currently supports the following manufacturers:</p>
+                        <p>Automated lookup covers most manufacturers sold in the UK, including:</p>
                         <div class="makes-grid">
+                            <div>Abarth</div>
+                            <div>Alfa Romeo</div>
+                            <div>Alpine</div>
                             <div>Audi</div>
+                            <div>Bentley</div>
                             <div>BMW</div>
                             <div>Citroën</div>
                             <div>Cupra</div>
                             <div>Dacia</div>
                             <div>DS</div>
+                            <div>Fiat</div>
                             <div>Ford</div>
+                            <div>Genesis</div>
+                            <div>Honda</div>
                             <div>Hyundai</div>
                             <div>Infiniti</div>
+                            <div>Isuzu</div>
+                            <div>Iveco</div>
                             <div>Jaguar</div>
                             <div>Jeep</div>
                             <div>Kia</div>
                             <div>Land Rover</div>
                             <div>Lexus</div>
+                            <div>MAN</div>
                             <div>Mazda</div>
                             <div>Mercedes-Benz</div>
+                            <div>MG</div>
                             <div>MINI</div>
+                            <div>Mitsubishi</div>
+                            <div>Nissan</div>
                             <div>Peugeot</div>
+                            <div>Porsche</div>
                             <div>Renault</div>
-                            <div>Saab</div>
+                            <div>Rover</div>
                             <div>SEAT</div>
                             <div>Škoda</div>
+                            <div>smart</div>
+                            <div>Suzuki</div>
+                            <div>Tesla</div>
                             <div>Toyota</div>
                             <div>Vauxhall</div>
                             <div>Volkswagen</div>
                             <div>Volvo</div>
                         </div>
-                        <p>If your make isn't listed, manual lookup may still work — <a href="#contact-section" style="color: #003399;">send us a message</a> and we'll do our best to track it down.</p>
+                        <p>This list isn't exhaustive, and coverage can't be guaranteed for every vehicle — results depend on what the manufacturer holds for your specific car, and some models (especially very new, very old, imported, or commercial vehicles) may not return a code. If your make isn't listed, it's still worth checking your registration, or <a href="#contact-section" style="color: #003399;">send us a message</a> and we'll do our best to track it down.{% if payments_on %} <strong>If we can't find your code, you don't pay.</strong>{% endif %}</p>
                     </div>
                 </div>
 
@@ -264,7 +281,7 @@
                         <span class="faq-icon">▼</span>
                     </button>
                     <div class="faq-answer" id="faq-6" style="display: none;">
-                        <p>Yes, briefly. We log each search (<code>registration</code>, <code>time</code>, <code>IP</code>) for usage analytics and abuse prevention. If you submit your <code>email</code> for a manual lookup, we store it to send you the result. We don't sell or share your data with third parties. For full details, see our <a href="{% url 'privacy' %}" style="color: #003399;">privacy notice</a>.</p>
+                        <p>Yes, briefly. We log each search (<code>registration</code>, <code>time</code>, <code>IP</code>) for usage analytics and abuse prevention. If you submit your <code>email</code> for a manual lookup, we store it to send you the result. We don't sell or share your data with third parties.{% if payments_on %} Payments are handled entirely by Stripe — we never see or store your card details.{% endif %} For full details, see our <a href="{% url 'privacy' %}" style="color: #003399;">privacy notice</a>.</p>
                     </div>
                 </div>
 
@@ -274,17 +291,26 @@
                         <span class="faq-icon">▼</span>
                     </button>
                     <div class="faq-answer" id="faq-7" style="display: none;">
-                        <p>Manual lookups involve querying manufacturer databases directly, sometimes by VIN. We usually email your paint code within 1 hour, though it can take a little longer during busy periods.</p>
+                        <p>Manual lookups involve searching manufacturer records by hand, using details the automated search can't reach. We usually email your paint code within 1 hour, though it can take a little longer during busy periods.{% if payments_on %} If your automated lookup couldn't find a code, a manual check is free — you're only ever charged when we deliver a code to you.{% endif %}</p>
                     </div>
                 </div>
 
                 <div class="faq-item">
                     <button class="faq-toggle" type="button" aria-expanded="false" aria-controls="faq-8">
+                    <button class="faq-toggle-btn" onclick="toggleFaq(8)">
+                        {% if payments_on %}
+                        <span class="faq-question">Why does <span class="coloureg-brand">colou<strong>reg</strong></span> cost £1?</span>
+                        {% else %}
                         <span class="faq-question">Is <span class="coloureg-brand">colou<strong>reg</strong></span> really free?</span>
+                        {% endif %}
                         <span class="faq-icon">▼</span>
                     </button>
                     <div class="faq-answer" id="faq-8" style="display: none;">
-                        <p>Yes — <span class="coloureg-brand">colou<strong>reg</strong></span> is free. But running it isn't: there's the cloud server, the database, the domains, the email service, per-lookup charges from third-party data providers... Right now this is a hobby project and the costs are manageable, but as traffic grows charges may become necessary. Nothing will change without warning.</p>
+                        {% if payments_on %}
+                        <p>Every lookup runs against live manufacturer and vehicle databases that charge us for each search — and behind those sit the servers, the data feeds, the domains and the software that keep <span class="coloureg-brand">colou<strong>reg</strong></span> fast and accurate. It genuinely costs money to return each code, on top of a lot of time spent building and maintaining the tool. The £1 keeps it running and independent — which means no ads, no signup, and we never sell your data. <strong>And if we can't find your code, you don't pay.</strong></p>
+                        {% else %}
+                        <p>Yes — <span class="coloureg-brand">colou<strong>reg</strong></span> is free right now. But running it isn't: there's the cloud server, the database, the domains, the email service, and per-lookup charges from third-party data providers. This is currently free while we finish testing, but as costs grow a small per-lookup fee may become necessary. Nothing will change without warning.</p>
+                        {% endif %}
                     </div>
                 </div>
 

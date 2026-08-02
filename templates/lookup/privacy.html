@@ -43,6 +43,8 @@
                 <li><strong>Your IP address and browser user-agent</strong> — for usage analytics, abuse prevention, and to detect issues. Logged automatically with each search.</li>
                 <li><strong>The timestamp of your search</strong> — same reasons.</li>
                 <li><strong>Your email address</strong> — only if you submit it (manual lookup request, paint code email, or contact form). Used to send you the requested response, and stored so we can fulfil follow-up questions.</li>
+                <li><strong>Any message you add to a manual lookup request</strong> — optional free text (for example "it's an import" or "the previous owner resprayed it"). Stored with the search record, because that detail is often what lets us find a code the automated search couldn't.</li>
+                <li><strong>Any photo you attach</strong> — for example of your paint code label. This is <strong>not stored on our servers</strong>: it is attached to the notification email and then discarded. It exists only in that email.</li>
             </ul>
 
             <p style="line-height: 1.7;">
@@ -71,6 +73,7 @@
             <ul style="line-height: 1.8;">
                 <li><strong>Vehicle data providers</strong> — receive your registration plate to look up vehicle and paint code data. Based in the UK.</li>
                 <li><strong>Email delivery provider</strong> — receives your email address and message content when we send you a paint code or contact reply. US-based; international transfers covered under the UK International Data Transfer Agreement / UK Data Bridge.</li>
+                {% if payments_on %}<li><strong>Payment processor (Stripe)</strong> — receives your card details, email address and the registration you looked up, in order to take payment. We never see your card details. See the Payments section below.</li>{% endif %}
                 <li><strong>Web hosting and database providers</strong> — store your search history and the data above. The hosting provider is US-based (transfers covered by the UK Data Bridge); the database provider is EU-based.</li>
                 <li><strong>Analytics provider</strong> — sets cookies in your browser to collect anonymised usage statistics such as page views, device type, and country. US-based; transfers covered as above.</li>
             </ul>
@@ -99,6 +102,29 @@
                 <li><strong>Essential cookies</strong> — Django session cookie and CSRF token. Required for the site to function. These don't track you and don't need your consent under UK PECR.</li>
                 <li><strong>Analytics cookies</strong> — set by our analytics provider to count visits and pages viewed in aggregate. They're not used for advertising or cross-site tracking. You can prevent them by using a privacy-respecting browser (e.g. Brave) or browser extensions like uBlock Origin or Privacy Badger, which block tracking cookies before they're set.</li>
             </ul>
+
+            {% if payments_on %}
+            {# Payment disclosures. Required once we take money: a new processor
+               (Stripe), a different lawful basis for the transaction itself
+               (performance of a contract, not consent), and a longer retention
+               period for the records because tax law requires it. #}
+            <h2 style="font-size: 1.3rem; font-weight: 600; margin-top: 2rem; margin-bottom: 0.75rem;">Payments</h2>
+            <p style="line-height: 1.7;">
+                Payments are processed by <strong>Stripe</strong>, not by us.
+            </p>
+            <ul style="line-height: 1.8;">
+                <li><strong>We never see or store your card details.</strong> They are entered on Stripe's own hosted checkout page and go straight to Stripe. Nothing about your card reaches our servers or our database.</li>
+                <li><strong>What Stripe receives</strong> — your card details, your email address, the amount, and the registration you looked up (so the payment can be matched to the right lookup if you query it later).</li>
+                <li><strong>What we receive back</strong> — whether the payment succeeded, and a Stripe reference. We store that reference against the search record so we can trace a specific transaction.</li>
+                <li><strong>Lawful basis</strong> — for the transaction itself we rely on <strong>performance of a contract</strong> rather than consent: we need to process the payment in order to deliver the lookup you asked for.</li>
+                <li><strong>How long</strong> — payment records are kept for as long as tax and accounting law requires, which is longer than the retention period described above for search data. Stripe holds its own records under its own privacy policy.</li>
+            </ul>
+            <p style="line-height: 1.7;">
+                Stripe is an independent controller for its own fraud-prevention and regulatory purposes.
+                You can read how it handles your data in the
+                <a href="https://stripe.com/gb/privacy" style="color: #003399;" rel="noopener" target="_blank">Stripe Privacy Policy</a>.
+            </p>
+            {% endif %}
 
             <h2 style="font-size: 1.3rem; font-weight: 600; margin-top: 2rem; margin-bottom: 0.75rem;">Security</h2>
             <p style="line-height: 1.7;">

@@ -1,8 +1,8 @@
 {% extends "base.html" %}
 {% load static %}
 
-{% block extra_title %}Free UK Paint Code Lookup by Registration | coloureg{% endblock %}
-{% block meta_description %}The only free UK car paint code finder. Enter your reg, get your factory code in seconds. No signup, no email, no payment — straight from the manufacturer.{% endblock %}
+{% block extra_title %}UK Paint Code Lookup by Registration | coloureg{% endblock %}
+{% block meta_description %}UK car paint code finder. Enter your reg, get your factory code in seconds. No signup, no ads — straight from the manufacturer.{% endblock %}
 
 {% block extra_css %}
 <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@1,400&display=swap" rel="stylesheet">
@@ -365,9 +365,9 @@
 <div id="particles-js"></div>
 
 <!-- SEO content (hidden but indexable) -->
-<h1 class="sr-only">Free UK Car Paint Code Lookup by Registration</h1>
+<h1 class="sr-only">UK Car Paint Code Lookup by Registration</h1>
 <p class="sr-only">
-    coloureg is the only free UK paint code finder. Enter your number plate and we
+    coloureg is a UK paint code finder. Enter your number plate and we
     pull the factory paint code straight from the manufacturer's database — no signup,
     no email, no payment required. Unlike paid alternatives, coloureg returns the actual
     factory paint code, not a "best match" colour estimate.
@@ -397,6 +397,21 @@
         </div>
         <div class="row justify-content-center">
             <div class="col-md-8">
+                {% if not payments_on and not maintenance_mode %}
+                {# Free-period notice. Shown whenever payments are switched off,
+                   regardless of whether the Stripe keys exist yet — so it works
+                   during the free run-up as well as after a temporary switch-off.
+                   Three jobs in one line: explains that it's free now, warns that
+                   a charge is coming (announcing a price change in advance is what
+                   stops it feeling like a bait-and-switch), and pre-sells the
+                   no-code-no-charge guarantee so the eventual paywall is less of a
+                   step. Disappears the moment payments are turned on. #}
+                <div style="max-width: 560px; margin: 0 auto 18px; padding: 11px 16px; background: #eafaf1; border: 1px solid #b7e4c7; border-radius: 8px; text-align: center; font-size: 13px; color: #1b6b3a; line-height: 1.55;">
+                    Lookups are <strong>free at the moment</strong> while we finish testing.
+                    A charge of £{{ lookup_price|floatformat:2 }} per lookup will apply soon —
+                    and you'll only ever pay when we actually find your paint code.
+                </div>
+                {% endif %}
                 <div class="search-container{% if maintenance_mode %} search-container--maint{% endif %}">
                     {% if maintenance_mode %}
                     <div class="maintenance-state" role="status">
@@ -413,14 +428,46 @@
                         </div>
                     </div>
                     {% else %}
-                    <form method="POST" action="{% url 'index' %}" class="search-form" id="lookup-form">
+                    <form method="POST" action="{% if payments_on %}{% url 'start_paid_lookup' %}{% else %}{% url 'index' %}{% endif %}" class="search-form" id="lookup-form">
                         {% csrf_token %}
                         <input type="text" class="search-input" id="reg-input"
                             name="registration" maxlength="7" placeholder="">
                         <button type="submit" class="search-btn" id="search-btn" aria-label="Search">
                             <i class="fas fa-search"></i>
                         </button>
+                        {% if turnstile_site_key %}
+                        {# Cloudflare Turnstile (paint15): invisible bot check. The widget
+                           solves in the background while the user types and injects a
+                           cf-turnstile-response token the server verifies before any
+                           spend. Renders nothing visible in most cases. Only present
+                           when TURNSTILE_SITE_KEY is configured — without it the form
+                           behaves exactly as before. #}
+                        <div class="cf-turnstile"
+                             data-sitekey="{{ turnstile_site_key }}"
+                             data-size="flexible"
+                             data-appearance="interaction-only"></div>
+                        {% endif %}
                     </form>
+                    {% if payments_on %}
+                    {# Paid mode notice (F). Everything here is PRE-PURCHASE disclosure,
+                       which is what actually protects the business: an accurate,
+                       up-front description of the product is what makes "as described"
+                       satisfiable under the Consumer Rights Act. A post-hoc exclusion
+                       buried in a disclaimer would not be. #}
+                    <p class="pay-notice" style="margin: 14px 0 0; font-size: 12px; color: #777; line-height: 1.5; text-align: center;">
+                        £{{ lookup_price|floatformat:2 }} per lookup — payments processed securely by Stripe.
+                        <br>
+                        We only charge you if we find your paint code. If we don't,
+                        the payment is cancelled automatically and you pay nothing —
+                        a temporary £{{ lookup_price|floatformat:2 }} hold may appear briefly on your statement
+                        before it disappears.
+                        <br>
+                        We return the paint code our sources hold for your registration.
+                        Always check it against your vehicle's paint code label before
+                        buying paint — the label is the authoritative source for your car.
+                        <a href="{% url 'disclaimer' %}" style="color: #003399;">Full terms</a>.
+                    </p>
+                    {% endif %}
                     <div class="lookup-loader" id="lookup-loader" aria-live="polite">
                         <div class="lookup-spinner" aria-hidden="true">
                             <span class="dot"></span>
@@ -451,6 +498,9 @@
 {% endblock %}
 
 {% block extra_js %}
+{% if turnstile_site_key %}
+<script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
+{% endif %}
 <script src="{% static 'js/particles.min.js' %}"></script>
 <script>
     particlesJS("particles-js", {
@@ -582,6 +632,26 @@
         }
     });
 
+    // Pre-warm the database the moment the user focuses the registration field.
+    // They typically take several seconds to type + submit, which is enough for
+    // Neon's suspended compute to resume — so the lookup POST hits a warm DB and
+    // skips the cold-start delay. Fires once per page load; fully best-effort
+    // (a failed/blocked request changes nothing). Bots that POST straight to /
+    // never focus this field, so they never trigger a wake.
+    var _warmed = false;
+    function warmDb() {
+        if (_warmed) return;
+        _warmed = true;
+        try {
+            fetch("{% url 'warm' %}", {
+                method: 'GET',
+                cache: 'no-store',
+                keepalive: true
+            }).catch(function() {});
+        } catch (e) { /* no-op */ }
+    }
+    regInput.addEventListener('focus', warmDb, { once: true });
+
     lookupForm.addEventListener('submit', function(e) {
         if (regInput.value.trim() === '') {
             e.preventDefault();
@@ -603,6 +673,37 @@
         // 10s: reassure during a genuinely slow lookup
         var stage10 = "Manufacturer servers are slow today, hang tight...";
 
+        // --- Concurrent make lookup (paint16b) --------------------------------
+        // Fired at the SAME MOMENT as the form POST, as a second independent
+        // request. The form submit does not block JavaScript, so this resolves
+        // while the browser is still waiting for the lookup, and adds exactly
+        // zero latency to it — the two are in flight together, not in sequence.
+        //
+        // Purely decorative: if it fails, times out, or the lookup finishes
+        // first (a cache hit can return in milliseconds), the message simply
+        // stays as it was. Nothing depends on it.
+        var reg = regInput.value.trim().toUpperCase().replace(/\s/g, '');
+        var makeArrived = false;
+        try {
+            var mc = new AbortController();
+            // Give up well before the 10s stage change — a make that lands after
+            // the "servers are slow" message would read as going backwards.
+            setTimeout(function () { mc.abort(); }, 8000);
+            var mfd = new FormData();
+            mfd.append('registration', reg);
+            mfd.append('csrfmiddlewaretoken', form.querySelector('[name=csrfmiddlewaretoken]').value);
+            fetch("{% url 'vehicle_make' %}", {
+                method: 'POST', body: mfd, signal: mc.signal, credentials: 'same-origin'
+            })
+            .then(function (r) { return r.ok ? r.json() : {}; })
+            .then(function (d) {
+                if (!d || !d.make || makeArrived) return;
+                makeArrived = true;
+                fadeTo('Requesting ' + d.make + ' build sheet\u2026', false);
+            })
+            .catch(function () { /* decorative only */ });
+        } catch (e) { /* no-op */ }
+
         function fadeTo(text, isStuck) {
             msgEl.style.opacity = '0';
             setTimeout(function() {
@@ -612,7 +713,10 @@
             }, 300);
         }
 
-        var t10 = setTimeout(function() { fadeTo(stage10, true); }, 10000);
+        var t10 = setTimeout(function() {
+            makeArrived = true;   // stop a late make overwriting the slow-server notice
+            fadeTo(stage10, true);
+        }, 10000);
 
         // Stash handle on the form so the pageshow handler can clear it on back-navigation.
         form._loaderTimers = [t10];

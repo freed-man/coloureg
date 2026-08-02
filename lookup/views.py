@@ -1,20 +1,25 @@
 import os
 import re
 import time
+import logging
 import requests
 from datetime import timedelta
+from decimal import Decimal, InvalidOperation
 from django.shortcuts import render, redirect
+from django.conf import settings as dj_settings
 from django.contrib import messages
 from django.contrib.admin.views.decorators import staff_member_required
 from django.core.exceptions import ValidationError
 from django.core.validators import validate_email
-from django.db.models import Count, Avg, Q, Sum
+from django.db import connection
+from django.db.models import Count, Avg, Q, Sum, Max, Case, When, IntegerField
 from django.db.models.functions import TruncDate
-from django.http import JsonResponse
+from django.http import JsonResponse, HttpResponse
 from django.utils import timezone
 from django.views.decorators.http import require_POST, require_GET
+from django.views.decorators.csrf import csrf_exempt
 from django_ratelimit.core import is_ratelimited
-from .models import Search, PaintLookup, SiteConfig
+from .models import Search, PaintLookup, SiteConfig, VrmCache
 from .services.vdg import (
     get_combined_lookup,
     smart_title,
@@ -24,6 +29,27 @@ from .services.vdg import (
     VdgNotFoundError,
 )
 from .services.paint_resolver import resolve_paint, _enrich_from_lookup, PL24_TIMEOUT
+from .services.uploads import process_image_upload
+from .services.protection import (
+    budget_exceeded,
+    spend_today,
+    get_cached_vrm_payload,
+    store_vrm_payload,
+    verify_turnstile,
+    is_recent_miss,
+    record_miss,
+    clear_miss,
+    sliding_rate_limited,
+)
+from .services.payments import (
+    payments_active,
+    payments_configured,
+    create_checkout_session,
+    get_session,
+    capture,
+    cancel,
+    construct_webhook_event,
+)
 from .services.email import (
     send_user_paint_code,
     send_admin_failure_notification,
@@ -31,7 +57,11 @@ from .services.email import (
     send_admin_contact_message,
     send_user_contact_confirmation,
     send_custom_message,
+    send_admin_budget_alert,
+    send_user_no_code_available,
 )
+
+logger = logging.getLogger(__name__)
 
 
 def get_client_ip(request):
@@ -172,33 +202,116 @@ def parse_device(user_agent):
     return 'desktop'
 
 
+def _maybe_alert_budget(config):
+    """Send the budget-tripped admin email at most once per London day.
+
+    Called by the breaker each time a lookup is refused for budget reasons. The
+    guard state lives on SiteConfig (budget_tripped + budget_tripped_date):
+      - first refusal of the day  -> flag it, stamp today's date, send email
+      - subsequent refusals       -> flag already set for today, do nothing
+      - new day                   -> date no longer matches, so the first
+                                     refusal of the new day re-arms and re-sends.
+    The flag is also cleared implicitly when the budget stops being exceeded
+    (spend resets at midnight), so no cron is needed. Email failures are
+    swallowed — an alert must never take down the refusal path itself.
+    """
+    today = timezone.localdate()
+    if config.budget_tripped and config.budget_tripped_date == today:
+        return  # already alerted for today's trip
+    config.budget_tripped = True
+    config.budget_tripped_date = today
+    config.save(update_fields=['budget_tripped', 'budget_tripped_date', 'updated_at'])
+    try:
+        send_admin_budget_alert(spend_today(), config.daily_budget_gbp)
+    except Exception:
+        pass
+
+
 def index(request):
-    # Maintenance switch (flippable from /admin-stats/, no redeploy). When on,
-    # the homepage shows the locked "offline for maintenance" state AND the
-    # backend refuses to run any lookup here — so a direct POST can't bypass the
-    # greyed field or spend any VDG credit.
-    maintenance = SiteConfig.get().maintenance_mode
+    # Single cached SiteConfig read for the whole request (maintenance flag,
+    # blocklists, budget, payments switch). Cached in-process, so this is a
+    # memory read on a warm worker — no DB query on the homepage GET.
+    config = SiteConfig.get()
+    maintenance = config.maintenance_mode
 
     if request.method == 'POST':
         if maintenance:
             # Refuse silently-but-clearly: no VDG call, no Search row, just
             # re-render the maintenance page. (Covers direct/scripted POSTs.)
-            return render(request, 'lookup/index.html', {'maintenance_mode': True})
+            return render(request, 'lookup/index.html', {
+                'maintenance_mode': True,
+                'turnstile_site_key': dj_settings.TURNSTILE_SITE_KEY,
+            })
 
-        was_limited = is_ratelimited(
-            request,
-            group='lookup',
-            key='ip',
-            rate='3/h',
-            method='POST',
-            increment=True,
-        )
+        # --- Blocklist guard (A) -------------------------------------------
+        # Refuse blocked registrations / IPs / user-agents before anything
+        # costs money or touches VDG. Reg is the strong signal (abusers reuse
+        # regs); IP and UA are scalpels for the lazy case. We compute the client
+        # IP + reg once here and reuse them below. The response is a generic
+        # error — we don't tell a blocked client why.
+        client_ip = get_client_ip(request)
+        client_ua = request.META.get('HTTP_USER_AGENT', '')
+        posted_reg = request.POST.get('registration', '').strip().upper().replace(' ', '')
+        if (config.is_ip_blocked(client_ip)
+                or config.is_ua_blocked(client_ua)
+                or (posted_reg and config.is_reg_blocked(posted_reg))):
+            messages.error(
+                request,
+                'Sorry, we could not process that request. Please try again '
+                'later.'
+            )
+            return render(request, 'lookup/index.html', {
+                'turnstile_site_key': dj_settings.TURNSTILE_SITE_KEY,
+            })
+
+        # --- Turnstile verification (E) -------------------------------------
+        # When configured (both keys in env), every lookup POST must carry a
+        # valid token from the invisible widget in the form. Scripts that POST
+        # directly never have one, so they're rejected here — before the budget
+        # query, before ratelimit, before Stripe or VDG. Costs a real user
+        # nothing: the widget solves in the background while they type.
+        # Unconfigured -> verify_turnstile returns True (feature off).
+        if not verify_turnstile(
+            request.POST.get('cf-turnstile-response', ''), client_ip
+        ):
+            messages.error(
+                request,
+                'We could not verify your browser. Please reload the page '
+                'and try again.'
+            )
+            return render(request, 'lookup/index.html', {
+                'turnstile_site_key': dj_settings.TURNSTILE_SITE_KEY,
+            })
+
+        # --- Daily budget breaker (A) --------------------------------------
+        # Hard ceiling on VDG spend per London day. If today's real (refund-net)
+        # spend has reached the configured budget, refuse new lookups until the
+        # day rolls over — a bounded worst case even if every other layer is
+        # bypassed. Email the admin ONCE per trip. Budget 0 disables this.
+        if budget_exceeded(config):
+            _maybe_alert_budget(config)
+            messages.error(
+                request,
+                'Lookups are temporarily paused. Please try again later.'
+            )
+            return render(request, 'lookup/index.html', {
+                'turnstile_site_key': dj_settings.TURNSTILE_SITE_KEY,
+            })
+
+        # Sliding window (paint16), replacing django-ratelimit's fixed hourly
+        # bucket. The fixed window let one IP make 4 lookups in 13 minutes by
+        # straddling the top of the hour (observed 31 Jul), and up to 6 in the
+        # worst case. This counts requests in the trailing 60 minutes, so the
+        # limit holds regardless of where the clock is.
+        was_limited = sliding_rate_limited('lookup', client_ip)
         if was_limited:
             messages.error(
                 request,
                 'Too many searches. Please wait an hour before trying again.'
             )
-            return render(request, 'lookup/index.html')
+            return render(request, 'lookup/index.html', {
+                'turnstile_site_key': dj_settings.TURNSTILE_SITE_KEY,
+            })
 
         start_time = time.time()
         registration = request.POST.get('registration', '').strip().upper()
@@ -221,6 +334,77 @@ def index(request):
 
         if registration == 'PNZ282':
             return redirect('paige')
+
+        # --- VRM result cache (A) ------------------------------------------
+        # If we've recently returned a successful result for this exact reg,
+        # serve it from storage with NO VDG call — repeated lookups of the same
+        # reg (the observed abuse pattern) cost £0. Paint codes are immutable, so
+        # a stored result is correct; the TTL only bounds the rare cherished-
+        # transfer case. We still log a lightweight Search row (provider=cache)
+        # so the dashboard sees the request, but it carries no cost and makes no
+        # external call. Cache is bypassed entirely while payments are enabled
+        # (a paying customer's flow is handled separately) — belt and braces,
+        # since payments_enabled is False today.
+        if not config.payments_enabled:
+            cached_payload = get_cached_vrm_payload(registration)
+            if cached_payload:
+                cache_search = Search(
+                    registration=registration,
+                    ip_address=get_client_ip(request),
+                    user_agent=request.META.get('HTTP_USER_AGENT', ''),
+                    device=parse_device(request.META.get('HTTP_USER_AGENT', '')),
+                    make=cached_payload.get('make', ''),
+                    model=cached_payload.get('model', ''),
+                    year=cached_payload.get('year'),
+                    colour=cached_payload.get('colour', ''),
+                    vehicle_title=cached_payload.get('vehicle_title', ''),
+                    category=cached_payload.get('category', ''),
+                    vin=cached_payload.get('vin', '') or '',
+                    paint_code=cached_payload.get('paint_code', ''),
+                    paint_description=cached_payload.get('paint_description', ''),
+                    provider=Search.PROVIDER_CACHE,
+                    success=bool(cached_payload.get('paint_code')),
+                    lookup_duration_ms=int((time.time() - start_time) * 1000),
+                )
+                cache_search.save()
+                payload = dict(cached_payload)
+                payload['search_id'] = cache_search.id
+                payload['paint_pending'] = False  # cached results are complete
+                request.session['vehicle_data'] = payload
+                return redirect('results')
+
+            # --- Negative cache (A): recently-failed reg ---------------------
+            # If this exact reg failed a lookup within the last hour, don't spend
+            # on VDG again — a proxy pool hammering one unanswerable reg (the
+            # observed abuse) is served an instant failure instead of a full-price
+            # miss each time. Short TTL so a reg that only failed because VDG
+            # flaked gets a genuine fresh attempt soon after. Logs a lightweight
+            # Search row (provider=cache) so the failure is still visible.
+            if is_recent_miss(registration):
+                miss_search = Search(
+                    registration=registration,
+                    ip_address=get_client_ip(request),
+                    user_agent=request.META.get('HTTP_USER_AGENT', ''),
+                    device=parse_device(request.META.get('HTTP_USER_AGENT', '')),
+                    provider=Search.PROVIDER_CACHE,
+                    success=False,
+                    error_message='negative-cache hit (recent miss, VDG skipped)',
+                    lookup_duration_ms=int((time.time() - start_time) * 1000),
+                )
+                miss_search.save()
+                messages.error(
+                    request,
+                    'We recently checked that registration and could not find a '
+                    'paint code for it. You can request a manual lookup below and '
+                    'we\'ll try to track it down for you.'
+                )
+                return render(request, 'lookup/index.html', {
+                    'turnstile_site_key': dj_settings.TURNSTILE_SITE_KEY,
+                    'payments_on': payments_active(config),
+                    'payments_configured': payments_configured(),
+                    'lookup_price': dj_settings.LOOKUP_PRICE_PENCE / 100.0,
+                    'manual_lookup_offer': registration,
+                })
 
         search = Search(
             registration=registration,
@@ -285,30 +469,82 @@ def index(request):
             category = vdg_data.get('category', '')
         else:
             # --- FALLBACK: DVLA + MOT ---
+            #
+            # We land here when VDG's VehicleDetails document did NOT succeed
+            # (vehicle_returned is False). Historically that meant "VDG knows
+            # nothing", so we discarded the whole VDG response and rebuilt from
+            # DVLA + MOT. But there is a third case the boolean hides:
+            # VehicleDetails can come back StatusCode 25
+            # ("NoDvlaRegistrationDataAvailable") — VDG DOES know the vehicle and
+            # populated the identification block (VIN, and often make/model via
+            # ModelDetails + a VIN echo in VehicleCodes) — its DVLA MIRROR is
+            # simply stale, which happens for vehicles registered in the last few
+            # weeks. In that case the parser still returns a VIN (and category),
+            # but the old all-or-nothing gate threw them away, so:
+            #   - brand-new vehicles showed no VIN even though VDG returned one, and
+            #   - paint recovery never fired, because paint_pending needs a VIN.
+            # Salvage whatever identification VDG did provide BEFORE falling back,
+            # so the DVLA/MOT lookup only fills the gaps that remain. The VIN and
+            # category are the load-bearing fields here: VIN gates the /lookup-
+            # status pl24 recovery, and category routes it (commercial vs car).
+            if vdg_data:
+                vin = vdg_data.get('vin', '') or vin
+                category = vdg_data.get('category', '') or category
+                # Take VDG's make/model/etc as a base too when present; DVLA+MOT
+                # below overwrite any that come back non-empty, so a stale-mirror
+                # response that still carried ModelDetails isn't wasted, and a
+                # truly empty VDG response changes nothing.
+                make = vdg_data.get('make', '') or make
+                model = vdg_data.get('model', '') or model
+                year = vdg_data.get('year') if vdg_data.get('year') is not None else year
+                colour = vdg_data.get('colour', '') or colour
+                fuel_type = vdg_data.get('fuel_type', '') or fuel_type
+                transmission = vdg_data.get('transmission', '') or transmission
+                engine_description = (
+                    vdg_data.get('engine_description', '') or engine_description
+                )
+
             dvla = get_dvla_data(registration)
             if not dvla:
-                search.success = False
-                search.lookup_duration_ms = int((time.time() - start_time) * 1000)
-                if not search.error_message:
-                    search.error_message = 'DVLA + VDG: vehicle not found'
-                else:
-                    search.error_message += ' | DVLA: not found'
-                search.save()
-                messages.error(
-                    request,
-                    'Vehicle not found. Please check the registration '
-                    'number is correct and try again.'
-                )
-                return redirect('index')
-
-            make = fix_make_case((dvla.get('make', '') or '').title())
-            year = dvla.get('yearOfManufacture')
-            colour = (dvla.get('colour', '') or '').title()
-            fuel_type = normalize_fuel_type(dvla.get('fuelType', ''))
+                # DVLA has nothing. Normally that's a genuine "not found" — but
+                # if VDG already identified the vehicle (we salvaged a VIN just
+                # above, the stale-mirror / status-25 case), it IS a real vehicle
+                # and we should proceed with the VDG data rather than dead-end the
+                # user. Only bail when NEITHER source knows the vehicle.
+                if not vin:
+                    search.success = False
+                    search.lookup_duration_ms = int((time.time() - start_time) * 1000)
+                    if not search.error_message:
+                        search.error_message = 'DVLA + VDG: vehicle not found'
+                    else:
+                        search.error_message += ' | DVLA: not found'
+                    search.save()
+                    # Remember this dud reg so a repeat within the hour is served
+                    # instantly (this is the common not-found exit — an invalid or
+                    # unrecognised reg — and the main thing a proxy pool hammers).
+                    record_miss(registration)
+                    messages.error(
+                        request,
+                        'Vehicle not found. Please check the registration '
+                        'number is correct and try again.'
+                    )
+                    return redirect('index')
+                # else: fall through with the salvaged VDG fields (make/model/etc
+                # already set above); MOT can still add a model below.
+            else:
+                # DVLA responded — use its fields, but never let an EMPTY DVLA
+                # value overwrite something VDG already gave us (guard each with
+                # `or <existing>`), so the salvage above is preserved when DVLA is
+                # sparse.
+                make = fix_make_case((dvla.get('make', '') or '').title()) or make
+                if dvla.get('yearOfManufacture') is not None:
+                    year = dvla.get('yearOfManufacture')
+                colour = (dvla.get('colour', '') or '').title() or colour
+                fuel_type = normalize_fuel_type(dvla.get('fuelType', '')) or fuel_type
 
             mot = get_mot_data(registration)
             mot_model = extract_mot_field(mot, 'model') or ''
-            model = mot_model.title()
+            model = mot_model.title() or model
 
         vehicle_title = build_vehicle_title(year, make, model)
 
@@ -383,12 +619,136 @@ def index(request):
             # the results page should poll /lookup-status to try the parallel
             # VDG-retry + pl24 fallback. False when we already have paint (or no
             # vehicle at all) — nothing to resolve.
-            'paint_pending': bool(vin) and not paint_code,
+            # Recovery gate. Previously `bool(vin) and not paint_code`, which
+            # coupled the whole recovery leg to having a VIN — but only the pl24
+            # scrape needs one. The VDG retry works from the registration alone.
+            # So when VDG fails outright (no VIN, DVLA supplies the details) we
+            # used to skip BOTH legs when we could still have run the retry.
+            # _pl24_lookup already returns None without a VIN, so the pl24 leg
+            # simply no-ops and the retry still gets its chance.
+            'paint_pending': (not paint_code) and bool(make),
         }
+
+        # --- VRM cache write (A) -------------------------------------------
+        # A successful lookup (paint code delivered) is stored so the next
+        # request for this reg is served from cache with zero VDG spend. Only
+        # complete successes are cached — a miss must stay live so recovery /
+        # retry always gets a fresh shot. Payload excludes the request-specific
+        # keys (search_id, paint_pending); store_vrm_payload strips them anyway.
+        if paint_code:
+            store_vrm_payload(registration, request.session['vehicle_data'])
+            clear_miss(registration)  # a prior miss is now stale — forget it
+        elif bool(vin):
+            # Vehicle found but no paint yet. The pl24/VDG-retry recovery may
+            # still succeed via /lookup-status, so DON'T record a miss here —
+            # that's done only if recovery also comes back empty (see
+            # lookup_status). Recording now would wrongly short-circuit the very
+            # next lookup while recovery could still find the code.
+            pass
+        else:
+            # No vehicle at all (or a genuine dead end) -> remember the miss so a
+            # repeat within the hour is served instantly without VDG spend.
+            record_miss(registration)
 
         return redirect('results')
 
-    return render(request, 'lookup/index.html', {'maintenance_mode': maintenance})
+    return render(request, 'lookup/index.html', {
+        'maintenance_mode': maintenance,
+        'turnstile_site_key': dj_settings.TURNSTILE_SITE_KEY,
+        # Paid mode (F): when active, the form posts to /paid/start/ instead of
+        # here, and the button/label reflect the price. Dormant by default.
+        'payments_on': payments_active(config),
+        'payments_configured': payments_configured(),
+        'lookup_price': dj_settings.LOOKUP_PRICE_PENCE / 100.0,
+    })
+
+
+@require_POST
+def vehicle_make(request):
+    """Return just the manufacturer for a registration, as fast as possible.
+
+    Exists purely for the loading experience: the homepage fires this ALONGSIDE
+    the main lookup POST (two independent requests, in parallel), so the spinner
+    can say "Requesting Ford build sheet..." instead of something generic. It is
+    strictly cosmetic — the real lookup neither waits for it nor depends on it,
+    and if this fails the message simply stays as it was.
+
+    Because it is off the critical path, it is ordered cheapest-first:
+      1. VrmCache        — if we have served this reg before, zero API calls
+      2. Recent Search   — likewise, from our own history
+      3. DVLA            — only if we genuinely have never seen the reg
+    Most repeat traffic never touches DVLA at all.
+
+    Protected but deliberately more generously than a lookup: it costs no VDG
+    money and returns only a manufacturer name (low value to an abuser), but it
+    does consume a third-party API call, so it gets its own rate-limit bucket.
+    """
+    registration = (request.POST.get('registration') or '').strip().upper().replace(' ', '')
+    if not re.fullmatch(r'[A-Z0-9]{1,8}', registration or ''):
+        return JsonResponse({})
+
+    config = SiteConfig.get()
+    client_ip = get_client_ip(request)
+    if (config.is_ip_blocked(client_ip)
+            or config.is_ua_blocked(request.META.get('HTTP_USER_AGENT', ''))
+            or config.is_reg_blocked(registration)):
+        return JsonResponse({})
+
+    # Separate, roomier bucket than the 3/h lookup limit — a typo shouldn't cost
+    # someone their allowance, but this can't be hammered for free either.
+    if sliding_rate_limited('make', client_ip, limit=15):
+        return JsonResponse({})
+
+    # 1. Anything we already hold?
+    cached = get_cached_vrm_payload(registration)
+    if cached and cached.get('make'):
+        return JsonResponse({'make': cached['make']})
+
+    prior = (
+        Search.objects.filter(registration=registration)
+        .exclude(make='')
+        .order_by('-timestamp')
+        .values_list('make', flat=True)
+        .first()
+    )
+    if prior:
+        return JsonResponse({'make': prior})
+
+    # 2. Ask DVLA. Short timeout: this is decoration, and a slow answer is worse
+    # than no answer — the message would land after the results page already had.
+    try:
+        dvla = get_dvla_data(registration)
+    except Exception:
+        dvla = None
+    if dvla and dvla.get('make'):
+        return JsonResponse({'make': fix_make_case((dvla.get('make') or '').title())})
+    return JsonResponse({})
+
+
+@require_GET
+def warm(request):
+    """Pre-warm the database connection so a lookup doesn't pay a cold start.
+
+    The homepage fires this (once) when the user focuses the registration field
+    — typically a few seconds to tens of seconds before they submit. By then
+    Neon's compute (which suspends after 5 idle minutes) has already resumed, so
+    the subsequent lookup POST finds a warm DB and skips the ~0.5–2s wake-up. It
+    does the minimum work needed to open a real connection and returns 204 with
+    no body.
+
+    Deliberately cheap and side-effect-free: one `SELECT 1`, no Search row, no
+    session write, no VDG call. Bots that POST straight to `/` never focus a
+    form field, so they don't trigger this — only real browsers do. Failures are
+    swallowed (still 204): warming is best-effort, and a failed warm just means
+    the lookup pays the cold start it would have paid anyway.
+    """
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute('SELECT 1')
+            cursor.fetchone()
+    except Exception:
+        pass
+    return HttpResponse(status=204)
 
 
 def paige(request):
@@ -584,6 +944,12 @@ def lookup_status(request, search_id):
         vehicle_data['paint_pending'] = False
         request.session['vehicle_data'] = vehicle_data
         request.session.modified = True
+        # Recovery is now exhausted for this reg (VDG first pass + VDG retry +
+        # pl24 all came back without a code) — remember the miss so a repeat
+        # within the hour is served instantly without re-running the whole chain.
+        reg_missed = vehicle_data.get('registration')
+        if reg_missed:
+            record_miss(reg_missed)
         return JsonResponse({'status': 'not_found'})
 
     # Name-only: pl24 returned a colour NAME but no code (e.g. Ford passenger,
@@ -632,6 +998,15 @@ def lookup_status(request, search_id):
     vehicle_data['paint_pending'] = False
     request.session['vehicle_data'] = vehicle_data
     request.session.modified = True
+
+    # VRM cache write (A): a recovery hit is a full success too — cache it so a
+    # repeat of this reg is served for £0. Same rule as the first-pass write:
+    # only cache when a real paint code was delivered (which is precisely this
+    # branch). Name-only recoveries never reach here, so they're never cached.
+    reg_for_cache = vehicle_data.get('registration')
+    if reg_for_cache and paint_code:
+        store_vrm_payload(reg_for_cache, vehicle_data)
+        clear_miss(reg_for_cache)  # recovery found it — drop any stale miss
 
     return JsonResponse({
         'status': 'found',
@@ -719,8 +1094,31 @@ def _apply_recovery_telemetry(search, telemetry):
     dur = telemetry.get('duration_ms')
     if dur is not None:
         search.recovery_duration_ms = int(dur)
-    return ['recovery_attempted', 'vdg_retry_returned', 'pl24_attempted',
-            'pl24_returned', 'recovery_name_only', 'recovery_duration_ms']
+    fields = ['recovery_attempted', 'vdg_retry_returned', 'pl24_attempted',
+              'pl24_returned', 'recovery_name_only', 'recovery_duration_ms']
+
+    # --- Retry spend (paint15) ------------------------------------------------
+    # The recovery makes a SECOND VDG call, which VDG bills whether or not it
+    # returns paint (~£0.45 on a hit, ~£0.12 refund-net on a miss). Add it to the
+    # row so vdg_transaction_cost is the TOTAL real spend for this lookup, not
+    # just the first call. This is what makes the daily budget breaker accurate:
+    # ~58% of lookups retry, so without this it would see roughly 60% of true
+    # spend and a £30 budget would silently run to ~£50.
+    # Safe from double-counting: the caller claims the recovery atomically
+    # (filter recovery_attempted=False -> update), so this runs exactly once per
+    # row; concurrent pollers wait on the result instead of re-running it.
+    retry_cost = telemetry.get('vdg_retry_cost')
+    if retry_cost is not None:
+        existing = search.vdg_transaction_cost or Decimal('0')
+        search.vdg_transaction_cost = existing + Decimal(str(retry_cost))
+        fields.append('vdg_transaction_cost')
+    retry_balance = telemetry.get('vdg_retry_balance')
+    if retry_balance is not None:
+        # The retry is the newer call, so its balance is the fresher truth.
+        search.vdg_balance_after_call = Decimal(str(retry_balance))
+        fields.append('vdg_balance_after_call')
+
+    return fields
 
 
 def _record_paint_hit(search_id, paint_code, paint_description, source, telemetry=None,
@@ -802,6 +1200,16 @@ def _record_name_only(search_id, paint_description, telemetry=None):
 def submit_email(request):
     search_id = request.POST.get('search_id')
     email = request.POST.get('email', '').strip()
+    # Optional context from the customer (paint16). Free text plus an optional
+    # photo — typically of the paint-code label or the V5C. Both are genuinely
+    # useful: a note like "it's a Japanese import" or a legible label photo is
+    # often the difference between a dead end and a found code. Capped and
+    # validated; neither is required, and a bad upload is silently ignored
+    # rather than failing the request.
+    customer_message = request.POST.get('customer_message', '').strip()[:2000]
+    photo = process_image_upload(
+        request.FILES.get('photo'), filename_prefix='customer-photo'
+    )
 
     if not search_id or not email:
         messages.error(request, 'Email address is required.')
@@ -860,6 +1268,8 @@ def submit_email(request):
         return redirect('results')
 
     search.email = email
+    if customer_message:
+        search.customer_message = customer_message
     search.save()
 
     vin_masked = mask_vin(search.vin)
@@ -895,6 +1305,8 @@ def submit_email(request):
             vin_full=search.vin,
             colour=search.colour,
             user_email=email,
+            customer_message=customer_message,
+            extra_attachments=[photo] if photo else None,
         )
         user_sent = send_user_pending_notification(
             to_email=email,
@@ -912,21 +1324,32 @@ def submit_email(request):
 
 
 def about(request):
-    return render(request, 'lookup/about.html')
+    return render(request, 'lookup/about.html', {
+        'payments_on': payments_active(),
+    })
 
 
 def privacy(request):
-    return render(request, 'lookup/privacy.html')
+    return render(request, 'lookup/privacy.html', {
+        'payments_on': payments_active(),
+    })
 
 
 def disclaimer(request):
-    return render(request, 'lookup/disclaimer.html')
+    # payments_on drives the free-vs-paid variants of this page: the liability
+    # section, the refund/cancellation terms, and the trading disclosure all
+    # switch automatically when payments are enabled, so there's no manual edit
+    # to forget on launch day.
+    return render(request, 'lookup/disclaimer.html', {
+        'payments_on': payments_active(),
+    })
 
 
 def help_page(request):
     contact_submitted = request.session.pop('contact_submitted', None)
     return render(request, 'lookup/help.html', {
         'contact_submitted': contact_submitted,
+        'payments_on': payments_active(),
     })
 
 
@@ -995,6 +1418,69 @@ def admin_stats(request):
             'Maintenance mode ON — lookups are paused.' if cfg.maintenance_mode
             else 'Maintenance mode OFF — lookups are live again.'
         )
+        return redirect('admin_stats')
+
+    # Save the daily VDG budget (A). Same redirect-after-POST pattern as the
+    # maintenance toggle. Accepts a decimal amount; 0 disables the breaker.
+    # Also clears the tripped flag so a raised budget takes effect immediately
+    # (otherwise today's earlier trip would keep the alert suppressed even
+    # though lookups have resumed).
+    if request.method == 'POST' and request.POST.get('action') == 'save_budget':
+        cfg = SiteConfig.get()
+        raw = (request.POST.get('daily_budget_gbp') or '').strip()
+        try:
+            value = Decimal(raw)
+            if value < 0:
+                raise InvalidOperation
+        except (InvalidOperation, ValueError):
+            messages.error(request, 'Budget must be a number (0 disables the limit).')
+            return redirect('admin_stats')
+        cfg.daily_budget_gbp = value
+        cfg.budget_tripped = False
+        cfg.budget_tripped_date = None
+        cfg.save(update_fields=[
+            'daily_budget_gbp', 'budget_tripped', 'budget_tripped_date', 'updated_at',
+        ])
+        messages.success(
+            request,
+            f'Daily budget set to £{value:.2f}.' if value > 0
+            else 'Daily budget disabled (no spend limit).'
+        )
+        return redirect('admin_stats')
+
+    # Save the blocklists (A). Three textareas, newline/comma separated; stored
+    # verbatim (parsing happens at match time via SiteConfig helpers).
+    if request.method == 'POST' and request.POST.get('action') == 'save_blocklists':
+        cfg = SiteConfig.get()
+        cfg.blocked_regs = (request.POST.get('blocked_regs') or '').strip()
+        cfg.blocked_ips = (request.POST.get('blocked_ips') or '').strip()
+        cfg.blocked_user_agents = (request.POST.get('blocked_user_agents') or '').strip()
+        cfg.save(update_fields=[
+            'blocked_regs', 'blocked_ips', 'blocked_user_agents', 'updated_at',
+        ])
+        n = (len(cfg.blocked_reg_set()) + len(cfg.blocked_ip_set())
+             + len(cfg.blocked_ua_list()))
+        messages.success(request, f'Blocklists saved ({n} entries active).')
+        return redirect('admin_stats')
+
+    # Payments master switch (F). Only meaningful once the Stripe env keys are
+    # set; the view guards on payments_active() which checks both.
+    if request.method == 'POST' and request.POST.get('action') == 'toggle_payments':
+        cfg = SiteConfig.get()
+        cfg.payments_enabled = not cfg.payments_enabled
+        cfg.save(update_fields=['payments_enabled', 'updated_at'])
+        if cfg.payments_enabled and not payments_configured():
+            messages.warning(
+                request,
+                'Payments switched ON but Stripe keys are missing — lookups '
+                'stay free until STRIPE_SECRET_KEY is set in the environment.'
+            )
+        else:
+            messages.success(
+                request,
+                'Payments ON — lookups now require payment.' if cfg.payments_enabled
+                else 'Payments OFF — lookups are free again.'
+            )
         return redirect('admin_stats')
 
     now = timezone.now()
@@ -1069,31 +1555,75 @@ def admin_stats(request):
     # before recovery could fire — which also covers all rows from before the
     # recovery leg existed, since they never had one to run). The rule is
     # self-scoping: no launch dates or era cutoffs needed.
+    #
+    # paint16: rows flagged no_code_available are a THIRD outcome — we searched
+    # every source and the manufacturer has no published code. They are excluded
+    # from BOTH sides: counting them as failures punishes us for a gap in the
+    # manufacturer's data, counting them as successes claims a code we never
+    # delivered. They are reported separately instead.
+    no_code_available_count = Search.objects.filter(no_code_available=True).count()
     searched_to_completion = success_with_code + genuine_miss_count
     success_rate = (
         (success_with_code / searched_to_completion * 100)
         if searched_to_completion > 0 else 0
     )
+
     total_emails = top_metrics['with_email']
     emails_sent = top_metrics['emails_sent_count']
     conversion_rate = (total_emails / total_searches * 100) if total_searches > 0 else 0
     avg_duration_s = round((top_metrics['avg_duration_ms'] or 0) / 1000, 2)
 
-    # Daily counts for last 30 days
-    daily_counts = (
+    # --- Daily chart data: ONE pass over the 30-day window --------------
+    # Volume, outcome split and resolution source were originally three separate
+    # queries, each grouping the same rows by the same truncated date — three
+    # scans and three timezone-aware date casts over identical data. They are
+    # merged here into a single grouped query with conditional aggregates, so
+    # the database walks the window once. At 50k rows the three-query version
+    # was the slowest thing on the dashboard by a wide margin.
+    #
+    # The source counts carry `paint_code__gt=''` inside each filter rather than
+    # on the queryset, which is what the separate source query used to do at the
+    # queryset level — same rows, same numbers, one fewer scan.
+    daily_rows = (
         Search.objects.filter(timestamp__gte=month_ago)
         .annotate(date=TruncDate('timestamp'))
         .values('date')
-        .annotate(count=Count('id'))
+        .annotate(
+            total=Count('id'),
+            delivered=Count('id', filter=Q(paint_code__gt='')),
+            no_code=Count('id', filter=Q(no_code_available=True)),
+            failed=Count('id', filter=Q(
+                paint_code='', no_code_available=False,
+                recovery_attempted=True, make__gt='')),
+            excluded=Count('id', filter=Q(paint_code='', no_code_available=False) &
+                           (Q(make='') | Q(recovery_attempted=False))),
+            s_vdg=Count('id', filter=Q(paint_code__gt='', provider=Search.PROVIDER_VDG)),
+            s_retry=Count('id', filter=Q(paint_code__gt='', provider=Search.PROVIDER_VDG_RETRY)),
+            s_pl24=Count('id', filter=Q(paint_code__gt='', provider=Search.PROVIDER_PARTSLINK24)),
+            s_manual=Count('id', filter=Q(paint_code__gt='', provider=Search.PROVIDER_MANUAL)),
+            s_cache=Count('id', filter=Q(paint_code__gt='', provider=Search.PROVIDER_CACHE)),
+        )
         .order_by('date')
     )
-    chart_labels = []
-    chart_data = []
-    daily_dict = {item['date']: item['count'] for item in daily_counts}
+    daily_map = {r['date']: r for r in daily_rows}
+
+    chart_labels, chart_data = [], []
+    chart_delivered, chart_failed, chart_nocode, chart_excluded = [], [], [], []
+    src_vdg, src_retry, src_pl24, src_manual, src_cache = [], [], [], [], []
     for i in range(30, -1, -1):
         d = (now - timedelta(days=i)).date()
+        row = daily_map.get(d, {})
         chart_labels.append(d.strftime('%b %d'))
-        chart_data.append(daily_dict.get(d, 0))
+        chart_data.append(row.get('total', 0))
+        chart_delivered.append(row.get('delivered', 0))
+        chart_failed.append(row.get('failed', 0))
+        chart_nocode.append(row.get('no_code', 0))
+        chart_excluded.append(row.get('excluded', 0))
+        src_vdg.append(row.get('s_vdg', 0))
+        src_retry.append(row.get('s_retry', 0))
+        src_pl24.append(row.get('s_pl24', 0))
+        src_manual.append(row.get('s_manual', 0))
+        src_cache.append(row.get('s_cache', 0))
 
     # Top searched makes
     top_makes = (
@@ -1220,6 +1750,15 @@ def admin_stats(request):
         'avg_duration_s': avg_duration_s,
         'chart_labels': chart_labels,
         'chart_data': chart_data,
+        'chart_delivered': chart_delivered,
+        'chart_failed': chart_failed,
+        'chart_nocode': chart_nocode,
+        'chart_excluded': chart_excluded,
+        'src_vdg': src_vdg,
+        'src_retry': src_retry,
+        'src_pl24': src_pl24,
+        'src_manual': src_manual,
+        'src_cache': src_cache,
         'top_makes': top_makes,
         'top_regs': top_regs,
         'failed_makes': failed_makes,
@@ -1242,7 +1781,16 @@ def admin_stats(request):
         'vdg_balance': vdg_balance,
         'vdg_balance_at': vdg_balance_at,
         'provider_breakdown': provider_breakdown,
+        # --- paint16 metrics ---
+        'no_code_available_count': no_code_available_count,
         'maintenance_mode': SiteConfig.get().maintenance_mode,
+        # --- Protection panel (A) ---
+        'site_config': SiteConfig.get(),
+        'spend_today': spend_today(),
+        'vrm_cache_count': VrmCache.objects.count(),
+        'vrm_cache_hits': VrmCache.objects.aggregate(h=Sum('hit_count'))['h'] or 0,
+        'payments_enabled': SiteConfig.get().payments_enabled,
+        'payments_configured': payments_configured(),
     }
 
     return render(request, 'lookup/admin_stats.html', context)
@@ -1266,6 +1814,13 @@ def send_compose_email(request):
     to_email = (request.POST.get('to') or '').strip()
     subject = (request.POST.get('subject') or '').strip()
     body = (request.POST.get('body') or '').strip()
+    # Optional attachment (paint16) — same handling as the manual-lookup reply:
+    # validated by magic bytes, capped, never stored. The BCC on
+    # send_custom_message means a copy (with the attachment) lands in
+    # hello@coloureg.com, so there is a sent-folder record.
+    attachment = process_image_upload(
+        request.FILES.get('photo'), filename_prefix='attachment'
+    )
 
     # Basic validation. Reject before any work happens (same pattern as
     # submit_manual_lookup) so we don't half-send.
@@ -1280,7 +1835,7 @@ def send_compose_email(request):
     if len(body) > 5000:
         return JsonResponse({'success': False, 'error': f'Message body too long ({len(body)} chars, max 5000).'}, status=400)
 
-    sent = send_custom_message(to_email, subject, body)
+    sent = send_custom_message(to_email, subject, body, extra_attachments=[attachment] if attachment else None)
     if sent:
         return JsonResponse({'success': True, 'message': f'Email sent to {to_email}.'})
     return JsonResponse({'success': False, 'error': f'Failed to send email to {to_email}. Check Resend logs.'}, status=502)
@@ -1301,12 +1856,36 @@ def submit_manual_lookup(request):
     # We .upper() here so admin typos don't end up as mixed-case in the DB.
     paint_code = (request.POST.get('paint_code') or '').strip().upper()
     paint_description = (request.POST.get('paint_description') or '').strip()
-    # Optional free-text note from the admin, included in the email's "A note
-    # from us" block. Transient — used only to compose the email, never stored.
+    # Free-text note from the admin, shown in the email's "A note from us"
+    # block. Now also PERSISTED (paint16) — previously it went into the email
+    # and was discarded, leaving no record of what the customer was actually
+    # told, including any caveat ("closest match for the year", "verify against
+    # the label"). Stored so the row is a full account of the exchange.
     message = (request.POST.get('message') or '').strip()
+    # Optional photo to send with the reply — e.g. a shot of the manufacturer
+    # record or the paint label. Never stored: it rides on the email, and the
+    # BCC copy in send_user_paint_code gives us our own record of it.
+    reply_photo = process_image_upload(
+        request.FILES.get('photo'), filename_prefix='paint-reference'
+    )
 
-    if not search_id or not paint_code:
-        return JsonResponse({'success': False, 'error': 'Search ID and paint code are required.'}, status=400)
+    # THIRD OUTCOME (paint16): the admin can now submit with NO paint code to
+    # record "we searched every source and this vehicle has no published code".
+    # Previously the code field was mandatory, forcing 'N/A' into a column that
+    # then counted as a successful lookup — inflating the success rate with
+    # non-results. An empty code now means: send the no-code-available email,
+    # flag the row as no_code_available, and leave success=False so it is
+    # excluded from the success-rate denominator rather than counted either way.
+    # A note is REQUIRED in that case, since the customer needs an explanation.
+    no_code = not paint_code
+
+    if not search_id:
+        return JsonResponse({'success': False, 'error': 'Search ID is required.'}, status=400)
+    if no_code and not message:
+        return JsonResponse({
+            'success': False,
+            'error': 'Add a note explaining why no code is available — the customer sees it.',
+        }, status=400)
 
     # Validate field lengths against the underlying DB column sizes BEFORE doing
     # any work (DB lookup, swatch lookup, email send). Otherwise an over-long
@@ -1362,18 +1941,32 @@ def submit_manual_lookup(request):
         vdg_colour=search.colour,
     )
 
-    sent = send_user_paint_code(
-        to_email=search.email,
-        registration=search.registration,
-        vehicle_title=search.vehicle_title,
-        vin_masked=mask_vin(search.vin),
-        colour=search.colour,
-        paint_code=paint_code,
-        paint_description=paint_description_clean,
-        canonical_code=canonical_code,
-        paint_hex=paint_hex,
-        message=message,
-    )
+    if no_code:
+        # Third outcome: tell them plainly that no code exists, with the
+        # explanation the admin wrote. Different email entirely — showing a
+        # blank code box would look broken.
+        sent = send_user_no_code_available(
+            to_email=search.email,
+            registration=search.registration,
+            vehicle_title=search.vehicle_title,
+            colour=search.colour,
+            message=message,
+            extra_attachments=[reply_photo] if reply_photo else None,
+        )
+    else:
+        sent = send_user_paint_code(
+            to_email=search.email,
+            registration=search.registration,
+            vehicle_title=search.vehicle_title,
+            vin_masked=mask_vin(search.vin),
+            colour=search.colour,
+            paint_code=paint_code,
+            paint_description=paint_description_clean,
+            canonical_code=canonical_code,
+            paint_hex=paint_hex,
+            message=message,
+            extra_attachments=[reply_photo] if reply_photo else None,
+        )
 
     if not sent:
         # Release the claim so the request can be retried after a transient email
@@ -1395,10 +1988,54 @@ def submit_manual_lookup(request):
         paint_code=paint_code,
         paint_description=paint_description_clean,
         provider=Search.PROVIDER_MANUAL,
-        success=True,
+        # success stays False for the no-code outcome: nothing was delivered, so
+        # counting it as a success would overstate the hit rate. It is NOT a
+        # failure either — no_code_available marks it as the third state, which
+        # the stats exclude from the denominator entirely.
+        success=not no_code,
+        no_code_available=no_code,
         recovery_name_only=False,
         email_sent=True,
+        manual_note=message,
     )
+
+    # Cache a manually-found code (paint16b). The manual route is the most
+    # expensive result we produce — it costs Roland's time, not an API call — so
+    # not storing it meant doing the same hand-search again the next time anyone
+    # asked for that registration. Caching turns that one-off effort into a
+    # permanent asset: the next request for this reg is answered instantly from
+    # storage with no VDG spend and no inbox round-trip. Only real codes are
+    # cached; the no-code outcome is never stored, so a vehicle whose code is
+    # later published still gets a fresh attempt.
+    if not no_code and paint_code:
+        store_vrm_payload(search.registration, {
+            'registration': search.registration,
+            'make': search.make,
+            'model': search.model,
+            'year': search.year,
+            'colour': search.colour,
+            'vin': search.vin,
+            'vin_masked': mask_vin(search.vin),
+            'vehicle_title': search.vehicle_title,
+            'category': search.category,
+            'paint_code': paint_code,
+            'paint_description': paint_description_clean,
+            'all_paint_codes': [],
+            'make_logo': make_to_logo(search.make),
+            'fuel_type': '',
+            'transmission': '',
+            'engine_description': '',
+        })
+        clear_miss(search.registration)
+
+    if no_code:
+        return JsonResponse({
+            'success': True,
+            'no_code': True,
+            'message': f'Told {search.email} no code is available for {search.registration}.',
+            'registration': search.registration,
+            'email': search.email,
+        })
 
     return JsonResponse({
         'success': True,
@@ -1443,3 +2080,330 @@ def dismiss_manual_lookup(request):
         'message': f'Dismissed manual lookup request for {search.registration}.',
         'registration': search.registration,
     })
+
+# =============================================================================
+# Paid lookup flow (F, paint15) — DORMANT until payments_active() is True.
+#
+# payments_active() requires BOTH the Stripe env keys AND
+# SiteConfig.payments_enabled (defaults False). While either is missing, none of
+# the views below do anything except redirect home, and the free index() flow is
+# untouched. This is intentional: the whole flow ships and is tested against
+# Stripe TEST keys, then switched on after Stripe is live.
+#
+# Flow: index() (payments on) -> renders a "pay to look up" state -> POST to
+# start_paid_lookup -> Stripe Checkout (£1 AUTHORISED, capture_method=manual) ->
+# customer pays -> Stripe redirects to paid_success (or the webhook fires) ->
+# perform_lookup_core runs the lookup -> capture on paint hit / cancel on miss.
+# =============================================================================
+
+
+def perform_lookup_core(registration, request_meta=None):
+    """Run one lookup and return (payload_dict, search).
+
+    A request/session-FREE version of the resolution logic in index(), used only
+    by the paid flow (index()'s free path keeps its own inline copy, unchanged,
+    to avoid any regression risk to the proven path). Returns:
+      payload  — the same 'vehicle_data' dict index() puts in the session
+                 (minus paint_pending, which the caller sets), or None if the
+                 vehicle was not found at all.
+      search   — the saved Search row (or None when not found).
+
+    request_meta is an optional dict with 'ip'/'ua' for logging; the paid flow
+    passes the real client values.
+    """
+    start_time = time.time()
+    meta = request_meta or {}
+    search = Search(
+        registration=registration,
+        ip_address=meta.get('ip'),
+        user_agent=meta.get('ua', ''),
+        device=parse_device(meta.get('ua', '')),
+    )
+
+    vdg_data = None
+    latest_balance = None
+    try:
+        vdg_data = get_combined_lookup(registration)
+        if vdg_data:
+            search.vdg_vehicle_returned = vdg_data.get('vehicle_returned', False)
+            search.vdg_paint_returned = vdg_data.get('paint_returned', False)
+            if vdg_data.get('balance') is not None:
+                latest_balance = vdg_data.get('balance')
+            if vdg_data.get('transaction_cost') is not None:
+                search.vdg_transaction_cost = vdg_data.get('transaction_cost')
+    except (VdgError, VdgNotFoundError) as e:
+        search.error_message = f'VDG: {str(e)[:200]}'
+
+    make = model = colour = fuel_type = transmission = engine_description = ''
+    category = ''
+    year = None
+    vin = None
+
+    if vdg_data and vdg_data.get('vehicle_returned'):
+        make = vdg_data.get('make', '')
+        model = vdg_data.get('model', '')
+        year = vdg_data.get('year')
+        colour = vdg_data.get('colour', '')
+        vin = vdg_data.get('vin', '')
+        fuel_type = vdg_data.get('fuel_type', '')
+        transmission = vdg_data.get('transmission', '')
+        engine_description = vdg_data.get('engine_description', '')
+        category = vdg_data.get('category', '')
+    else:
+        # Same status-25 salvage as index() (see B): keep VDG's VIN/category and
+        # any identification it gave before falling back to DVLA+MOT.
+        if vdg_data:
+            vin = vdg_data.get('vin', '') or vin
+            category = vdg_data.get('category', '') or category
+            make = vdg_data.get('make', '') or make
+            model = vdg_data.get('model', '') or model
+            year = vdg_data.get('year') if vdg_data.get('year') is not None else year
+            colour = vdg_data.get('colour', '') or colour
+            fuel_type = vdg_data.get('fuel_type', '') or fuel_type
+            transmission = vdg_data.get('transmission', '') or transmission
+            engine_description = vdg_data.get('engine_description', '') or engine_description
+
+        dvla = get_dvla_data(registration)
+        if not dvla:
+            if not vin:
+                search.success = False
+                search.lookup_duration_ms = int((time.time() - start_time) * 1000)
+                search.error_message = (search.error_message or '') + ' | DVLA: not found'
+                search.save()
+                return None, search
+        else:
+            make = fix_make_case((dvla.get('make', '') or '').title()) or make
+            if dvla.get('yearOfManufacture') is not None:
+                year = dvla.get('yearOfManufacture')
+            colour = (dvla.get('colour', '') or '').title() or colour
+            fuel_type = normalize_fuel_type(dvla.get('fuelType', '')) or fuel_type
+
+        mot = get_mot_data(registration)
+        mot_model = extract_mot_field(mot, 'model') or ''
+        model = mot_model.title() or model
+
+    vehicle_title = build_vehicle_title(year, make, model)
+    search.make = make
+    search.model = model
+    search.year = year
+    search.colour = colour
+    search.vin = vin or ''
+    search.vehicle_title = vehicle_title
+    search.category = category
+
+    paint_code = None
+    paint_description = None
+    all_paint_codes = []
+    if vdg_data and vdg_data.get('paint_returned'):
+        paint_code = vdg_data.get('paint_code', '')
+        paint_description = vdg_data.get('paint_description', '')
+        all_paint_codes = vdg_data.get('all_paint_codes', [])
+        _enriched = _enrich_from_lookup(
+            {'paint_code': paint_code, 'paint_description': paint_description},
+            make, model,
+        )
+        paint_code = _enriched.get('paint_code', paint_code)
+        paint_description = _enriched.get('paint_description', paint_description)
+        search.paint_code = paint_code
+        search.paint_description = paint_description
+        search.provider = Search.PROVIDER_VDG
+        search.enriched_from = _enriched.get('enriched_from', '')
+
+    if latest_balance is not None:
+        search.vdg_balance_after_call = latest_balance
+    search.success = bool(paint_code)
+    search.lookup_duration_ms = int((time.time() - start_time) * 1000)
+    search.save()
+
+    payload = {
+        'make': make, 'model': model, 'year': year, 'colour': colour,
+        'fuel_type': fuel_type, 'transmission': transmission,
+        'engine_description': engine_description, 'registration': registration,
+        'vin': vin, 'vin_masked': mask_vin(vin), 'vehicle_title': vehicle_title,
+        'paint_code': paint_code, 'paint_description': paint_description,
+        'all_paint_codes': all_paint_codes, 'make_logo': make_to_logo(make),
+        'search_id': search.id, 'category': category,
+        'paint_pending': bool(vin) and not paint_code,
+    }
+    return payload, search
+
+
+@require_POST
+def start_paid_lookup(request):
+    """Begin a paid lookup: validate the reg, then send the user to Stripe
+    Checkout to AUTHORISE £1. No VDG call happens here — the lookup runs only
+    after payment, in paid_success / the webhook.
+
+    Dormant unless payments_active(). Turnstile + blocklists still apply (the
+    same guards index() uses), so a script can't reach Checkout for free.
+    """
+    config = SiteConfig.get()
+    if not payments_active(config):
+        return redirect('index')
+
+    client_ip = get_client_ip(request)
+    client_ua = request.META.get('HTTP_USER_AGENT', '')
+    registration = request.POST.get('registration', '').strip().upper().replace(' ', '')
+
+    # Same front-door guards as the free flow.
+    if (config.is_ip_blocked(client_ip) or config.is_ua_blocked(client_ua)
+            or (registration and config.is_reg_blocked(registration))):
+        messages.error(request, 'Sorry, we could not process that request.')
+        return redirect('index')
+    if not verify_turnstile(request.POST.get('cf-turnstile-response', ''), client_ip):
+        messages.error(request, 'We could not verify your browser. Please reload and try again.')
+        return redirect('index')
+    if not re.fullmatch(r'[A-Z0-9]{1,8}', registration or ''):
+        messages.error(request, 'Please enter a valid registration number.')
+        return redirect('index')
+
+    # NOTE: we deliberately do NOT short-circuit on a cache hit here. The customer
+    # is buying the answer, not the act of querying a provider — whether we go
+    # and find it or already hold it is irrelevant to the service delivered, and
+    # a cached answer is in fact faster and more reliable than a live one. So the
+    # payment happens first and the cache is consulted during fulfilment
+    # (_fulfil_paid_session), where it saves the VDG cost while still capturing.
+    # That makes a cache hit the highest-margin transaction we have, and avoids
+    # the odd incentive where the second person to want a reg gets it free
+    # because the first one paid.
+
+    success_url = request.build_absolute_uri('/paid/success/') + '?session_id={CHECKOUT_SESSION_ID}'
+    cancel_url = request.build_absolute_uri('/')
+    session = create_checkout_session(registration, success_url, cancel_url, client_ip)
+    if session is None or not getattr(session, 'url', None):
+        messages.error(request, 'Payment is temporarily unavailable. Please try again later.')
+        return redirect('index')
+    return redirect(session.url)
+
+
+def _fulfil_paid_session(session):
+    """Run the lookup for a paid Checkout Session and capture or cancel the £1.
+
+    Idempotent and shared by BOTH the success redirect and the webhook, so a
+    customer who closes the tab before redirect is still fulfilled by the
+    webhook, and a session is never fulfilled twice. Returns the results payload
+    dict (or None if not found / not paid). The idempotency key is a Search row
+    stamped with the Stripe session id.
+    """
+    if session is None:
+        return None
+    reg = (session.get('metadata') or {}).get('registration')
+    pi = session.get('payment_intent')
+    payment_intent_id = pi if isinstance(pi, str) else (pi or {}).get('id')
+    if not reg or not payment_intent_id:
+        return None
+
+    # Idempotency: if we've already fulfilled this session, return its payload.
+    session_id = session.get('id')
+    existing = Search.objects.filter(
+        registration=reg, error_message__contains=f'stripe_session={session_id}'
+    ).order_by('-id').first()
+    if existing:
+        # Already processed — rebuild a minimal payload from the row.
+        return {
+            'registration': reg, 'make': existing.make, 'model': existing.model,
+            'year': existing.year, 'colour': existing.colour,
+            'vin': existing.vin, 'vin_masked': mask_vin(existing.vin),
+            'vehicle_title': existing.vehicle_title,
+            'paint_code': existing.paint_code,
+            'paint_description': existing.paint_description,
+            'all_paint_codes': [], 'make_logo': make_to_logo(existing.make),
+            'category': existing.category, 'search_id': existing.id,
+            'paint_pending': False,
+        }
+
+    # Cache first: if we already hold this answer, deliver it and capture without
+    # spending anything at VDG. Zero cost to us, instant for them.
+    cached = get_cached_vrm_payload(reg)
+    if cached:
+        cache_row = Search.objects.create(
+            registration=reg,
+            make=cached.get('make', ''),
+            model=cached.get('model', ''),
+            year=cached.get('year'),
+            colour=cached.get('colour', ''),
+            vehicle_title=cached.get('vehicle_title', ''),
+            category=cached.get('category', ''),
+            vin=cached.get('vin', '') or '',
+            paint_code=cached.get('paint_code', ''),
+            paint_description=cached.get('paint_description', ''),
+            provider=Search.PROVIDER_CACHE,
+            success=bool(cached.get('paint_code')),
+            error_message=f'stripe_session={session_id}',
+        )
+        capture(payment_intent_id)
+        payload = dict(cached)
+        payload['search_id'] = cache_row.id
+        payload['paint_pending'] = False
+        return payload
+
+    payload, search = perform_lookup_core(reg)
+    if search is not None:
+        # Stamp the session id for idempotency + audit.
+        search.error_message = (search.error_message or '') + f' | stripe_session={session_id}'
+        search.save(update_fields=['error_message'])
+
+    if payload and payload.get('paint_code'):
+        # Delivered a code -> capture the £1 and cache the result.
+        capture(payment_intent_id)
+        store_vrm_payload(reg, payload)
+    else:
+        # No code -> the customer is NOT charged.
+        cancel(payment_intent_id)
+    return payload
+
+
+def paid_success(request):
+    """Stripe success redirect: fulfil the session and show results.
+
+    If the lookup found nothing, the auth was cancelled in _fulfil_paid_session,
+    so the user lands on the normal "no paint code" experience with no charge.
+    """
+    if not payments_active():
+        return redirect('index')
+    session_id = request.GET.get('session_id')
+    if not session_id:
+        return redirect('index')
+    session = get_session(session_id)
+    payload = _fulfil_paid_session(session)
+    if not payload:
+        messages.error(
+            request,
+            'We could not find that vehicle, so you have not been charged. '
+            'Please check the registration and try again.'
+        )
+        return redirect('index')
+    request.session['vehicle_data'] = payload
+    return redirect('results')
+
+
+def paid_cancel(request):
+    """Customer abandoned Checkout — nothing charged, back to the homepage."""
+    return redirect('index')
+
+
+@csrf_exempt
+@require_POST
+def stripe_webhook(request):
+    """Backstop fulfilment for closed-tab-after-payment.
+
+    Verified by signature (the only thing securing this endpoint — register it
+    against the Railway hostname so Cloudflare bot protection can't challenge
+    Stripe's POSTs). Handles checkout.session.completed by fulfilling the same
+    idempotent path as the success redirect. Always 200 on a verified event so
+    Stripe doesn't retry a handled one; 400 on a bad signature.
+    """
+    event = construct_webhook_event(request.body, request.META.get('HTTP_STRIPE_SIGNATURE', ''))
+    if event is None:
+        return HttpResponse(status=400)
+    if event.get('type') == 'checkout.session.completed':
+        session = event['data']['object']
+        # Re-retrieve expanded so payment_intent is an id we can capture/cancel.
+        full = get_session(session.get('id'))
+        try:
+            _fulfil_paid_session(full or session)
+        except Exception:
+            logger.exception('Webhook fulfilment failed')
+            # Still 200: we don't want infinite Stripe retries on our bug; the
+            # success redirect path is the primary and this is the backstop.
+    return HttpResponse(status=200)

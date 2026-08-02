@@ -120,13 +120,35 @@ PL24_TIMEOUT = float(os.environ.get('PL24_CLIENT_TIMEOUT_S', '65'))
 _PL24_HTTP_TIMEOUT = (5.0, PL24_TIMEOUT)
 
 
-def _vdg_retry(registration):
+def _vdg_retry(registration, telemetry=None):
     """Second VDG bundle call. Returns a paint dict if paint came back, else
-    None. Never raises — VDG errors degrade to None (no recovery)."""
+    None. Never raises — VDG errors degrade to None (no recovery).
+
+    COST (paint15): VDG bills this call whether or not it returns paint — a
+    paint-less call is partially refunded and nets ~£0.12, a hit costs the full
+    ~£0.45. That spend used to vanish entirely: this function only surfaced a
+    value on a hit, so the retry's cost never reached the Search row. Since ~58%
+    of lookups trigger a retry, every downstream total undercounted badly — and
+    the daily budget breaker (which sums vdg_transaction_cost) would have seen
+    only ~60% of real spend, letting a £30 budget run to ~£50.
+
+    So we now stash the NET cost and the latest balance into the telemetry dict
+    on EVERY outcome — hit, miss, or error — and the caller adds them to the row.
+    Writing two keys into a plain dict from this worker thread is safe (single
+    assignments under the GIL, and the caller only reads them after the future
+    resolves or the deadline passes).
+    """
+    _t = telemetry if telemetry is not None else {}
     try:
         data = get_combined_lookup(registration)
     except VdgError:
         return None
+    if data:
+        # Record spend regardless of whether paint came back.
+        if data.get('transaction_cost') is not None:
+            _t['vdg_retry_cost'] = data.get('transaction_cost')
+        if data.get('balance') is not None:
+            _t['vdg_retry_balance'] = data.get('balance')
     if not data or not data.get('paint_returned'):
         return None
     return {
@@ -276,7 +298,7 @@ def resolve_paint(registration, vin, make, category=None, telemetry=None, model=
     _t['pl24_returned'] = False
     _t['pl24_name_only'] = False
     try:
-        f_vdg = ex.submit(_vdg_retry, registration)
+        f_vdg = ex.submit(_vdg_retry, registration, _t)
         # Category is routed (not raw): VW commercial lines misfiled as M1 by
         # VDG are sent to pl24 as N1 so the lookup hits the right catalogue
         # first time. See _route_category.

@@ -326,6 +326,109 @@
         </form>
     </div>
 
+    <!-- ================= Protection panel (paint15) ==================== -->
+    <!-- Daily VDG budget: hard spend ceiling per London day. When today's
+         refund-net spend reaches it, lookups auto-pause until midnight and one
+         alert email is sent. 0 disables. -->
+    <div class="maint-toggle {% if site_config.budget_tripped %}is-on{% endif %}" style="margin-top: 12px;">
+        <div class="maint-toggle-status">
+            <span class="maint-dot"></span>
+            <div>
+                <div class="maint-toggle-title">
+                    Daily VDG budget
+                    {% if site_config.budget_tripped %}— TRIPPED (lookups paused today){% endif %}
+                </div>
+                <div class="maint-toggle-sub">
+                    Spent today (net): <strong>£{{ spend_today|floatformat:2 }}</strong>
+                    of £{{ site_config.daily_budget_gbp|floatformat:2 }}
+                    {% if site_config.daily_budget_gbp == 0 %}(limit disabled){% endif %}
+                    — resets at midnight London time. Saving a new amount re-arms the breaker.
+                </div>
+            </div>
+        </div>
+        <form method="post" action="{% url 'admin_stats' %}" style="margin:0; display:flex; gap:8px; align-items:center;">
+            {% csrf_token %}
+            <input type="hidden" name="action" value="save_budget">
+            <div class="input-group input-group-sm" style="width: 140px;">
+                <span class="input-group-text">£</span>
+                <input type="number" step="0.01" min="0" class="form-control"
+                       name="daily_budget_gbp"
+                       value="{{ site_config.daily_budget_gbp|floatformat:2 }}">
+            </div>
+            <button type="submit" class="btn btn-sm btn-outline-dark">Save</button>
+        </form>
+    </div>
+
+    <!-- Blocklists: refuse specific regs / IPs / user-agent fragments before any
+         spend. Reg is the strong lever (abusers reuse regs); IP + UA are
+         scalpels — a rotating attacker walks around both. One entry per line
+         (or comma-separated). UA matching is case-insensitive substring. -->
+    <div class="maint-toggle" style="margin-top: 12px; align-items: flex-start;">
+        <form method="post" action="{% url 'admin_stats' %}" style="margin:0; width:100%;">
+            {% csrf_token %}
+            <input type="hidden" name="action" value="save_blocklists">
+            <div class="maint-toggle-title" style="margin-bottom:8px;">Blocklists</div>
+            <div class="row g-2">
+                <div class="col-md-4">
+                    <label class="form-label" style="font-size:12px; color:#666;">Registrations</label>
+                    <textarea class="form-control form-control-sm" rows="4" name="blocked_regs"
+                              placeholder="EJ19VKN&#10;CN14TGU">{{ site_config.blocked_regs }}</textarea>
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label" style="font-size:12px; color:#666;">IP addresses</label>
+                    <textarea class="form-control form-control-sm" rows="4" name="blocked_ips"
+                              placeholder="1.2.3.4">{{ site_config.blocked_ips }}</textarea>
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label" style="font-size:12px; color:#666;">User-agent fragments</label>
+                    <textarea class="form-control form-control-sm" rows="4" name="blocked_user_agents"
+                              placeholder="Chrome/126.0 Safari">{{ site_config.blocked_user_agents }}</textarea>
+                </div>
+            </div>
+            <div style="margin-top:8px; display:flex; justify-content:space-between; align-items:center;">
+                <span style="font-size:12px; color:#999;">
+                    VRM cache: {{ vrm_cache_count }} regs stored ·
+                    {{ vrm_cache_hits }} free repeat{{ vrm_cache_hits|pluralize }} served
+                    (each saved a VDG call)
+                </span>
+                <button type="submit" class="btn btn-sm btn-outline-dark">Save blocklists</button>
+            </div>
+        </form>
+    </div>
+    <!-- Payments master switch (F). Requires Stripe env keys too — the view
+         checks both, so flipping this without keys leaves lookups free. -->
+    <div class="maint-toggle {% if payments_enabled %}is-on{% endif %}" style="margin-top: 12px;">
+        <div class="maint-toggle-status">
+            <span class="maint-dot"></span>
+            <div>
+                <div class="maint-toggle-title">
+                    Paid lookups are {% if payments_enabled %}ON{% else %}off{% endif %}
+                    {% if payments_enabled and not payments_configured %}
+                        — WARNING: Stripe keys missing, lookups still free
+                    {% endif %}
+                </div>
+                <div class="maint-toggle-sub">
+                    {% if payments_enabled %}
+                        Visitors pay per lookup. £1 is authorised before the lookup and
+                        only captured if a paint code is found — no result, no charge.
+                    {% else %}
+                        Lookups are free. Turn on only after Stripe is activated and the
+                        public address/email are set.
+                        Stripe keys detected: <strong>{% if payments_configured %}yes{% else %}no{% endif %}</strong>.
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+        <form method="post" action="{% url 'admin_stats' %}" style="margin:0;">
+            {% csrf_token %}
+            <input type="hidden" name="action" value="toggle_payments">
+            <button type="submit" class="btn btn-sm {% if payments_enabled %}btn-danger{% else %}btn-success{% endif %}">
+                {% if payments_enabled %}Make lookups free{% else %}Enable paid lookups{% endif %}
+            </button>
+        </form>
+    </div>
+    <!-- ================ end protection panel (paint15) ================== -->
+
     <!-- Top metrics: row 1 = volume -->
     <div class="stats-grid">
         <div class="stat-card">
@@ -353,6 +456,13 @@
             <p class="stat-value">{{ success_rate }}%</p>
             <p class="stat-subvalue">{{ success_with_code }} of {{ searched_to_completion }} completed searches</p>
         </div>
+        {% if no_code_available_count %}
+        <div class="stat-card">
+            <p class="stat-label">No code exists</p>
+            <p class="stat-value">{{ no_code_available_count }}</p>
+            <p class="stat-subvalue">searched everywhere, none published — excluded from rates</p>
+        </div>
+        {% endif %}
         <div class="stat-card">
             <p class="stat-label">Avg lookup time</p>
             <p class="stat-value">{{ avg_duration_s }}s</p>
@@ -439,12 +549,35 @@
         </div>
     </div>
 
-    <!-- Daily chart -->
+    <!-- Daily chart: volume split by outcome (paint16).
+         Stacked rather than a plain count so one glance answers both "how busy"
+         and "how well is it working". A shrinking green band is the early
+         warning that something in the pipeline has broken. -->
     <div class="panel">
-        <h3>Searches per day (last 30 days)</h3>
+        <h3>Lookups per day, by outcome (last 30 days)</h3>
         <div class="chart-wrapper">
             <canvas id="dailyChart"></canvas>
         </div>
+        <p style="margin: 10px 0 0; font-size: 12px; color: #888;">
+            <span style="color:#1b7f4d;">&#9632;</span> code delivered &nbsp;
+            <span style="color:#c8102e;">&#9632;</span> searched fully, no code &nbsp;
+            <span style="color:#b8860b;">&#9632;</span> no code exists &nbsp;
+            <span style="color:#bbb;">&#9632;</span> excluded (no vehicle / abandoned)
+        </p>
+    </div>
+
+    <!-- Resolution source over time (paint16).
+         Which layer actually produced each code. When a rescue layer stops
+         working its band vanishes while the total stays flat — the signal that
+         was missing when the partslink24 name path went quiet for three weeks. -->
+    <div class="panel">
+        <h3>Where the codes came from (last 30 days)</h3>
+        <div class="chart-wrapper">
+            <canvas id="sourceChart"></canvas>
+        </div>
+        <p style="margin: 10px 0 0; font-size: 12px; color: #888;">
+            Each band is a stage of the pipeline. If one disappears while the total holds, that stage has broken.
+        </p>
     </div>
 
     <!-- Side-by-side panels -->
@@ -720,6 +853,10 @@
             border-width: 0;
         }
 
+        /* paint16: note marker + expandable detail row */
+        .note-marker { color: #003399; font-size: 12px; margin-left: 4px; }
+        tr.has-note:hover { background: #f6f8fb; }
+
         /* Outcome badges in the recent-lookups table */
         .outcome-tick { color: #2e7d32; font-weight: 600; font-size: 16px; }
         .outcome-partial { color: #2e7d32; font-weight: 600; font-size: 17px; }
@@ -949,11 +1086,19 @@
                 </div>
                 <form class="mlq-form" data-search-id="{{ s.id }}">
                     {% csrf_token %}
-                    <input type="text" name="paint_code" placeholder="paint code" required>
+                    {# paint16: paint_code is no longer `required`. Submitting it
+                       blank records the third outcome — "we searched every source and
+                       no code is published for this vehicle" — which sends a different
+                       email and is excluded from the success rate rather than counted
+                       as a success (the old N/A workaround) or a failure. A note is
+                       required in that case; the server enforces it. #}
+                    <input type="text" name="paint_code" placeholder="paint code (leave blank if none exists)">
                     <input type="text" name="paint_description" placeholder="description">
                     <div class="note-body" hidden>
-                        <div class="note-lbl">Note (optional) — added to the email</div>
+                        <div class="note-lbl">Note — added to the email (required if no code)</div>
                         <textarea name="message" maxlength="1000" placeholder="Sourced this from the main dealer — happy to help if anything's unclear."></textarea>
+                        <div class="note-lbl" style="margin-top:8px;">Attach a photo (optional)</div>
+                        <input type="file" name="photo" accept="image/*" style="font-size:12px;">
                     </div>
                     <button type="button" class="note-toggle">+ Add a note</button>
                     <button type="submit" class="send-btn">Send</button>
@@ -988,8 +1133,14 @@
             </thead>
             <tbody>
                 {% for s in recent_all_lookups %}
-                <tr>
-                    <td style="color: #666; font-size: 13px; white-space: nowrap;">{{ s.timestamp|date:"M j Y, H:i" }}</td>
+                {# paint16: a note marker rather than a note COLUMN. The table is
+                   already wide and notes run to 1000 chars, so a column would
+                   wreck the layout; a hover tooltip would be useless on mobile,
+                   which is where this dashboard actually gets read. A marker that
+                   toggles a full-width row below costs no horizontal space, works
+                   on touch, and only appears on rows that have something. #}
+                <tr{% if s.manual_note or s.customer_message %} class="has-note" data-note-row="{{ s.id }}" style="cursor: pointer;"{% endif %}>
+                    <td style="color: #666; font-size: 13px; white-space: nowrap;">{{ s.timestamp|date:"M j Y, H:i" }}{% if s.manual_note or s.customer_message %} <span class="note-marker" title="Has notes — click to expand">&#9998;</span>{% endif %}</td>
                     <td>{{ s.vehicle_title|default:"—" }}</td>
                     <td>{{ s.registration }}</td>
                     <td style="white-space: nowrap;">{{ s.vin|default:"—" }}</td>
@@ -1027,6 +1178,24 @@
                         {% endif %}
                     </td>
                 </tr>
+                {% if s.manual_note or s.customer_message %}
+                <tr class="note-detail" id="note-{{ s.id }}" hidden>
+                    <td colspan="9" style="background: #fafbfc; padding: 14px 18px;">
+                        {% if s.customer_message %}
+                        <div style="margin-bottom: 10px;">
+                            <div style="font-size: 11px; font-weight: 600; letter-spacing: 0.6px; text-transform: uppercase; color: #666; margin-bottom: 4px;">Customer said</div>
+                            <div style="font-size: 13px; color: #1a1a1a; white-space: pre-wrap;">{{ s.customer_message }}</div>
+                        </div>
+                        {% endif %}
+                        {% if s.manual_note %}
+                        <div>
+                            <div style="font-size: 11px; font-weight: 600; letter-spacing: 0.6px; text-transform: uppercase; color: #003399; margin-bottom: 4px;">Our note</div>
+                            <div style="font-size: 13px; color: #1a1a1a; white-space: pre-wrap;">{{ s.manual_note }}</div>
+                        </div>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endif %}
                 {% empty %}
                 <tr><td colspan="9" style="color: #999; text-align: center; padding: 24px 0;">No lookups yet</td></tr>
                 {% endfor %}
@@ -1078,7 +1247,7 @@
             Send a one-off branded email. Markdown supported in the body (links, bold, lists, etc.).
             A copy is BCCed to hello@coloureg.com so it lands in your Gmail via Dynadot forward.
         </p>
-        <form method="post" action="{% url 'send_compose_email' %}" class="compose-form" id="compose-form">
+        <form method="post" action="{% url 'send_compose_email' %}" class="compose-form" id="compose-form" enctype="multipart/form-data">
             {% csrf_token %}
             <div>
                 <label for="compose-to">To</label>
@@ -1092,6 +1261,11 @@
                 <label for="compose-body">Body (Markdown)</label>
                 <textarea id="compose-body" name="body" required maxlength="5000" placeholder="Hi,&#10;&#10;Here's the paint code you asked about: **Z1Z1/A7N — Limestone Grey-Metallic**.&#10;&#10;[Check it on coloureg](https://coloureg.com)&#10;&#10;Thanks,&#10;Roland"></textarea>
                 <span class="compose-hint">Supports **bold**, [links](url), # headings, lists.</span>
+            </div>
+            <div>
+                <label for="compose-photo">Attachment (optional)</label>
+                <input type="file" id="compose-photo" name="photo" accept="image/*" style="font-size: 13px;" />
+                <span class="compose-hint">Images up to 10&nbsp;MB. A copy is BCC'd to hello@coloureg.com.</span>
             </div>
             <button type="submit" id="compose-send-btn">Send email</button>
             <!-- Inline status — populated by JS after fetch. Stays empty when idle. -->
@@ -1202,26 +1376,59 @@
 
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <script>
-    // Daily searches bar chart
+    // paint16: click a row with a note marker to reveal its detail row.
+    document.addEventListener('click', function (e) {
+        var row = e.target.closest ? e.target.closest('tr.has-note') : null;
+        if (!row) return;
+        var detail = document.getElementById('note-' + row.dataset.noteRow);
+        if (detail) detail.hidden = !detail.hidden;
+    });
+
+    // Daily lookups, stacked by outcome
     var ctx = document.getElementById('dailyChart').getContext('2d');
     new Chart(ctx, {
         type: 'bar',
         data: {
             labels: {{ chart_labels|safe }},
-            datasets: [{
-                label: 'Searches',
-                data: {{ chart_data|safe }},
-                backgroundColor: '#003399',
-                borderRadius: 4,
-            }]
+            datasets: [
+                { label: 'Code delivered', data: {{ chart_delivered|safe }}, backgroundColor: '#1b7f4d' },
+                { label: 'No code found',  data: {{ chart_failed|safe }},    backgroundColor: '#c8102e' },
+                { label: 'No code exists', data: {{ chart_nocode|safe }},    backgroundColor: '#b8860b' },
+                { label: 'Excluded',       data: {{ chart_excluded|safe }},  backgroundColor: '#d9d9d9' }
+            ]
         },
         options: {
             responsive: true,
             maintainAspectRatio: false,
             plugins: { legend: { display: false } },
             scales: {
-                y: { beginAtZero: true, ticks: { stepSize: 1, precision: 0 } },
-                x: { grid: { display: false } }
+                x: { stacked: true, grid: { display: false } },
+                y: { stacked: true, beginAtZero: true, ticks: { stepSize: 1, precision: 0 } }
+            }
+        }
+    });
+
+    // Where the codes came from, stacked by resolving layer
+    var sctx = document.getElementById('sourceChart').getContext('2d');
+    new Chart(sctx, {
+        type: 'bar',
+        data: {
+            labels: {{ chart_labels|safe }},
+            datasets: [
+                { label: 'First pass',   data: {{ src_vdg|safe }},    backgroundColor: '#003399' },
+                { label: 'Retry',        data: {{ src_retry|safe }},  backgroundColor: '#4a7bd4' },
+                { label: 'Deep search',  data: {{ src_pl24|safe }},   backgroundColor: '#7fb069' },
+                { label: 'Manual',       data: {{ src_manual|safe }}, backgroundColor: '#b8860b' },
+                { label: 'Cache',        data: {{ src_cache|safe }},  backgroundColor: '#999' }
+            ]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: { legend: { display: true, position: 'bottom', labels: { boxWidth: 12, font: { size: 11 } } } },
+            scales: {
+                x: { stacked: true, grid: { display: false } },
+                y: { stacked: true, beginAtZero: true, ticks: { stepSize: 1, precision: 0 } }
             }
         }
     });

@@ -15,7 +15,12 @@
             <p class="text-muted mb-4" style="font-size: 0.9rem;">Last updated: May 6, 2026</p>
 
             <p style="font-size: 1.05rem; line-height: 1.7; color: #333;">
+                {% if payments_on %}
+                <span class="coloureg-brand">colou<strong>reg</strong></span> helps you find your car's paint code by registration,
+                for a small fee per lookup.
+                {% else %}
                 <span class="coloureg-brand">colou<strong>reg</strong></span> is a free tool that helps you find your car's paint code by registration.
+                {% endif %}
                 We've tried to make it as accurate and useful as possible, but the data has limits — and you
                 should know what they are before you spend money on paint based on what we show you.
             </p>
@@ -46,7 +51,67 @@
                 authoritative source for your specific car.
             </p>
 
-            <h2 style="font-size: 1.3rem; font-weight: 600; margin-top: 2rem; margin-bottom: 0.75rem;">No liability</h2>
+            <h2 style="font-size: 1.3rem; font-weight: 600; margin-top: 2rem; margin-bottom: 0.75rem;">
+                {% if payments_on %}What we're responsible for{% else %}No liability{% endif %}
+            </h2>
+            {% if payments_on %}
+            {# PAID MODE. A blanket "no liability" exclusion is largely unenforceable
+               against a paying consumer: the Consumer Rights Act 2015 gives digital
+               content rights (satisfactory quality, fit for purpose, as described)
+               and s.47 makes any term excluding them non-binding. So this section
+               DEFINES THE PRODUCT accurately rather than pretending to exclude
+               everything — an accurate description is what makes "as described"
+               satisfiable — and preserves statutory rights explicitly. #}
+            <p style="line-height: 1.7;">
+                What you're buying is <strong>the paint code our sources hold for your registration</strong>,
+                delivered instantly, together with the information above about how to check it.
+                We don't promise that the code matches the paint currently on your car — we can't:
+                cars get resprayed and wrapped, and manufacturers reuse codes.
+                <strong>Your vehicle's paint code label is the authoritative source, and you should
+                check the code against it before you buy paint.</strong>
+            </p>
+            <p style="line-height: 1.7;">
+                Your legal rights are not affected by anything on this page. If the paint code we
+                deliver isn't as described, you're entitled to a remedy under the Consumer Rights
+                Act 2015 — in practice, a refund of the fee you paid for that lookup. To the extent
+                permitted by law, we don't accept liability for paint, parts, or services you buy
+                without first checking the code against your vehicle's label, or for service downtime
+                or temporary unavailability.
+            </p>
+            <p style="line-height: 1.7;">
+                Nothing here limits liability for fraud, death, or personal injury caused by
+                negligence, or any other liability that cannot be excluded under UK law, and nothing
+                here removes your statutory rights as a consumer.
+            </p>
+
+            <h2 style="font-size: 1.3rem; font-weight: 600; margin-top: 2rem; margin-bottom: 0.75rem;">Payment, refunds and cancellation</h2>
+            <p style="line-height: 1.7;">
+                Payments are processed by Stripe. We never see or store your card details.
+            </p>
+            <ul style="line-height: 1.7;">
+                <li>
+                    <strong>No paint code, no charge.</strong> The fee is authorised on your card
+                    before the lookup runs, and only taken if we find a paint code. If we don't,
+                    the authorisation is cancelled automatically and you pay nothing — though a
+                    pending amount may show briefly on your statement before it disappears.
+                </li>
+                <li>
+                    <strong>Cancellation rights.</strong> Because the paint code is delivered
+                    immediately, you're asked at checkout to consent to that and to acknowledge
+                    that you lose the 14-day right to cancel once it's delivered. If you'd rather
+                    keep that right, don't consent — we then can't deliver until the 14 days pass.
+                </li>
+                <li>
+                    <strong>If something's wrong</strong> with a code we charged you for, email us
+                    and we'll refund it.
+                </li>
+            </ul>
+            {% else %}
+            {# FREE MODE. Standalone free digital content sits largely outside the
+               Consumer Rights Act's digital content chapter (which bites where
+               content is supplied "for a price paid"), so a broad exclusion is
+               both honest and effective here. This block is replaced automatically
+               when payments are switched on. #}
             <p style="line-height: 1.7;">
                 <span class="coloureg-brand">colou<strong>reg</strong></span> is provided as-is, free of charge, with no warranty of any kind, express or implied.
                 To the fullest extent permitted by law, we accept no liability for:
@@ -61,6 +126,7 @@
                 Nothing in this disclaimer limits liability for fraud, death, or personal injury caused by
                 negligence, or any other liability that cannot be excluded under UK law.
             </p>
+            {% endif %}
 
             <h2 style="font-size: 1.3rem; font-weight: 600; margin-top: 2rem; margin-bottom: 0.75rem;">External links and trademarks</h2>
             <p style="line-height: 1.7;">
@@ -81,6 +147,29 @@
                 Email <a href="mailto:hello@coloureg.com" style="color: #003399;">hello@coloureg.com</a> if
                 you spot something wrong, want us to update an entry, or have any other concerns.
             </p>
+
+            {% if payments_on %}
+            {# Business contact details. A distance seller must give consumers a
+               way to reach the business. Roland trades as a sole trader under the
+               name "Coloureg" and has chosen to keep his personal name off the
+               public site (a deliberate privacy decision); this block therefore
+               gives the trading name, a service address, and a contact email —
+               a genuine, monitored point of contact — rather than a personal name.
+               Note: strictly, Companies Act 2006 s.1202 also expects the
+               individual's name to be disclosed somewhere for a sole trader using
+               a business name; that gap is an accepted, low-risk trade-off for
+               privacy, and can be closed later either by adding the name here or
+               by incorporating (so the disclosed identity becomes "Coloureg Ltd").
+
+               !! BEFORE GOING LIVE: replace the placeholder with the service
+               address. Do NOT put a home address here. !! #}
+            <h2 style="font-size: 1.3rem; font-weight: 600; margin-top: 2rem; margin-bottom: 0.75rem;">Business details</h2>
+            <p style="line-height: 1.7;">
+                <span class="coloureg-brand">colou<strong>reg</strong></span><br>
+                Address for correspondence: <!-- TODO: service address --><em>[service address]</em><br>
+                Contact: <a href="mailto:hello@coloureg.com" style="color: #003399;">hello@coloureg.com</a>
+            </p>
+            {% endif %}
 
         </div>
     </div>

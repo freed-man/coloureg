@@ -12,6 +12,16 @@ urlpatterns = [
     path('disclaimer/', views.disclaimer, name='disclaimer'),
     path('help/', views.help_page, name='help'),
     path('submit-contact/', views.submit_contact, name='submit_contact'),
+    path('warm/', views.warm, name='warm'),
+    path('vehicle-make/', views.vehicle_make, name='vehicle_make'),
+    # --- Paid lookup flow (F, paint15). Dormant unless payments_active(). ---
+    path('paid/start/', views.start_paid_lookup, name='start_paid_lookup'),
+    path('paid/success/', views.paid_success, name='paid_success'),
+    path('paid/cancel/', views.paid_cancel, name='paid_cancel'),
+    # Register this URL in the Stripe dashboard against the RAILWAY hostname
+    # (not the Cloudflare-proxied domain) so bot protection can never challenge
+    # Stripe's POSTs. The signature check is what secures it.
+    path('stripe/webhook/', views.stripe_webhook, name='stripe_webhook'),
     path('admin-stats/', views.admin_stats, name='admin_stats'),
     path('submit-manual-lookup/', views.submit_manual_lookup, name='submit_manual_lookup'),
     path('dismiss-manual-lookup/', views.dismiss_manual_lookup, name='dismiss_manual_lookup'),

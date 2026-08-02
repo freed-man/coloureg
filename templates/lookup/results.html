@@ -316,9 +316,24 @@
                                 <span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="dot"></span>
                                 <span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="dot"></span>
                             </div>
+                            {# paint16: staged progress. The old single line gave no
+                               sense of whether anything was happening, so people
+                               refreshed or left during the (genuinely slow) deep
+                               search. These stages are REAL — each maps to work the
+                               pipeline actually does — and are described by function
+                               rather than by supplier, so nothing about our data
+                               sources is disclosed. Setting the expectation up front
+                               is what buys patience; people abandon when they can't
+                               tell if it's 2 seconds or 2 minutes. #}
                             <p class="paint-pending-message" id="paint-pending-message" aria-live="polite">
-                                Found your {{ make }}<br>now finding the paint code&hellip;
+                                Found your {{ make }}<br><span id="pending-stage">Searching manufacturer paint records&hellip;</span>
                             </p>
+                            <p id="pending-substage" style="margin: 6px 0 0; font-size: 0.8rem; color: #999; min-height: 1.2em;">
+                                Most lookups take a few seconds
+                            </p>
+                            <div style="margin: 14px auto 0; max-width: 240px; height: 3px; background: #eee; border-radius: 2px; overflow: hidden;">
+                                <div id="pending-bar" style="height: 100%; width: 4%; background: #003399; border-radius: 2px; transition: width 1.2s linear;"></div>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -406,13 +421,41 @@
                             Sorry for the inconvenience, we'll check {{ make }}'s database manually and email you the code, usually within 1 hour.
                         </p>
                         {% endif %}
-                        <form method="POST" action="{% url 'submit_email' %}#email-section" class="d-flex gap-2">
+                        {# paint16: enctype is required for the optional photo. The
+                           extra fields are collapsed behind a toggle so the email
+                           capture stays a single-field ask — adding friction to the
+                           primary action would cost more requests than the context
+                           gains. Both extras are optional. #}
+                        <form method="POST" action="{% url 'submit_email' %}#email-section" enctype="multipart/form-data">
                             {% csrf_token %}
                             <input type="hidden" name="search_id" value="{{ search_id }}">
-                            <input type="email" name="email" class="form-control" placeholder="your@email.com" required>
-                            <button type="submit" class="btn btn-dark text-nowrap">
-                                {% if paint_code %}Email me{% elif paint_name_only %}Send me the code{% else %}Request code{% endif %}
+                            <div class="d-flex gap-2">
+                                <input type="email" name="email" class="form-control" placeholder="your@email.com" required>
+                                <button type="submit" class="btn btn-dark text-nowrap">
+                                    {% if paint_code %}Email me{% elif paint_name_only %}Send me the code{% else %}Request code{% endif %}
+                                </button>
+                            </div>
+                            {% if not paint_code %}
+                            <div id="extra-context" hidden style="margin-top: 12px;">
+                                <label for="customer_message" style="display:block; font-size: 0.8rem; color: #666; margin-bottom: 4px;">
+                                    Anything that might help? (optional)
+                                </label>
+                                <textarea id="customer_message" name="customer_message" rows="2" maxlength="2000"
+                                          class="form-control" style="font-size: 0.9rem;"
+                                          placeholder="e.g. it's an import, the previous owner resprayed it, or it's the estate not the saloon"></textarea>
+                                <label for="photo" style="display:block; font-size: 0.8rem; color: #666; margin: 10px 0 4px;">
+                                    Photo of your paint code label, if you have one (optional)
+                                </label>
+                                <input type="file" id="photo" name="photo" accept="image/*" class="form-control" style="font-size: 0.85rem;">
+                                <p style="margin: 6px 0 0; font-size: 0.75rem; color: #999;">
+                                    A clear photo of the label often lets us find the code straight away.
+                                </p>
+                            </div>
+                            <button type="button" id="extra-context-toggle"
+                                    style="margin-top: 8px; background: none; border: none; padding: 0; color: #003399; font-size: 0.85rem; cursor: pointer;">
+                                + Add details or a photo
                             </button>
+                            {% endif %}
                         </form>
                     </div>
                 </div>
@@ -430,6 +473,17 @@
         var el = document.getElementById('email-section');
         if (el) {
             el.scrollIntoView({ behavior: 'instant', block: 'center' });
+        }
+        // paint16: reveal the optional context fields. Collapsed by default so
+        // the email capture stays a one-field ask; anyone who wants to help us
+        // help them can open it.
+        var toggle = document.getElementById('extra-context-toggle');
+        var extra = document.getElementById('extra-context');
+        if (toggle && extra) {
+            toggle.addEventListener('click', function() {
+                extra.hidden = !extra.hidden;
+                toggle.textContent = extra.hidden ? '+ Add details or a photo' : '− Hide details';
+            });
         }
     });
 </script>
@@ -455,6 +509,49 @@
     var stopped = false;
 
     function el(id) { return document.getElementById(id); }
+
+    // ---- Staged progress (paint16) -------------------------------------
+    // The single /lookup-status call runs the whole recovery synchronously, so
+    // the browser gets no intermediate events to react to. These stages are
+    // therefore time-driven — but they are NOT invented progress: each is
+    // timed to the stage the backend is genuinely in at that point, based on
+    // the measured timings (first pass returns in ~1-3s; the deep search runs
+    // 8-50s). Described by what they do, never by which provider does it.
+    //
+    // The bar is deliberately never allowed to reach 100% or stall: a static
+    // spinner reads as "hung", a crawling bar reads as "working".
+    var STAGES = [
+        { at: 0,     text: 'Searching manufacturer paint records&hellip;', sub: 'Most lookups take a few seconds',                                  pct: 15 },
+        { at: 4000,  text: 'Checking the full colour records&hellip;',      sub: 'Still going &mdash; this one needs a closer look',                  pct: 35 },
+        { at: 12000, text: 'Running a deeper search&hellip;',               sub: 'Deeper searches take longer, but often find codes the quick search misses', pct: 55 },
+        { at: 30000, text: 'Still searching&hellip;',                       sub: 'Almost there &mdash; thanks for your patience',                     pct: 75 },
+        { at: 50000, text: 'Final checks&hellip;',                          sub: 'Nearly done',                                                       pct: 90 }
+    ];
+    var stageTimers = [];
+
+    function runStages() {
+        var stageEl = el('pending-stage');
+        var subEl = el('pending-substage');
+        var barEl = el('pending-bar');
+        if (!stageEl && !barEl) return;
+        STAGES.forEach(function (st) {
+            stageTimers.push(setTimeout(function () {
+                if (stopped) return;
+                if (stageEl) stageEl.innerHTML = st.text;
+                if (subEl) subEl.innerHTML = st.sub;
+                if (barEl) barEl.style.width = st.pct + '%';
+            }, st.at));
+        });
+    }
+
+    function stopStages() {
+        stageTimers.forEach(clearTimeout);
+        stageTimers = [];
+        var barEl = el('pending-bar');
+        if (barEl) barEl.style.width = '100%';
+    }
+
+    runStages();
 
     function escapeHtml(s) {
         return String(s == null ? '' : s)
@@ -603,6 +700,7 @@
     function finish(fn) {
         if (stopped) return;
         stopped = true;
+        stopStages();   // paint16: halt the staged copy the moment we have a real answer
         fn();
     }
 

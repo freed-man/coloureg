@@ -216,11 +216,59 @@ RESEND_API_KEY = os.environ.get('RESEND_API_KEY', '')
 DEFAULT_FROM_EMAIL = os.environ.get('DEFAULT_FROM_EMAIL', 'hello@coloureg.com')
 ADMIN_EMAIL = os.environ.get('ADMIN_EMAIL', 'hello@coloureg.com')
 
+# Upload ceiling. Manual-lookup photos are validated and capped at 8 MB in
+# lookup/services/uploads.py; Django rejects the request outright if it exceeds
+# this first, so it must be at least as large. Nothing is written to disk —
+# files are held in memory for the request and attached to the outgoing email.
+DATA_UPLOAD_MAX_MEMORY_SIZE = 12 * 1024 * 1024
+FILE_UPLOAD_MAX_MEMORY_SIZE = 12 * 1024 * 1024
+
+# --- Cloudflare Turnstile (E, paint15) --------------------------------------
+# Invisible CAPTCHA embedded in the lookup form, verified server-side BEFORE
+# any spend (Stripe or VDG). Both keys come from the Cloudflare dashboard
+# (Turnstile -> Add site). SAFE-BY-DEFAULT: when either key is unset, the
+# widget doesn't render and verification is skipped — so this deploy changes
+# nothing until the keys are added to Railway. Once they're set, scripts that
+# POST without a valid token are rejected for free.
+TURNSTILE_SITE_KEY = os.environ.get('TURNSTILE_SITE_KEY', '')
+TURNSTILE_SECRET_KEY = os.environ.get('TURNSTILE_SECRET_KEY', '')
+
+# --- Stripe (F, paint15) ------------------------------------------------------
+# Payment scaffolding for the £1-per-lookup flow. Fully built and testable
+# against Stripe TEST keys, but gated twice: these env vars must be set AND
+# SiteConfig.payments_enabled must be flipped in /admin-stats/ (defaults False).
+# Until both are true the site behaves exactly as today (free lookups).
+# STRIPE_WEBHOOK_SECRET comes from the webhook endpoint you register in the
+# Stripe dashboard (use the Railway hostname directly, not the Cloudflare-
+# proxied domain, so bot protection can never challenge Stripe's POSTs).
+STRIPE_PUBLISHABLE_KEY = os.environ.get('STRIPE_PUBLISHABLE_KEY', '')
+STRIPE_SECRET_KEY = os.environ.get('STRIPE_SECRET_KEY', '')
+STRIPE_WEBHOOK_SECRET = os.environ.get('STRIPE_WEBHOOK_SECRET', '')
+# Price per lookup in pence (GBP). 100 = £1.00.
+LOOKUP_PRICE_PENCE = int(os.environ.get('LOOKUP_PRICE_PENCE', '200'))
+
 CACHES = {
+    # DEFAULT stays the database cache. django-ratelimit reads/writes here, and
+    # the rate limit MUST be shared across all gunicorn workers — the database is
+    # the only store every worker sees. Do not point the default at locmem, or
+    # each worker would count requests separately and the 3/h limit would leak.
     'default': {
         'BACKEND': 'django.core.cache.backends.db.DatabaseCache',
         'LOCATION': 'rate_limit_cache',
-    }
+    },
+    # LOCAL is a per-process in-memory cache. It is intentionally NOT shared
+    # between workers — each worker keeps its own copy. That is fine (and
+    # desirable) for small, read-mostly values where a few seconds of
+    # per-worker staleness is acceptable and we want ZERO database round-trips.
+    # Its first use is SiteConfig.get() (see models.py): caching the singleton
+    # config row here means a homepage GET makes no DB query at all, so Neon's
+    # compute can actually reach its 5-minute idle threshold and suspend. Thread-
+    # safe (LocMemCache is), so it's safe under gunicorn's threaded workers.
+    'local': {
+        'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
+        'LOCATION': 'coloureg-local',
+        'TIMEOUT': 60,  # default TTL; SiteConfig.get() sets its own explicitly
+    },
 }
 
 MESSAGE_TAGS = {
