@@ -387,7 +387,7 @@
                        name="daily_budget_gbp"
                        value="{{ site_config.daily_budget_gbp|floatformat:2 }}">
             </div>
-            <button type="submit" class="btn btn-sm btn-outline-dark">Save</button>
+            <button type="submit" class="btn btn-sm btn-success">Save</button>
         </form>
     </div>
 
@@ -1232,11 +1232,24 @@
                     {% if s.paint_description %}<span class="recent-paint-desc">{{ s.paint_description }}</span>{% if s.enriched_from == 'name' %} <span class="db-badge" title="Name filled from coloureg's paint database">DB</span>{% endif %}{% endif %}
                 </div>
                 {% endif %}
-                {% if s.provider and s.provider != 'none' %}
-                <div class="recent-card-meta" style="margin-top: 6px;">
-                    <span class="provider-badge provider-{{ s.provider }}">{{ s.get_provider_display }}</span>
+                {% comment %}
+                   Provider and cost share a row on mobile: the desktop table has
+                   a Cost column, and without this the phone view silently omits
+                   the one number that says what each lookup actually cost.
+                {% endcomment %}
+                <div class="recent-card-meta" style="margin-top: 6px; display: flex; align-items: center; justify-content: space-between; gap: 8px;">
+                    <span>
+                        {% if s.provider and s.provider != 'none' %}
+                        <span class="provider-badge provider-{{ s.provider }}">{{ s.get_provider_display }}</span>
+                        {% endif %}
+                    </span>
+                    <span style="font-variant-numeric: tabular-nums;">
+                        {% if s.provider == 'cache' %}£0.00
+                        {% elif s.vdg_transaction_cost is not None %}£{{ s.vdg_transaction_cost|floatformat:2 }}
+                        {% else %}<span style="color: #ccc;">—</span>
+                        {% endif %}
+                    </span>
                 </div>
-                {% endif %}
             </div>
             {% empty %}
             <div style="color: #999; text-align: center; padding: 24px 0;">No lookups yet</div>
@@ -1244,10 +1257,12 @@
         </div>
     </div>
 
-    <!-- Blocklists: refuse specific regs / IPs / user-agent fragments before any
-         spend. Reg is the strong lever (abusers reuse regs); IP + UA are
-         scalpels — a rotating attacker walks around both. One entry per line
-         (or comma-separated). UA matching is case-insensitive substring. -->
+    <!-- Blocklists: refuse specific regs / IPs before any spend. Reg is the
+         strong lever (abusers reuse regs); IP is a scalpel — a rotating
+         attacker walks around it. One entry per line (or comma-separated).
+         User-agent blocking was removed: trivially evaded, and an over-broad
+         fragment would silently block real browsers. That job belongs at
+         Cloudflare, at the edge. -->
     <div class="maint-toggle" style="margin-top: 12px; align-items: flex-start;">
         <form method="post" action="{% url 'admin_stats' %}" style="margin:0; width:100%;">
             {% csrf_token %}
@@ -1269,7 +1284,7 @@
                 <span style="font-size:12px; color:#999;">
                     Registrations are the reliable lever — abusers reuse them. IPs rotate, so treat that list as a scalpel.
                 </span>
-                <button type="submit" class="btn btn-sm btn-outline-dark">Save blocklists</button>
+                <button type="submit" class="btn btn-sm btn-success">Save blocklists</button>
             </div>
         </form>
     </div>
