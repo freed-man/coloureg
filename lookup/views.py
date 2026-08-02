@@ -2283,6 +2283,37 @@ def start_paid_lookup(request):
             or (registration and config.is_reg_blocked(registration))):
         messages.error(request, 'Sorry, we could not process that request.')
         return redirect('index')
+    # --- Cost guards (paint16h) --------------------------------------------
+    # These carried over from the free flow's blocklist/Turnstile checks but the
+    # SPEND guards did not, which left the paid path with no protection at all:
+    # a lookup we already know fails still went through Checkout and a full VDG
+    # call, and the daily breaker — the last line before the VDG balance runs
+    # out — never applied.
+    #
+    # Deliberately NOT carried over: the 3/hour rate limit. A paying customer
+    # doing ten lookups is paying for ten lookups; capping them would be
+    # perverse. The budget breaker below is the backstop for that path instead.
+    if budget_exceeded(config):
+        _maybe_alert_budget(config)
+        messages.error(
+            request,
+            'Lookups are paused for today. Please try again tomorrow.'
+        )
+        return redirect('index')
+
+    # Known-dud registration: refuse BEFORE taking them to Checkout. Sending
+    # someone through a card form for a lookup we know will fail — and then
+    # cancelling the authorisation — is a poor experience and still costs us a
+    # VDG call, since the failure isn't compensated.
+    if is_recent_miss(registration):
+        messages.error(
+            request,
+            'We checked that registration very recently and could not find a '
+            'paint code for it, so we have not taken any payment. Send us a '
+            'message and we will look into it by hand.'
+        )
+        return redirect('index')
+
     if not verify_turnstile(request.POST.get('cf-turnstile-response', ''), client_ip):
         messages.error(request, 'We could not verify your browser. Please reload and try again.')
         return redirect('index')
