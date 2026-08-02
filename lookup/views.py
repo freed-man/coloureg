@@ -392,18 +392,22 @@ def index(request):
                     lookup_duration_ms=int((time.time() - start_time) * 1000),
                 )
                 miss_search.save()
+                # Point them at the contact form, which is on /help/ — the
+                # manual-lookup capture lives on the results page, and we are
+                # deliberately not sending them there (that is the page this
+                # short-circuit exists to avoid re-running). Saying "below"
+                # would be wrong: the homepage has no such form.
                 messages.error(
                     request,
-                    'We recently checked that registration and could not find a '
-                    'paint code for it. You can request a manual lookup below and '
-                    'we\'ll try to track it down for you.'
+                    'We checked that registration very recently and could not '
+                    'find a paint code for it. Send us a message and we will '
+                    'look into it by hand.'
                 )
                 return render(request, 'lookup/index.html', {
                     'turnstile_site_key': dj_settings.TURNSTILE_SITE_KEY,
                     'payments_on': payments_active(config),
                     'payments_configured': payments_configured(),
                     'lookup_price': dj_settings.LOOKUP_PRICE_PENCE / 100.0,
-                    'manual_lookup_offer': registration,
                 })
 
         search = Search(
@@ -1589,7 +1593,6 @@ def admin_stats(request):
         .annotate(date=TruncDate('timestamp'))
         .values('date')
         .annotate(
-            total=Count('id'),
             delivered=Count('id', filter=Q(paint_code__gt='')),
             no_code=Count('id', filter=Q(no_code_available=True)),
             failed=Count('id', filter=Q(
@@ -1607,14 +1610,13 @@ def admin_stats(request):
     )
     daily_map = {r['date']: r for r in daily_rows}
 
-    chart_labels, chart_data = [], []
+    chart_labels = []
     chart_delivered, chart_failed, chart_nocode, chart_excluded = [], [], [], []
     src_vdg, src_retry, src_pl24, src_manual, src_cache = [], [], [], [], []
     for i in range(30, -1, -1):
         d = (now - timedelta(days=i)).date()
         row = daily_map.get(d, {})
         chart_labels.append(d.strftime('%b %d'))
-        chart_data.append(row.get('total', 0))
         chart_delivered.append(row.get('delivered', 0))
         chart_failed.append(row.get('failed', 0))
         chart_nocode.append(row.get('no_code', 0))
@@ -1749,7 +1751,6 @@ def admin_stats(request):
         'name_only_miss_count': name_only_miss_count,
         'avg_duration_s': avg_duration_s,
         'chart_labels': chart_labels,
-        'chart_data': chart_data,
         'chart_delivered': chart_delivered,
         'chart_failed': chart_failed,
         'chart_nocode': chart_nocode,
