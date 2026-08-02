@@ -327,37 +327,6 @@
     </div>
 
     <!-- ================= Protection panel (paint15) ==================== -->
-    <!-- Daily VDG budget: hard spend ceiling per London day. When today's
-         refund-net spend reaches it, lookups auto-pause until midnight and one
-         alert email is sent. 0 disables. -->
-    <div class="maint-toggle {% if site_config.budget_tripped %}is-on{% endif %}" style="margin-top: 12px;">
-        <div class="maint-toggle-status">
-            <span class="maint-dot"></span>
-            <div>
-                <div class="maint-toggle-title">
-                    Daily VDG budget
-                    {% if site_config.budget_tripped %}— TRIPPED (lookups paused today){% endif %}
-                </div>
-                <div class="maint-toggle-sub">
-                    <strong>£{{ spend_today|floatformat:2 }}</strong> of
-                    £{{ site_config.daily_budget_gbp|floatformat:2 }} spent today{% if site_config.daily_budget_gbp == 0 %} (no limit set){% endif %}. Resets at midnight.
-                    {% if site_config.budget_tripped %}Saving a new amount re-arms the breaker.{% endif %}
-                </div>
-            </div>
-        </div>
-        <form method="post" action="{% url 'admin_stats' %}" style="margin:0; display:flex; gap:8px; align-items:center;">
-            {% csrf_token %}
-            <input type="hidden" name="action" value="save_budget">
-            <div class="input-group input-group-sm" style="width: 140px;">
-                <span class="input-group-text">£</span>
-                <input type="number" step="0.01" min="0" class="form-control"
-                       name="daily_budget_gbp"
-                       value="{{ site_config.daily_budget_gbp|floatformat:2 }}">
-            </div>
-            <button type="submit" class="btn btn-sm btn-outline-dark">Save</button>
-        </form>
-    </div>
-
     <!-- Payments master switch (F). Requires Stripe env keys too — the view
          checks both, so flipping this without keys leaves lookups free. -->
     <div class="maint-toggle {% if payments_enabled %}is-on{% endif %}" style="margin-top: 12px;">
@@ -390,6 +359,38 @@
             </button>
         </form>
     </div>
+
+    <!-- Daily VDG budget: hard spend ceiling per London day. When today's
+         refund-net spend reaches it, lookups auto-pause until midnight and one
+         alert email is sent. 0 disables. -->
+    <div class="maint-toggle {% if site_config.budget_tripped %}is-on{% endif %}" style="margin-top: 12px;">
+        <div class="maint-toggle-status">
+            <span class="maint-dot"></span>
+            <div>
+                <div class="maint-toggle-title">
+                    Daily VDG budget
+                    {% if site_config.budget_tripped %}— TRIPPED (lookups paused today){% endif %}
+                </div>
+                <div class="maint-toggle-sub">
+                    <strong>£{{ spend_today|floatformat:2 }}</strong> of
+                    £{{ site_config.daily_budget_gbp|floatformat:2 }} spent today{% if site_config.daily_budget_gbp == 0 %} (no limit set){% endif %}. Resets at midnight.
+                    {% if site_config.budget_tripped %}Saving a new amount re-arms the breaker.{% endif %}
+                </div>
+            </div>
+        </div>
+        <form method="post" action="{% url 'admin_stats' %}" style="margin:0; display:flex; gap:8px; align-items:center;">
+            {% csrf_token %}
+            <input type="hidden" name="action" value="save_budget">
+            <div class="input-group input-group-sm" style="width: 140px;">
+                <span class="input-group-text">£</span>
+                <input type="number" step="0.01" min="0" class="form-control"
+                       name="daily_budget_gbp"
+                       value="{{ site_config.daily_budget_gbp|floatformat:2 }}">
+            </div>
+            <button type="submit" class="btn btn-sm btn-outline-dark">Save</button>
+        </form>
+    </div>
+
     <!-- ================ end protection panel (paint15) ================== -->
 
     <!-- Top metrics: row 1 = volume -->
