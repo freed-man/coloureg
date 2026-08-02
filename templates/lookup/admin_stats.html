@@ -1086,12 +1086,12 @@
                 </div>
                 <form class="mlq-form" data-search-id="{{ s.id }}">
                     {% csrf_token %}
-                    {# paint16: paint_code is no longer `required`. Submitting it
+                    {% comment %} paint16: paint_code is no longer `required`. Submitting it
                        blank records the third outcome — "we searched every source and
                        no code is published for this vehicle" — which sends a different
                        email and is excluded from the success rate rather than counted
                        as a success (the old N/A workaround) or a failure. A note is
-                       required in that case; the server enforces it. #}
+                       required in that case; the server enforces it.{% endcomment %}
                     <input type="text" name="paint_code" placeholder="paint code (leave blank if none exists)">
                     <input type="text" name="paint_description" placeholder="description">
                     <div class="note-body" hidden>
@@ -1133,12 +1133,12 @@
             </thead>
             <tbody>
                 {% for s in recent_all_lookups %}
-                {# paint16: a note marker rather than a note COLUMN. The table is
+                {% comment %} paint16: a note marker rather than a note COLUMN. The table is
                    already wide and notes run to 1000 chars, so a column would
                    wreck the layout; a hover tooltip would be useless on mobile,
                    which is where this dashboard actually gets read. A marker that
                    toggles a full-width row below costs no horizontal space, works
-                   on touch, and only appears on rows that have something. #}
+                   on touch, and only appears on rows that have something.{% endcomment %}
                 <tr{% if s.manual_note or s.customer_message %} class="has-note" data-note-row="{{ s.id }}" style="cursor: pointer;"{% endif %}>
                     <td style="color: #666; font-size: 13px; white-space: nowrap;">{{ s.timestamp|date:"M j Y, H:i" }}{% if s.manual_note or s.customer_message %} <span class="note-marker" title="Has notes — click to expand">&#9998;</span>{% endif %}</td>
                     <td>{{ s.vehicle_title|default:"—" }}</td>

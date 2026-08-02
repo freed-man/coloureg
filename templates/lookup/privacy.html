@@ -104,10 +104,10 @@
             </ul>
 
             {% if payments_on %}
-            {# Payment disclosures. Required once we take money: a new processor
+            {% comment %} Payment disclosures. Required once we take money: a new processor
                (Stripe), a different lawful basis for the transaction itself
                (performance of a contract, not consent), and a longer retention
-               period for the records because tax law requires it. #}
+               period for the records because tax law requires it.{% endcomment %}
             <h2 style="font-size: 1.3rem; font-weight: 600; margin-top: 2rem; margin-bottom: 0.75rem;">Payments</h2>
             <p style="line-height: 1.7;">
                 Payments are processed by <strong>Stripe</strong>, not by us.

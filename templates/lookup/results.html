@@ -316,7 +316,7 @@
                                 <span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="dot"></span>
                                 <span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="dot"></span>
                             </div>
-                            {# paint16: staged progress. The old single line gave no
+                            {% comment %} paint16: staged progress. The old single line gave no
                                sense of whether anything was happening, so people
                                refreshed or left during the (genuinely slow) deep
                                search. These stages are REAL — each maps to work the
@@ -324,7 +324,7 @@
                                rather than by supplier, so nothing about our data
                                sources is disclosed. Setting the expectation up front
                                is what buys patience; people abandon when they can't
-                               tell if it's 2 seconds or 2 minutes. #}
+                               tell if it's 2 seconds or 2 minutes.{% endcomment %}
                             <p class="paint-pending-message" id="paint-pending-message" aria-live="polite">
                                 Found your {{ make }}<br><span id="pending-stage">Searching manufacturer paint records&hellip;</span>
                             </p>
@@ -421,11 +421,11 @@
                             Sorry for the inconvenience, we'll check {{ make }}'s database manually and email you the code, usually within 1 hour.
                         </p>
                         {% endif %}
-                        {# paint16: enctype is required for the optional photo. The
+                        {% comment %} paint16: enctype is required for the optional photo. The
                            extra fields are collapsed behind a toggle so the email
                            capture stays a single-field ask — adding friction to the
                            primary action would cost more requests than the context
-                           gains. Both extras are optional. #}
+                           gains. Both extras are optional.{% endcomment %}
                         <form method="POST" action="{% url 'submit_email' %}#email-section" enctype="multipart/form-data">
                             {% csrf_token %}
                             <input type="hidden" name="search_id" value="{{ search_id }}">
