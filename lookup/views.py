@@ -484,8 +484,13 @@ def index(request):
         #   VDG failure/error   -> vehicle_returned=False, paint_returned=False,
         #                          error_message set (so a failure is distinguishable
         #                          from a successful-but-paintless lookup).
+        # billing_sink captures cost/balance even when the call below raises or
+        # reports not-found (paint18). VDG bills for those too, and discarding
+        # the response used to discard the receipt with it — spend the daily
+        # budget breaker could never see.
+        vdg_billing = {}
         try:
-            vdg_data = get_combined_lookup(registration)
+            vdg_data = get_combined_lookup(registration, billing_sink=vdg_billing)
             if vdg_data:
                 # Per-document tracking: each doc has its own StatusCode
                 # inside the response, exposed by vdg.py as boolean flags.
@@ -511,6 +516,14 @@ def index(request):
             # and log it so a genuine API change is visible rather than silent.
             logger.exception('VDG returned an unparseable payload for %s', registration)
             search.error_message = f'VDG: unparseable response ({type(e).__name__})'
+
+        # Whatever happened above, if VDG billed us and nothing was recorded on
+        # the row, record it now. The sink is the only source on the failure
+        # paths, and an unrecorded charge is invisible to the budget breaker.
+        if search.vdg_transaction_cost is None and vdg_billing.get('transaction_cost') is not None:
+            search.vdg_transaction_cost = vdg_billing['transaction_cost']
+        if latest_balance is None and vdg_billing.get('balance') is not None:
+            latest_balance = vdg_billing['balance']
 
         make = ''
         model = ''
@@ -2298,8 +2311,9 @@ def perform_lookup_core(registration, request_meta=None):
 
     vdg_data = None
     latest_balance = None
+    vdg_billing = {}  # see index() — populated even on failure (paint18)
     try:
-        vdg_data = get_combined_lookup(registration)
+        vdg_data = get_combined_lookup(registration, billing_sink=vdg_billing)
         if vdg_data:
             search.vdg_vehicle_returned = vdg_data.get('vehicle_returned', False)
             search.vdg_paint_returned = vdg_data.get('paint_returned', False)
@@ -2312,6 +2326,14 @@ def perform_lookup_core(registration, request_meta=None):
     except Exception as e:  # noqa: BLE001 — trust boundary, see index()
         logger.exception('VDG returned an unparseable payload for %s', registration)
         search.error_message = f'VDG: unparseable response ({type(e).__name__})'
+
+    # Whatever happened above, if VDG billed us and nothing was recorded on
+    # the row, record it now. The sink is the only source on the failure
+    # paths, and an unrecorded charge is invisible to the budget breaker.
+    if search.vdg_transaction_cost is None and vdg_billing.get('transaction_cost') is not None:
+        search.vdg_transaction_cost = vdg_billing['transaction_cost']
+    if latest_balance is None and vdg_billing.get('balance') is not None:
+        latest_balance = vdg_billing['balance']
 
     make = model = colour = fuel_type = transmission = engine_description = ''
     category = ''
@@ -2479,7 +2501,10 @@ def start_paid_lookup(request):
 
     success_url = request.build_absolute_uri('/paid/success/') + '?session_id={CHECKOUT_SESSION_ID}'
     cancel_url = request.build_absolute_uri('/')
-    session = create_checkout_session(registration, success_url, cancel_url, client_ip)
+    session = create_checkout_session(
+        registration, success_url, cancel_url, client_ip,
+        user_agent=request.META.get('HTTP_USER_AGENT', ''),
+    )
     if session is None or not getattr(session, 'url', None):
         messages.error(request, 'Payment is temporarily unavailable. Please try again later.')
         return redirect('index')
@@ -2691,7 +2716,21 @@ def _fulfil_paid_session(session):
         payload['paint_pending'] = False
         return payload
 
-    payload, search = perform_lookup_core(reg)
+    # Recover the customer's IP/UA from session metadata, NOT from whatever
+    # request is fulfilling this (paint18). Without it every paid Search row
+    # stored a NULL ip_address and an empty user_agent — which would have made
+    # paid lookups invisible to the IP blocklist, to rate limiting, and to any
+    # after-the-fact analysis of abuse. The paid path already has the 3/hour
+    # limit deliberately removed, so that combination is worth closing before
+    # payments go live.
+    meta = _sget(session, 'metadata') or {}
+    request_meta = {
+        # _valid_ip because this value originally came from a request header
+        # and is heading for a Postgres `inet` column.
+        'ip': _valid_ip((_sget(meta, 'client_ip') or '').strip()),
+        'ua': _sget(meta, 'user_agent') or '',
+    }
+    payload, search = perform_lookup_core(reg, request_meta=request_meta)
     if search is not None:
         # Stamp the session id for idempotency + audit.
         search.error_message = (search.error_message or '') + f' | stripe_session={session_id}'

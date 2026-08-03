@@ -105,7 +105,22 @@ def create_checkout_session(registration, success_url, cancel_url, client_ip=Non
             'metadata': {'registration': registration},
             'description': f'Paint code lookup — {registration}',
         },
-        metadata={'registration': registration},
+        # client_ip / user_agent ride in metadata rather than being read off the
+        # fulfilling request (paint18). Fulfilment happens either on the
+        # customer's return to /paid/success/ OR on the Stripe webhook — and on
+        # the webhook route the request is STRIPE, so reading it there would
+        # record Stripe's IP as the customer's. Metadata is captured here, at
+        # the one moment we are definitely talking to the customer.
+        #
+        # Stripe caps metadata values at 500 characters and user agents can
+        # exceed that, so truncate. The IP is stored raw and validated on the
+        # way back out (views._valid_ip) — it lands in an `inet` column, which
+        # rejects anything that is not an address.
+        metadata={
+            'registration': registration,
+            'client_ip': (client_ip or '')[:64],
+            'user_agent': (user_agent or '')[:400],
+        },
         # --- CCR 2013 reg 37 consent (paint15) ---------------------------------
         # Digital content sold at a distance carries a 14-day cancellation right.
         # A trader must NOT begin supply inside that window unless the consumer

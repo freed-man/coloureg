@@ -2,6 +2,7 @@ from pathlib import Path
 from django.contrib.messages import constants as messages_constants
 import dj_database_url
 import os
+import sys
 
 if os.path.isfile('env.py'):
     import env  # noqa
@@ -305,6 +306,39 @@ SITE_ID = 1
 # Catches unhandled exceptions in production and sends them to sentry.io for
 # triage. Only initialised when DEBUG=False AND the SENTRY_DSN env var is set,
 # so local development errors stay local.
+# --- Logging ------------------------------------------------------------------
+# Django's default config attaches a console handler ONLY to the `django` logger,
+# and only when DEBUG is on — so in production our own module loggers fall
+# through to Python's lastResort handler, which emits WARNING and above and
+# drops INFO entirely. That is fine for errors and useless for diagnostics.
+#
+# This attaches the `lookup` package to stdout at INFO so the per-call VDG
+# billing line (services/vdg.py) is visible in Railway logs. There are no other
+# INFO callers in the package, so this adds one line per VDG call and nothing
+# else. Level is env-controlled: set LOG_LEVEL=WARNING to silence it again once
+# the billing ledger question is settled, without a deploy.
+LOGGING = {
+    'version': 1,
+    'disable_existing_loggers': False,
+    'formatters': {
+        'simple': {'format': '[%(levelname)s] %(name)s: %(message)s'},
+    },
+    'handlers': {
+        'stdout': {
+            'class': 'logging.StreamHandler',
+            'stream': sys.stdout,
+            'formatter': 'simple',
+        },
+    },
+    'loggers': {
+        'lookup': {
+            'handlers': ['stdout'],
+            'level': os.environ.get('LOG_LEVEL', 'INFO'),
+            'propagate': False,
+        },
+    },
+}
+
 SENTRY_DSN = os.environ.get('SENTRY_DSN', '')
 
 if not DEBUG and SENTRY_DSN:

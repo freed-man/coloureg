@@ -11,6 +11,7 @@ to the previous two-sequential-call pattern.
 Per-document StatusCode is exposed in the response so the caller can record
 which documents returned data.
 """
+import logging
 import os
 import re
 
@@ -18,6 +19,8 @@ import requests
 
 
 VDG_BASE_URL = 'https://uk.api.vehicledataglobal.com/r2'
+logger = logging.getLogger(__name__)
+
 VDG_LOOKUP_ENDPOINT = f'{VDG_BASE_URL}/lookup'
 
 # The single package name used for every lookup. Configured on the VDG side
@@ -43,7 +46,7 @@ class VdgTimeoutError(VdgError):
     pass
 
 
-def _make_request(registration):
+def _make_request(registration, billing_sink=None):
     """Single combined call. Returns the parsed JSON dict, or raises."""
     api_key = os.environ.get('VDG_API_KEY')
     if not api_key:
@@ -72,9 +75,24 @@ def _make_request(registration):
     except ValueError:
         raise VdgError('VDG returned invalid JSON')
 
+    # Record what VDG billed BEFORE any of the status checks below can raise
+    # (paint18). VDG charges for a call whether or not it can answer it, and
+    # BillingInformation is present on the failure responses too — but every
+    # raise below used to discard the whole payload, receipt included. The
+    # money left the account and nothing recorded it, so the daily budget
+    # breaker (which sums vdg_transaction_cost) could not see it. Failed
+    # lookups are exactly what an abuser generates, so the blind spot sat
+    # precisely where it mattered most.
     response_info = data.get('ResponseInformation', {})
     is_success = response_info.get('IsSuccessStatusCode', False)
     status_message = response_info.get('StatusMessage', '')
+
+    # Read the status first so the log line can say WHAT we were charged for,
+    # but record the billing before any raise below can discard it.
+    _record_billing(
+        data, billing_sink, registration,
+        outcome='ok' if is_success else (status_message or 'error'),
+    )
 
     if not is_success:
         if 'not found' in status_message.lower():
@@ -84,6 +102,35 @@ def _make_request(registration):
         raise VdgError(f'VDG status: {status_message}')
 
     return data
+
+
+def _record_billing(data, sink, registration, outcome='ok'):
+    """Stash VDG's cost/balance into `sink` and log the call (paint18).
+
+    `sink` is an optional dict owned by the caller. It is populated on EVERY
+    call that reached VDG, including ones that are about to raise, so the
+    caller can record spend it would otherwise never learn about.
+
+    The log line exists to settle a gap the database cannot explain on its
+    own: the account balance has fallen by more than the sum of every cost we
+    stored, and there are windows where the shortfall matches one unrefunded
+    paint package with no Search row anywhere near it. Logging every call with
+    its cost and the balance afterwards makes the ledger reconstructable from
+    outside the database.
+    """
+    if not data:
+        return
+    cost = _extract_transaction_cost(data)
+    balance = _extract_balance(data)
+    if sink is not None:
+        if cost is not None:
+            sink['transaction_cost'] = cost
+        if balance is not None:
+            sink['balance'] = balance
+    logger.info(
+        'VDG call reg=%s outcome=%s cost=%s balance=%s',
+        registration, outcome, cost, balance,
+    )
 
 
 def _extract_balance(data):
@@ -120,7 +167,12 @@ def _extract_transaction_cost(data):
         return None
     try:
         refund = billing.get('RefundAmount') or 0
-        return float(gross) - float(refund)
+        # round(): binary floats cannot represent these exactly, so a plain
+        # subtraction yields e.g. 0.08000000000000002 for 0.38 - 0.30. The
+        # DecimalField quantises on save, but this value is also logged, summed
+        # for the dashboard and compared against VDG's own balance, so round it
+        # once here rather than living with the artefact everywhere downstream.
+        return round(float(gross) - float(refund), 2)
     except (TypeError, ValueError):
         # Malformed numbers -> fall back to the gross value rather than crash.
         return gross
@@ -485,7 +537,7 @@ def _parse_paint_fields(results):
     }
 
 
-def get_combined_lookup(registration):
+def get_combined_lookup(registration, billing_sink=None):
     """Single combined VDG call. Returns vehicle + paint data + per-doc flags.
 
     Returns dict with:
@@ -504,8 +556,11 @@ def get_combined_lookup(registration):
     Raises VdgError on HTTP / config / unexpected-payload errors.
     """
     try:
-        data = _make_request(registration)
+        data = _make_request(registration, billing_sink=billing_sink)
     except VdgNotFoundError:
+        # Still returns None — the caller's contract is unchanged — but
+        # billing_sink has already been populated inside _make_request, so the
+        # cost of this call is no longer lost with the response (paint18).
         return None
 
     results = data.get('Results', {}) or {}

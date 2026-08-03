@@ -139,16 +139,38 @@ def _vdg_retry(registration, telemetry=None):
     resolves or the deadline passes).
     """
     _t = telemetry if telemetry is not None else {}
+    # billing_sink is populated by vdg.py on EVERY call that reached VDG,
+    # including ones that then raise or report not-found (paint18). Without it
+    # a retry that came back empty was billed and recorded nothing — which is
+    # exactly the common case here, since we only retry when the first call
+    # found no paint. That is why partslink24 rows were storing £0.08 (one
+    # call) when the account had actually been charged £0.16 (two).
+    sink = {}
+    data = None
     try:
-        data = get_combined_lookup(registration)
+        data = get_combined_lookup(registration, billing_sink=sink)
     except VdgError:
+        pass  # cost below is still recorded — VDG charged us either way
+    # Take the cost from whichever source has it. The sink is the only source
+    # on the not-found and error paths (where `data` is None), but `data`
+    # carries it on the success path — and reading BOTH means this keeps
+    # working if either mechanism changes, rather than silently recording
+    # nothing. Losing this figure is not a visible failure: it just makes the
+    # budget breaker read low, which is precisely how the original bug went
+    # unnoticed.
+    retry_cost = sink.get('transaction_cost')
+    if retry_cost is None and data:
+        retry_cost = data.get('transaction_cost')
+    if retry_cost is not None:
+        _t['vdg_retry_cost'] = retry_cost
+
+    retry_balance = sink.get('balance')
+    if retry_balance is None and data:
+        retry_balance = data.get('balance')
+    if retry_balance is not None:
+        _t['vdg_retry_balance'] = retry_balance
+    if data is None:
         return None
-    if data:
-        # Record spend regardless of whether paint came back.
-        if data.get('transaction_cost') is not None:
-            _t['vdg_retry_cost'] = data.get('transaction_cost')
-        if data.get('balance') is not None:
-            _t['vdg_retry_balance'] = data.get('balance')
     if not data or not data.get('paint_returned'):
         return None
     return {
