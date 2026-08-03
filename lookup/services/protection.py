@@ -33,6 +33,8 @@ Design notes
 from datetime import timedelta
 from decimal import Decimal
 
+import logging
+
 from django.db.models import F, Sum
 from django.utils import timezone
 
@@ -51,6 +53,8 @@ from django.utils import timezone
 # window by three quarters. Nearly all the value is in the first day anyway —
 # someone checking a reg twice in an afternoon, or a body shop returning to the
 # same car — so the long tail was buying almost nothing.
+logger = logging.getLogger(__name__)
+
 VRM_CACHE_TTL_DAYS = 7
 
 # How long a FAILED lookup is remembered. Much shorter than a success: a miss
@@ -225,8 +229,23 @@ def verify_turnstile(token, remote_ip=None, timeout=5):
         # token fails closed), so it stays inert until deliberately populated
         # via TURNSTILE_ALLOWED_HOSTNAMES.
         allowed = getattr(settings, 'TURNSTILE_ALLOWED_HOSTNAMES', None) or []
-        if allowed and (data.get('hostname') or '') not in allowed:
-            return False
+        if allowed:
+            hostname = data.get('hostname') or ''
+            if hostname not in allowed:
+                # Logged, not silent. A rejection here and a genuine bot block
+                # produce the SAME message for the user ("We could not verify
+                # your browser"), so without this line a misconfigured
+                # allowlist is indistinguishable from the protection working —
+                # and it would reject every lookup on the site. This says
+                # exactly which hostname Cloudflare reported and what was
+                # expected, so the fix is a one-line answer in the logs.
+                logger.warning(
+                    'Turnstile hostname rejected: Cloudflare reported %r, '
+                    'TURNSTILE_ALLOWED_HOSTNAMES=%r. If %r is legitimate, add '
+                    'it to the env var or unset the var to disable this check.',
+                    hostname, allowed, hostname,
+                )
+                return False
         return True
     except Exception:
         # Cloudflare verify unreachable/broken -> fail open (see docstring).
