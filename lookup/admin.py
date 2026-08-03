@@ -60,6 +60,7 @@ class SearchAdmin(admin.ModelAdmin):
         'vdg_balance_after_call',
         'recovery_attempted',
         'vdg_retry_returned',
+        'vdg_retry_code',
         'pl24_attempted',
         'pl24_returned',
         'recovery_name_only',
@@ -91,6 +92,7 @@ class SearchAdmin(admin.ModelAdmin):
             'fields': (
                 'recovery_attempted',
                 'vdg_retry_returned',
+                'vdg_retry_code',
                 'pl24_attempted',
                 'pl24_returned',
                 'recovery_name_only',

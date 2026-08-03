@@ -107,6 +107,19 @@ class Search(models.Model):
     #                           spot slow commercial-vehicle lookups.
     recovery_attempted = models.BooleanField(default=False)
     vdg_retry_returned = models.BooleanField(default=False)
+    # What the SECOND VDG call actually returned (paint21).
+    #
+    # The recovery races the VDG retry against pl24 and serves whichever lands
+    # first, so when pl24 wins the retry's answer is thrown away — including on
+    # calls that DID find a code and that we had already paid for. Nothing has
+    # ever recorded what was discarded, so there is no way to know whether the
+    # two sources agree.
+    #
+    # Written by the retry worker itself, whenever it finishes, so it lands even
+    # when the response has already gone out. Empty means the retry found no
+    # code. Compare against paint_code to see whether the discarded answer
+    # matched the one served.
+    vdg_retry_code = models.CharField(max_length=100, blank=True, default='')
     pl24_attempted = models.BooleanField(default=False)
     pl24_returned = models.BooleanField(default=False)
     recovery_name_only = models.BooleanField(default=False)

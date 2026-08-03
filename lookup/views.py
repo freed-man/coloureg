@@ -1102,7 +1102,10 @@ def _lookup_status(request, search_id):
 
     telemetry = {}
     try:
-        result = resolve_paint(registration, vin, make, category, telemetry=telemetry, model=vehicle_data.get('model', ''))
+        result = resolve_paint(
+            registration, vin, make, category, telemetry=telemetry,
+            model=vehicle_data.get('model', ''), search_id=search_id,
+        )
     except Exception:  # noqa: BLE001 — never let a fallback failure 500 the poll
         # Log it. Sentry only reports UNHANDLED exceptions, so without this a
         # bug anywhere in the recovery race (two external services, threads,
@@ -1294,17 +1297,20 @@ def _apply_recovery_telemetry(search, telemetry):
     # Safe from double-counting: the caller claims the recovery atomically
     # (filter recovery_attempted=False -> update), so this runs exactly once per
     # row; concurrent pollers wait on the result instead of re-running it.
-    retry_cost = telemetry.get('vdg_retry_cost')
-    if retry_cost is not None:
-        existing = search.vdg_transaction_cost or Decimal('0')
-        search.vdg_transaction_cost = existing + Decimal(str(retry_cost))
-        fields.append('vdg_transaction_cost')
-    retry_balance = telemetry.get('vdg_retry_balance')
-    if retry_balance is not None:
-        # The retry is the newer call, so its balance is the fresher truth.
-        search.vdg_balance_after_call = Decimal(str(retry_balance))
-        fields.append('vdg_balance_after_call')
-
+    # NOTE (paint21): the retry's cost and balance are NO LONGER applied here.
+    # They are written by the retry worker itself, atomically, the moment it
+    # finishes — see paint_resolver._record_retry_billing.
+    #
+    # They had to move. This function runs after resolve_paint returns, and when
+    # pl24 wins the race resolve_paint returns while the VDG retry is still in
+    # flight. The retry cannot be cancelled (it has already started), so it
+    # completes, VDG bills us, and its cost arrived in the telemetry dict after
+    # this had already read it. On real traffic that lost about GBP1/day, always
+    # under, never over.
+    #
+    # Writing them here now would be actively harmful: a bare assignment plus
+    # save() would OVERWRITE the atomic F() update the worker performs, so
+    # vdg_transaction_cost and vdg_balance_after_call must stay out of `fields`.
     return fields
 
 

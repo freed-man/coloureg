@@ -30,6 +30,7 @@ Design notes:
 """
 
 import concurrent.futures
+import logging
 import os
 import threading
 import time
@@ -113,6 +114,8 @@ PL24_API_KEY = os.environ.get('PL24_API_KEY', '')
 # The long wait is acceptable because resolve_paint runs in the background while
 # the user already sees their vehicle data; the results page communicates the
 # wait ("checking manufacturer database...") rather than appearing frozen.
+logger = logging.getLogger(__name__)
+
 PL24_TIMEOUT = float(os.environ.get('PL24_CLIENT_TIMEOUT_S', '65'))
 
 # Concurrency cap on the recovery race (paint19).
@@ -151,7 +154,85 @@ def release_recovery_slot():
 _PL24_HTTP_TIMEOUT = (5.0, PL24_TIMEOUT)
 
 
-def _vdg_retry(registration, telemetry=None):
+# Counter of retry-billing writes still in flight. Production does not need
+# this — the write lands whenever it lands, and nothing reads the cost that
+# quickly. It exists so tests can wait for the asynchronous write deterministically
+# instead of racing it.
+_pending_writes = threading.Semaphore(0)
+_pending_lock = threading.Lock()
+_pending_count = 0
+
+
+def _recovery_writes_pending():
+    """True while a retry-billing write has not finished. Test support only."""
+    with _pending_lock:
+        return _pending_count > 0
+
+
+def _record_retry_billing(search_id, cost, balance, retry_code):
+    """Write the retry's own spend straight to its Search row (paint21).
+
+    The retry used to hand its cost back through the telemetry dict, which the
+    caller read AFTER resolve_paint returned. That works only if the retry
+    finishes first. When pl24 wins the race, resolve_paint returns immediately
+    and the retry is still in flight — cancel_futures cannot stop it, because
+    with max_workers=2 it already started — so it completes, VDG bills us, and
+    the cost lands in a dict nobody reads again.
+
+    Measured on real traffic: every partslink24 row recording 0.08 was followed
+    by exactly the abandoned retry's charge appearing on the NEXT balance
+    reading. 5 of 5, no false positives, about GBP1/day and always under.
+
+    Writing from here fixes it regardless of timing: whenever this worker
+    finishes, it adds its own cost to the row. An atomic UPDATE, so it cannot
+    lose against the caller's save, and Coalesce because the column is nullable
+    and NULL + x is NULL in SQL.
+
+    Best-effort by design: bookkeeping must never break a lookup the customer
+    is waiting on.
+    """
+    if search_id is None:
+        return
+    global _pending_count
+    with _pending_lock:
+        _pending_count += 1
+    try:
+        from decimal import Decimal
+        from django.db import connections
+        from django.db.models import DecimalField, F, Value
+        from django.db.models.functions import Coalesce
+        from lookup.models import Search
+
+        updates = {}
+        if cost is not None:
+            updates['vdg_transaction_cost'] = Coalesce(
+                F('vdg_transaction_cost'), Value(Decimal('0')),
+                output_field=DecimalField(max_digits=10, decimal_places=2),
+            ) + Decimal(str(cost))
+        if balance is not None:
+            # The retry is the newer call, so its balance is the fresher truth.
+            updates['vdg_balance_after_call'] = Decimal(str(balance))
+        if retry_code is not None:
+            updates['vdg_retry_code'] = (retry_code or '')[:100]
+        if updates:
+            Search.objects.filter(pk=search_id).update(**updates)
+    except Exception:  # noqa: BLE001 — never let bookkeeping break a lookup
+        logger.warning('retry billing not recorded for search=%s', search_id,
+                       exc_info=True)
+    finally:
+        with _pending_lock:
+            _pending_count -= 1
+        # This runs on a pool thread. Django opens a connection per thread and
+        # nothing here closes it, so without this each recovery would strand one
+        # on Neon (conn_max_age=200 keeps it alive well past the thread's life).
+        try:
+            from django.db import connections as _c
+            _c.close_all()
+        except Exception:  # noqa: BLE001
+            pass
+
+
+def _vdg_retry(registration, telemetry=None, search_id=None):
     """Second VDG bundle call. Returns a paint dict if paint came back, else
     None. Never raises — VDG errors degrade to None (no recovery).
 
@@ -200,6 +281,16 @@ def _vdg_retry(registration, telemetry=None):
         retry_balance = data.get('balance')
     if retry_balance is not None:
         _t['vdg_retry_balance'] = retry_balance
+
+    # Record straight to the row, so this survives the caller having already
+    # returned and saved (paint21). The telemetry keys above are kept for the
+    # existing tests and for the case where the caller is still waiting, but
+    # they are no longer what the cost DEPENDS on — see _record_retry_billing.
+    retry_code = ''
+    if data:
+        retry_code = (data.get('paint_code') or '')
+    _t['vdg_retry_code'] = retry_code
+    _record_retry_billing(search_id, retry_cost, retry_balance, retry_code)
     if data is None:
         return None
     if not data or not data.get('paint_returned'):
@@ -301,7 +392,8 @@ def _pl24_lookup(vin, make, category=None):
     }
 
 
-def resolve_paint(registration, vin, make, category=None, telemetry=None, model=None):
+def resolve_paint(registration, vin, make, category=None, telemetry=None, model=None,
+                  search_id=None):
     """Race the VDG bundle-retry and the pl24 scrape; return the first usable
     paint result, or None if neither recovers a code.
 
@@ -351,7 +443,7 @@ def resolve_paint(registration, vin, make, category=None, telemetry=None, model=
     _t['pl24_returned'] = False
     _t['pl24_name_only'] = False
     try:
-        f_vdg = ex.submit(_vdg_retry, registration, _t)
+        f_vdg = ex.submit(_vdg_retry, registration, _t, search_id)
         # Category is routed (not raw): VW commercial lines misfiled as M1 by
         # VDG are sent to pl24 as N1 so the lookup hits the right catalogue
         # first time. See _route_category.

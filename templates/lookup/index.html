@@ -839,6 +839,30 @@
     // Reset loader state on page show (covers back-button navigation from a bfcache).
     // Without this, returning via back button leaves the loader visible and the messages still on their timers.
     window.addEventListener('pageshow', function(event) {
+        // Turnstile tokens are SINGLE-USE (paint21). A back-button return comes
+        // from the bfcache: the page is restored exactly as it was and scripts
+        // do NOT re-run, so the token sitting in the form is the one already
+        // spent on the previous search. The submit guard below only checks that
+        // a token EXISTS, so the spent one sails through, Cloudflare rejects it
+        // as used, and the visitor gets "We could not verify your browser" for
+        // pressing back to look up another car. Seen in production: two blocks
+        // in a row, then success once the widget re-solved on its own.
+        //
+        // Only on event.persisted. This handler also fires on ordinary loads,
+        // where the widget is already fresh — resetting there would throw away
+        // a good token and re-open the no-token window we close elsewhere.
+        // The other three routes back to this page (the "Look Up Another
+        // Vehicle" link, typing the URL, Enter in the address bar) are all
+        // normal navigations that re-run scripts, so they were never affected.
+        if (event.persisted) {
+            window.__turnstileWaiting = false;
+            if (window.turnstile) {
+                try { window.turnstile.reset(); } catch (e) {}
+            }
+            var tsNote = document.getElementById('turnstile-note');
+            if (tsNote) tsNote.style.display = 'none';
+        }
+
         var loader = document.getElementById('lookup-loader');
         var msgEl = document.getElementById('lookup-message');
         if (!loader) return;
