@@ -148,6 +148,14 @@
         justify-content: center;
         margin-top: 12px;
     }
+    /* Shown only when someone submits before the box has been ticked. */
+    .turnstile-note {
+        margin: 8px 0 0;
+        font-size: 13px;
+        line-height: 1.4;
+        color: #555;
+        text-align: center;
+    }
 
     /* Maintenance / lookups-paused state (shown when maintenance_mode is on).
        The normal .search-container caps width at 300px (right for the field).
@@ -477,8 +485,15 @@
                             <div class="cf-turnstile"
                                  data-sitekey="{{ turnstile_site_key }}"
                                  data-size="flexible"
-                                 data-appearance="interaction-only"></div>
+                                 data-appearance="interaction-only"
+                                 data-callback="onTurnstileSolved"
+                                 data-expired-callback="onTurnstileExpired"
+                                 data-error-callback="onTurnstileError"></div>
                         </div>
+                        <p id="turnstile-note" class="turnstile-note" style="display: none;">
+                            Please tick the box above to confirm you're human —
+                            your search will continue automatically.
+                        </p>
                         {% endif %}
                     </form>
                     {% if payments_on %}
@@ -532,6 +547,39 @@
 
 {% block extra_js %}
 {% if turnstile_site_key %}
+<script>
+    /* Defined BEFORE Cloudflare's script tag below, so the functions named in
+       data-callback / data-expired-callback / data-error-callback already exist
+       by the time the async script renders the widget. */
+    window.__turnstileWaiting = false;
+
+    /* Fired when the token is issued — either silently for a trusted visitor,
+       or the moment an untrusted one ticks the box. If a submit was held back
+       waiting for exactly this, resume it now so the tick is the only extra
+       step the visitor ever has to take. */
+    window.onTurnstileSolved = function () {
+        var note = document.getElementById('turnstile-note');
+        if (note) note.style.display = 'none';
+        if (window.__turnstileWaiting) {
+            window.__turnstileWaiting = false;
+            var f = document.getElementById('lookup-form');
+            if (!f) return;
+            if (f.requestSubmit) { f.requestSubmit(); } else { f.submit(); }
+        }
+    };
+
+    /* Tokens last about five minutes. If one expires on an idle page, clear it
+       so the next submit is held for a fresh tick rather than sent stale and
+       bounced by the server. */
+    window.onTurnstileExpired = function () {
+        window.__turnstileWaiting = false;
+        if (window.turnstile) { try { window.turnstile.reset(); } catch (e) {} }
+    };
+
+    window.onTurnstileError = function () {
+        window.__turnstileWaiting = false;
+    };
+</script>
 <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
 {% endif %}
 <script src="{% static 'js/particles.min.js' %}"></script>
@@ -689,6 +737,28 @@
         if (regInput.value.trim() === '') {
             e.preventDefault();
             regInput.focus();
+            return;
+        }
+
+        // Turnstile guard (paint17). data-appearance="interaction-only" means a
+        // token appears on its own for a trusted visitor, but an untrusted one
+        // (incognito, VPN, fresh profile, privacy browser) has to TICK the box
+        // before one exists. Submitting first sent an empty
+        // cf-turnstile-response, the server refused it, and the page came back
+        // with "We could not verify your browser" — every single time, because
+        // the reload resets the widget and the visitor submits first again.
+        // The widget can also still be loading: Cloudflare's script is async,
+        // so there is a window on every page load where no token exists yet.
+        //
+        // So don't spend a round-trip discovering that. Hold the submit, point
+        // at the box, and let onTurnstileSolved resume it automatically.
+        var tsWidget = document.querySelector('.cf-turnstile');
+        var tsField = lookupForm.querySelector('[name="cf-turnstile-response"]');
+        if (tsWidget && (!tsField || !tsField.value)) {
+            e.preventDefault();
+            window.__turnstileWaiting = true;
+            var tsNote = document.getElementById('turnstile-note');
+            if (tsNote) tsNote.style.display = '';
             return;
         }
 
