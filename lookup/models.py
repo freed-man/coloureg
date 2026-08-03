@@ -599,6 +599,46 @@ class PaintLookup(models.Model):
                 # turns a name-only result into a usable answer.
                 'focus': 'BRQAWHA',
                 'focusst': 'BRQAWHA',
+
+                # --- paint20 ------------------------------------------------
+                # Everything below was previously declined. Ford lists Race Red
+                # under both BRQAWHA and BRQAWWA, and every model here appears
+                # in BOTH codes' model lists, so the matcher could not choose
+                # and returned nothing — a name with no code, on a colour we
+                # actually know.
+                #
+                # Evidence that the choice does not matter: Ford issues several
+                # codes for one Race Red formulation depending on plant, region
+                # and model year, and paint suppliers (Chipex, Touch Up Paint
+                # Factory) sell BRQAWHA and BRQAWWA under a single mix formula
+                # alongside BRQAXWA / M7236A / PN4A7 / PQ / 7236. Either code
+                # buys the same paint. BRQAWHA is used for consistency with the
+                # Focus entries above.
+                #
+                # Scope is deliberately narrow: ONLY models whose candidate set
+                # is exactly {BRQAWHA, BRQAWWA} — verified, no third code is
+                # ever involved. Models that already resolve on their own
+                # (kuga, edge, transit -> BRQAWWA; etransit, fmax, mustang* ->
+                # BRQAWHA) are untouched.
+                #
+                # This is NOT a general rule. Two codes sharing a name usually
+                # means two different colours, and the `hex` column cannot tell
+                # them apart — one hex value in this dataset spans 1,516
+                # distinct colour names, and #851718 covers 'bursting green'
+                # and 'electric yellow' as well as 'race red'. So it stays what
+                # the surrounding table says it must be: evidenced entries only.
+                'fiesta': 'BRQAWHA',
+                'fiestast': 'BRQAWHA',
+                'fiestavan': 'BRQAWHA',
+                'ecosport': 'BRQAWHA',
+                'puma': 'BRQAWHA',
+                'ranger': 'BRQAWHA',
+                'tourneoconnect': 'BRQAWHA',
+                'tourneocourier': 'BRQAWHA',
+                'tourneocustom': 'BRQAWHA',
+                'transitconnect': 'BRQAWHA',
+                'transitcourier': 'BRQAWHA',
+                'transitcustom': 'BRQAWHA',
             },
         },
     }
