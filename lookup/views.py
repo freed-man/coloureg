@@ -1454,10 +1454,23 @@ def submit_email(request):
         )
         return redirect('results')
 
-    search.email = email
+    # update_fields throughout submit_email (paint20). A bare save() writes EVERY
+    # column from an in-memory copy of the row, and this view holds that copy
+    # across up to two Resend calls (30s timeout each). The background recovery
+    # writes paint_code/success/provider to the SAME row over the same window,
+    # and it writes them narrowly — so a full save here silently reverts them,
+    # blanking a paint code that was genuinely found.
+    #
+    # The visitor is then told no code exists, the row records a failure, and
+    # once payments are live the authorisation would be cancelled on a lookup
+    # that actually succeeded. Naming the columns each save owns removes the
+    # whole class: two writers touching different columns can no longer collide.
+    email_fields = ['email']
     if customer_message:
         search.customer_message = customer_message
-    search.save()
+        email_fields.append('customer_message')
+    search.email = email
+    search.save(update_fields=email_fields)
 
     vin_masked = mask_vin(search.vin)
 
@@ -1484,7 +1497,7 @@ def submit_email(request):
         )
         if sent:
             search.email_sent = True
-            search.save()
+            search.save(update_fields=['email_sent'])
     else:
         admin_sent = send_admin_failure_notification(
             registration=search.registration,
@@ -1503,8 +1516,10 @@ def submit_email(request):
             colour=search.colour,
         )
         if admin_sent and user_sent:
+            # The riskiest of the three: this runs after BOTH sends above, so
+            # the in-memory row can be a minute stale by now.
             search.email_sent = True
-            search.save()
+            search.save(update_fields=['email_sent'])
 
     request.session['email_submitted'] = email
     return redirect('results')
