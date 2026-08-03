@@ -490,10 +490,7 @@
                                  data-expired-callback="onTurnstileExpired"
                                  data-error-callback="onTurnstileError"></div>
                         </div>
-                        <p id="turnstile-note" class="turnstile-note" style="display: none;">
-                            Please tick the box above to confirm you're human —
-                            your search will continue automatically.
-                        </p>
+                        <p id="turnstile-note" class="turnstile-note" style="display: none;"></p>
                         {% endif %}
                     </form>
                     {% if payments_on %}
@@ -758,7 +755,21 @@
             e.preventDefault();
             window.__turnstileWaiting = true;
             var tsNote = document.getElementById('turnstile-note');
-            if (tsNote) tsNote.style.display = '';
+            if (tsNote) {
+                // The wording has to match what the visitor can actually SEE.
+                // With the Cloudflare widget in Non-Interactive mode (plus
+                // appearance="interaction-only") nothing is ever rendered, so
+                // telling them to tick a box would point at empty space. In
+                // Managed mode a checkbox does appear and needs naming.
+                // offsetHeight is the honest test: zero means nothing is on
+                // screen, whatever the dashboard is set to.
+                tsNote.textContent = tsWidget.offsetHeight > 0
+                    ? "Please tick the box above to confirm you're human — "
+                      + 'your search will continue automatically.'
+                    : 'Just a moment — checking your browser. Your search '
+                      + 'will start automatically.';
+                tsNote.style.display = '';
+            }
             return;
         }
 
