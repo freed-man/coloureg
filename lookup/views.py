@@ -29,7 +29,13 @@ from .services.vdg import (
     VdgError,
     VdgNotFoundError,
 )
-from .services.paint_resolver import resolve_paint, _enrich_from_lookup, PL24_TIMEOUT
+from .services.paint_resolver import (
+    resolve_paint,
+    _enrich_from_lookup,
+    PL24_TIMEOUT,
+    acquire_recovery_slot,
+    release_recovery_slot,
+)
 from .services.uploads import process_image_upload
 from .services.protection import (
     budget_exceeded,
@@ -990,8 +996,37 @@ def results(request):
     return render(request, 'lookup/results.html', context)
 
 
+# How long the page is told to wait before retrying a 'busy' response.
+RECOVERY_BUSY_RETRY_S = 4
+
+
 @require_GET
 def lookup_status(request, search_id):
+    """Concurrency gate in front of the real handler (paint19).
+
+    _lookup_status runs the recovery race, which parks this thread for up to
+    ~65s. Gunicorn serves 16 concurrent requests, so 16 simultaneous paint
+    misses park every thread — the healthcheck included, and a failed
+    healthcheck gets the container restarted with lookups in flight.
+
+    So take a slot or decline immediately. Declining returns the thread at once
+    instead of queueing on a lock (a thread blocked on a semaphore is just as
+    unavailable), and 'busy' costs nothing: no claim is made, no VDG call
+    happens, and the page retries. The row is untouched, so the retry runs the
+    recovery properly rather than inheriting a half-started one.
+    """
+    if not acquire_recovery_slot():
+        return JsonResponse({
+            'status': 'busy',
+            'retry_after': RECOVERY_BUSY_RETRY_S,
+        })
+    try:
+        return _lookup_status(request, search_id)
+    finally:
+        release_recovery_slot()
+
+
+def _lookup_status(request, search_id):
     """Background paint-resolution endpoint, polled by the results page when the
     initial VDG call returned a vehicle but no paint.
 
@@ -1163,7 +1198,14 @@ def lookup_status(request, search_id):
     })
 
 
-RECOVERY_WAIT_POLL_S = 2.0
+# Poll interval for the loser-waits path. Starts short (most recoveries that are
+# already running finish quickly) and backs off, because every tick is a
+# Search.objects.get() — a Neon round-trip that also holds its compute awake.
+# A flat 2s over the 75s ceiling was up to 37 queries per waiting request; this
+# is roughly a third of that with no user-visible change (paint19).
+RECOVERY_WAIT_POLL_S = 1.0
+RECOVERY_WAIT_POLL_MAX_S = 6.0
+RECOVERY_WAIT_POLL_GROWTH = 1.5
 
 
 def _wait_for_recovery_result(search_id):
@@ -1181,6 +1223,7 @@ def _wait_for_recovery_result(search_id):
     manual-lookup offer, which is the correct fallback for a recovery that
     can no longer finish on its own."""
     deadline = time.monotonic() + PL24_TIMEOUT + 10
+    poll = RECOVERY_WAIT_POLL_S
     while time.monotonic() < deadline:
         try:
             row = Search.objects.get(id=search_id)
@@ -1220,7 +1263,8 @@ def _wait_for_recovery_result(search_id):
                     'paint_description': row.paint_description,
                 })
             return JsonResponse({'status': 'not_found'})
-        time.sleep(RECOVERY_WAIT_POLL_S)
+        time.sleep(poll)
+        poll = min(poll * RECOVERY_WAIT_POLL_GROWTH, RECOVERY_WAIT_POLL_MAX_S)
     return JsonResponse({'status': 'error'}, status=200)
 
 
@@ -2099,7 +2143,12 @@ def submit_manual_lookup(request):
 
     try:
         search = Search.objects.get(id=search_id)
-    except Search.DoesNotExist:
+    except (Search.DoesNotExist, ValueError, TypeError):
+        # ValueError/TypeError because a non-numeric search_id raises on the
+        # PK coercion, NOT DoesNotExist — so a malformed value used to 500
+        # instead of returning this clean 404 (paint19). The same triple is
+        # already caught in _wait_for_recovery_result; this just applies the
+        # existing pattern consistently.
         return JsonResponse({'success': False, 'error': 'Search record not found.'}, status=404)
 
     if not search.email:
@@ -2252,7 +2301,12 @@ def dismiss_manual_lookup(request):
 
     try:
         search = Search.objects.get(id=search_id)
-    except Search.DoesNotExist:
+    except (Search.DoesNotExist, ValueError, TypeError):
+        # ValueError/TypeError because a non-numeric search_id raises on the
+        # PK coercion, NOT DoesNotExist — so a malformed value used to 500
+        # instead of returning this clean 404 (paint19). The same triple is
+        # already caught in _wait_for_recovery_result; this just applies the
+        # existing pattern consistently.
         return JsonResponse({'success': False, 'error': 'Search record not found.'}, status=404)
 
     # Atomically claim the row (same pattern as submit_manual_lookup): a single

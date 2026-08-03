@@ -56,11 +56,38 @@ if _railway_private:
 # single real client IP Cloudflare sets (unspoofable when proxied), matching what
 # get_client_ip() uses for logging — so the limits and the logs agree on "who".
 # Falls back to REMOTE_ADDR if the header is somehow absent (direct origin hit).
+# NOTE (paint19): every candidate is VALIDATED before it is returned. This used
+# to hand the raw header straight to django-ratelimit, which feeds it into
+# ipaddress.ip_network(f'{ip}/{mask}') — that raises ValueError on anything that
+# is not an address, so a junk CF-Connecting-IP produced an unhandled 500 on
+# submit_email and submit_contact rather than a rate-limit decision. Not just an
+# attacker's tool: a comma-separated value like '1.2.3.4, 5.6.7.8', which a
+# proxy change could legitimately produce, crashed it too.
+#
+# paint17 added exactly this guard to views.get_client_ip() and missed the
+# sibling here, which is why the comment below claimed the two agreed when they
+# no longer did. They agree again now.
 def RATELIMIT_IP_META_KEY(request):
-    return (
-        request.META.get('HTTP_CF_CONNECTING_IP')
-        or request.META.get('REMOTE_ADDR', '')
-    )
+    from django.core.exceptions import ValidationError
+    from django.core.validators import validate_ipv46_address
+
+    for candidate in (
+        request.META.get('HTTP_CF_CONNECTING_IP'),
+        request.META.get('REMOTE_ADDR'),
+    ):
+        candidate = (candidate or '').strip()
+        if not candidate:
+            continue
+        try:
+            validate_ipv46_address(candidate)
+        except ValidationError:
+            continue
+        return candidate
+    # Nothing usable. Return a constant rather than '' so callers still share a
+    # single bucket instead of django-ratelimit seeing an empty key — anyone
+    # arriving without a resolvable address is limited together, which is the
+    # safe direction.
+    return '0.0.0.0'
 
 # CSRF_TRUSTED_ORIGINS: Django 4+ requires the request's Origin to be trusted
 # for any POST over HTTPS (the reg-lookup submit, email submit, admin manual

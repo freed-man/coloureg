@@ -31,6 +31,7 @@ Design notes:
 
 import concurrent.futures
 import os
+import threading
 import time
 
 import requests
@@ -113,6 +114,36 @@ PL24_API_KEY = os.environ.get('PL24_API_KEY', '')
 # the user already sees their vehicle data; the results page communicates the
 # wait ("checking manufacturer database...") rather than appearing frozen.
 PL24_TIMEOUT = float(os.environ.get('PL24_CLIENT_TIMEOUT_S', '65'))
+
+# Concurrency cap on the recovery race (paint19).
+#
+# resolve_paint parks its calling thread for up to PL24_TIMEOUT seconds. Gunicorn
+# runs 2 workers x 8 threads = 16 concurrent requests, so 16 simultaneous
+# paint-miss lookups park EVERY thread — including the one that would answer
+# Railway's healthcheck. Failing healthchecks get the container restarted, which
+# kills whatever lookups are in flight; once payments are live that means a
+# customer charged mid-fulfilment.
+#
+# A plain semaphore would not help: a thread blocked waiting on it is just as
+# parked. So callers TRY to acquire and are told to come back if they cannot,
+# leaving the thread free immediately. The default of 10 keeps 6 threads clear
+# for ordinary traffic and the healthcheck.
+MAX_CONCURRENT_RECOVERIES = int(os.environ.get('MAX_CONCURRENT_RECOVERIES', '10'))
+_recovery_slots = threading.BoundedSemaphore(MAX_CONCURRENT_RECOVERIES)
+
+
+def acquire_recovery_slot():
+    """Non-blocking. True if a slot was taken (caller MUST release it)."""
+    return _recovery_slots.acquire(blocking=False)
+
+
+def release_recovery_slot():
+    try:
+        _recovery_slots.release()
+    except ValueError:
+        # BoundedSemaphore raises if released more times than acquired. Never
+        # let bookkeeping take down a request that has already done its work.
+        pass
 
 # requests timeout as (connect, read): cap connection setup tightly (the pl24
 # service is on the same platform/region, so a slow connect means trouble), and

@@ -11,6 +11,7 @@ to the previous two-sequential-call pattern.
 Per-document StatusCode is exposed in the response so the caller can record
 which documents returned data.
 """
+import hashlib
 import logging
 import os
 import re
@@ -104,6 +105,32 @@ def _make_request(registration, billing_sink=None):
     return data
 
 
+def _log_reg(registration):
+    """How a registration appears in the log line (paint19).
+
+    A registration is personal data. The privacy notice covers the Search table
+    with a 365-day scrub, but platform logs sit OUTSIDE that: different
+    retention, different controls, and prune_old_data cannot reach them. Writing
+    plaintext registrations there — which the paint18 version of this line did —
+    quietly creates a second copy of personal data under no retention policy at
+    all.
+
+    Default is a short digest, which still supports the only thing the log line
+    is for: correlating a charge against a Search row. Hash the registration
+    column of an export the same way and the two line up. Note this is
+    pseudonymisation, not anonymisation — the UK registration space is small
+    enough to brute-force — so it lowers exposure rather than eliminating it.
+
+    Set VDG_LOG_PLAINTEXT_REG=1 to log the raw value during an active
+    investigation, and unset it afterwards.
+    """
+    if not registration:
+        return '-'
+    if os.environ.get('VDG_LOG_PLAINTEXT_REG', '') == '1':
+        return registration
+    return 'h:' + hashlib.sha256(registration.encode()).hexdigest()[:10]
+
+
 def _record_billing(data, sink, registration, outcome='ok'):
     """Stash VDG's cost/balance into `sink` and log the call (paint18).
 
@@ -129,7 +156,7 @@ def _record_billing(data, sink, registration, outcome='ok'):
             sink['balance'] = balance
     logger.info(
         'VDG call reg=%s outcome=%s cost=%s balance=%s',
-        registration, outcome, cost, balance,
+        _log_reg(registration), outcome, cost, balance,
     )
 
 
