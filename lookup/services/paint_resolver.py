@@ -158,7 +158,6 @@ _PL24_HTTP_TIMEOUT = (5.0, PL24_TIMEOUT)
 # this — the write lands whenever it lands, and nothing reads the cost that
 # quickly. It exists so tests can wait for the asynchronous write deterministically
 # instead of racing it.
-_pending_writes = threading.Semaphore(0)
 _pending_lock = threading.Lock()
 _pending_count = 0
 
