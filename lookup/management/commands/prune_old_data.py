@@ -20,6 +20,8 @@ from django.core.management.base import BaseCommand
 from django.db.models import Q
 from django.utils import timezone
 
+from django.contrib.sessions.models import Session
+
 from lookup.models import Search, VrmCache
 from lookup.services.protection import VRM_CACHE_TTL_DAYS
 
@@ -80,6 +82,23 @@ class Command(BaseCommand):
         stale = VrmCache.objects.filter(updated_at__lt=stale_cutoff)
         stale_count = stale.count()
 
+        # --- Expired sessions (paint19) --------------------------------------
+        # django_session rows hold the whole vehicle_data payload, which
+        # includes the FULL UNMASKED VIN and the registration — the same
+        # personal data the privacy notice promises to scrub, sitting in a table
+        # this command never touched.
+        #
+        # Django does not expire these on its own. Nothing anywhere removes an
+        # expired session row; that is precisely what `clearsessions` exists
+        # for, and it was never being run. So every lookup left a permanent VIN
+        # behind, exactly the VrmCache problem in a place nobody had looked.
+        #
+        # Cutoff is the session's own expiry (Django writes expire_date at
+        # save), not the 365-day Search window: an expired session is dead
+        # weight the moment it lapses and there is no reason to keep it.
+        expired_sessions = Session.objects.filter(expire_date__lt=timezone.now())
+        expired_session_count = expired_sessions.count()
+
         count = candidates.count()
         oldest = candidates.order_by('timestamp').values_list('timestamp', flat=True).first()
         newest = candidates.order_by('-timestamp').values_list('timestamp', flat=True).first()
@@ -93,17 +112,19 @@ class Command(BaseCommand):
             self.stdout.write(f'  Newest record:          {newest.isoformat()}')
         self.stdout.write(f'  VrmCache cutoff:        {stale_cutoff.isoformat()}')
         self.stdout.write(f'  Stale cache entries:    {stale_count}')
+        self.stdout.write(f'  Expired sessions:       {expired_session_count}')
         self.stdout.write(f'  Mode:                   {"DRY RUN (no changes)" if dry_run else "LIVE (will modify)"}')
         self.stdout.write('')
 
-        if count == 0 and stale_count == 0:
+        if count == 0 and stale_count == 0 and expired_session_count == 0:
             self.stdout.write(self.style.SUCCESS('Nothing to scrub. Database is clean.'))
             return
 
         if dry_run:
             self.stdout.write(self.style.WARNING(
-                f'Dry run only. {count} records and {stale_count} cache entries '
-                f'WOULD be processed. Run without --dry-run to apply.'
+                f'Dry run only. {count} records, {stale_count} cache entries and '
+                f'{expired_session_count} expired sessions WOULD be processed. '
+                f'Run without --dry-run to apply.'
             ))
             return
 
@@ -127,10 +148,18 @@ class Command(BaseCommand):
         if stale_count:
             stale.delete()
 
+        # Independent of both cutoffs above — see the note at expired_sessions.
+        if expired_session_count:
+            expired_sessions.delete()
+
         self.stdout.write(self.style.SUCCESS(
             f'Scrubbed personal fields from {updated} records.'
         ))
         self.stdout.write(self.style.SUCCESS(
             f'Deleted {stale_count} stale VrmCache entries '
             f'(older than {VRM_CACHE_TTL_DAYS} days, already past their TTL).'
+        ))
+        self.stdout.write(self.style.SUCCESS(
+            f'Deleted {expired_session_count} expired sessions '
+            f'(each held a registration and an unmasked VIN).'
         ))
