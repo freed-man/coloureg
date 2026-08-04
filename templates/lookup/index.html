@@ -108,7 +108,10 @@
         text-align: center;
     }
     .search-input::placeholder {
-        color: #222;
+        /* paint24: #222 -> #000. At 400 weight over a translucent white field
+           the old value read as washed out; italic and size are unchanged, so
+           the typewriter measurer below still matches the rendered font. */
+        color: #000;
         font-weight: 400;
         font-size: 22px;
         letter-spacing: 1px;
@@ -353,21 +356,52 @@
         from { transform: rotateY(0deg)   rotateX(0deg); }
         to   { transform: rotateY(360deg) rotateX(720deg); }
     }
+    /* paint24: mono status line instead of the Playfair italic. The caption is
+       reporting machine progress, so it reads better as a readout than as
+       editorial prose — and at 15px it sits under the sphere rather than
+       competing with it. The caret is black, matching the text, so it reads as
+       punctuation rather than as a terminal affectation. */
     .lookup-message {
-        font-family: 'Playfair Display', Georgia, serif;
-        font-style: italic;
-        font-size: 20px;
+        font-family: 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+        font-size: 15px;
         color: #000;
         text-align: center;
         margin: 0;
-        min-height: 28px;
+        min-height: 30px;
         transition: opacity 0.3s ease;
-        max-width: 320px;
-        line-height: 1.4;
+        max-width: 330px;
+        line-height: 1.55;
     }
+    .lookup-message::before {
+        content: '> ';
+        font-weight: 700;
+        color: #000;
+    }
+
+    /* Patience note. Space is RESERVED from the start (opacity, not display)
+       so the sphere does not jump when it appears — the note fades in where it
+       already was. Nobody pays for that reservation visually: the lookups it
+       would affect finish in under a fifth of a second. */
+    .lookup-patience {
+        margin: 16px 0 0;
+        max-width: 320px;
+        background: #f6f8fa;
+        border-left: 3px solid #C8102E;
+        padding: 10px 13px;
+        font-family: 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+        font-size: 11px;
+        color: #444;
+        line-height: 1.7;
+        text-align: left;
+        opacity: 0;
+        transition: opacity 0.5s ease;
+        pointer-events: none;
+    }
+    .lookup-patience.show { opacity: 1; }
+    .lookup-patience b { color: #111; font-weight: 500; }
     /* .stuck is still toggled by the JS at the 10s stage, but both stages now
-       share one identical style (Playfair italic 20px #000). The class is kept
-       as a hook in case a future stage wants distinct styling. */
+       share one identical style (mono 15px #000). The class is kept as a hook
+       in case a future stage wants distinct styling. */
     @media (max-width: 480px) {
         .lookup-spinner { width: 110px; height: 110px; }
         .lookup-spinner .dot { width: 14px; height: 14px; margin: -7px 0 0 -7px; }
@@ -387,7 +421,8 @@
         .lookup-spinner .dot:nth-child(14) { transform: rotateY(157deg) rotateX(-55deg) translateZ(40px); }
         .lookup-spinner .dot:nth-child(15) { transform: rotateY(247deg) rotateX(-55deg) translateZ(40px); }
         .lookup-spinner .dot:nth-child(16) { transform: rotateY(337deg) rotateX(-55deg) translateZ(40px); }
-        .lookup-message { font-size: 17px; }
+        .lookup-message { font-size: 13.5px; }
+        .lookup-patience { font-size: 10.5px; }
     }
 </style>
 {% endblock %}
@@ -548,6 +583,10 @@
                             <span class="dot"></span>
                         </div>
                         <p class="lookup-message" id="lookup-message">Connecting to manufacturer server...</p>
+                        <div class="lookup-patience" id="lookup-patience" aria-hidden="true">
+                            This can take up to <b>60 seconds</b>.<br>
+                            Please don't close or refresh the page.
+                        </div>
                     </div>
                     {% endif %}
                 </div>
@@ -832,6 +871,8 @@
 
         function showUnsupported(make) {
             loader.classList.remove('active');
+        var patReset = document.getElementById('lookup-patience');
+        if (patReset) patReset.classList.remove('show');
             form.style.display = '';
             var box = document.getElementById('unsupported-make');
             if (box) {
@@ -897,8 +938,22 @@
             fadeTo(stage10, true);
         }, 10000);
 
-        // Stash handle on the form so the pageshow handler can clear it on back-navigation.
-        form._loaderTimers = [t10];
+        // Patience note at 3s (paint24). NOT shown immediately: measured on real
+        // traffic, lookups are bimodal — 42% finish under 3 seconds (mostly
+        // cache hits returning in ~0.17s) and the rest run on to about 15. A
+        // note promising "up to 60 seconds" shown to the fast group would make
+        // an instant answer feel slow. At 3s it only reaches people who are
+        // genuinely waiting, so it reads as reassurance rather than a warning.
+        // The threshold is insensitive: 2.5s and 4s reach 57.7% and 51.7%
+        // respectively, so this is not a number worth tuning.
+        var patienceEl = document.getElementById('lookup-patience');
+        var tPat = setTimeout(function () {
+            if (patienceEl) patienceEl.classList.add('show');
+        }, 3000);
+
+        // Stash handles on the form so the pageshow handler can clear them on
+        // back-navigation.
+        form._loaderTimers = [t10, tPat];
     });
 
     // Reset loader state on page show (covers back-button navigation from a bfcache).
@@ -940,6 +995,8 @@
 
         // Hide loader, restore form, reset message to initial state.
         loader.classList.remove('active');
+        var patReset = document.getElementById('lookup-patience');
+        if (patReset) patReset.classList.remove('show');
         lookupForm.style.display = '';
         if (msgEl) {
             msgEl.classList.remove('stuck');
