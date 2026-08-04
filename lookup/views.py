@@ -213,7 +213,41 @@ def get_dvla_data(registration):
     return None
 
 
-def get_mot_access_token():
+# MOT OAuth token cache (paint27).
+#
+# The token was re-fetched on EVERY lookup. Client-credentials tokens are valid
+# for the best part of an hour, so that was a wasted HTTP round trip on all 813
+# lookups that reach the MOT branch — and worse, it doubled the exposure to a
+# hang: the token call carries its own 10s timeout, so a slow token endpoint
+# costs 10 seconds before the data call is even attempted.
+#
+# Cached in LOCMEM deliberately, not the shared database cache. A bearer token
+# is a credential; locmem keeps it in process memory and never writes it to
+# disk or to Neon. The cost is one fetch per worker per expiry rather than one
+# per process — with 2 workers that is a handful of calls an hour instead of
+# hundreds.
+_MOT_TOKEN_CACHE_KEY = 'mot_access_token'
+_MOT_TOKEN_SAFETY_MARGIN_S = 300
+_MOT_TOKEN_DEFAULT_TTL_S = 1800
+
+
+def _clear_mot_token():
+    """Drop the cached token so the next call fetches a fresh one."""
+    try:
+        caches['local'].delete(_MOT_TOKEN_CACHE_KEY)
+    except Exception:  # noqa: BLE001
+        pass
+
+
+def get_mot_access_token(force_refresh=False):
+    if not force_refresh:
+        try:
+            cached = caches['local'].get(_MOT_TOKEN_CACHE_KEY)
+            if cached:
+                return cached
+        except Exception:  # noqa: BLE001 — a cache failure must not stop the lookup
+            pass
+
     token_url = os.environ.get('MOT_TOKEN_URL')
     client_id = os.environ.get('MOT_CLIENT_ID')
     client_secret = os.environ.get('MOT_CLIENT_SECRET')
@@ -228,15 +262,34 @@ def get_mot_access_token():
 
     try:
         response = requests.post(token_url, data=data, timeout=10)
-        if response.status_code == 200:
-            return response.json().get('access_token')
-    except requests.exceptions.RequestException:
+        if response.status_code != 200:
+            return None
+        payload = response.json()
+    except (requests.exceptions.RequestException, ValueError):
         return None
-    return None
+
+    token = payload.get('access_token')
+    if not token:
+        return None
+
+    # Honour the server's own expiry, minus a margin so we never present a
+    # token that lapses mid-flight. Fall back to a conservative TTL if the
+    # provider omits expires_in or sends something unparseable.
+    try:
+        ttl = int(payload.get('expires_in') or 0) - _MOT_TOKEN_SAFETY_MARGIN_S
+    except (TypeError, ValueError):
+        ttl = 0
+    if ttl <= 0:
+        ttl = _MOT_TOKEN_DEFAULT_TTL_S
+    try:
+        caches['local'].set(_MOT_TOKEN_CACHE_KEY, token, ttl)
+    except Exception:  # noqa: BLE001
+        pass
+    return token
 
 
-def get_mot_data(registration):
-    access_token = get_mot_access_token()
+def get_mot_data(registration, retried=False):
+    access_token = get_mot_access_token(force_refresh=retried)
     if not access_token:
         return None
 
@@ -253,6 +306,13 @@ def get_mot_data(registration):
         response = requests.get(url, headers=headers, timeout=10)
         if response.status_code == 200:
             return response.json()
+        # A cached token that the provider no longer accepts would otherwise
+        # break MOT for its whole TTL. Drop it and try once with a fresh one;
+        # `retried` bounds this to a single extra attempt so a genuinely
+        # rejected credential cannot loop.
+        if response.status_code in (401, 403) and not retried:
+            _clear_mot_token()
+            return get_mot_data(registration, retried=True)
     except requests.exceptions.RequestException:
         return None
     return None
@@ -1201,6 +1261,21 @@ def _lookup_status(request, search_id):
     if SiteConfig.get().maintenance_mode:
         return JsonResponse({'status': 'not_found'})
 
+    # --- Paywall choke point (paint27) -------------------------------------
+    # Checked ONCE, here, before any exit that could carry paint data.
+    #
+    # paint22 guarded only the 'found' exit, and the 'already_resolved' one
+    # leaked: a locked row polled a second time returned its code and colour
+    # name as JSON, bypassing the paywall completely. The poll is the same door
+    # as the page and has to be gated the same way.
+    #
+    # Guarding a single point rather than each return is deliberate — the bug
+    # was caused by there being several exits and one being missed, and more
+    # exits will be added.
+    _poll_locked = _locked_status_response(search_id)
+    if _poll_locked is not None:
+        return _poll_locked
+
     # Idempotency / guard: if we already have paint (resolved on a prior poll,
     # or this was never a paint-miss), return it; never re-run the fallback.
     if vehicle_data.get('paint_code'):
@@ -1328,11 +1403,10 @@ def _lookup_status(request, search_id):
         store_vrm_payload(reg_for_cache, vehicle_data)
         clear_miss(reg_for_cache)  # recovery found it — drop any stale miss
 
-    # The recovery finished while the page was polling. If that result is
-    # chargeable it must NOT be pushed down as JSON (paint22) — the poll is the
-    # same door as the page, and handing the code to the browser here would
-    # bypass the gate entirely. Tell the page to reload instead; results() then
-    # renders the locked view.
+    # Re-checked here as well as at the top (paint27). The top check catches a
+    # row that was ALREADY locked; this one catches a row that became locked
+    # during this very request, because the recovery above just supplied the
+    # code that made it chargeable.
     _poll_locked = _locked_status_response(search_id)
     if _poll_locked is not None:
         return _poll_locked
