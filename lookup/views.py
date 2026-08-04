@@ -1,6 +1,7 @@
 import os
 import re
 import time
+import hashlib
 import logging
 import requests
 from datetime import timedelta
@@ -239,6 +240,70 @@ def _clear_mot_token():
         pass
 
 
+def _timed_call(name, registration, fn):
+    """Run an external call and log how long it took (paint27).
+
+    Read-only. It changes nothing about behaviour: the callee's own error
+    handling is untouched, exceptions propagate exactly as before, and the
+    return value is passed straight through.
+
+    It exists because every external call on the no-paint branch swallows its
+    failure and returns None, so a hang is indistinguishable from a fast miss.
+    All that could be seen from the outside was a total of 15.05s with 4ms of
+    variance across 300 lookups — a fixed timeout, but no way to tell WHICH.
+
+    `ok` records whether anything came back, not whether the call succeeded in
+    any deeper sense. Read it alongside ms:
+        ms~=10000 with ok=False  -> hanging to its timeout
+        ms=8200   with ok=True   -> slow but working (a different problem)
+        ok=False on every row    -> the call has never contributed anything
+
+    The registration is hashed the same way as the VDG billing line, so the two
+    correlate without putting plates in a log store the retention policy cannot
+    reach. Silence it with LOG_LEVEL=WARNING once the question is settled.
+    """
+    started = time.monotonic()
+    result = None
+    try:
+        result = fn()
+        return result
+    finally:
+        # NOTE on what this is for. Lookups where VDG returns a vehicle but no
+        # paint sit at a median of 15.05s, with under 4ms of spread across 300+
+        # samples. That is a timeout, not a slow network — and it is not ours,
+        # because our VDG timeout is 30s and the DVLA/MOT calls (10s each) are
+        # in the branch taken when VDG does NOT identify the vehicle, which is
+        # the opposite of these rows. So the wait is inside VDG, most likely
+        # their own upstream giving up before they answer.
+        #
+        # This line proves it rather than inferring it: a vdg row reading
+        # ms~=15000 with ok=True is VDG spending 15s to tell us it has no paint,
+        # which is a conversation with the provider, not a change here.
+        elapsed = int((time.monotonic() - started) * 1000)
+        try:
+            logger.info(
+                'ext call=%s reg=%s ok=%s ms=%d',
+                name, _log_reg(registration), bool(result), elapsed,
+            )
+        except Exception:  # noqa: BLE001 — logging must never affect a lookup
+            pass
+
+
+def _log_reg(registration):
+    """Registration as it appears in logs — a digest, not the plate.
+
+    Mirrors services/vdg.py: a plate is personal data and platform logs sit
+    outside the retention promise in the privacy notice. The digest is stable,
+    so hashing an export's registration column the same way lines the two up.
+    Set VDG_LOG_PLAINTEXT_REG=1 during an active investigation.
+    """
+    if not registration:
+        return '-'
+    if os.environ.get('VDG_LOG_PLAINTEXT_REG', '') == '1':
+        return registration
+    return 'h:' + hashlib.sha256(registration.encode()).hexdigest()[:10]
+
+
 def get_mot_access_token(force_refresh=False):
     if not force_refresh:
         try:
@@ -289,7 +354,11 @@ def get_mot_access_token(force_refresh=False):
 
 
 def get_mot_data(registration, retried=False):
-    access_token = get_mot_access_token(force_refresh=retried)
+    # Timed separately from the data call below: these are two distinct HTTP
+    # round trips with two distinct 10s timeouts, and knowing which one hangs
+    # is the entire point of the exercise.
+    access_token = _timed_call('mot_token', registration,
+                               lambda: get_mot_access_token(force_refresh=retried))
     if not access_token:
         return None
 
@@ -640,7 +709,10 @@ def index(request):
         # budget breaker could never see.
         vdg_billing = {}
         try:
-            vdg_data = get_combined_lookup(registration, billing_sink=vdg_billing)
+            vdg_data = _timed_call(
+                'vdg', registration,
+                lambda: get_combined_lookup(registration, billing_sink=vdg_billing),
+            )
             if vdg_data:
                 # Per-document tracking: each doc has its own StatusCode
                 # inside the response, exposed by vdg.py as boolean flags.
@@ -735,7 +807,8 @@ def index(request):
                     vdg_data.get('engine_description', '') or engine_description
                 )
 
-            dvla = get_dvla_data(registration)
+            dvla = _timed_call('dvla', registration,
+                               lambda: get_dvla_data(registration))
             if not dvla:
                 # DVLA has nothing. Normally that's a genuine "not found" — but
                 # if VDG already identified the vehicle (we salvaged a VIN just
@@ -773,7 +846,8 @@ def index(request):
                 colour = (dvla.get('colour', '') or '').title() or colour
                 fuel_type = normalize_fuel_type(dvla.get('fuelType', '')) or fuel_type
 
-            mot = get_mot_data(registration)
+            mot = _timed_call('mot', registration,
+                              lambda: get_mot_data(registration))
             mot_model = extract_mot_field(mot, 'model') or ''
             model = mot_model.title() or model
 
@@ -958,7 +1032,8 @@ def vehicle_make(request):
     # 2. Ask DVLA. Short timeout: this is decoration, and a slow answer is worse
     # than no answer — the message would land after the results page already had.
     try:
-        dvla = get_dvla_data(registration)
+        dvla = _timed_call('dvla_fallback', registration,
+                           lambda: get_dvla_data(registration))
     except Exception:
         dvla = None
     if dvla and dvla.get('make'):
