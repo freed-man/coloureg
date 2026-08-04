@@ -410,18 +410,26 @@
 
        Kept to the viewport on small screens (calc against 100vw) so the
        breakout can never cause a horizontal scrollbar on a phone. */
-    .unsupported-note {
-        max-width: min(560px, calc(100vw - 32px));
-        width: max-content;
-        margin: 14px auto 0;
-        font-size: 14px;
-        line-height: 1.55;
-        text-align: left;
-    }
+    /* paint31: CENTRING. These sit inside .search-container, which is 300px wide
+       for the input field, and they are deliberately wider than it. `margin:auto`
+       does NOT centre an element wider than its container — the computed margins
+       collapse to zero and it overflows to the right, which is exactly what was
+       on screen. Anchoring the left edge at the parent's midpoint and pulling
+       back half the element's own width centres it regardless of how much wider
+       than the parent it is. */
+    .unsupported-note,
     .lookup-message,
     .lookup-patience {
         max-width: min(560px, calc(100vw - 32px));
         width: max-content;
+        margin-left: 50%;
+        transform: translateX(-50%);
+    }
+    .unsupported-note {
+        margin-top: 14px;
+        font-size: 14px;
+        line-height: 1.6;
+        text-align: left;
     }
     @media (min-width: 768px) {
         .unsupported-note { font-size: 15px; padding: 14px 18px; }
@@ -429,11 +437,14 @@
            longest message at ~52 characters. At ~10.2px per character that needs
            ~530px to hold one line, hence 560. */
         .lookup-message { font-size: 17px; white-space: nowrap; }
-        .lookup-patience { font-size: 12.5px; padding: 12px 16px; }
+        /* paint31: enlarged. At 12.5px this was the smallest thing on a page
+           whose whole job at that moment is to stop someone closing the tab. */
+        .lookup-patience { font-size: 14px; padding: 16px 20px; line-height: 1.75; }
     }
     /* Below 768px there is no room for one line, so allow wrapping again. */
     @media (max-width: 767px) {
         .lookup-message { white-space: normal; }
+        .lookup-patience { font-size: 12.5px; padding: 13px 16px; }
     }
     /* .stuck is still toggled by the JS at the 10s stage, but both stages now
        share one identical style (mono 15px #000). The class is kept as a hook
@@ -594,7 +605,7 @@
                     <div id="unsupported-make" class="alert alert-warning unsupported-note"
                          role="alert" style="display: none;">
                         We can't currently find paint codes for
-                        <strong data-make></strong> vehicles, so we haven't run a search.
+                        <strong data-make></strong> vehicles.<br>
                         <a href="{% url 'help' %}#contact-section">Send us the registration</a>
                         and we'll look it up manually, for free.
                     </div>
