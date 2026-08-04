@@ -777,8 +777,45 @@ class PaintLookup(models.Model):
         s = re.sub(r'^[\s\-–—:,]+|[\s\-–—:,]+$', ' ', s)
         return re.sub(r'\s+', ' ', s).strip()
 
+    # Trailing parenthetical suffixes that providers append to a colour name.
+    # Matches the LAST bracketed group only, e.g. 'Squeeze (G)' -> 'Squeeze'.
+    _TRAILING_PAREN_RE = re.compile(r'\s*\([^)]*\)\s*$')
+
     @classmethod
     def code_from_name(cls, manufacturer, colour_name, model=None):
+        """Resolve a colour name, retrying without a trailing parenthetical.
+
+        partslink24 decorates names in several ways: 'Squeeze (G)',
+        'Barolo Black (861)', 'Bianco Perlato (Pearl White)'. About 6% of the
+        names we receive carry one, and for a chunk of them the decorated form
+        matches nothing while the bare name matches a paint we hold — the
+        customer got a colour name and no code for a colour that was sitting in
+        the table.
+
+        The suffix is NOT simply noise, which is why this is a FALLBACK and not
+        a normalisation. Stripping it unconditionally was measured against real
+        traffic and changed five working answers: 'Panther Black (Metallic)'
+        resolves to 17V today but to PNJAB once stripped, and 'Blue Candy (Foe)'
+        goes from DDSEWTA to DDSE. The decorated name is matching a more
+        specific row in those cases, and that row is the right one.
+
+        So: try the name EXACTLY as given first, and only if that yields nothing
+        try again without the suffix. Measured on real data that is 11 newly
+        resolved and 0 changed — additive by construction, since the fallback
+        can only run where the answer was already None.
+        """
+        result = cls._code_from_name_exact(manufacturer, colour_name, model=model)
+        if result[0] is not None:
+            return result
+        if not colour_name:
+            return result
+        stripped = cls._TRAILING_PAREN_RE.sub('', colour_name.strip()).strip()
+        if not stripped or stripped == colour_name.strip():
+            return result
+        return cls._code_from_name_exact(manufacturer, stripped, model=model)
+
+    @classmethod
+    def _code_from_name_exact(cls, manufacturer, colour_name, model=None):
         """Given a colour NAME (and make), return a single paint code — but ONLY
         when it is unambiguous.
 
