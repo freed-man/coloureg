@@ -399,6 +399,22 @@
     }
     .lookup-patience.show { opacity: 1; }
     .lookup-patience b { color: #111; font-weight: 500; }
+
+    /* paint28: sized in CSS rather than inline so it can respond to viewport.
+       The narrow 420px box wrapped this message onto four lines on a desktop
+       with room to spare. */
+    .unsupported-note {
+        max-width: 420px;
+        margin: 14px auto 0;
+        font-size: 14px;
+        line-height: 1.55;
+        text-align: left;
+    }
+    @media (min-width: 768px) {
+        .unsupported-note { max-width: 620px; font-size: 15px; }
+        .lookup-message { font-size: 17px; max-width: 400px; }
+        .lookup-patience { font-size: 12.5px; max-width: 400px; padding: 12px 16px; }
+    }
     /* .stuck is still toggled by the JS at the 10s stage, but both stages now
        share one identical style (mono 15px #000). The class is kept as a hook
        in case a future stage wants distinct styling. */
@@ -556,12 +572,12 @@
                     {% comment %} paint23: shown when the make is one we cannot resolve. No
                        lookup is submitted, so nothing is spent and the answer is
                        immediate instead of a minute of spinner.{% endcomment %}
-                    <div id="unsupported-make" class="alert alert-warning" role="alert"
-                         style="display: none; max-width: 420px; margin: 14px auto 0; font-size: 14px;">
+                    <div id="unsupported-make" class="alert alert-warning unsupported-note"
+                         role="alert" style="display: none;">
                         We can't currently find paint codes for
                         <strong data-make></strong> vehicles, so we haven't run a search.
                         <a href="{% url 'help' %}#contact-section">Send us the registration</a>
-                        and we'll look it up by hand.
+                        and we'll look it up manually, for free.
                     </div>
                     <div class="lookup-loader" id="lookup-loader" aria-live="polite">
                         <div class="lookup-spinner" aria-hidden="true">
@@ -791,6 +807,17 @@
             return;
         }
 
+        // Clear any previous unsupported-make notice (paint28). It used to
+        // persist across searches, so a refusal for one registration stayed on
+        // screen while a different vehicle was being looked up.
+        var staleNote = document.getElementById('unsupported-make');
+        if (staleNote) staleNote.style.display = 'none';
+        // A refusal never submits, so __makeChecked was left false and the gate
+        // correctly re-runs — but if a previous search DID submit and the page
+        // came back from bfcache, the flag would still be true and the gate
+        // would be skipped. Reset it whenever a new search starts.
+        window.__makeChecked = false;
+
         // Turnstile guard (paint17). data-appearance="interaction-only" means a
         // token appears on its own for a trusted visitor, but an untrusted one
         // (incognito, VPN, fresh profile, privacy browser) has to TICK the box
@@ -869,16 +896,23 @@
             if (form.requestSubmit) { form.requestSubmit(); } else { form.submit(); }
         }
 
+        function hideUnsupported() {
+            var box = document.getElementById('unsupported-make');
+            if (box) box.style.display = 'none';
+        }
+
         function showUnsupported(make) {
             loader.classList.remove('active');
-        var patReset = document.getElementById('lookup-patience');
-        if (patReset) patReset.classList.remove('show');
+            var patReset = document.getElementById('lookup-patience');
+            if (patReset) patReset.classList.remove('show');
             form.style.display = '';
             var box = document.getElementById('unsupported-make');
             if (box) {
                 box.querySelector('[data-make]').textContent = make;
                 box.style.display = '';
             }
+            // The widget consumed a token getting here and we never submitted,
+            // so reset it or the next search starts with a spent one.
             if (window.turnstile) { try { window.turnstile.reset(); } catch (e) {} }
         }
 
@@ -976,6 +1010,9 @@
         // normal navigations that re-run scripts, so they were never affected.
         if (event.persisted) {
             window.__turnstileWaiting = false;
+            window.__makeChecked = false;
+            var noteReset = document.getElementById('unsupported-make');
+            if (noteReset) noteReset.style.display = 'none';
             if (window.turnstile) {
                 try { window.turnstile.reset(); } catch (e) {}
             }

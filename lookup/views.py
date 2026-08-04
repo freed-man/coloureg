@@ -615,73 +615,90 @@ def index(request):
         # a stored result is correct; the TTL only bounds the rare cherished-
         # transfer case. We still log a lightweight Search row (provider=cache)
         # so the dashboard sees the request, but it carries no cost and makes no
-        # external call. Cache is bypassed entirely while payments are enabled
-        # (a paying customer's flow is handled separately) — belt and braces,
-        # since payments_enabled is False today.
-        if not config.payments_enabled:
-            cached_payload = get_cached_vrm_payload(registration)
-            if cached_payload:
-                cache_search = Search(
-                    registration=registration,
-                    ip_address=get_client_ip(request),
-                    user_agent=request.META.get('HTTP_USER_AGENT', ''),
-                    device=parse_device(request.META.get('HTTP_USER_AGENT', '')),
-                    make=cached_payload.get('make', ''),
-                    model=cached_payload.get('model', ''),
-                    year=cached_payload.get('year'),
-                    colour=cached_payload.get('colour', ''),
-                    vehicle_title=cached_payload.get('vehicle_title', ''),
-                    category=cached_payload.get('category', ''),
-                    vin=cached_payload.get('vin', '') or '',
-                    paint_code=cached_payload.get('paint_code', ''),
-                    paint_description=cached_payload.get('paint_description', ''),
-                    provider=Search.PROVIDER_CACHE,
-                    success=bool(cached_payload.get('paint_code')),
-                    lookup_duration_ms=int((time.time() - start_time) * 1000),
-                )
-                cache_search.save()
-                payload = dict(cached_payload)
-                payload['search_id'] = cache_search.id
-                payload['paint_pending'] = False  # cached results are complete
-                request.session['vehicle_data'] = payload
-                return redirect('results')
+        # external call.
+        #
+        # paint28: this used to be skipped entirely while payments were enabled,
+        # on the grounds that "a paying customer's flow is handled separately".
+        # That was true under the old architecture, where payment came first and
+        # the lookup ran during fulfilment. paint22 removed that separate flow —
+        # every lookup now runs here, free, and payment gates only the reveal.
+        #
+        # So the exception protected nothing and cost a great deal: 21% of
+        # lookups are cache hits, and switching payments on would have pushed
+        # every one of them back onto a paid VDG call, plus the ~15s stall they
+        # did not need. It also inverted the deliberate policy that a cached
+        # repeat is free to us and still chargeable to the customer.
+        cached_payload = get_cached_vrm_payload(registration)
+        if cached_payload:
+            cache_search = Search(
+                registration=registration,
+                ip_address=get_client_ip(request),
+                user_agent=request.META.get('HTTP_USER_AGENT', ''),
+                device=parse_device(request.META.get('HTTP_USER_AGENT', '')),
+                make=cached_payload.get('make', ''),
+                model=cached_payload.get('model', ''),
+                year=cached_payload.get('year'),
+                colour=cached_payload.get('colour', ''),
+                vehicle_title=cached_payload.get('vehicle_title', ''),
+                category=cached_payload.get('category', ''),
+                vin=cached_payload.get('vin', '') or '',
+                paint_code=cached_payload.get('paint_code', ''),
+                paint_description=cached_payload.get('paint_description', ''),
+                provider=Search.PROVIDER_CACHE,
+                success=bool(cached_payload.get('paint_code')),
+                lookup_duration_ms=int((time.time() - start_time) * 1000),
+            )
+            cache_search.save()
 
-            # --- Negative cache (A): recently-failed reg ---------------------
-            # If this exact reg failed a lookup within the last hour, don't spend
-            # on VDG again — a proxy pool hammering one unanswerable reg (the
-            # observed abuse) is served an instant failure instead of a full-price
-            # miss each time. Short TTL so a reg that only failed because VDG
-            # flaked gets a genuine fresh attempt soon after. Logs a lightweight
-            # Search row (provider=cache) so the failure is still visible.
-            if is_recent_miss(registration):
-                miss_search = Search(
-                    registration=registration,
-                    ip_address=get_client_ip(request),
-                    user_agent=request.META.get('HTTP_USER_AGENT', ''),
-                    device=parse_device(request.META.get('HTTP_USER_AGENT', '')),
-                    provider=Search.PROVIDER_CACHE,
-                    success=False,
-                    error_message='negative-cache hit (recent miss, VDG skipped)',
-                    lookup_duration_ms=int((time.time() - start_time) * 1000),
-                )
-                miss_search.save()
-                # Point them at the contact form, which is on /help/ — the
-                # manual-lookup capture lives on the results page, and we are
-                # deliberately not sending them there (that is the page this
-                # short-circuit exists to avoid re-running). Saying "below"
-                # would be wrong: the homepage has no such form.
-                messages.error(
-                    request,
-                    'We checked that registration very recently and could not '
-                    'find a paint code for it. Send us a message and we will '
-                    'look into it by hand.'
-                )
-                return render(request, 'lookup/index.html', {
-                    'turnstile_site_key': dj_settings.TURNSTILE_SITE_KEY,
-                    'payments_on': payments_active(config),
-                    'payments_configured': payments_configured(),
-                    'lookup_price': dj_settings.LOOKUP_PRICE_PENCE / 100.0,
-                })
+            # Gate it exactly like a fresh lookup (paint28). This branch
+            # could not previously run with payments on, so it never needed
+            # to — removing that bypass without this would serve a
+            # chargeable result for free to anyone who asked for a
+            # registration somebody else had already looked up.
+            _apply_paywall(cache_search, config)
+
+            payload = dict(cached_payload)
+            payload['search_id'] = cache_search.id
+            payload['paint_pending'] = False  # cached results are complete
+            request.session['vehicle_data'] = payload
+            return redirect('results')
+
+        # --- Negative cache (A): recently-failed reg ---------------------
+        # If this exact reg failed a lookup within the last hour, don't spend
+        # on VDG again — a proxy pool hammering one unanswerable reg (the
+        # observed abuse) is served an instant failure instead of a full-price
+        # miss each time. Short TTL so a reg that only failed because VDG
+        # flaked gets a genuine fresh attempt soon after. Logs a lightweight
+        # Search row (provider=cache) so the failure is still visible.
+        if is_recent_miss(registration):
+            miss_search = Search(
+                registration=registration,
+                ip_address=get_client_ip(request),
+                user_agent=request.META.get('HTTP_USER_AGENT', ''),
+                device=parse_device(request.META.get('HTTP_USER_AGENT', '')),
+                provider=Search.PROVIDER_CACHE,
+                success=False,
+                error_message='negative-cache hit (recent miss, VDG skipped)',
+                lookup_duration_ms=int((time.time() - start_time) * 1000),
+            )
+            miss_search.save()
+            # Point them at the contact form, which is on /help/ — the
+            # manual-lookup capture lives on the results page, and we are
+            # deliberately not sending them there (that is the page this
+            # short-circuit exists to avoid re-running). Saying "below"
+            # would be wrong: the homepage has no such form.
+            messages.error(
+                request,
+                'We checked that registration very recently and could not '
+                'find a paint code for it. Send us a message and we will '
+                'look into it by hand.'
+            )
+            return render(request, 'lookup/index.html', {
+                'turnstile_site_key': dj_settings.TURNSTILE_SITE_KEY,
+                'payments_on': payments_active(config),
+                'payments_configured': payments_configured(),
+                'lookup_price': dj_settings.LOOKUP_PRICE_PENCE / 100.0,
+            })
 
         search = Search(
             registration=registration,
