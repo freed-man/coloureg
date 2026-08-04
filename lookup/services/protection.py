@@ -321,6 +321,49 @@ def _sw_key(scope, ident):
     return f'sw:{scope}:{ident}'
 
 
+def credit_sliding_allowance(scope, ident, window=SLIDING_WINDOW_SECONDS, now=None):
+    """Give one allowance back to `ident` (paint22).
+
+    Called when a lookup has been PAID for. The free-tier limit exists to bound
+    what non-paying traffic can cost us; a lookup someone paid for is not that,
+    so it should not count against them. This restores the intent of the old
+    paid path — which deliberately had no rate limit — without reopening the
+    hole, because the exemption now has to be bought.
+
+    It cannot be farmed. One credit costs the customer the full lookup price and
+    buys them a lookup that costs us a fraction of it, so anyone "abusing" this
+    is handing us the difference. There is no version of this where the attacker
+    comes out ahead.
+
+    Drops the OLDEST timestamp rather than clearing the list: it returns exactly
+    one slot, so a payer cannot bank an unlimited burst by paying once.
+
+    Silent no-op when `ident` is falsy — a lookup whose IP failed validation
+    (paint19 stores those as NULL) simply cannot be credited, and the payment
+    still stands. Fails silently on cache errors for the same reason
+    sliding_rate_limited fails open: bookkeeping must never break a paid
+    transaction.
+    """
+    if not ident:
+        return False
+    import time as _time
+    from django.core.cache import caches
+
+    now = now or _time.time()
+    cutoff = now - window
+    key = _sw_key(scope, ident)
+    try:
+        cache = caches['default']
+        hits = sorted(t for t in (cache.get(key) or []) if t > cutoff)
+        if not hits:
+            return False
+        hits.pop(0)
+        cache.set(key, hits, window)
+        return True
+    except Exception:  # noqa: BLE001
+        return False
+
+
 def sliding_rate_limited(scope, ident, limit=SLIDING_WINDOW_LIMIT,
                          window=SLIDING_WINDOW_SECONDS, now=None):
     """Return True if `ident` has already used its allowance in the last `window`

@@ -47,6 +47,7 @@ from .services.protection import (
     record_miss,
     clear_miss,
     sliding_rate_limited,
+    credit_sliding_allowance,
     london_day_start,
 )
 from .services.payments import (
@@ -2706,6 +2707,18 @@ def _fulfil_paid_session(session):
 
         captured = capture(payment_intent_id)
         _record_capture_outcome(search, captured, session_id)
+
+        # A paid lookup should not count against the free allowance (paint22).
+        # Credited on CAPTURE, not on unlock: this rewards money actually taken,
+        # not merely authorised.
+        #
+        # Keyed to the IP that did the SEARCH, not the one paying. Those can
+        # legitimately differ — search on mobile data, pay on wifi — and the
+        # searcher's is the one that will run the next lookup. It is already on
+        # the row. If it is NULL (paint19 stores unvalidated IPs that way) the
+        # credit is skipped and the payment stands regardless.
+        if captured:
+            credit_sliding_allowance('lookup', search.ip_address)
         return search
     finally:
         caches['default'].delete(lock_key)
