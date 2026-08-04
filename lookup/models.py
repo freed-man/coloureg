@@ -121,6 +121,27 @@ class Search(models.Model):
     # matched the one served.
     vdg_retry_code = models.CharField(max_length=100, blank=True, default='')
 
+    # What pl24 returned, even when its answer was NOT the one served (paint26).
+    #
+    # Recovery races the VDG retry against a pl24 scrape and serves whichever
+    # lands first. When the retry wins we return immediately, but the pl24
+    # thread is not cancelled — cancel_futures only stops work that has not
+    # begun — so the scrape runs to completion anyway and its answer is thrown
+    # away. That happened on 215 of 750 recoveries.
+    #
+    # Since the work happens regardless, recording it is close to free and it
+    # doubles the rate at which we learn whether the two sources actually agree.
+    # vdg_retry_code captures the same thing from the other direction; between
+    # them every contested recovery yields a comparison.
+    #
+    # NOTE the standing trade-off: an abandoned scrape holds the partslink24
+    # session (pool_size=1) for up to 65s. At current volume only 8.4% of pl24
+    # lookups begin within that window of the previous one, so it rarely blocks
+    # anyone — but if traffic grows, the better answer is to CANCEL the loser
+    # rather than record it, and that needs disconnect handling in the pl24
+    # service, not here.
+    pl24_code = models.CharField(max_length=100, blank=True, default='')
+
     # --- Pay-to-reveal (paint22) ---------------------------------------------
     # The paid flow used to charge FIRST and look up second, so roughly a
     # quarter of paying customers were told afterwards that nothing was found

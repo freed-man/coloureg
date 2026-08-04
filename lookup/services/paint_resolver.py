@@ -168,6 +168,42 @@ def _recovery_writes_pending():
         return _pending_count > 0
 
 
+def _record_worker_result(search_id, **fields):
+    """Write a column straight to the Search row from a worker thread (paint26).
+
+    Same problem and same shape as _record_retry_billing: resolve_paint returns
+    as soon as one path wins, so the losing worker finishes AFTER the caller has
+    read its telemetry and saved. Anything it learned has to be written by the
+    worker itself or it is lost.
+
+    An atomic UPDATE on named columns only, so it cannot lose a race against the
+    caller's save and cannot clobber a column it does not own. Best-effort
+    throughout — recording an observation must never break a lookup a customer
+    is waiting on.
+    """
+    if search_id is None or not fields:
+        return
+    global _pending_count
+    with _pending_lock:
+        _pending_count += 1
+    try:
+        from lookup.models import Search
+        Search.objects.filter(pk=search_id).update(**fields)
+    except Exception:  # noqa: BLE001
+        logger.warning('worker result not recorded for search=%s', search_id,
+                       exc_info=True)
+    finally:
+        with _pending_lock:
+            _pending_count -= 1
+        # Worker threads get their own Django connection and nothing else
+        # closes it; without this each recovery would strand one on Neon.
+        try:
+            from django.db import connections as _c
+            _c.close_all()
+        except Exception:  # noqa: BLE001
+            pass
+
+
 def _record_retry_billing(search_id, cost, balance, retry_code):
     """Write the retry's own spend straight to its Search row (paint21).
 
@@ -342,7 +378,7 @@ def _route_category(make, model, vin, category):
     return category
 
 
-def _pl24_lookup(vin, make, category=None):
+def _pl24_lookup(vin, make, category=None, search_id=None):
     """Call the pl24 service. Returns a paint dict if pl24 found a code, else
     None. Never raises — network/HTTP/timeout errors degrade to None."""
     if not vin or not make:
@@ -366,6 +402,14 @@ def _pl24_lookup(vin, make, category=None):
         return None
     code = (data.get('paint_code') or '').strip()
     desc = (data.get('paint_description') or '').strip()
+
+    # Record what pl24 found regardless of whether this answer gets used
+    # (paint26). When the VDG retry wins the race, resolve_paint has already
+    # returned by the time we get here and nothing would otherwise keep this.
+    # Compare against paint_code afterwards to see whether the two sources
+    # agree; vdg_retry_code covers the mirror case.
+    if search_id is not None and code:
+        _record_worker_result(search_id, pl24_code=code[:100])
     # Keep the result if pl24 returned EITHER a code OR a colour name. The
     # name-only case (code == '' but desc set) covers brands partslink24 carries
     # a colour name but no code for (Ford passenger, Jaguar, older Land Rover,
@@ -447,7 +491,8 @@ def resolve_paint(registration, vin, make, category=None, telemetry=None, model=
         # VDG are sent to pl24 as N1 so the lookup hits the right catalogue
         # first time. See _route_category.
         f_pl24 = ex.submit(
-            _pl24_lookup, vin, make, _route_category(make, model, vin, category)
+            _pl24_lookup, vin, make, _route_category(make, model, vin, category),
+            search_id,
         )
 
         deadline = time.monotonic() + PL24_TIMEOUT
