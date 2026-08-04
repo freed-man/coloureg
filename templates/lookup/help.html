@@ -308,7 +308,7 @@
                         {% if payments_on %}
                         <p>Every lookup runs against live manufacturer and vehicle databases that charge us for each search — and behind those sit the servers, the data feeds, the domains and the software that keep <span class="coloureg-brand">colou<strong>reg</strong></span> fast and accurate. It genuinely costs money to return each code, on top of a lot of time spent building and maintaining the tool. The £{{ lookup_price|floatformat:2 }} keeps it running and independent — which means no ads, no signup, and we never sell your data. <strong>And if we can't find your code, you don't pay.</strong></p>
                         {% else %}
-                        <p>It's free at the moment while we finish testing — but running it isn't free for us: every lookup is charged by the data providers, on top of the servers, databases, domains and email service behind it. A charge of £{{ lookup_price|floatformat:2 }} per lookup will apply soon, and you'll only ever pay when we actually find your paint code. Nothing will change without warning.</p>
+                        <p>It's free while we finish testing. Running it isn't free for us: every lookup is charged by the data providers, on top of the servers, databases, domains and email service behind it. It'll be £{{ lookup_price|floatformat:2 }} per lookup after that, and only if we find your code. Nothing will change without warning.</p>
                         {% endif %}
                     </div>
                 </div>
