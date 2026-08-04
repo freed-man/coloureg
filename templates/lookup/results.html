@@ -275,7 +275,55 @@
             </h2>
 
             <div class="card paint-card" id="paint-card">
-                {% if paint_code %}
+                {% comment %} paint22 — LOCKED state.
+                   There is no paint_code or paint_description in this context at
+                   all. results() builds the locked context separately rather than
+                   assembling the full one and hiding parts of it, because anything
+                   sent to the page can be read out of it: blurring, display:none
+                   and colour tricks all leave the answer in the DOM. What is shown
+                   here is availability, nothing more.{% endcomment %}
+                {% if locked %}
+                <div id="paint-locked-state" class="text-center">
+                    <div class="mb-3">
+                        <div class="d-flex justify-content-center gap-4 flex-wrap mb-3">
+                            <div>
+                                <div style="font-size: 13px; color: #6c757d; text-transform: uppercase; letter-spacing: .5px;">Paint code</div>
+                                <div style="font-size: 18px; font-weight: 700; color: #198754;">
+                                    <i class="fas fa-check-circle me-1"></i>Available
+                                </div>
+                            </div>
+                            <div>
+                                <div style="font-size: 13px; color: #6c757d; text-transform: uppercase; letter-spacing: .5px;">Colour name</div>
+                                <div style="font-size: 18px; font-weight: 700; color: #198754;">
+                                    <i class="fas fa-check-circle me-1"></i>Available
+                                </div>
+                            </div>
+                        </div>
+                        <p class="text-muted mb-3" style="font-size: 15px;">
+                            We've found the paint code and colour name for your
+                            {% if vehicle_title %}{{ vehicle_title }}{% else %}vehicle{% endif %}.
+                        </p>
+                    </div>
+                    <form method="POST" action="{% url 'start_paid_lookup' %}" id="unlock-form">
+                        {% csrf_token %}
+                        {% if turnstile_site_key %}
+                        <div class="turnstile-holder d-flex justify-content-center mb-3">
+                            <div class="cf-turnstile"
+                                 data-sitekey="{{ turnstile_site_key }}"
+                                 data-size="flexible"
+                                 data-appearance="interaction-only"></div>
+                        </div>
+                        {% endif %}
+                        <button type="submit" class="btn btn-dark btn-lg px-4">
+                            <i class="fas fa-lock-open me-2"></i>Reveal for {{ lookup_price }}
+                        </button>
+                    </form>
+                    <p class="text-muted mt-3 mb-0" style="font-size: 12px;">
+                        Secure payment by Stripe. You're paying to see a result we've
+                        already found — we never charge before we know we have it.
+                    </p>
+                </div>
+                {% elif paint_code %}
                 <div id="paint-found-state">
                     {% if all_paint_codes|length > 1 %}
                         {% for item in all_paint_codes %}
@@ -751,6 +799,14 @@
                     finish(function () { showFound(data); });
                 } else if (s === 'name_only') {
                     finish(function () { showNameOnly(data); });
+                } else if (s === 'locked') {
+                    // paint22: the recovery found a chargeable result while we
+                    // were polling. The code is deliberately NOT in this
+                    // response — reload so results() renders the locked view
+                    // server-side, which is the only place that decides what a
+                    // paying customer may see.
+                    stopped = true;
+                    window.location.reload();
                 } else if (s === 'busy' && busyRetries < MAX_BUSY_RETRIES) {
                     // Server is at capacity. Nothing was started, so come back
                     // shortly; the spinner and its staged copy keep running.

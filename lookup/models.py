@@ -120,6 +120,32 @@ class Search(models.Model):
     # code. Compare against paint_code to see whether the discarded answer
     # matched the one served.
     vdg_retry_code = models.CharField(max_length=100, blank=True, default='')
+
+    # --- Pay-to-reveal (paint22) ---------------------------------------------
+    # The paid flow used to charge FIRST and look up second, so roughly a
+    # quarter of paying customers were told afterwards that nothing was found
+    # and their authorisation had been reversed. A reversal is not a refund and
+    # costs them nothing, but it still shows as a pending charge on their
+    # statement for days — so the experience was "you took my money and found
+    # nothing", on one lookup in four.
+    #
+    # Now the lookup runs first and payment gates only the REVEAL. Charging
+    # happens solely when a result is worth paying for, which by deliberate
+    # policy means BOTH a code and a colour name: a code with no name (2 of 867
+    # lookups in a month) is given away rather than sold as a partial answer.
+    #
+    # paywalled  = this result was complete enough to charge for and is being
+    #              withheld pending payment.
+    # paid_unlocked = payment completed and the result has been released.
+    #
+    # Together they are the conversion funnel: paywalled rows are the offers
+    # made, paid_unlocked the ones taken.
+    paywalled = models.BooleanField(default=False)
+    paid_unlocked = models.BooleanField(default=False)
+
+    def is_locked(self):
+        """True while a chargeable result is being withheld pending payment."""
+        return bool(self.paywalled) and not self.paid_unlocked
     pl24_attempted = models.BooleanField(default=False)
     pl24_returned = models.BooleanField(default=False)
     recovery_name_only = models.BooleanField(default=False)

@@ -55,7 +55,6 @@ from .services.payments import (
     create_checkout_session,
     get_session,
     capture,
-    cancel,
     construct_webhook_event,
 )
 from .services.email import (
@@ -681,6 +680,11 @@ def index(request):
         search.lookup_duration_ms = int((time.time() - start_time) * 1000)
         search.save()
 
+        # Gate BEFORE the session is written and the redirect happens (paint22).
+        # results() reads this off the row, so it has to be decided here rather
+        # than inferred later from the session copy.
+        _apply_paywall(search, config)
+
         make_logo = make_to_logo(make)
 
         request.session['vehicle_data'] = {
@@ -908,6 +912,48 @@ def results(request):
         return redirect('index')
 
     email_submitted = request.session.pop('email_submitted', None)
+
+    # --- Locked result (paint22) ------------------------------------------
+    # Read the gate off the ROW, not the session copy: the session was written
+    # when the lookup ran, but a background recovery can have completed (and
+    # gated the row) since. The row is the only current truth.
+    #
+    # The locked context is BUILT SEPARATELY rather than assembled and then
+    # stripped. Redacting a full context is one forgotten key away from leaking
+    # the answer, and the answer is the entire product. Nothing below this
+    # branch runs while locked, so paint_code, paint_description,
+    # all_paint_codes and the swatch lookups are never even computed.
+    _locked_search = None
+    _sid = vehicle_data.get('search_id')
+    if _sid:
+        try:
+            _locked_search = Search.objects.get(id=_sid)
+        except (Search.DoesNotExist, ValueError, TypeError):
+            _locked_search = None
+    if _locked_search is not None and _locked_search.is_locked():
+        ctx = {
+            'registration': _locked_search.registration,
+            'make': vehicle_data.get('make', ''),
+            'model': vehicle_data.get('model', ''),
+            'year': vehicle_data.get('year'),
+            'colour': vehicle_data.get('colour', ''),
+            'fuel_type': vehicle_data.get('fuel_type', ''),
+            'transmission': vehicle_data.get('transmission', ''),
+            'engine_description': vehicle_data.get('engine_description', ''),
+            'vin_masked': vehicle_data.get('vin_masked', ''),
+            'make_logo': vehicle_data.get('make_logo', ''),
+            'vehicle_title': vehicle_data.get('vehicle_title', ''),
+            'search_id': _locked_search.id,
+            'email_submitted': email_submitted,
+            'paint_pending': False,
+            'paint_name_only': False,
+            # The unlock form carries its own Turnstile widget, so the key has
+            # to be in this context too — the locked context is built from
+            # scratch and inherits nothing.
+            'turnstile_site_key': dj_settings.TURNSTILE_SITE_KEY,
+        }
+        ctx.update(_locked_payload(_locked_search))
+        return render(request, 'lookup/results.html', ctx)
 
     # Look up paint swatch (hex + name) for the result page swatch bar.
     # Returns None if no match found, in which case the swatch bar stays dormant.
@@ -1189,6 +1235,15 @@ def _lookup_status(request, search_id):
         store_vrm_payload(reg_for_cache, vehicle_data)
         clear_miss(reg_for_cache)  # recovery found it — drop any stale miss
 
+    # The recovery finished while the page was polling. If that result is
+    # chargeable it must NOT be pushed down as JSON (paint22) — the poll is the
+    # same door as the page, and handing the code to the browser here would
+    # bypass the gate entirely. Tell the page to reload instead; results() then
+    # renders the locked view.
+    _poll_locked = _locked_status_response(search_id)
+    if _poll_locked is not None:
+        return _poll_locked
+
     return JsonResponse({
         'status': 'found',
         'source': source,
@@ -1269,6 +1324,77 @@ def _wait_for_recovery_result(search_id):
         time.sleep(poll)
         poll = min(poll * RECOVERY_WAIT_POLL_GROWTH, RECOVERY_WAIT_POLL_MAX_S)
     return JsonResponse({'status': 'error'}, status=200)
+
+
+def _locked_status_response(search_id):
+    """JSON for a poll whose result turned out to be chargeable (paint22).
+
+    Returns None when the row is not locked, so the caller carries on as normal.
+    """
+    try:
+        row = Search.objects.get(id=search_id)
+    except (Search.DoesNotExist, ValueError, TypeError):
+        return None
+    if not row.is_locked():
+        return None
+    payload = {'status': 'locked'}
+    payload.update(_locked_payload(row))
+    return JsonResponse(payload)
+
+
+def _apply_paywall(search, config=None):
+    """Gate a completed result behind payment, if it is one we charge for.
+
+    Called wherever a lookup reaches its FINAL state — the first VDG call in
+    index(), and again in _record_paint_hit when the background recovery
+    supplies a code later. Both are needed: a lookup that starts as "no paint
+    yet" and recovers a code minutes later is just as chargeable as one that
+    resolves immediately.
+
+    Policy, deliberately strict: we charge only when BOTH a code and a colour
+    name are present. A code with no name is a partial answer, and selling
+    partial answers is how you end up arguing with customers. It is 2 lookups in
+    867, so the generosity costs almost nothing.
+
+    Returns True if the row is now withheld pending payment.
+    """
+    if search is None:
+        return False
+    if not payments_active(config):
+        return False
+    if not (search.paint_code and search.paint_description):
+        return False
+    if search.paid_unlocked:
+        return False          # already bought — never re-gate it
+    if not search.paywalled:
+        search.paywalled = True
+        try:
+            search.save(update_fields=['paywalled'])
+        except Exception:  # noqa: BLE001 — gating must not break the lookup
+            logger.warning('could not mark search=%s paywalled', search.pk,
+                           exc_info=True)
+    return True
+
+
+def _locked_payload(search, config=None):
+    """What a locked result is allowed to tell the browser (paint22).
+
+    Availability ONLY. The code and the colour name never leave the server
+    while a result is locked — not blurred, not hidden with CSS, not present in
+    the DOM at all — because anything delivered to the page can be read out of
+    it. The customer sees that we have the answer, not what it is.
+    """
+    return {
+        'locked': True,
+        'code_available': bool(search.paint_code),
+        'name_available': bool(search.paint_description),
+        'lookup_price': _price_display(config),
+    }
+
+
+def _price_display(config=None):
+    pence = getattr(dj_settings, 'LOOKUP_PRICE_PENCE', 200)
+    return f'£{pence / 100:.2f}'
 
 
 def _apply_recovery_telemetry(search, telemetry):
@@ -1352,6 +1478,12 @@ def _record_paint_hit(search_id, paint_code, paint_description, source, telemetr
             if 'pl24_returned' not in fields:
                 fields.append('pl24_returned')
     search.save(update_fields=fields)
+
+    # A lookup that started as "no paint yet" and recovered a code minutes later
+    # is worth exactly as much as one that resolved immediately, so it gets
+    # gated too (paint22). Runs after the save above so the row it inspects
+    # already carries the recovered code and name.
+    _apply_paywall(search)
 
 
 def _record_recovery(search_id, telemetry):
@@ -2344,245 +2476,89 @@ def dismiss_manual_lookup(request):
         'message': f'Dismissed manual lookup request for {search.registration}.',
         'registration': search.registration,
     })
-
-# =============================================================================
-# Paid lookup flow (F, paint15) — DORMANT until payments_active() is True.
-#
-# payments_active() requires BOTH the Stripe env keys AND
-# SiteConfig.payments_enabled (defaults False). While either is missing, none of
-# the views below do anything except redirect home, and the free index() flow is
-# untouched. This is intentional: the whole flow ships and is tested against
-# Stripe TEST keys, then switched on after Stripe is live.
-#
-# Flow: index() (payments on) -> renders a "pay to look up" state -> POST to
-# start_paid_lookup -> Stripe Checkout (£1 AUTHORISED, capture_method=manual) ->
-# customer pays -> Stripe redirects to paid_success (or the webhook fires) ->
-# perform_lookup_core runs the lookup -> capture on paint hit / cancel on miss.
-# =============================================================================
-
-
-def perform_lookup_core(registration, request_meta=None):
-    """Run one lookup and return (payload_dict, search).
-
-    A request/session-FREE version of the resolution logic in index(), used only
-    by the paid flow (index()'s free path keeps its own inline copy, unchanged,
-    to avoid any regression risk to the proven path). Returns:
-      payload  — the same 'vehicle_data' dict index() puts in the session
-                 (minus paint_pending, which the caller sets), or None if the
-                 vehicle was not found at all.
-      search   — the saved Search row (or None when not found).
-
-    request_meta is an optional dict with 'ip'/'ua' for logging; the paid flow
-    passes the real client values.
-    """
-    start_time = time.time()
-    meta = request_meta or {}
-    search = Search(
-        registration=registration,
-        ip_address=meta.get('ip'),
-        user_agent=meta.get('ua', ''),
-        device=parse_device(meta.get('ua', '')),
-    )
-
-    vdg_data = None
-    latest_balance = None
-    vdg_billing = {}  # see index() — populated even on failure (paint18)
-    try:
-        vdg_data = get_combined_lookup(registration, billing_sink=vdg_billing)
-        if vdg_data:
-            search.vdg_vehicle_returned = vdg_data.get('vehicle_returned', False)
-            search.vdg_paint_returned = vdg_data.get('paint_returned', False)
-            if vdg_data.get('balance') is not None:
-                latest_balance = vdg_data.get('balance')
-            if vdg_data.get('transaction_cost') is not None:
-                search.vdg_transaction_cost = vdg_data.get('transaction_cost')
-    except (VdgError, VdgNotFoundError) as e:
-        search.error_message = f'VDG: {str(e)[:200]}'
-    except Exception as e:  # noqa: BLE001 — trust boundary, see index()
-        logger.exception('VDG returned an unparseable payload for %s', registration)
-        search.error_message = f'VDG: unparseable response ({type(e).__name__})'
-
-    # Whatever happened above, if VDG billed us and nothing was recorded on
-    # the row, record it now. The sink is the only source on the failure
-    # paths, and an unrecorded charge is invisible to the budget breaker.
-    if search.vdg_transaction_cost is None and vdg_billing.get('transaction_cost') is not None:
-        search.vdg_transaction_cost = vdg_billing['transaction_cost']
-    if latest_balance is None and vdg_billing.get('balance') is not None:
-        latest_balance = vdg_billing['balance']
-
-    make = model = colour = fuel_type = transmission = engine_description = ''
-    category = ''
-    year = None
-    vin = None
-
-    if vdg_data and vdg_data.get('vehicle_returned'):
-        make = vdg_data.get('make', '')
-        model = vdg_data.get('model', '')
-        year = vdg_data.get('year')
-        colour = vdg_data.get('colour', '')
-        vin = vdg_data.get('vin', '')
-        fuel_type = vdg_data.get('fuel_type', '')
-        transmission = vdg_data.get('transmission', '')
-        engine_description = vdg_data.get('engine_description', '')
-        category = vdg_data.get('category', '')
-    else:
-        # Same status-25 salvage as index() (see B): keep VDG's VIN/category and
-        # any identification it gave before falling back to DVLA+MOT.
-        if vdg_data:
-            vin = vdg_data.get('vin', '') or vin
-            category = vdg_data.get('category', '') or category
-            make = vdg_data.get('make', '') or make
-            model = vdg_data.get('model', '') or model
-            year = vdg_data.get('year') if vdg_data.get('year') is not None else year
-            colour = vdg_data.get('colour', '') or colour
-            fuel_type = vdg_data.get('fuel_type', '') or fuel_type
-            transmission = vdg_data.get('transmission', '') or transmission
-            engine_description = vdg_data.get('engine_description', '') or engine_description
-
-        dvla = get_dvla_data(registration)
-        if not dvla:
-            if not vin:
-                search.success = False
-                search.lookup_duration_ms = int((time.time() - start_time) * 1000)
-                search.error_message = (search.error_message or '') + ' | DVLA: not found'
-                search.save()
-                return None, search
-        else:
-            make = fix_make_case((dvla.get('make', '') or '').title()) or make
-            if dvla.get('yearOfManufacture') is not None:
-                year = dvla.get('yearOfManufacture')
-            colour = (dvla.get('colour', '') or '').title() or colour
-            fuel_type = normalize_fuel_type(dvla.get('fuelType', '')) or fuel_type
-
-        mot = get_mot_data(registration)
-        mot_model = extract_mot_field(mot, 'model') or ''
-        model = mot_model.title() or model
-
-    vehicle_title = build_vehicle_title(year, make, model)
-    search.make = make
-    search.model = model
-    search.year = year
-    search.colour = colour
-    search.vin = vin or ''
-    search.vehicle_title = vehicle_title
-    search.category = category
-
-    paint_code = None
-    paint_description = None
-    all_paint_codes = []
-    if vdg_data and vdg_data.get('paint_returned'):
-        paint_code = vdg_data.get('paint_code', '')
-        paint_description = vdg_data.get('paint_description', '')
-        all_paint_codes = vdg_data.get('all_paint_codes', [])
-        _enriched = _enrich_from_lookup(
-            {'paint_code': paint_code, 'paint_description': paint_description},
-            make, model,
-        )
-        paint_code = _enriched.get('paint_code', paint_code)
-        paint_description = _enriched.get('paint_description', paint_description)
-        search.paint_code = paint_code
-        search.paint_description = paint_description
-        search.provider = Search.PROVIDER_VDG
-        search.enriched_from = _enriched.get('enriched_from', '')
-
-    if latest_balance is not None:
-        search.vdg_balance_after_call = latest_balance
-    search.success = bool(paint_code)
-    search.lookup_duration_ms = int((time.time() - start_time) * 1000)
-    search.save()
-
-    payload = {
-        'make': make, 'model': model, 'year': year, 'colour': colour,
-        'fuel_type': fuel_type, 'transmission': transmission,
-        'engine_description': engine_description, 'registration': registration,
-        'vin': vin, 'vin_masked': mask_vin(vin), 'vehicle_title': vehicle_title,
-        'paint_code': paint_code, 'paint_description': paint_description,
-        'all_paint_codes': all_paint_codes, 'make_logo': make_to_logo(make),
-        'search_id': search.id, 'category': category,
-        'paint_pending': bool(vin) and not paint_code,
-    }
-    return payload, search
+# NOTE (paint22): perform_lookup_core was removed here. It existed solely so the
+# paid flow could run a lookup DURING fulfilment, and that flow no longer exists
+# — the lookup happens first, free, in index(), and payment gates only the
+# reveal. What it left behind was a second copy of index()'s resolution logic
+# that nothing called, which is the kind of thing that quietly drifts out of
+# step with the original and then gets resurrected by someone who assumes it
+# still works.
 
 
 @require_POST
 def start_paid_lookup(request):
-    """Begin a paid lookup: validate the reg, then send the user to Stripe
-    Checkout to AUTHORISE £1. No VDG call happens here — the lookup runs only
-    after payment, in paid_success / the webhook.
+    """Send a customer to Checkout to UNLOCK a result we have already found.
 
-    Dormant unless payments_active(). Turnstile + blocklists still apply (the
-    same guards index() uses), so a script can't reach Checkout for free.
+    Reversed in paint22. This used to take payment first and look up second, so
+    a quarter of paying customers were told afterwards that nothing was found.
+    The lookup now happens on the free path in index(); by the time anyone
+    reaches here the answer exists, is complete (code AND name), and is sitting
+    on the Search row untouched by the browser. Payment gates the reveal only.
+
+    Consequences worth stating:
+      - No VDG call happens here or in fulfilment, so there is nothing to refund
+        and nothing to reverse. Capture is unconditional on payment success.
+      - The registration is NOT taken from the POST body. It comes from the
+        session's search_id, so a caller cannot pay for one reg and unlock
+        another, and cannot mint a charge for a lookup that never ran.
+      - A cache hit costs us nothing in VDG and is still chargeable. The
+        customer is buying the answer, not the act of querying a provider.
     """
     config = SiteConfig.get()
     if not payments_active(config):
         return redirect('index')
 
     client_ip = get_client_ip(request)
-    registration = request.POST.get('registration', '').strip().upper().replace(' ', '')
 
-    # Same front-door guards as the free flow.
+    # The ONLY source of what is being bought. Anything from the request body
+    # would let a caller nominate a different row.
+    vehicle_data = request.session.get('vehicle_data') or {}
+    search_id = vehicle_data.get('search_id')
+    if not search_id:
+        messages.error(request, 'Please look up a vehicle first.')
+        return redirect('index')
+
+    try:
+        search = Search.objects.get(id=search_id)
+    except (Search.DoesNotExist, ValueError, TypeError):
+        messages.error(request, 'Please look up a vehicle first.')
+        return redirect('index')
+
+    registration = search.registration
+
     if (config.is_ip_blocked(client_ip)
             or (registration and config.is_reg_blocked(registration))):
         messages.error(request, 'Sorry, we could not process that request.')
         return redirect('index')
-    # --- Cost guards (paint16h) --------------------------------------------
-    # These carried over from the free flow's blocklist/Turnstile checks but the
-    # SPEND guards did not, which left the paid path with no protection at all:
-    # a lookup we already know fails still went through Checkout and a full VDG
-    # call, and the daily breaker — the last line before the VDG balance runs
-    # out — never applied.
-    #
-    # Deliberately NOT carried over: the 3/hour rate limit. A paying customer
-    # doing ten lookups is paying for ten lookups; capping them would be
-    # perverse. The budget breaker below is the backstop for that path instead.
-    if budget_exceeded(config):
-        _maybe_alert_budget(config)
-        messages.error(
-            request,
-            'Lookups are paused for today. Please try again tomorrow.'
-        )
-        return redirect('index')
 
-    # Known-dud registration: refuse BEFORE taking them to Checkout. Sending
-    # someone through a card form for a lookup we know will fail — and then
-    # cancelling the authorisation — is a poor experience and still costs us a
-    # VDG call, since the failure isn't compensated.
-    if is_recent_miss(registration):
-        messages.error(
-            request,
-            'We checked that registration very recently and could not find a '
-            'paint code for it, so we have not taken any payment. Send us a '
-            'message and we will look into it by hand.'
-        )
-        return redirect('index')
+    # Already bought — send them to the answer rather than charging twice.
+    if search.paid_unlocked:
+        return redirect('results')
+
+    # Nothing to sell. Either the lookup found no complete result, or payments
+    # were off when it ran. Either way this must not become a charge.
+    if not search.is_locked():
+        return redirect('results')
+
+    # NOTE: no budget-breaker check and no VDG spend guard here, unlike the old
+    # flow. Neither applies any more — this path makes no provider call. The
+    # breaker still guards index(), which is where spending now happens.
 
     if not verify_turnstile(request.POST.get('cf-turnstile-response', ''), client_ip):
         _record_turnstile_block(request, client_ip)
         messages.error(request, 'We could not verify your browser. Please reload and try again.')
         return redirect('index')
-    if not re.fullmatch(r'[A-Z0-9]{1,8}', registration or ''):
-        messages.error(request, 'Please enter a valid registration number.')
-        return redirect('index')
-
-    # NOTE: we deliberately do NOT short-circuit on a cache hit here. The customer
-    # is buying the answer, not the act of querying a provider — whether we go
-    # and find it or already hold it is irrelevant to the service delivered, and
-    # a cached answer is in fact faster and more reliable than a live one. So the
-    # payment happens first and the cache is consulted during fulfilment
-    # (_fulfil_paid_session), where it saves the VDG cost while still capturing.
-    # That makes a cache hit the highest-margin transaction we have, and avoids
-    # the odd incentive where the second person to want a reg gets it free
-    # because the first one paid.
 
     success_url = request.build_absolute_uri('/paid/success/') + '?session_id={CHECKOUT_SESSION_ID}'
-    cancel_url = request.build_absolute_uri('/')
+    cancel_url = request.build_absolute_uri('/results/')
     session = create_checkout_session(
         registration, success_url, cancel_url, client_ip,
         user_agent=request.META.get('HTTP_USER_AGENT', ''),
+        search_id=search.id,
     )
     if session is None or not getattr(session, 'url', None):
         messages.error(request, 'Payment is temporarily unavailable. Please try again later.')
-        return redirect('index')
+        return redirect('results')
     return redirect(session.url)
 
 
@@ -2656,196 +2632,125 @@ def _record_capture_outcome(search, captured, session_id):
 
 
 def _fulfil_paid_session(session):
-    """Run the lookup for a paid Checkout Session and capture or cancel the £1.
+    """Release a result the customer has paid to see (paint22).
 
-    Idempotent and shared by BOTH the success redirect and the webhook, so a
-    customer who closes the tab before redirect is still fulfilled by the
-    webhook, and a session is never fulfilled twice. Returns the results payload
-    dict (or None if not found / not paid). The idempotency key is a Search row
-    stamped with the Stripe session id.
+    This used to RUN the lookup after payment. It no longer does anything of the
+    sort: the answer already exists on the row, so fulfilment is unlocking it.
+    That removes the failure mode the old design was built around — there is no
+    lookup left to fail, so nothing to cancel and nothing to reverse.
+
+    Returns the Search row on success, or None if the session must not be
+    honoured.
     """
     if session is None:
         return None
-    reg = _sget(_sget(session, 'metadata'), 'registration')
+
+    meta = _sget(session, 'metadata') or {}
+    reg = _sget(meta, 'registration')
+    raw_search_id = _sget(meta, 'search_id')
     pi = _sget(session, 'payment_intent')
     payment_intent_id = pi if isinstance(pi, str) else _sget(pi, 'id')
-    if not reg or not payment_intent_id:
+    if not reg or not payment_intent_id or not raw_search_id:
         return None
 
-    # --- The customer must actually have paid (paint17) --------------------
-    # In `payment` mode Stripe creates the PaymentIntent when the SESSION is
-    # created, not when the card is authorised. So an ABANDONED session still
-    # carries a registration and a PaymentIntent id and sailed past the check
-    # above: we ran a billable VDG lookup, failed the capture, and — because
-    # _record_capture_outcome deliberately still delivers on a capture failure —
-    # handed over the paint code for free. Repeatable by anyone: start a paid
-    # lookup, copy the cs_... id out of the Checkout URL, close the tab, then
-    # request /paid/success/?session_id=... The 3/hour limit is deliberately off
-    # on the paid path, so only the daily budget breaker bounded it.
+    # --- The customer must actually have paid (paint17, retained) ----------
+    # Stripe creates the PaymentIntent when the SESSION is created, not when the
+    # card is authorised, so an ABANDONED session still carries a reg and a PI
+    # id. Without this someone could start a payment, copy the cs_... id out of
+    # the Checkout URL, close the tab, and unlock the result for nothing.
     #
-    # NOT `payment_status == 'paid'`: with capture_method='manual' a correctly
-    # authorised session reports 'unpaid' right up until we capture it, so that
-    # check would reject every legitimate payment. The two signals that actually
-    # mean "authorised and waiting for our capture" are the session being
-    # complete and the intent being requires_capture.
+    # NOT payment_status == 'paid': under capture_method='manual' a correctly
+    # authorised session reports 'unpaid' right up until we capture it.
     if _sget(session, 'status') != 'complete':
         return None
     pi_status = None if isinstance(pi, str) else _sget(pi, 'status')
-    # pi_status is None when the caller passed an unexpanded session (the raw
-    # webhook payload carries the intent as a bare id string). The session being
-    # 'complete' is sufficient on its own there — Stripe only marks it complete
-    # once payment succeeds — so we don't reject for want of the expansion.
     if pi_status is not None and pi_status not in ('requires_capture', 'succeeded'):
         return None
 
-    # Idempotency: if we've already fulfilled this session, return its payload.
+    try:
+        search = Search.objects.get(id=raw_search_id)
+    except (Search.DoesNotExist, ValueError, TypeError):
+        return None
+
+    # The row must match the session — belt and braces against a mangled or
+    # replayed metadata payload naming somebody else's lookup.
+    if search.registration != reg:
+        return None
+
     session_id = _sget(session, 'id')
 
-    # --- Concurrency guard (paint16b) --------------------------------------
-    # The success redirect and the Stripe webhook fire at essentially the same
-    # moment, and both call this function. A plain "has it been done?" check is
-    # check-then-act: both can pass it before either writes, and we would run
-    # the (paid) lookup TWICE for one payment. The customer isn't charged twice
-    # — the second capture returns "already captured" — but we'd pay VDG twice
-    # and create a duplicate row.
-    #
-    # cache.add() is atomic: it inserts only if the key is absent, so exactly
-    # one caller wins. The loser waits briefly for the winner's row rather than
-    # racing it, which matters because the redirect path needs the payload to
-    # show the customer. If the winner dies mid-flight the lock expires and a
-    # later retry (Stripe re-sends webhooks) can proceed.
+    # Idempotent: /paid/success/ and the webhook both arrive here, often at once.
+    if search.paid_unlocked:
+        return search
+
+    # One winner only. cache.add is atomic — the loser hits the cache table's
+    # primary key and gets False — so a simultaneous success-page hit and
+    # webhook cannot both capture the same payment.
     lock_key = f'fulfil-lock:{session_id}'
-    won_lock = True
-    try:
-        won_lock = caches['default'].add(lock_key, 1, 300)
-    except Exception:
-        won_lock = True  # cache unavailable -> don't block fulfilment
-
-    def _existing_payload():
-        row = Search.objects.filter(
-            registration=reg, error_message__contains=f'stripe_session={session_id}'
-        ).order_by('-id').first()
-        if not row:
-            return None
-        return {
-            'registration': reg, 'make': row.make, 'model': row.model,
-            'year': row.year, 'colour': row.colour, 'vin': row.vin,
-            'vin_masked': mask_vin(row.vin), 'vehicle_title': row.vehicle_title,
-            'paint_code': row.paint_code,
-            'paint_description': row.paint_description,
-            'all_paint_codes': [], 'make_logo': make_to_logo(row.make),
-            'category': row.category, 'search_id': row.id,
-            'paint_pending': False,
-        }
-
-    if not won_lock:
-        # Someone else is fulfilling this session right now. Poll for their
-        # result instead of duplicating the work.
-        deadline = time.monotonic() + 45
+    if not caches['default'].add(lock_key, 1, 300):
+        deadline = time.monotonic() + 20
         while time.monotonic() < deadline:
-            found = _existing_payload()
-            if found:
-                return found
-            time.sleep(1.0)
-        return _existing_payload()
+            time.sleep(0.5)
+            search.refresh_from_db()
+            if search.paid_unlocked:
+                return search
+        return None
 
-    existing = Search.objects.filter(
-        registration=reg, error_message__contains=f'stripe_session={session_id}'
-    ).order_by('-id').first()
-    if existing:
-        # Already processed — rebuild a minimal payload from the row.
-        return {
-            'registration': reg, 'make': existing.make, 'model': existing.model,
-            'year': existing.year, 'colour': existing.colour,
-            'vin': existing.vin, 'vin_masked': mask_vin(existing.vin),
-            'vehicle_title': existing.vehicle_title,
-            'paint_code': existing.paint_code,
-            'paint_description': existing.paint_description,
-            'all_paint_codes': [], 'make_logo': make_to_logo(existing.make),
-            'category': existing.category, 'search_id': existing.id,
-            'paint_pending': False,
-        }
+    try:
+        # Unlock FIRST, capture second. If the capture then fails we have given
+        # away one result — recoverable, and we know exactly which row to chase.
+        # The reverse order risks taking money and failing to deliver, which is
+        # the outcome this whole redesign exists to remove.
+        search.paid_unlocked = True
+        search.save(update_fields=['paid_unlocked'])
 
-    # Cache first: if we already hold this answer, deliver it and capture without
-    # spending anything at VDG. Zero cost to us, instant for them.
-    cached = get_cached_vrm_payload(reg)
-    if cached:
-        cache_row = Search.objects.create(
-            registration=reg,
-            make=cached.get('make', ''),
-            model=cached.get('model', ''),
-            year=cached.get('year'),
-            colour=cached.get('colour', ''),
-            vehicle_title=cached.get('vehicle_title', ''),
-            category=cached.get('category', ''),
-            vin=cached.get('vin', '') or '',
-            paint_code=cached.get('paint_code', ''),
-            paint_description=cached.get('paint_description', ''),
-            provider=Search.PROVIDER_CACHE,
-            success=bool(cached.get('paint_code')),
-            error_message=f'stripe_session={session_id}',
-        )
-        _record_capture_outcome(cache_row, capture(payment_intent_id), session_id)
-        payload = dict(cached)
-        payload['search_id'] = cache_row.id
-        payload['paint_pending'] = False
-        return payload
-
-    # Recover the customer's IP/UA from session metadata, NOT from whatever
-    # request is fulfilling this (paint18). Without it every paid Search row
-    # stored a NULL ip_address and an empty user_agent — which would have made
-    # paid lookups invisible to the IP blocklist, to rate limiting, and to any
-    # after-the-fact analysis of abuse. The paid path already has the 3/hour
-    # limit deliberately removed, so that combination is worth closing before
-    # payments go live.
-    meta = _sget(session, 'metadata') or {}
-    request_meta = {
-        # _valid_ip because this value originally came from a request header
-        # and is heading for a Postgres `inet` column.
-        'ip': _valid_ip((_sget(meta, 'client_ip') or '').strip()),
-        'ua': _sget(meta, 'user_agent') or '',
-    }
-    payload, search = perform_lookup_core(reg, request_meta=request_meta)
-    if search is not None:
-        # Stamp the session id for idempotency + audit.
-        search.error_message = (search.error_message or '') + f' | stripe_session={session_id}'
-        search.save(update_fields=['error_message'])
-
-    if payload and payload.get('paint_code'):
-        # Delivered a code -> capture the fee and cache the result.
-        _record_capture_outcome(search, capture(payment_intent_id), session_id)
-        store_vrm_payload(reg, payload)
-    else:
-        # No code -> the customer is NOT charged.
-        if not cancel(payment_intent_id) and search is not None:
-            # A failed cancel is far less serious than a failed capture: the
-            # authorisation simply expires on Stripe's side and the customer is
-            # never charged. Worth recording so a systematic failure is visible.
-            _append_search_note(search, 'stripe_cancel_failed')
-    return payload
+        captured = capture(payment_intent_id)
+        _record_capture_outcome(search, captured, session_id)
+        return search
+    finally:
+        caches['default'].delete(lock_key)
 
 
 def paid_success(request):
-    """Stripe success redirect: fulfil the session and show results.
+    """Stripe success redirect: unlock the result and show it (paint22).
 
-    If the lookup found nothing, the auth was cancelled in _fulfil_paid_session,
-    so the user lands on the normal "no paint code" experience with no charge.
+    The session already holds this lookup's vehicle_data — the customer has been
+    looking at the locked version of this very page. So there is nothing to
+    rebuild here: unlock the row and send them back, where results() now renders
+    the full answer because is_locked() has become False.
     """
     if not payments_active():
         return redirect('index')
     session_id = request.GET.get('session_id')
     if not session_id:
         return redirect('index')
-    session = get_session(session_id)
-    payload = _fulfil_paid_session(session)
-    if not payload:
+    search = _fulfil_paid_session(get_session(session_id))
+    if search is None:
         messages.error(
             request,
-            'We could not find that vehicle, so you have not been charged. '
-            'Please check the registration and try again.'
+            'We could not confirm that payment. If you have been charged, '
+            'please get in touch and we will sort it out straight away.'
         )
         return redirect('index')
-    request.session['vehicle_data'] = payload
+
+    # Rebuild the session pointer if it was lost (different tab, or the webhook
+    # fulfilled first). Without this the customer pays and lands on "no vehicle
+    # data found", which would be the worst possible moment for that message.
+    vehicle_data = request.session.get('vehicle_data') or {}
+    if vehicle_data.get('search_id') != search.id:
+        cached = get_cached_vrm_payload(search.registration, count_hit=False)
+        if cached:
+            cached['search_id'] = search.id
+            request.session['vehicle_data'] = cached
+        else:
+            request.session['vehicle_data'] = {
+                'registration': search.registration,
+                'make': search.make,
+                'search_id': search.id,
+                'paint_code': search.paint_code,
+                'paint_description': search.paint_description,
+                'all_paint_codes': [],
+            }
     return redirect('results')
 
 
@@ -2870,7 +2775,7 @@ def stripe_webhook(request):
         return HttpResponse(status=400)
     if _sget(event, 'type') == 'checkout.session.completed':
         session = _sget(_sget(event, 'data'), 'object')
-        # Re-retrieve expanded so payment_intent is an id we can capture/cancel.
+        # Re-retrieve expanded so payment_intent carries a status we can check.
         full = get_session(_sget(session, 'id'))
         try:
             _fulfil_paid_session(full or session)

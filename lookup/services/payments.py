@@ -118,6 +118,10 @@ def create_checkout_session(registration, success_url, cancel_url, client_ip=Non
         # rejects anything that is not an address.
         metadata={
             'registration': registration,
+            # Which row is being unlocked (paint22). Fulfilment reads this
+            # rather than re-deriving it from the registration, so a customer
+            # with two lookups for the same reg unlocks the one they paid for.
+            'search_id': str(search_id) if search_id is not None else '',
             'client_ip': (client_ip or '')[:64],
             'user_agent': (user_agent or '')[:400],
         },
@@ -213,24 +217,13 @@ def capture(payment_intent_id):
         return False
 
 
-def cancel(payment_intent_id):
-    """Cancel (reverse) an authorisation — the customer is NOT charged.
 
-    Called when no paint code was found. This is an immediate authorisation
-    reversal, not letting the hold expire, which keeps us clear of card-network
-    limits on uncaptured low-value auths. Cancelling an already-cancelled or
-    captured intent raises; we log and move on. Returns True on success.
-    """
-    stripe = _stripe()
-    if stripe is None:
-        return False
-    try:
-        stripe.PaymentIntent.cancel(payment_intent_id)
-        return True
-    except Exception as e:
-        logger.warning('Stripe cancel failed for %s: %s', payment_intent_id, e)
-        return False
-
+# NOTE (paint22): cancel() was removed here. It reversed an authorisation when a
+# paid lookup found nothing — the compensating action for charging before we
+# knew we had an answer. Nothing can reach that state now: a result is only
+# offered for sale once it exists and is complete, so fulfilment has nothing to
+# fail at and nothing to reverse. Reversals were the thing this redesign set out
+# to eliminate; keeping the machinery for them would just invite their return.
 
 def construct_webhook_event(payload, sig_header):
     """Verify a webhook payload against STRIPE_WEBHOOK_SECRET and return the

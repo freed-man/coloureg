@@ -461,7 +461,11 @@
                         </div>
                     </div>
                     {% else %}
-                    <form method="POST" action="{% if payments_on %}{% url 'start_paid_lookup' %}{% else %}{% url 'index' %}{% endif %}" id="lookup-form">
+                    {% comment %} paint22: this ALWAYS posts to index now. The lookup runs first and free;
+   payment gates only the reveal, on the results page. Sending people to Checkout
+   before we knew whether we had an answer is what produced the "paid, found
+   nothing, authorisation reversed" experience on roughly one lookup in four.{% endcomment %}
+                    <form method="POST" action="{% url 'index' %}" id="lookup-form">
                         {% csrf_token %}
                         {% comment %} .search-form is the bordered flex row and holds ONLY the input
                            and the button. The Turnstile widget must stay inside the <form> so its
@@ -500,9 +504,10 @@
                        satisfiable under the Consumer Rights Act. A post-hoc exclusion
                        buried in a disclaimer would not be.{% endcomment %}
                     <p class="pay-notice" style="margin: 14px 0 0; font-size: 12px; color: #777; line-height: 1.5; text-align: center;">
-                        £{{ lookup_price|floatformat:2 }} per lookup — payments processed securely by Stripe.
+                        Search free. £{{ lookup_price|floatformat:2 }} only if we find your paint code —
+                        payments processed securely by Stripe.
                         <br>
-                        We only charge you if we find your paint code. If we don't,
+                        We tell you whether we've found it before you pay anything. If we haven't,
                         the payment is cancelled automatically and you pay nothing —
                         a temporary £{{ lookup_price|floatformat:2 }} hold may appear briefly on your statement
                         before it disappears.
