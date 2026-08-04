@@ -518,6 +518,16 @@
                         <a href="{% url 'disclaimer' %}" style="color: #003399;">Full terms</a>.
                     </p>
                     {% endif %}
+                    {% comment %} paint23: shown when the make is one we cannot resolve. No
+                       lookup is submitted, so nothing is spent and the answer is
+                       immediate instead of a minute of spinner.{% endcomment %}
+                    <div id="unsupported-make" class="alert alert-warning" role="alert"
+                         style="display: none; max-width: 420px; margin: 14px auto 0; font-size: 14px;">
+                        We can't currently find paint codes for
+                        <strong data-make></strong> vehicles, so we haven't run a search.
+                        <a href="{% url 'help' %}#contact-section">Send us the registration</a>
+                        and we'll look it up by hand.
+                    </div>
                     <div class="lookup-loader" id="lookup-loader" aria-live="polite">
                         <div class="lookup-spinner" aria-hidden="true">
                             <span class="dot"></span>
@@ -792,22 +802,57 @@
         // 10s: reassure during a genuinely slow lookup
         var stage10 = "Manufacturer servers are slow today, hang tight...";
 
-        // --- Concurrent make lookup (paint16b) --------------------------------
-        // Fired at the SAME MOMENT as the form POST, as a second independent
-        // request. The form submit does not block JavaScript, so this resolves
-        // while the browser is still waiting for the lookup, and adds exactly
-        // zero latency to it — the two are in flight together, not in sequence.
+        // --- Make lookup, now BEFORE the submit (paint23) --------------------
+        // This used to fire alongside the POST, purely so the spinner could say
+        // "Requesting Ford build sheet". It now also decides whether to submit
+        // at all: some makes we can never resolve a paint code for, and running
+        // the full pipeline on one costs two paid VDG calls and ends in a
+        // failure the visitor waited up to a minute for.
         //
-        // Purely decorative: if it fails, times out, or the lookup finishes
-        // first (a cache hit can return in milliseconds), the message simply
-        // stays as it was. Nothing depends on it.
+        // Sequential rather than parallel, because in parallel it is a race —
+        // the POST can reach the server before the make has been resolved, and
+        // the gate silently does nothing. The cost is one round trip, and only
+        // for a registration we have never seen: repeats are answered from
+        // VrmCache or our own history with no external call at all.
+        //
+        // The loader is already showing by this point, so the wait reads as the
+        // lookup starting rather than as a delay.
+        //
+        // It must NEVER block a lookup. Any failure, timeout or missing field
+        // submits anyway — the server re-checks with what it knows for free, so
+        // a DVLA outage costs us the gate, not the site.
         var reg = regInput.value.trim().toUpperCase().replace(/\s/g, '');
         var makeArrived = false;
-        try {
+
+        function submitAnyway() {
+            if (window.__makeChecked) return;
+            window.__makeChecked = true;
+            if (form.requestSubmit) { form.requestSubmit(); } else { form.submit(); }
+        }
+
+        function showUnsupported(make) {
+            loader.classList.remove('active');
+            form.style.display = '';
+            var box = document.getElementById('unsupported-make');
+            if (box) {
+                box.querySelector('[data-make]').textContent = make;
+                box.style.display = '';
+            }
+            if (window.turnstile) { try { window.turnstile.reset(); } catch (e) {} }
+        }
+
+        if (!window.__makeChecked) {
+            e.preventDefault();
+            var settled = false;
             var mc = new AbortController();
-            // Give up well before the 10s stage change — a make that lands after
-            // the "servers are slow" message would read as going backwards.
-            setTimeout(function () { mc.abort(); }, 8000);
+            // Hard ceiling. If DVLA is slow we would rather run the lookup than
+            // leave someone staring at a spinner for the sake of a gate.
+            var mkTimer = setTimeout(function () {
+                if (settled) return;
+                settled = true;
+                try { mc.abort(); } catch (e) {}
+                submitAnyway();
+            }, 3500);
             var mfd = new FormData();
             mfd.append('registration', reg);
             mfd.append('csrfmiddlewaretoken', form.querySelector('[name=csrfmiddlewaretoken]').value);
@@ -816,12 +861,27 @@
             })
             .then(function (r) { return r.ok ? r.json() : {}; })
             .then(function (d) {
-                if (!d || !d.make || makeArrived) return;
-                makeArrived = true;
-                fadeTo('Requesting ' + d.make + ' build sheet\u2026', false);
+                if (settled) return;
+                settled = true;
+                clearTimeout(mkTimer);
+                if (d && d.make && d.supported === false) {
+                    showUnsupported(d.make);
+                    return;                     // deliberately does NOT submit
+                }
+                if (d && d.make) {
+                    makeArrived = true;
+                    fadeTo('Requesting ' + d.make + ' build sheet\u2026', false);
+                }
+                submitAnyway();
             })
-            .catch(function () { /* decorative only */ });
-        } catch (e) { /* no-op */ }
+            .catch(function () {
+                if (settled) return;
+                settled = true;
+                clearTimeout(mkTimer);
+                submitAnyway();
+            });
+            return;
+        }
 
         function fadeTo(text, isStuck) {
             msgEl.style.opacity = '0';

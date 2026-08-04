@@ -1300,9 +1300,19 @@
                               placeholder="1.2.3.4">{{ site_config.blocked_ips }}</textarea>
                 </div>
             </div>
+            <div class="row g-2" style="margin-top:8px;">
+                <div class="col-12">
+                    <label class="form-label" style="font-size:12px; color:#666;">
+                        Unsupported makes — refused before any paid lookup
+                    </label>
+                    <textarea class="form-control form-control-sm" rows="3" name="unsupported_makes"
+                              placeholder="Mitsubishi&#10;Tesla">{{ site_config.unsupported_makes }}</textarea>
+                </div>
+            </div>
             <div style="margin-top:8px; display:flex; justify-content:space-between; align-items:center;">
                 <span style="font-size:12px; color:#999;">
                     Registrations are the reliable lever — abusers reuse them. IPs rotate, so treat that list as a scalpel.
+                    Unsupported makes cost nothing to refuse: case, spaces and hyphens are ignored.
                 </span>
                 <button type="submit" class="btn btn-sm btn-success">Save blocklists</button>
             </div>

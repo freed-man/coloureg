@@ -1088,6 +1088,18 @@ class SiteConfig(models.Model):
         blank=True, default='',
         help_text='IP addresses to refuse (one per line or comma-separated).'
     )
+    unsupported_makes = models.TextField(
+        blank=True, default='',
+        help_text=(
+            'Makes we cannot resolve a paint code for — one per line or '
+            'comma-separated. A lookup for these is refused BEFORE any paid '
+            'VDG call, and the visitor is told immediately instead of waiting '
+            'for a lookup that cannot succeed. Matching ignores case, spaces '
+            'and hyphens, so "MERCEDES-BENZ", "Mercedes Benz" and '
+            '"mercedesbenz" are the same entry. Leave empty to disable.'
+        )
+    )
+
     # NOTE: user-agent blocking was deliberately removed. It was the weakest of
     # the three (an attacker rewrites a UA string in one line — we watched that
     # happen twice) AND the most dangerous, because an over-broad fragment like
@@ -1129,6 +1141,27 @@ class SiteConfig(models.Model):
 
     def blocked_ip_set(self):
         return set(self._parse_list(self.blocked_ips))
+
+    @staticmethod
+    def _norm_make(value):
+        """Fold a make to a comparison key.
+
+        DVLA returns MITSUBISHI, VDG returns Mitsubishi, and a human typing the
+        admin box might write "Mercedes-Benz" or "mercedes benz". All three
+        sources feed this check, so all three normalise the same way — a
+        mismatch here fails SILENTLY, leaving you convinced a make is blocked
+        while still paying for every lookup of it.
+        """
+        return (value or '').upper().replace(' ', '').replace('-', '').strip()
+
+    def unsupported_make_set(self):
+        return {self._norm_make(m) for m in self._parse_list(self.unsupported_makes)
+                if self._norm_make(m)}
+
+    def is_make_unsupported(self, make):
+        if not make:
+            return False
+        return self._norm_make(make) in self.unsupported_make_set()
 
     def is_reg_blocked(self, registration):
         if not registration:

@@ -226,7 +226,10 @@ body.menu-open .menu-toggle-bar:nth-child(3) {
 .menu-email {
     display: inline-block;
     text-decoration: none;
-    font-size: 0.95rem;
+    /* paint24: 0.95rem -> 1.10rem. It was the smallest thing in the menu and
+       the one item people actually need to act on. Still below the menu links
+       so it stays a footer, not a nav item. */
+    font-size: 1.10rem;
     letter-spacing: 0.3px;
     background: linear-gradient(90deg, #e74c3c, #f39c12, #f1c40f, #2ecc71, #3498db, #9b59b6);
     -webkit-background-clip: text;

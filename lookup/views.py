@@ -137,6 +137,64 @@ def extract_mot_field(mot_data, field_name):
     return None
 
 
+# How long a resolved make is remembered, so index() can reuse what
+# /vehicle-make/ already learned instead of asking DVLA a second time.
+MAKE_CACHE_TTL_S = 600
+
+
+def _make_cache_key(registration):
+    return f'make:{registration}'
+
+
+def _remember_make(registration, make):
+    """Cache a resolved make so the LOOKUP can reuse it (paint23).
+
+    /vehicle-make/ used to throw its answer away — every branch returned JSON
+    and stored nothing — so when index() later wanted the make it had no choice
+    but to ask DVLA again. That is the only reason two calls were needed. One
+    line here removes the second call entirely.
+    """
+    if not (registration and make):
+        return
+    try:
+        caches['default'].set(_make_cache_key(registration), make, MAKE_CACHE_TTL_S)
+    except Exception:  # noqa: BLE001 — a cache miss just costs a lookup, not correctness
+        pass
+
+
+def _known_make(registration):
+    """The make, if we can get it WITHOUT paying for it (paint23).
+
+    Cheapest first, and never calls VDG:
+      1. the cache /vehicle-make/ just populated
+      2. VrmCache — we have served this reg before
+      3. our own Search history
+
+    Returns '' when only a paid call could tell us. Deliberately does NOT fall
+    through to DVLA: index() decides whether that round-trip is worth it, and
+    on the normal path /vehicle-make/ has already made it.
+    """
+    if not registration:
+        return ''
+    try:
+        cached = caches['default'].get(_make_cache_key(registration))
+        if cached:
+            return cached
+    except Exception:  # noqa: BLE001
+        pass
+    payload = get_cached_vrm_payload(registration, count_hit=False)
+    if payload and payload.get('make'):
+        return payload['make']
+    prior = (
+        Search.objects.filter(registration=registration)
+        .exclude(make='')
+        .order_by('-timestamp')
+        .values_list('make', flat=True)
+        .first()
+    )
+    return prior or ''
+
+
 def get_dvla_data(registration):
     url = os.environ.get('DVLA_API_URL')
     api_key = os.environ.get('DVLA_API_KEY')
@@ -394,6 +452,32 @@ def index(request):
 
         if registration == 'PNZ282':
             return redirect('paige')
+
+        # --- Unsupported make (paint23) ------------------------------------
+        # Some manufacturers we simply cannot resolve a paint code for. Running
+        # the full pipeline on them costs a paid VDG call, then a second one on
+        # the retry, and ends in a failure the visitor waited up to a minute
+        # for. Refusing here costs nothing and answers instantly.
+        #
+        # _known_make never calls VDG. On the normal path /vehicle-make/ has
+        # just resolved and cached the make for the spinner text, so this is a
+        # free cache read — the same DVLA answer, used twice instead of fetched
+        # twice. Repeat registrations skip DVLA entirely (VrmCache or our own
+        # history answer them).
+        #
+        # It returns '' when only a paid call could tell us the make. That is
+        # deliberately allowed through: refusing on a guess would block real
+        # vehicles, and an unknown make is exactly the case where we have no
+        # grounds to refuse. This gate only ever fires on a make we KNOW.
+        _known = _known_make(registration)
+        if _known and config.is_make_unsupported(_known):
+            messages.error(
+                request,
+                f'We cannot currently find paint codes for {_known} vehicles. '
+                f'No charge has been made — send us a message and we will look '
+                f'into it by hand.'
+            )
+            return redirect('index')
 
         # --- VRM result cache (A) ------------------------------------------
         # If we've recently returned a successful result for this exact reg,
@@ -795,7 +879,9 @@ def vehicle_make(request):
     # "free repeats served" figure.
     cached = get_cached_vrm_payload(registration, count_hit=False)
     if cached and cached.get('make'):
-        return JsonResponse({'make': cached['make']})
+        _remember_make(registration, cached['make'])
+        return JsonResponse({'make': cached['make'],
+                             'supported': not config.is_make_unsupported(cached['make'])})
 
     prior = (
         Search.objects.filter(registration=registration)
@@ -805,7 +891,9 @@ def vehicle_make(request):
         .first()
     )
     if prior:
-        return JsonResponse({'make': prior})
+        _remember_make(registration, prior)
+        return JsonResponse({'make': prior,
+                             'supported': not config.is_make_unsupported(prior)})
 
     # 2. Ask DVLA. Short timeout: this is decoration, and a slow answer is worse
     # than no answer — the message would land after the results page already had.
@@ -814,7 +902,11 @@ def vehicle_make(request):
     except Exception:
         dvla = None
     if dvla and dvla.get('make'):
-        return JsonResponse({'make': fix_make_case((dvla.get('make') or '').title())})
+        _resolved = fix_make_case((dvla.get('make') or '').title())
+        # Remembered so index() can gate on it without a second DVLA call.
+        _remember_make(registration, _resolved)
+        return JsonResponse({'make': _resolved,
+                             'supported': not config.is_make_unsupported(_resolved)})
     return JsonResponse({})
 
 
@@ -1809,7 +1901,12 @@ def admin_stats(request):
         cfg = SiteConfig.get()
         cfg.blocked_regs = (request.POST.get('blocked_regs') or '').strip()
         cfg.blocked_ips = (request.POST.get('blocked_ips') or '').strip()
-        cfg.save(update_fields=['blocked_regs', 'blocked_ips', 'updated_at'])
+        # paint23: makes we cannot resolve. Editable here rather than in code so
+        # a manufacturer can be switched off the moment the data says so, and
+        # switched back on just as fast if a curated override later fixes it.
+        cfg.unsupported_makes = (request.POST.get('unsupported_makes') or '').strip()
+        cfg.save(update_fields=['blocked_regs', 'blocked_ips',
+                                'unsupported_makes', 'updated_at'])
         n = len(cfg.blocked_reg_set()) + len(cfg.blocked_ip_set())
         messages.success(request, f'Blocklists saved ({n} entries active).')
         return redirect('admin_stats')
