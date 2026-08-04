@@ -216,16 +216,39 @@
     {% endblock %}
 
     <script>
-        setTimeout(function () {
-            let messages = document.querySelectorAll('.alert-dismissible');
-            for (let message of messages) {
-                message.style.transition = 'opacity 0.5s';
-                message.style.opacity = '0';
-                setTimeout(function () {
-                    message.remove();
-                }, 500);
-            }
-        }, 5000);
+        // paint30: 5s was not long enough to read an error and act on it — a
+        // rate-limit or refusal message vanished before it had been taken in.
+        //
+        // Errors and warnings now hold for 15s; success messages still go at 5s,
+        // because those only confirm something the visitor just did and do not
+        // need reading twice. Hovering pauses the timer entirely, so a message
+        // being read is never pulled away mid-sentence.
+        (function () {
+            var SUCCESS_MS = 5000;
+            var ERROR_MS = 15000;
+
+            document.querySelectorAll('.alert-dismissible').forEach(function (msg) {
+                var isSuccess = (msg.className + msg.getAttribute('style'))
+                    .indexOf('d1e7dd') !== -1;
+                var delay = isSuccess ? SUCCESS_MS : ERROR_MS;
+                var timer = null;
+
+                function fade() {
+                    msg.style.transition = 'opacity 0.5s';
+                    msg.style.opacity = '0';
+                    setTimeout(function () { msg.remove(); }, 500);
+                }
+                function start() { timer = setTimeout(fade, delay); }
+
+                msg.addEventListener('mouseenter', function () {
+                    clearTimeout(timer);
+                    msg.style.transition = 'opacity 0.2s';
+                    msg.style.opacity = '1';
+                });
+                msg.addEventListener('mouseleave', start);
+                start();
+            });
+        })();
 
         // Toggle body class when menu opens/closes so the burger morphs to X
         (function () {

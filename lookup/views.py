@@ -500,6 +500,35 @@ def index(request):
                 'turnstile_site_key': dj_settings.TURNSTILE_SITE_KEY,
             })
 
+        # --- Unsupported make (paint23; position fixed in paint30) ----------
+        # Some manufacturers we cannot resolve a paint code for at all. Running
+        # the pipeline on one costs a paid VDG call, then a second on the retry,
+        # and ends in a failure the visitor waited up to a minute for. Refusing
+        # here costs nothing and answers instantly.
+        #
+        # POSITION MATTERS, and it was wrong. This sat BELOW
+        # sliding_rate_limited(), so a refusal burned one of the visitor's three
+        # hourly searches despite looking nothing up and spending nothing — the
+        # exact opposite of the intent. It now sits with the blocklists, the
+        # other free refusals, and uses the same already-normalised posted_reg
+        # (`registration` is not assigned until after the limiter).
+        #
+        # _known_make never calls VDG. On the normal path /vehicle-make/ has
+        # just cached the make for the spinner, so this is a free cache read.
+        # It returns '' when only a paid call could tell us the make, and that
+        # is deliberately allowed through: refusing on a guess would block real
+        # vehicles. This gate only ever fires on a make we KNOW.
+        if posted_reg:
+            _known = _known_make(posted_reg)
+            if _known and config.is_make_unsupported(_known):
+                messages.error(
+                    request,
+                    f'We cannot currently find paint codes for {_known} '
+                    f'vehicles. No charge has been made, and this has not used '
+                    f'one of your searches.'
+                )
+                return redirect('index')
+
         # --- Turnstile verification (E) -------------------------------------
         # When configured (both keys in env), every lookup POST must carry a
         # valid token from the invisible widget in the form. Scripts that POST
@@ -554,7 +583,7 @@ def index(request):
         if was_limited:
             messages.error(
                 request,
-                'Too many searches. Please wait an hour before trying again.'
+                'Too many searches. Please try again in an hour.'
             )
             return render(request, 'lookup/index.html', {
                 'turnstile_site_key': dj_settings.TURNSTILE_SITE_KEY,
@@ -581,32 +610,6 @@ def index(request):
 
         if registration == 'PNZ282':
             return redirect('paige')
-
-        # --- Unsupported make (paint23) ------------------------------------
-        # Some manufacturers we simply cannot resolve a paint code for. Running
-        # the full pipeline on them costs a paid VDG call, then a second one on
-        # the retry, and ends in a failure the visitor waited up to a minute
-        # for. Refusing here costs nothing and answers instantly.
-        #
-        # _known_make never calls VDG. On the normal path /vehicle-make/ has
-        # just resolved and cached the make for the spinner text, so this is a
-        # free cache read — the same DVLA answer, used twice instead of fetched
-        # twice. Repeat registrations skip DVLA entirely (VrmCache or our own
-        # history answer them).
-        #
-        # It returns '' when only a paid call could tell us the make. That is
-        # deliberately allowed through: refusing on a guess would block real
-        # vehicles, and an unknown make is exactly the case where we have no
-        # grounds to refuse. This gate only ever fires on a make we KNOW.
-        _known = _known_make(registration)
-        if _known and config.is_make_unsupported(_known):
-            messages.error(
-                request,
-                f'We cannot currently find paint codes for {_known} vehicles. '
-                f'No charge has been made — send us a message and we will look '
-                f'into it by hand.'
-            )
-            return redirect('index')
 
         # --- VRM result cache (A) ------------------------------------------
         # If we've recently returned a successful result for this exact reg,
@@ -2073,8 +2076,22 @@ def admin_stats(request):
         cfg.unsupported_makes = (request.POST.get('unsupported_makes') or '').strip()
         cfg.save(update_fields=['blocked_regs', 'blocked_ips',
                                 'unsupported_makes', 'updated_at'])
-        n = len(cfg.blocked_reg_set()) + len(cfg.blocked_ip_set())
-        messages.success(request, f'Blocklists saved ({n} entries active).')
+        # paint30: the count omitted unsupported_makes, so adding Tesla and
+        # saving reported "0 entries active" while the make was in fact being
+        # refused. Reported per list now, because "3 entries" across three
+        # different lists tells you nothing about which one you just edited.
+        _regs = len(cfg.blocked_reg_set())
+        _ips = len(cfg.blocked_ip_set())
+        _makes = len(cfg.unsupported_make_set())
+        _parts = []
+        if _regs:
+            _parts.append(f'{_regs} reg{"s" if _regs != 1 else ""}')
+        if _ips:
+            _parts.append(f'{_ips} IP{"s" if _ips != 1 else ""}')
+        if _makes:
+            _parts.append(f'{_makes} make{"s" if _makes != 1 else ""}')
+        _summary = ', '.join(_parts) if _parts else 'nothing active'
+        messages.success(request, f'Saved — {_summary}.')
         return redirect('admin_stats')
 
     # Payments master switch (F). Only meaningful once the Stripe env keys are
