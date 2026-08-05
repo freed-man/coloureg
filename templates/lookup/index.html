@@ -433,23 +433,32 @@
        Widen the loader once, and its own centring places every child correctly.
        .unsupported-note keeps a breakout because it is a plain block outside the
        loader, where margin:auto cannot centre something wider than its parent. */
-    .lookup-loader,
-    .unsupported-note {
+    .lookup-loader {
         width: min(560px, calc(100vw - 32px));
         max-width: min(560px, calc(100vw - 32px));
         margin-left: 50%;
         transform: translateX(-50%);
     }
     .unsupported-note {
-        /* paint34: `width: auto` was here and collapsed the box to 134px. An auto
-           block fills only what is LEFT of it after margin-left:50% — half the
-           268px container — so it wrapped every two or three words. It needs the
-           same explicit width as the loader; the breakout pair only centres an
-           element that has been told how wide to be. */
+        /* paint35: sized to its CONTENT, not to a fixed 560px. max-content is
+           the width of the longest line with no wrapping, so the box hugs the
+           text instead of leaving a slab of empty yellow to the right.
+           max-content specifically, NOT auto or fit-content: those two size
+           against the space AVAILABLE, which margin-left:50% has already halved
+           — that is what collapsed this box to 134px in paint34. max-content
+           ignores available space entirely, so the breakout cannot shrink it. */
+        width: max-content;
+        max-width: min(560px, calc(100vw - 32px));
+        margin-left: 50%;
+        transform: translateX(-50%);
+    }
+    .unsupported-note {
         margin-top: 14px;
         font-size: 14px;
         line-height: 1.6;
-        text-align: left;
+        /* Centred within the box now the box hugs the text — left-aligned text
+           in a shrink-to-fit box just looks like a narrower left-aligned box. */
+        text-align: center;
     }
     /* Flex children now: centred and bounded by the loader above. */
     .lookup-message,

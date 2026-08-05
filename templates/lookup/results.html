@@ -374,7 +374,7 @@
                                is what buys patience; people abandon when they can't
                                tell if it's 2 seconds or 2 minutes.{% endcomment %}
                             <p class="paint-pending-message" id="paint-pending-message" aria-live="polite">
-                                Found your {{ make }}<br><span id="pending-stage">Searching manufacturer paint records&hellip;</span>
+                                Found your {{ make }} manufacturer build sheet<br><span id="pending-stage">Searching manufacturer paint records&hellip;</span>
                             </p>
                             <p id="pending-substage" style="margin: 6px 0 0; font-size: 0.8rem; color: #999; min-height: 1.2em;">
                                 Most lookups take a few seconds
@@ -545,9 +545,9 @@
     // spinner reads as "hung", a crawling bar reads as "working".
     var STAGES = [
         { at: 0,     text: 'Searching manufacturer paint records&hellip;', sub: 'Most lookups take a few seconds',                                  pct: 15 },
-        { at: 4000,  text: 'Checking the full colour records&hellip;',      sub: 'Still going &mdash; this one needs a closer look',                  pct: 35 },
+        { at: 4000,  text: 'Checking the full colour records&hellip;',      sub: 'This can take up to a minute. Please stay on this page.',          pct: 35 },
         { at: 12000, text: 'Running a deeper search&hellip;',               sub: 'Deeper searches take longer, but often find codes the quick search misses', pct: 55 },
-        { at: 30000, text: 'Still searching&hellip;',                       sub: 'Almost there &mdash; thanks for your patience',                     pct: 75 },
+        { at: 30000, text: 'Still searching&hellip;',                       sub: 'Thanks for your patience. Please stay on this page.',              pct: 75 },
         { at: 50000, text: 'Final checks&hellip;',                          sub: 'Nearly done',                                                       pct: 90 }
     ];
     var stageTimers = [];
