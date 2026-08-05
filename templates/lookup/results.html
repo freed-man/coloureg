@@ -182,8 +182,13 @@
         color: #333;
         text-align: center;
         margin: 0;
-        max-width: 340px;
-        line-height: 1.4;
+        /* paint37: 340px wrapped the heading. "Found your Mercedes-Benz
+           manufacturer build sheet" is ~416px at this size, and the longest
+           realistic make (Mercedes-Benz) sets the floor. 560px holds every make
+           on one line with room to spare; the viewport clamp keeps it inside a
+           phone, where wrapping is correct anyway. */
+        max-width: min(560px, calc(100vw - 40px));
+        line-height: 1.5;
         transition: opacity 0.3s ease;
     }
     @media (max-width: 480px) {
@@ -374,7 +379,7 @@
                                is what buys patience; people abandon when they can't
                                tell if it's 2 seconds or 2 minutes.{% endcomment %}
                             <p class="paint-pending-message" id="paint-pending-message" aria-live="polite">
-                                Found your {{ make }} manufacturer build sheet<br><span id="pending-stage">Searching manufacturer paint records&hellip;</span>
+                                Found your {{ make }} manufacturer build sheet<br><span id="pending-stage">Extracting paint records&hellip;</span>
                             </p>
                             <p id="pending-substage" style="margin: 6px 0 0; font-size: 0.8rem; color: #999; min-height: 1.2em;">
                                 Most lookups take a few seconds
@@ -544,7 +549,7 @@
     // The bar is deliberately never allowed to reach 100% or stall: a static
     // spinner reads as "hung", a crawling bar reads as "working".
     var STAGES = [
-        { at: 0,     text: 'Searching manufacturer paint records&hellip;', sub: 'Most lookups take a few seconds',                                  pct: 15 },
+        { at: 0,     text: 'Extracting paint records&hellip;',             sub: 'Most lookups take a few seconds',                                  pct: 15 },
         { at: 4000,  text: 'Checking the full colour records&hellip;',      sub: 'This can take up to a minute. Please stay on this page.',          pct: 35 },
         { at: 12000, text: 'Running a deeper search&hellip;',               sub: 'Deeper searches take longer, but often find codes the quick search misses', pct: 55 },
         { at: 30000, text: 'Still searching&hellip;',                       sub: 'Thanks for your patience. Please stay on this page.',              pct: 75 },
