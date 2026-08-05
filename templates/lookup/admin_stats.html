@@ -1288,31 +1288,34 @@
             {% csrf_token %}
             <input type="hidden" name="action" value="save_blocklists">
             <div class="maint-toggle-title" style="margin-bottom:8px;">Blocklists</div>
+            {% comment %} paint38: three across on desktop, stacked on mobile. The makes
+               box was on its own row underneath, which read as a separate setting
+               rather than the third of three lists that do the same job.
+               Placeholders are ONE example each: two lines implied a list was
+               required, and they are only ever hints for an empty box. {% endcomment %}
             <div class="row g-2">
-                <div class="col-md-6">
+                <div class="col-md-4">
                     <label class="form-label" style="font-size:12px; color:#666;">Registrations</label>
                     <textarea class="form-control form-control-sm" rows="4" name="blocked_regs"
-                              placeholder="EJ19VKN&#10;CN14TGU">{{ site_config.blocked_regs }}</textarea>
+                              placeholder="EJ19VKN">{{ site_config.blocked_regs }}</textarea>
                 </div>
-                <div class="col-md-6">
+                <div class="col-md-4">
                     <label class="form-label" style="font-size:12px; color:#666;">IP addresses</label>
                     <textarea class="form-control form-control-sm" rows="4" name="blocked_ips"
                               placeholder="1.2.3.4">{{ site_config.blocked_ips }}</textarea>
                 </div>
-            </div>
-            <div class="row g-2" style="margin-top:8px;">
-                <div class="col-12">
+                <div class="col-md-4">
                     <label class="form-label" style="font-size:12px; color:#666;">
-                        Unsupported makes — refused before any paid lookup
+                        Unsupported makes
                     </label>
-                    <textarea class="form-control form-control-sm" rows="3" name="unsupported_makes"
-                              placeholder="Mitsubishi&#10;Tesla">{{ site_config.unsupported_makes }}</textarea>
+                    <textarea class="form-control form-control-sm" rows="4" name="unsupported_makes"
+                              placeholder="Mitsubishi">{{ site_config.unsupported_makes }}</textarea>
                 </div>
             </div>
             <div style="margin-top:8px; display:flex; justify-content:space-between; align-items:center;">
                 <span style="font-size:12px; color:#999;">
                     Registrations are the reliable lever — abusers reuse them. IPs rotate, so treat that list as a scalpel.
-                    Unsupported makes cost nothing to refuse: case, spaces and hyphens are ignored.
+                    Unsupported makes are refused before any paid lookup and cost nothing: case, spaces and hyphens are ignored.
                 </span>
                 <button type="submit" class="btn btn-sm btn-success">Save blocklists</button>
             </div>
