@@ -2,7 +2,7 @@
 {% load static %}
 
 {% block extra_title %}UK Paint Code Lookup by Registration | coloureg{% endblock %}
-{% block meta_description %}UK car paint code finder. Enter your reg, get your factory code in seconds. No signup, no ads — straight from the manufacturer.{% endblock %}
+{% block meta_description %}UK car paint code finder. Enter your reg, get your factory code in seconds. No signup, no ads. Straight from the manufacturer.{% endblock %}
 
 {% block extra_css %}
 <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@1,400&display=swap" rel="stylesheet">
@@ -152,12 +152,26 @@
         margin-top: 12px;
     }
     /* Shown only when someone submits before the box has been ticked. */
+    /* paint33: matched to the spinner caption — same mono face, same caret, same
+       colour. This and .lookup-message are the same kind of thing (the system
+       reporting what it is doing) and were being said in two different voices.
+       No breakout needed: the text is short enough to sit inside the 300px
+       container, so ordinary centring works. */
     .turnstile-note {
-        margin: 8px 0 0;
+        margin: 10px 0 0;
+        font-family: 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
         font-size: 13px;
-        line-height: 1.4;
-        color: #555;
+        line-height: 1.6;
+        color: #000;
         text-align: center;
+    }
+    .turnstile-note::before {
+        content: '> ';
+        font-weight: 700;
+        color: #000;
+    }
+    @media (min-width: 768px) {
+        .turnstile-note { font-size: 14px; }
     }
 
     /* Maintenance / lookups-paused state (shown when maintenance_mode is on).
@@ -410,26 +424,33 @@
 
        Kept to the viewport on small screens (calc against 100vw) so the
        breakout can never cause a horizontal scrollbar on a phone. */
-    /* paint31: CENTRING. These sit inside .search-container, which is 300px wide
-       for the input field, and they are deliberately wider than it. `margin:auto`
-       does NOT centre an element wider than its container — the computed margins
-       collapse to zero and it overflows to the right, which is exactly what was
-       on screen. Anchoring the left edge at the parent's midpoint and pulling
-       back half the element's own width centres it regardless of how much wider
-       than the parent it is. */
-    .unsupported-note,
-    .lookup-message,
-    .lookup-patience {
+    /* paint32: the breakout belongs on the LOADER, not on its children.
+       .lookup-loader is display:flex; flex-direction:column; align-items:center,
+       so the caption and patience note are centred BY IT. They were being given
+       their own breakout as well, and the two mechanisms fought: the children
+       ended up positioned against a 300px parent they were overflowing, which is
+       why everything under the sphere sat left of centre.
+       Widen the loader once, and its own centring places every child correctly.
+       .unsupported-note keeps a breakout because it is a plain block outside the
+       loader, where margin:auto cannot centre something wider than its parent. */
+    .lookup-loader,
+    .unsupported-note {
+        width: min(560px, calc(100vw - 32px));
         max-width: min(560px, calc(100vw - 32px));
-        width: max-content;
         margin-left: 50%;
         transform: translateX(-50%);
     }
     .unsupported-note {
+        width: auto;
         margin-top: 14px;
         font-size: 14px;
         line-height: 1.6;
         text-align: left;
+    }
+    /* Flex children now: centred and bounded by the loader above. */
+    .lookup-message,
+    .lookup-patience {
+        max-width: 100%;
     }
     @media (min-width: 768px) {
         .unsupported-note { font-size: 15px; padding: 14px 18px; }
@@ -481,7 +502,7 @@
 <h1 class="sr-only">UK Car Paint Code Lookup by Registration</h1>
 <p class="sr-only">
     coloureg is a UK paint code finder. Enter your number plate and we
-    pull the factory paint code straight from the manufacturer's database — no signup,
+    pull the factory paint code straight from the manufacturer's database. No signup,
     no account, no ads. Unlike alternatives that guess, coloureg returns the actual
     factory paint code, not a "best match" colour estimate.
 </p>
@@ -888,11 +909,12 @@
                 // Managed mode a checkbox does appear and needs naming.
                 // offsetHeight is the honest test: zero means nothing is on
                 // screen, whatever the dashboard is set to.
+                // paint33: the caret is supplied by CSS (.turnstile-note::before),
+                // so these are the bare strings. Both were rewritten to drop the
+                // em-dash and to match the spinner captions' clipped voice.
                 tsNote.textContent = tsWidget.offsetHeight > 0
-                    ? "Please tick the box above to confirm you're human — "
-                      + 'your search will continue automatically.'
-                    : 'Just a moment — checking your browser. Your search '
-                      + 'will start automatically.';
+                    ? 'Tick the box above to continue...'
+                    : 'Checking your browser...';
                 tsNote.style.display = '';
             }
             return;

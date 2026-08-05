@@ -469,12 +469,18 @@
                             Sorry for the inconvenience, we'll check {{ make }}'s database manually and email you the code, usually within 1 hour.
                         </p>
                         {% endif %}
-                        {% comment %} paint16: enctype is required for the optional photo. The
-                           extra fields are collapsed behind a toggle so the email
-                           capture stays a single-field ask — adding friction to the
-                           primary action would cost more requests than the context
-                           gains. Both extras are optional.{% endcomment %}
-                        <form method="POST" action="{% url 'submit_email' %}#email-section" enctype="multipart/form-data">
+                        {% comment %} paint32: the optional note and photo fields were removed —
+                           one field, one button. They were also inconsistent: this page
+                           renders while paint is still pending, so `not paint_code` was
+                           true and they appeared; the recovery then swapped in the found
+                           code via JS and left "anything that might help?" sitting under
+                           a code we had just found.
+
+                           submit_email still accepts customer_message and photo if they
+                           arrive, so nothing server-side breaks and they can be
+                           reinstated without touching the view. enctype dropped with the
+                           file input.{% endcomment %}
+                        <form method="POST" action="{% url 'submit_email' %}#email-section">
                             {% csrf_token %}
                             <input type="hidden" name="search_id" value="{{ search_id }}">
                             <div class="d-flex gap-2">
@@ -483,27 +489,6 @@
                                     {% if paint_code %}Email me{% elif paint_name_only %}Send me the code{% else %}Request code{% endif %}
                                 </button>
                             </div>
-                            {% if not paint_code %}
-                            <div id="extra-context" hidden style="margin-top: 12px;">
-                                <label for="customer_message" style="display:block; font-size: 0.8rem; color: #666; margin-bottom: 4px;">
-                                    Anything that might help? (optional)
-                                </label>
-                                <textarea id="customer_message" name="customer_message" rows="2" maxlength="2000"
-                                          class="form-control" style="font-size: 0.9rem;"
-                                          placeholder="e.g. it's an import, the previous owner resprayed it, or it's the estate not the saloon"></textarea>
-                                <label for="photo" style="display:block; font-size: 0.8rem; color: #666; margin: 10px 0 4px;">
-                                    Photo of your paint code label, if you have one (optional)
-                                </label>
-                                <input type="file" id="photo" name="photo" accept="image/*" class="form-control" style="font-size: 0.85rem;">
-                                <p style="margin: 6px 0 0; font-size: 0.75rem; color: #999;">
-                                    A clear photo of the label often lets us find the code straight away.
-                                </p>
-                            </div>
-                            <button type="button" id="extra-context-toggle"
-                                    style="margin-top: 8px; background: none; border: none; padding: 0; color: #003399; font-size: 0.85rem; cursor: pointer;">
-                                + Add details or a photo
-                            </button>
-                            {% endif %}
                         </form>
                     </div>
                 </div>
@@ -526,28 +511,6 @@
 </script>
 {% endif %}
 
-{% comment %}
-   paint16: toggle for the optional "details or a photo" fields on the manual
-   request. Deliberately OUTSIDE any conditional block: it previously lived
-   inside the email-submitted branch, which only renders AFTER an email has been
-   submitted — so the button rendered but its handler never did, and the control
-   was dead on every normal visit.
-
-   Delegated from `document` rather than bound to the button, because when a
-   recovery finishes without a code the email section is rebuilt via
-   card.innerHTML plus form.outerHTML, which destroys and recreates this button.
-   A directly-bound listener would be lost at exactly the moment it matters most.
-{% endcomment %}
-<script>
-    document.addEventListener('click', function (e) {
-        var toggle = e.target.closest ? e.target.closest('#extra-context-toggle') : null;
-        if (!toggle) return;
-        var extra = document.getElementById('extra-context');
-        if (!extra) return;
-        extra.hidden = !extra.hidden;
-        toggle.textContent = extra.hidden ? '+ Add details or a photo' : '\u2212 Hide details';
-    });
-</script>
 
 {% if paint_pending and search_id %}
 {# Paint-recovery: the page rendered with the vehicle shown and a spinner in the #}
