@@ -441,7 +441,11 @@
         transform: translateX(-50%);
     }
     .unsupported-note {
-        width: auto;
+        /* paint34: `width: auto` was here and collapsed the box to 134px. An auto
+           block fills only what is LEFT of it after margin-left:50% — half the
+           268px container — so it wrapped every two or three words. It needs the
+           same explicit width as the loader; the breakout pair only centres an
+           element that has been told how wide to be. */
         margin-top: 14px;
         font-size: 14px;
         line-height: 1.6;
