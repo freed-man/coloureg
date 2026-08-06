@@ -391,6 +391,56 @@
         </form>
     </div>
 
+    {% comment %} paint39: moved up here from below the lookup table. It uses
+       .maint-toggle, the grey card style that marks an EDITABLE control, and
+       sitting alone under a table of white read-only rows made that grey look
+       like a mistake rather than a signal. It now sits with its three siblings
+       (maintenance, paid lookups, budget), where the pattern explains itself. {% endcomment %}
+    <!-- Blocklists: refuse specific regs / IPs before any spend. Reg is the
+         strong lever (abusers reuse regs); IP is a scalpel — a rotating
+         attacker walks around it. One entry per line (or comma-separated).
+         User-agent blocking was removed: trivially evaded, and an over-broad
+         fragment would silently block real browsers. That job belongs at
+         Cloudflare, at the edge. -->
+    <div class="maint-toggle" style="margin-top: 12px; align-items: flex-start;">
+        <form method="post" action="{% url 'admin_stats' %}" style="margin:0; width:100%;">
+            {% csrf_token %}
+            <input type="hidden" name="action" value="save_blocklists">
+            <div class="maint-toggle-title" style="margin-bottom:8px;">Blocklists</div>
+            {% comment %} paint38: three across on desktop, stacked on mobile. The makes
+               box was on its own row underneath, which read as a separate setting
+               rather than the third of three lists that do the same job.
+               Placeholders are ONE example each: two lines implied a list was
+               required, and they are only ever hints for an empty box. {% endcomment %}
+            <div class="row g-2">
+                <div class="col-md-4">
+                    <label class="form-label" style="font-size:12px; color:#666;">Registrations</label>
+                    <textarea class="form-control form-control-sm" rows="4" name="blocked_regs"
+                              placeholder="EJ19VKN">{{ site_config.blocked_regs }}</textarea>
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label" style="font-size:12px; color:#666;">IP addresses</label>
+                    <textarea class="form-control form-control-sm" rows="4" name="blocked_ips"
+                              placeholder="1.2.3.4">{{ site_config.blocked_ips }}</textarea>
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label" style="font-size:12px; color:#666;">
+                        Unsupported makes
+                    </label>
+                    <textarea class="form-control form-control-sm" rows="4" name="unsupported_makes"
+                              placeholder="Mitsubishi">{{ site_config.unsupported_makes }}</textarea>
+                </div>
+            </div>
+            <div style="margin-top:8px; display:flex; justify-content:space-between; align-items:center;">
+                <span style="font-size:12px; color:#999;">
+                    Registrations are the reliable lever — abusers reuse them. IPs rotate, so treat that list as a scalpel.
+                    Unsupported makes are refused before any paid lookup and cost nothing: case, spaces and hyphens are ignored.
+                </span>
+                <button type="submit" class="btn btn-sm btn-success">Save blocklists</button>
+            </div>
+        </form>
+    </div>
+
     <!-- ================ end protection panel (paint15) ================== -->
 
     <!-- Top metrics: row 1 = volume -->
@@ -1277,50 +1327,6 @@
         </div>
     </div>
 
-    <!-- Blocklists: refuse specific regs / IPs before any spend. Reg is the
-         strong lever (abusers reuse regs); IP is a scalpel — a rotating
-         attacker walks around it. One entry per line (or comma-separated).
-         User-agent blocking was removed: trivially evaded, and an over-broad
-         fragment would silently block real browsers. That job belongs at
-         Cloudflare, at the edge. -->
-    <div class="maint-toggle" style="margin-top: 12px; align-items: flex-start;">
-        <form method="post" action="{% url 'admin_stats' %}" style="margin:0; width:100%;">
-            {% csrf_token %}
-            <input type="hidden" name="action" value="save_blocklists">
-            <div class="maint-toggle-title" style="margin-bottom:8px;">Blocklists</div>
-            {% comment %} paint38: three across on desktop, stacked on mobile. The makes
-               box was on its own row underneath, which read as a separate setting
-               rather than the third of three lists that do the same job.
-               Placeholders are ONE example each: two lines implied a list was
-               required, and they are only ever hints for an empty box. {% endcomment %}
-            <div class="row g-2">
-                <div class="col-md-4">
-                    <label class="form-label" style="font-size:12px; color:#666;">Registrations</label>
-                    <textarea class="form-control form-control-sm" rows="4" name="blocked_regs"
-                              placeholder="EJ19VKN">{{ site_config.blocked_regs }}</textarea>
-                </div>
-                <div class="col-md-4">
-                    <label class="form-label" style="font-size:12px; color:#666;">IP addresses</label>
-                    <textarea class="form-control form-control-sm" rows="4" name="blocked_ips"
-                              placeholder="1.2.3.4">{{ site_config.blocked_ips }}</textarea>
-                </div>
-                <div class="col-md-4">
-                    <label class="form-label" style="font-size:12px; color:#666;">
-                        Unsupported makes
-                    </label>
-                    <textarea class="form-control form-control-sm" rows="4" name="unsupported_makes"
-                              placeholder="Mitsubishi">{{ site_config.unsupported_makes }}</textarea>
-                </div>
-            </div>
-            <div style="margin-top:8px; display:flex; justify-content:space-between; align-items:center;">
-                <span style="font-size:12px; color:#999;">
-                    Registrations are the reliable lever — abusers reuse them. IPs rotate, so treat that list as a scalpel.
-                    Unsupported makes are refused before any paid lookup and cost nothing: case, spaces and hyphens are ignored.
-                </span>
-                <button type="submit" class="btn btn-sm btn-success">Save blocklists</button>
-            </div>
-        </form>
-    </div>
 
     <!-- Compose email — staff-only one-off branded emails -->
     <div class="panel" id="compose">
