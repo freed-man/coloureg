@@ -1249,11 +1249,23 @@ class SiteConfig(models.Model):
                 out[key] = label.strip() or key
         return out
 
+    #: Must match Search.access_label's max_length. Labels come from a free-text
+    #: admin box, so an over-long one would raise DataError on Postgres when the
+    #: Search row saves — AFTER VDG has already been billed. SQLite truncates
+    #: silently, so the battery would never see it. Same class of bug as the
+    #: unvalidated CF-Connecting-IP in paint17.
+    ACCESS_LABEL_MAX = 60
+
     def access_label_for(self, key):
-        """Label for a key, or '' if it is not a live key."""
+        """Label for a key, or '' if it is not a live key.
+
+        Truncated HERE rather than at the call site: this is the only way a
+        label reaches a Search row, so capping it at the source means no future
+        caller can get it wrong.
+        """
         if not key:
             return ''
-        return self.access_key_map().get(key.strip(), '')
+        return self.access_key_map().get(key.strip(), '')[:self.ACCESS_LABEL_MAX]
 
     def is_reg_blocked(self, registration):
         if not registration:
