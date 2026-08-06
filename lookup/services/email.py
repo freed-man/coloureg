@@ -324,7 +324,13 @@ def send_user_paint_code(to_email, registration, vehicle_title, vin_masked, colo
         # the attachment existed only in the customer's inbox. If someone later
         # says "the code you sent was wrong", this is the evidence. Same pattern
         # (and same reasoning) as send_custom_message.
-        "bcc": [settings.DEFAULT_FROM_EMAIL],
+        # paint41: NO bcc here, deliberately. This is the automatic "email me
+        # this code" a customer triggers from a successful results page. It is
+        # not correspondence — there is nothing to reply to and nothing to keep,
+        # and the Search row already records who asked (email, email_sent).
+        # The other two senders keep their bcc: send_custom_message is a message
+        # you wrote, and send_user_no_code_available is a customer who left
+        # disappointed and may be worth chasing.
         "subject": f"Paint code for {registration}: {subject_code}",
         "html": html,
         "attachments": _attachments(extra_attachments),

@@ -128,6 +128,13 @@
         margin: 0 0 16px;
         color: #1a1a1a;
     }
+    /* paint41: row markers. The envelope means the RESULT was emailed to the
+       customer, from either route — the automatic "email me this code" or a
+       manual reply. Both set email_sent, so one marker covers both. The dot
+       means the lookup used a trade access key and skipped the hourly limit;
+       hovering names who. */
+    .email-marker { color: #0F9D58; cursor: default; }
+    .access-marker { color: #6f42c1; cursor: default; font-size: 11px; }
     .stats-table {
         width: 100%;
         border-collapse: collapse;
@@ -441,10 +448,21 @@
                               placeholder="Mitsubishi">{{ site_config.unsupported_makes }}</textarea>
                 </div>
             </div>
+            {% comment %} paint41: trade access. Separate row because it is the opposite
+               of the three above — those refuse, this exempts. {% endcomment %}
+            <div class="row g-2" style="margin-top:8px;">
+                <div class="col-12">
+                    <label class="form-label" style="font-size:12px; color:#666;">
+                        Unlimited access keys — one per line as key:label
+                    </label>
+                    <textarea class="form-control form-control-sm" rows="3" name="access_keys"
+                              placeholder="a7f3k9:Daves Bodyshop">{{ site_config.access_keys }}</textarea>
+                </div>
+            </div>
             <div style="margin-top:8px; display:flex; justify-content:space-between; align-items:center;">
                 <span style="font-size:12px; color:#999;">
                     Registrations are the reliable lever — abusers reuse them. IPs rotate, so treat that list as a scalpel.
-                    Unsupported makes are refused before any paid lookup and cost nothing: case, spaces and hyphens are ignored.
+                    Unsupported makes are refused before any paid lookup and cost nothing: case, spaces and hyphens are ignored. Access keys exempt a browser from the hourly limit — share coloureg.com/?key=KEY, delete a line to revoke.
                 </span>
                 <button type="submit" class="btn btn-sm btn-success">Save blocklists</button>
             </div>
@@ -1208,7 +1226,7 @@
                    toggles a full-width row below costs no horizontal space, works
                    on touch, and only appears on rows that have something.{% endcomment %}
                 <tr{% if s.manual_note or s.customer_message %} class="has-note" data-note-row="{{ s.id }}" style="cursor: pointer;"{% endif %}>
-                    <td style="color: #666; font-size: 13px; white-space: nowrap;">{{ s.timestamp|date:"M j Y, H:i" }}{% if s.manual_note or s.customer_message %} <span class="note-marker" title="Has notes — click to expand">&#9998;</span>{% endif %}</td>
+                    <td style="color: #666; font-size: 13px; white-space: nowrap;">{{ s.timestamp|date:"M j Y, H:i" }}{% if s.manual_note or s.customer_message %} <span class="note-marker" title="Has notes — click to expand">&#9998;</span>{% endif %}{% if s.email_sent %} <span class="email-marker" title="Result emailed to {{ s.email }}">&#9993;</span>{% endif %}{% if s.access_label %} <span class="access-marker" title="Unlimited access: {{ s.access_label }}">&#9679;</span>{% endif %}</td>
                     <td>{{ s.vehicle_title|default:"—" }}</td>
                     <td>{{ s.registration }}</td>
                     <td style="white-space: nowrap;">{{ s.vin|default:"—" }}</td>
@@ -1292,7 +1310,7 @@
             {% for s in recent_all_lookups %}
             <div class="recent-card">
                 <div class="recent-card-row1">
-                    <span class="recent-card-date">{{ s.timestamp|date:"M j Y, H:i" }}</span>
+                    <span class="recent-card-date">{{ s.timestamp|date:"M j Y, H:i" }}{% if s.email_sent %} <span class="email-marker" title="Result emailed to {{ s.email }}">&#9993;</span>{% endif %}{% if s.access_label %} <span class="access-marker" title="Unlimited access: {{ s.access_label }}">&#9679;</span>{% endif %}</span>
                     {% if s.recovery_name_only %}
                     <span class="outcome-partial" title="Colour name found — no code">◐</span>
                     {% elif s.success %}

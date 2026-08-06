@@ -472,6 +472,26 @@ def index(request):
     config = SiteConfig.get()
     maintenance = config.maintenance_mode
 
+    # --- Access-key link (paint41) ----------------------------------------
+    # Someone opening coloureg.com/?key=xxx once has the key stored in a cookie
+    # and is then redirected to a clean URL. The redirect matters: it keeps the
+    # key out of the address bar, out of Referer headers on outbound clicks,
+    # and out of anything they might screenshot or share by accident.
+    #
+    # An unrecognised key sets nothing and redirects anyway, so probing the
+    # parameter tells an attacker nothing about whether a key was valid.
+    if request.method == 'GET' and request.GET.get('key'):
+        response = redirect('index')
+        label = config.access_label_for(request.GET.get('key', ''))
+        if label:
+            response.set_cookie(
+                ACCESS_COOKIE, request.GET['key'].strip(),
+                max_age=ACCESS_COOKIE_MAX_AGE,
+                httponly=True, samesite='Lax',
+                secure=not dj_settings.DEBUG,
+            )
+        return response
+
     if request.method == 'POST':
         if maintenance:
             # Refuse silently-but-clearly: no VDG call, no Search row, just
@@ -579,7 +599,11 @@ def index(request):
         # straddling the top of the hour (observed 31 Jul), and up to 6 in the
         # worst case. This counts requests in the trailing 60 minutes, so the
         # limit holds regardless of where the clock is.
-        was_limited = sliding_rate_limited('lookup', client_ip)
+        # Trade / staff exemption (paint41). Checked BEFORE the limiter so an
+        # exempt visitor never consumes a slot — and so the limiter is not even
+        # asked, which keeps its sliding window clean for everyone else.
+        access_label = _access_label(request, config)
+        was_limited = False if access_label else sliding_rate_limited('lookup', client_ip)
         if was_limited:
             messages.error(
                 request,
@@ -917,6 +941,7 @@ def index(request):
         # makes the underlying field match.
         search.success = bool(paint_code)
         search.lookup_duration_ms = int((time.time() - start_time) * 1000)
+        search.access_label = access_label or ''
         search.save()
 
         # Gate BEFORE the session is written and the redirect happens (paint22).
@@ -1604,6 +1629,33 @@ def _locked_status_response(search_id):
     return JsonResponse(payload)
 
 
+ACCESS_COOKIE = 'coloureg_access'
+ACCESS_COOKIE_MAX_AGE = 60 * 60 * 24 * 365      # a year; it is a convenience, not a credential
+
+
+def _access_label(request, config):
+    """Label of the access key this browser is carrying, or '' (paint41).
+
+    Two ways in, and they are deliberately different things:
+
+      - STAFF: you, already logged in for /admin-stats/. Checked first because
+        it needs no setup and cannot be shared by accident.
+      - ACCESS KEY: a cookie set by visiting /?key=xxx once. Meant for trade
+        contacts who should not have an account, let alone a staff account.
+
+    Revocation is by deleting the line in the admin panel: the cookie survives,
+    but the key it holds no longer maps to a label, so the exemption stops.
+    That is why the LOOKUP happens on every request rather than being trusted
+    from the cookie itself.
+    """
+    if getattr(request, 'user', None) is not None and request.user.is_staff:
+        return 'staff'
+    try:
+        return config.access_label_for(request.COOKIES.get(ACCESS_COOKIE, ''))
+    except Exception:  # noqa: BLE001 — never let this break a lookup
+        return ''
+
+
 def _apply_paywall(search, config=None):
     """Gate a completed result behind payment, if it is one we charge for.
 
@@ -2074,8 +2126,9 @@ def admin_stats(request):
         # a manufacturer can be switched off the moment the data says so, and
         # switched back on just as fast if a curated override later fixes it.
         cfg.unsupported_makes = (request.POST.get('unsupported_makes') or '').strip()
+        cfg.access_keys = (request.POST.get('access_keys') or '').strip()
         cfg.save(update_fields=['blocked_regs', 'blocked_ips',
-                                'unsupported_makes', 'updated_at'])
+                                'unsupported_makes', 'access_keys', 'updated_at'])
         # paint30: the count omitted unsupported_makes, so adding Tesla and
         # saving reported "0 entries active" while the make was in fact being
         # refused. Reported per list now, because "3 entries" across three
@@ -2090,6 +2143,9 @@ def admin_stats(request):
             _parts.append(f'{_ips} IP{"s" if _ips != 1 else ""}')
         if _makes:
             _parts.append(f'{_makes} make{"s" if _makes != 1 else ""}')
+        _keys = len(cfg.access_key_map())
+        if _keys:
+            _parts.append(f'{_keys} access key{"s" if _keys != 1 else ""}')
         _summary = ', '.join(_parts) if _parts else 'nothing active'
         messages.success(request, f'Saved — {_summary}.')
         return redirect('admin_stats')

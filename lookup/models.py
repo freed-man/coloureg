@@ -142,6 +142,11 @@ class Search(models.Model):
     # service, not here.
     pl24_code = models.CharField(max_length=100, blank=True, default='')
 
+    # Which access key (if any) exempted this lookup from the hourly limit
+    # (paint41). Stores the LABEL, not the key: the label is what you read on
+    # the dashboard, and it keeps the secret out of the row.
+    access_label = models.CharField(max_length=60, blank=True, default='')
+
     # --- Pay-to-reveal (paint22) ---------------------------------------------
     # The paid flow used to charge FIRST and look up second, so roughly a
     # quarter of paying customers were told afterwards that nothing was found
@@ -1146,6 +1151,17 @@ class SiteConfig(models.Model):
         blank=True, default='',
         help_text='IP addresses to refuse (one per line or comma-separated).'
     )
+    access_keys = models.TextField(
+        blank=True, default='',
+        help_text=(
+            'Trade / unlimited access. One per line as key:label, e.g. '
+            '"a7f3k9:Daves Bodyshop". Share coloureg.com/?key=a7f3k9 — clicking '
+            'it once exempts that browser from the hourly search limit. Delete a '
+            'line to revoke just that person. The label is recorded on each '
+            'lookup so you can see who used it.'
+        )
+    )
+
     unsupported_makes = models.TextField(
         blank=True, default='',
         help_text=(
@@ -1220,6 +1236,24 @@ class SiteConfig(models.Model):
         if not make:
             return False
         return self._norm_make(make) in self.unsupported_make_set()
+
+    def access_key_map(self):
+        """{key: label} from the admin textarea. Malformed lines are ignored."""
+        out = {}
+        for line in self._parse_list(self.access_keys):
+            if ':' not in line:
+                continue
+            key, _, label = line.partition(':')
+            key = key.strip()
+            if key:
+                out[key] = label.strip() or key
+        return out
+
+    def access_label_for(self, key):
+        """Label for a key, or '' if it is not a live key."""
+        if not key:
+            return ''
+        return self.access_key_map().get(key.strip(), '')
 
     def is_reg_blocked(self, registration):
         if not registration:
