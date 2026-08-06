@@ -33,6 +33,16 @@
         .maint-toggle-status {
             justify-content: center;
         }
+        /* paint40: the blocklists card shares .maint-toggle for its grey
+           "editable control" styling, but it is a FORM, not a status banner.
+           The centring above is right for a dot-plus-button row and wrong for
+           three stacked textareas: it centred the field labels and the footnote
+           over left-aligned inputs. Opt this one card back out. */
+        .blocklist-card,
+        .blocklist-card .maint-toggle-title {
+            text-align: left;
+            justify-content: flex-start;
+        }
     }
     .maint-toggle.is-on {
         border-color: #EF9F27;
@@ -402,7 +412,7 @@
          User-agent blocking was removed: trivially evaded, and an over-broad
          fragment would silently block real browsers. That job belongs at
          Cloudflare, at the edge. -->
-    <div class="maint-toggle" style="margin-top: 12px; align-items: flex-start;">
+    <div class="maint-toggle blocklist-card" style="margin-top: 12px; align-items: flex-start;">
         <form method="post" action="{% url 'admin_stats' %}" style="margin:0; width:100%;">
             {% csrf_token %}
             <input type="hidden" name="action" value="save_blocklists">
