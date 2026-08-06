@@ -413,7 +413,10 @@
        sitting alone under a table of white read-only rows made that grey look
        like a mistake rather than a signal. It now sits with its three siblings
        (maintenance, paid lookups, budget), where the pattern explains itself. {% endcomment %}
-    <!-- Blocklists: refuse specific regs / IPs before any spend. Reg is the
+    <!-- Access control (paint42): three lists that REFUSE and one that GRANTS.
+         "Blocklists" stopped describing the panel once access keys were added;
+         the POST action is still save_blocklists, deliberately unchanged.
+         Refuse specific regs / IPs before any spend. Reg is the
          strong lever (abusers reuse regs); IP is a scalpel — a rotating
          attacker walks around it. One entry per line (or comma-separated).
          User-agent blocking was removed: trivially evaded, and an over-broad
@@ -423,7 +426,7 @@
         <form method="post" action="{% url 'admin_stats' %}" style="margin:0; width:100%;">
             {% csrf_token %}
             <input type="hidden" name="action" value="save_blocklists">
-            <div class="maint-toggle-title" style="margin-bottom:8px;">Blocklists</div>
+            <div class="maint-toggle-title" style="margin-bottom:8px;">Access control</div>
             {% comment %} paint38: three across on desktop, stacked on mobile. The makes
                box was on its own row underneath, which read as a separate setting
                rather than the third of three lists that do the same job.
@@ -462,9 +465,9 @@
             <div style="margin-top:8px; display:flex; justify-content:space-between; align-items:center;">
                 <span style="font-size:12px; color:#999;">
                     Registrations are the reliable lever — abusers reuse them. IPs rotate, so treat that list as a scalpel.
-                    Unsupported makes are refused before any paid lookup and cost nothing: case, spaces and hyphens are ignored. Access keys exempt a browser from the hourly limit — share coloureg.com/?key=KEY, delete a line to revoke.
+                    Unsupported makes are refused before any paid lookup and cost nothing: case, spaces and hyphens are ignored.<br>Access keys do the opposite — they exempt a browser from the hourly limit. Share coloureg.com/?key=KEY, and delete a line to revoke just that person.
                 </span>
-                <button type="submit" class="btn btn-sm btn-success">Save blocklists</button>
+                <button type="submit" class="btn btn-sm btn-success">Save</button>
             </div>
         </form>
     </div>
