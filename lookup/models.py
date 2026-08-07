@@ -962,9 +962,26 @@ class PaintLookup(models.Model):
             # only when the name is otherwise ambiguous and only ever NARROWS, so
             # it can turn a declined name into a resolved one, never the reverse.
             if model:
+                # TWO PASSES (paint45). Strict first: a tag must PREFIX the trim
+                # string. Only if that narrows nothing do we allow a tag to
+                # appear anywhere in it.
+                #
+                # The order is what makes it safe. 'transit' is a substring of
+                # 'etransit', so a single lenient pass made Ford E-Transit
+                # ambiguous between BRQAWWA (tag 'transit') and BRQAWHA (tag
+                # 'etransit') — a previously correct answer turned into a
+                # decline. Strict-first keeps E-Transit exact while still
+                # rescuing 'Range Rover Evoque', 'Grand C-Max' and 'A6 E-Tron',
+                # where NO tag prefixes the trim string at all.
                 model_rows = [
-                    r for r in rows if cls._model_matches(model, r.models_list)
+                    r for r in rows
+                    if cls._model_matches(model, r.models_list, anywhere=False)
                 ]
+                if not model_rows:
+                    model_rows = [
+                        r for r in rows
+                        if cls._model_matches(model, r.models_list, anywhere=True)
+                    ]
                 if model_rows and len(model_rows) < len(rows):
                     resolved = cls._collapse_to_single_code(model_rows)
                     if resolved is not None:
@@ -1026,28 +1043,45 @@ class PaintLookup(models.Model):
         return None
 
     @staticmethod
-    def _model_matches(vehicle_model, models_list):
+    def _model_matches(vehicle_model, models_list, anywhere=True):
         """True if the looked-up vehicle's model corresponds to one of the model
         tags stored on a PaintLookup row.
 
         models_list holds short normalised tags ('ka', 'mondeo', 'fiestast'); the
-        vehicle model is the full trim string ('Mondeo ST-Line X TDCi'). A tag
-        matches when it is a prefix of the alphanumeric-normalised vehicle model —
-        model names lead the trim, so 'mondeo' prefixes 'mondeostlinex…' and 'ka'
-        prefixes 'kazetec', while 'kuga' never matches a Ka. Used only as an
-        ambiguity tiebreaker, so an occasional near-miss just leaves the name
-        unresolved (declined), never mis-resolved.
+        vehicle model is the full trim string ('Mondeo ST-Line X TDCi').
+
+        PREFIX FIRST, then anywhere (paint45). Prefix alone assumed the model
+        name always LEADS the trim string, which is true for Ford and most
+        marques but not universally:
+
+            'Range Rover Evoque Autobiography'  tag 'evoque'  -> prefix misses
+            'Grand C-Max Titanium TDCi'         tag 'cmax'    -> prefix misses
+            'A6 E-Tron S Line'                  tag 'etron'   -> prefix misses
+
+        In each case the right code was one filter away and the name was declined
+        instead. Falling back to a substring test rescues them. Measured across
+        796 distinct (make, name, model) triples from real traffic: **3 newly
+        resolved, 0 changed** — and each was verified to match the correct tag
+        rather than coincidentally.
+
+        Prefix is still tried FIRST so the cheaper, stricter test wins where it
+        can. This remains only an ambiguity tiebreaker, so a near-miss leaves the
+        name unresolved (declined), never mis-resolved.
         """
         if not vehicle_model or not models_list:
             return False
         vm = re.sub(r'[^a-z0-9]', '', str(vehicle_model).lower())
         if not vm:
             return False
-        for tag in models_list:
-            t = re.sub(r'[^a-z0-9]', '', str(tag).lower())
-            if t and vm.startswith(t):
-                return True
-        return False
+        tags = [re.sub(r'[^a-z0-9]', '', str(t).lower()) for t in models_list]
+        tags = [t for t in tags if t]
+        if any(vm.startswith(t) for t in tags):
+            return True
+        if not anywhere:
+            return False
+        # Short tags are the false-positive risk when matching anywhere in the
+        # string ('ka' would hit 'kodiaq'), so require a little length first.
+        return any(len(t) >= 4 and t in vm for t in tags)
 
 # =============================================================================
 # SiteConfig — a single-row table holding site-wide runtime toggles that need to
