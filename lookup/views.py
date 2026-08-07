@@ -143,8 +143,18 @@ def extract_mot_field(mot_data, field_name):
 MAKE_CACHE_TTL_S = 600
 
 
+#: Same shape the lookup path enforces later. Applied HERE because the make
+#: cache is consulted BEFORE that validation runs, so an unvalidated value was
+#: reaching a cache key: control bytes and 5,000-character strings both got
+#: through, logging CacheKeyWarning on every hostile request. Harmless on
+#: LocMem/Database caches, a hard error on memcached or Redis.
+_REG_KEY_RE = re.compile(r'^[A-Z0-9]{1,8}$')
+
+
 def _make_cache_key(registration):
-    return f'make:{registration}'
+    """Cache key for a resolved make, or None if the reg is not key-safe."""
+    reg = (registration or '').strip().upper().replace(' ', '')
+    return f'make:{reg}' if _REG_KEY_RE.match(reg) else None
 
 
 def _remember_make(registration, make):
@@ -158,7 +168,10 @@ def _remember_make(registration, make):
     if not (registration and make):
         return
     try:
-        caches['default'].set(_make_cache_key(registration), make, MAKE_CACHE_TTL_S)
+        key = _make_cache_key(registration)
+        if key is None:
+            return
+        caches['default'].set(key, make, MAKE_CACHE_TTL_S)
     except Exception:  # noqa: BLE001 — a cache miss just costs a lookup, not correctness
         pass
 
@@ -178,7 +191,8 @@ def _known_make(registration):
     if not registration:
         return ''
     try:
-        cached = caches['default'].get(_make_cache_key(registration))
+        key = _make_cache_key(registration)
+        cached = caches['default'].get(key) if key else None
         if cached:
             return cached
     except Exception:  # noqa: BLE001
