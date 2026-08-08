@@ -620,8 +620,15 @@ class PaintLookup(models.Model):
                 if _parts:
                     _body = _parts[0]
                     _roof = _parts[1]
-                    _label = 'Two-tone: %s %s with %s %s' % (
-                        _body['code'], _body['name'], _roof['code'], _roof['name'])
+                    # paint49: name the halves as body/roof ONLY when the DVLA
+                    # colour actually identified one. Otherwise say "and", which
+                    # claims nothing about which is which.
+                    if _body.get('is_body'):
+                        _label = 'Two-tone: %s %s (body) with %s %s (roof)' % (
+                            _body['code'], _body['name'], _roof['code'], _roof['name'])
+                    else:
+                        _label = 'Two-tone: %s %s and %s %s' % (
+                            _body['code'], _body['name'], _roof['code'], _roof['name'])
                     logger.info(
                         'Combination row expanded: %s %s -> %s',
                         manufacturer, paint_code, _label,

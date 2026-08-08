@@ -1453,6 +1453,7 @@ def _lookup_status(request, search_id):
         result = resolve_paint(
             registration, vin, make, category, telemetry=telemetry,
             model=vehicle_data.get('model', ''), search_id=search_id,
+            vdg_colour=vehicle_data.get('colour', ''),
         )
     except Exception:  # noqa: BLE001 — never let a fallback failure 500 the poll
         # Log it. Sentry only reports UNHANDLED exceptions, so without this a
