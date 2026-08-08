@@ -213,7 +213,7 @@ def send_custom_message(to_email, subject, markdown_body, extra_attachments=None
     }, context='custom_message')
 
 
-def send_user_paint_code(to_email, registration, vehicle_title, vin_masked, colour, paint_code, paint_description, canonical_code=None, paint_hex=None, message='', extra_attachments=None):
+def send_user_paint_code(to_email, registration, vehicle_title, vin_masked, colour, paint_code, paint_description, canonical_code=None, paint_hex=None, message='', extra_attachments=None, bcc_owner=False):
     """Email user the found paint code.
 
     If canonical_code is provided and differs from paint_code, the email displays
@@ -315,26 +315,37 @@ def send_user_paint_code(to_email, registration, vehicle_title, vin_masked, colo
     else:
         subject_code = paint_code
 
-    return _safe_send({
+    # BCC depends on WHO TRIGGERED the send, not on what the email contains —
+    # this one function serves two callers with opposite needs (paint53).
+    #
+    #   submit_email()          bcc_owner=False (default). The automatic "email
+    #     me this code" a customer triggers from a successful results page. Not
+    #     correspondence: nothing to reply to, nothing to keep, and the Search
+    #     row already records who asked (email, email_sent). paint41 removed the
+    #     bcc for exactly this case and was right to.
+    #
+    #   submit_manual_lookup()  bcc_owner=True. A reply YOU wrote. The bcc is the
+    #     only record of what actually went out — the code, your note, and any
+    #     reply photo, which is deliberately never persisted to the row. If a
+    #     customer later says "the code you sent was wrong", this is the evidence.
+    #
+    # paint41 reasoned about the automatic caller only and dropped the bcc from a
+    # function BOTH use, silently taking it off manual replies too; the manual
+    # justification was left sitting in this very comment block. Note the same
+    # form's no-code branch (send_user_no_code_available) kept its bcc, so the
+    # admin got a copy when no code was found and none when one was — which is
+    # how the regression surfaced. Do not collapse this back to a bare flag on
+    # the payload without keeping the two callers distinguishable.
+    payload = {
         "from": settings.DEFAULT_FROM_EMAIL,
         "to": to_email,
-        # BCC ourselves so there is a permanent record of what we actually sent —
-        # the code, the description, our note, and any photo attached. Without
-        # this, a manual reply left no trace anywhere: the note was discarded and
-        # the attachment existed only in the customer's inbox. If someone later
-        # says "the code you sent was wrong", this is the evidence. Same pattern
-        # (and same reasoning) as send_custom_message.
-        # paint41: NO bcc here, deliberately. This is the automatic "email me
-        # this code" a customer triggers from a successful results page. It is
-        # not correspondence — there is nothing to reply to and nothing to keep,
-        # and the Search row already records who asked (email, email_sent).
-        # The other two senders keep their bcc: send_custom_message is a message
-        # you wrote, and send_user_no_code_available is a customer who left
-        # disappointed and may be worth chasing.
         "subject": f"Paint code for {registration}: {subject_code}",
         "html": html,
         "attachments": _attachments(extra_attachments),
-    }, context='paint_code')
+    }
+    if bcc_owner:
+        payload["bcc"] = [settings.DEFAULT_FROM_EMAIL]
+    return _safe_send(payload, context='paint_code')
 
 
 def send_user_no_code_available(to_email, registration, vehicle_title, colour, message='', extra_attachments=None):

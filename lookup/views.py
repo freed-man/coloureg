@@ -2609,7 +2609,11 @@ def submit_manual_lookup(request):
     message = (request.POST.get('message') or '').strip()
     # Optional photo to send with the reply — e.g. a shot of the manufacturer
     # record or the paint label. Never stored: it rides on the email, and the
-    # BCC copy in send_user_paint_code gives us our own record of it.
+    # BCC copy is our own record of it. That BCC is NOT the default for this
+    # sender — it is switched on per-call below (bcc_owner=True), because the
+    # same function also serves the automatic customer email. paint41 removed
+    # the bcc from the sender outright, which silently broke this record and
+    # left reply photos existing nowhere; restored in paint53.
     reply_photo = process_image_upload(
         request.FILES.get('photo'), filename_prefix='paint-reference'
     )
@@ -2716,6 +2720,11 @@ def submit_manual_lookup(request):
             paint_hex=paint_hex,
             message=message,
             extra_attachments=[reply_photo] if reply_photo else None,
+            # This is a reply YOU wrote, so copy ourselves. The default is False
+            # because the same sender also serves the automatic customer-triggered
+            # email from submit_email(), which deliberately does not bcc. See the
+            # comment in send_user_paint_code.
+            bcc_owner=True,
         )
 
     if not sent:
