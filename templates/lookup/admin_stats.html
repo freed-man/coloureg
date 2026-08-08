@@ -358,7 +358,7 @@
                 </div>
                 <div class="maint-toggle-sub">
                     {% if payments_enabled %}
-                        Visitors pay per lookup. £1 is authorised before the lookup and
+                        Visitors pay per lookup. £{{ lookup_price|floatformat:2 }} is authorised before the lookup and
                         only captured if a paint code is found — no result, no charge.
                     {% else %}
                         Lookups are free. Turn on only after Stripe is activated and the

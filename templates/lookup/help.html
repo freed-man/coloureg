@@ -68,7 +68,7 @@
     },
     {
       "@type": "Question",
-      "name": "Why does coloureg cost £1?",
+      "name": "Why does coloureg cost £{{ lookup_price|floatformat:2 }}?",
       "acceptedAnswer": {
         "@type": "Answer",
         "text": "Every lookup runs against live manufacturer and vehicle databases that charge us for each search, plus the servers, data feeds, domains and software that keep coloureg fast and accurate. The £{{ lookup_price|floatformat:2 }} keeps it running and independent — no ads, no signup, and we never sell your data. If we can't find your code, you don't pay."
