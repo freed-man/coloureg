@@ -669,23 +669,32 @@ class PaintLookup(models.Model):
     #     'panther black pearl' -> 17V is the case that needs this, and the two
     #     entries below are what keep them apart.
     #
-    #   - RETRACTED 8 Aug: 'santorini black pearl' -> PBF. It was added as a GUARD
-    #     against a Pearl lookup resolving to the metallic PAB, on the stated
-    #     basis that PBF is that pearl's bare code and 'Sumatra Black Pearl' is
-    #     merely its older name. That basis does not hold:
-    #       * PBF / 797 / LRC797 are Sumatra Black Pearl (#1B2125) in THREE
-    #         sources (chipex, colorndrive, peinturevoiture). Santorini Black is
-    #         1AG / 820 / LRC820 / PAB / 2103 (#111112) in the same three. The two
-    #         code families are disjoint; a rename would not produce that.
-    #       * The ONLY row naming anything 'Santorini Black Pearl' is LRC797-PBF,
-    #         from ONE source, whose all_names carries BOTH names and whose hex
-    #         (#13171A) matches neither family. That is a conflated listing, not a
-    #         rename.
-    #     Removing the entry makes the name DECLINE rather than return Sumatra's
-    #     code, which is the right end of "a wrong code is worse than none".
-    #     Do NOT map it to PAB instead: there is no evidence Land Rover lists a
-    #     Santorini Black Pearl at all, so that would swap one guess for another.
-    #     Reopen ONLY on dealer confirmation, not on a retailer listing.
+    #   - CORRECTED 8 Aug: 'santorini black pearl' -> PAB (was PBF, then briefly
+    #     removed entirely). Two separate errors, worth keeping both on record:
+    #
+    #     ERROR 1, the original entry: -> PBF. Justified on the basis that PBF is
+    #     that pearl's bare code and 'Sumatra Black Pearl' is merely its older
+    #     name. That does not hold. PBF / 797 / LRC797 are Sumatra Black Pearl
+    #     (#1B2125) in THREE sources (chipex, colorndrive, peinturevoiture);
+    #     Santorini is 1AG / 820 / LRC820 / PAB / 2103 (#111112) in the same
+    #     three. The families are disjoint. The ONLY row naming anything
+    #     'Santorini Black Pearl' is LRC797-PBF, from ONE source, whose all_names
+    #     carries BOTH names and whose hex (#13171A) matches neither family. That
+    #     is a conflated listing, not a rename.
+    #
+    #     ERROR 2, the first fix: removing the entry so the name DECLINED. That
+    #     assumed no Santorini Black Pearl existed. It does. Retailers list it
+    #     against 1AG / PAB / 820 (PaintScratch: "1AG/PAB/820 Santorini Black
+    #     Pearl", model years 2017-2022), the same code set they return for
+    #     Santorini Black. Metallic and Pearl are retailer descriptors for ONE
+    #     Land Rover black, not two paints, which is why every row in that family
+    #     shares #111112.
+    #
+    #     So the finish word does not separate anything here and the answer is
+    #     PAB either way. Note this restores the invariant that every override
+    #     resolves to a code whose own canonical name matches the key once
+    #     normalized: PBF was the single violation across all 21 entries.
+    #     Do NOT map it back to PBF without dealer confirmation.
     # -----------------------------------------------------------------------
     # MODEL-AWARE overrides (paint16b).
     #
@@ -768,7 +777,7 @@ class PaintLookup(models.Model):
         'landrover': {
             'santorini black': 'PAB',
             'santorini black metallic': 'PAB',
-            # 'santorini black pearl' -> PBF REMOVED 8 Aug. See the note above.
+            'santorini black pearl': 'PAB',
             'varesine blue': 'JJA',
             'varesine blue metallic': 'JJA',
         },
