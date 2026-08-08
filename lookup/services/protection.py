@@ -379,16 +379,64 @@ def sliding_rate_limited(scope, ident, limit=SLIDING_WINDOW_LIMIT,
     now = now or _time.time()
     cutoff = now - window
     key = _sw_key(scope, ident)
+    lock_key = key + ':lock'
     try:
         cache = caches['default']
+
+        # paint51: the read-modify-write below is NOT atomic, and the race is far
+        # worse than the "+1 tolerance" previously documented. Measured with 12
+        # simultaneous requests from one IP against a limit of 3, five trials:
+        # 11, 12, 4, 10, 8 allowed. Every thread reads the list before any writes
+        # it, so a genuinely simultaneous burst passes almost entirely.
+        #
+        # Serialised with cache.add(), which is atomic on DatabaseCache — the
+        # same primitive already trusted for the payment-capture lock, where
+        # getting it wrong would double-charge. Cost is two extra cache ops on a
+        # path that also makes a multi-second external call.
+        #
+        # Whoever loses the race spins briefly rather than proceeding: the
+        # critical section is two cache ops, so the wait is sub-millisecond in
+        # practice. After ~50ms we give up and fall through UNLOCKED, preserving
+        # the old fail-open behaviour rather than blocking a real customer
+        # because the cache is slow.
+        # Read FIRST, unlocked. If the caller is already over the limit the
+        # answer cannot change by taking a lock — nobody removes hits from the
+        # window — so the common blocked case costs one query and no lock at
+        # all. Only the borderline case, where we are about to APPEND, needs
+        # serialising.
         hits = [t for t in (cache.get(key) or []) if t > cutoff]
         if len(hits) >= limit:
-            # Re-store the pruned list so it can't grow without bound while a
-            # client keeps hammering a blocked endpoint.
             cache.set(key, hits, window)
             return True
-        hits.append(now)
-        cache.set(key, hits, window)
-        return False
+
+        _held = False
+        _deadline = _time.time() + 0.05
+        while _time.time() < _deadline:
+            if cache.add(lock_key, 1, 5):
+                _held = True
+                break
+            _time.sleep(0.002)
+
+        try:
+            # RE-READ inside the lock. The unlocked read above is only a cheap
+            # rejection for callers already over the limit; by the time this
+            # thread acquired the lock another may have appended, so appending
+            # on the strength of the earlier read reintroduces the race it was
+            # meant to close.
+            hits = [t for t in (cache.get(key) or []) if t > cutoff]
+            if len(hits) >= limit:
+                # Re-store the pruned list so it can't grow without bound while a
+                # client keeps hammering a blocked endpoint.
+                cache.set(key, hits, window)
+                return True
+            hits.append(now)
+            cache.set(key, hits, window)
+            return False
+        finally:
+            if _held:
+                try:
+                    cache.delete(lock_key)
+                except Exception:  # noqa: BLE001 — the 5s TTL is the backstop
+                    pass
     except Exception:
         return False
