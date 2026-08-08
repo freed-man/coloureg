@@ -42,6 +42,45 @@
         font-family: 'IBM Plex Sans', sans-serif;
         overflow: hidden;
     }
+    .paint-swatch-split {
+        display: flex;
+        height: 80px;
+        width: 100%;
+    }
+    .paint-swatch-split span { flex: 1; display: block; }
+    .two-tone-parts {
+        display: flex;
+        gap: 12px;
+        justify-content: center;
+        flex-wrap: wrap;
+        margin-top: 14px;
+    }
+    .tt-chip {
+        display: flex;
+        align-items: center;
+        gap: 9px;
+        border: 1px solid #e5e7eb;
+        border-radius: 8px;
+        padding: 8px 12px;
+        background: #fafafa;
+    }
+    .tt-dot {
+        width: 22px; height: 22px;
+        border-radius: 5px;
+        border: 1px solid rgba(0, 0, 0, .18);
+        flex: 0 0 auto;
+    }
+    .tt-text { font-size: 14px; color: #333; }
+    .tt-tag {
+        font-size: 10px;
+        letter-spacing: .5px;
+        text-transform: uppercase;
+        color: #6c757d;
+        background: #fff;
+        border: 1px solid #e5e7eb;
+        border-radius: 4px;
+        padding: 1px 6px;
+    }
     .paint-swatch-bar {
         height: 80px;
         width: 100%;
@@ -330,7 +369,31 @@
                 </div>
                 {% elif paint_code %}
                 <div id="paint-found-state">
-                    {% if all_paint_codes|length > 1 %}
+                    {% comment %} paint50: a two-tone is two paints, so show two swatches
+                       and both codes rather than one bar and a sentence. Only set when the
+                       code resolves to a combination row AND both halves resolve; every
+                       ordinary colour falls through to the blocks below unchanged. {% endcomment %}
+                    {% if two_tone %}
+                        <div class="paint-swatch-split">
+                            {% for part in two_tone %}
+                            <span style="background: {{ part.hex|default:'#e9ecef' }};"></span>
+                            {% endfor %}
+                        </div>
+                        <div class="paint-block">
+                            <div class="paint-code">{{ paint_code }}</div>
+                            <p class="paint-alt">Two-tone finish, two paints</p>
+                            <div class="two-tone-parts">
+                                {% for part in two_tone %}
+                                <span class="tt-chip">
+                                    <span class="tt-dot" style="background: {{ part.hex|default:'#e9ecef' }};"></span>
+                                    <span class="tt-text"><b>{{ part.code }}</b> {{ part.name }}</span>
+                                    {% if part.is_body %}<span class="tt-tag">body</span>
+                                    {% elif forloop.counter > 1 and two_tone.0.is_body %}<span class="tt-tag">roof</span>{% endif %}
+                                </span>
+                                {% endfor %}
+                            </div>
+                        </div>
+                    {% elif all_paint_codes|length > 1 %}
                         {% for item in all_paint_codes %}
                         {% if item.hex %}<div class="paint-swatch-bar" style="background: {{ item.hex }};"></div>{% endif %}
                         <div class="paint-block">

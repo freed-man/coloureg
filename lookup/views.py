@@ -1263,6 +1263,12 @@ def results(request):
             year=year,
             vdg_colour=colour_for_lookup,
         )
+    # paint50: the two halves of a two-tone, so the template can show a split
+    # swatch and both codes instead of one bar and a sentence. None for every
+    # ordinary colour, so the template falls through to the existing blocks.
+    two_tone = PaintLookup.two_tone_parts(
+        make, paint_code, vdg_colour=colour_for_lookup,
+    ) if paint_code else None
 
     # When VDG returns multiple codes (e.g. "8E8E/A7W"), look up each so the
     # multi-code template path can show a swatch bar per code. If the item's
@@ -1308,6 +1314,7 @@ def results(request):
         'paint_description': vehicle_data.get('paint_description'),
         'all_paint_codes': all_paint_codes,
         'paint_hex': paint_hex,
+        'two_tone': two_tone,
         'paint_name': paint_name,
         'canonical_code': canonical_code,
         'search_id': vehicle_data.get('search_id'),

@@ -1171,6 +1171,26 @@ class PaintLookup(models.Model):
                 out.sort(key=lambda i: not i['is_body'])
         return out
 
+    @classmethod
+    def two_tone_parts(cls, manufacturer, paint_code, vdg_colour=None):
+        """The two halves of a two-tone code, for the template (paint50).
+
+        A SEPARATE entry point rather than a fourth return value from
+        lookup_with_canonical: that method's 3-tuple contract is consumed at six
+        call sites (results page, email, API, admin), and widening it to serve
+        one presentational feature would touch all of them for no benefit.
+
+        Returns the same [{code, name, hex, is_body}] as expand_combination,
+        body first when the DVLA colour identified one, or None.
+        """
+        try:
+            row = cls.lookup(manufacturer, paint_code)
+            if not row or not cls.is_combination_name(getattr(row, 'name', None)):
+                return None
+            return cls.expand_combination(manufacturer, row.name, vdg_colour=vdg_colour)
+        except Exception:  # noqa: BLE001 — presentation must never break a lookup
+            return None
+
     @staticmethod
     def _model_matches(vehicle_model, models_list, anywhere=True):
         """True if the looked-up vehicle's model corresponds to one of the model
