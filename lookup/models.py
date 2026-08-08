@@ -665,11 +665,27 @@ class PaintLookup(models.Model):
     # is the small, zero-leak-risk alternative to a full cross-ref canonical merge.
     #   - Keys are LIGHT-normalized only (lowercase + single-spaced); they are NOT
     #     run through normalize_name(), because that strips finish words and would
-    #     collapse 'santorini black pearl' into 'santorini black', re-merging the
-    #     distinct Pearl into the metallic.
-    #   - 'santorini black pearl' -> PBF is a GUARD: without it the matcher would
-    #     resolve a Pearl lookup to the metallic PAB. (PBF is the correct bare code
-    #     for that pearl; note its stored name is the older 'Sumatra Black Pearl'.)
+    #     merge a solid into its pearl. Ford 'panther black solid' -> PNJAB vs
+    #     'panther black pearl' -> 17V is the case that needs this, and the two
+    #     entries below are what keep them apart.
+    #
+    #   - RETRACTED 8 Aug: 'santorini black pearl' -> PBF. It was added as a GUARD
+    #     against a Pearl lookup resolving to the metallic PAB, on the stated
+    #     basis that PBF is that pearl's bare code and 'Sumatra Black Pearl' is
+    #     merely its older name. That basis does not hold:
+    #       * PBF / 797 / LRC797 are Sumatra Black Pearl (#1B2125) in THREE
+    #         sources (chipex, colorndrive, peinturevoiture). Santorini Black is
+    #         1AG / 820 / LRC820 / PAB / 2103 (#111112) in the same three. The two
+    #         code families are disjoint; a rename would not produce that.
+    #       * The ONLY row naming anything 'Santorini Black Pearl' is LRC797-PBF,
+    #         from ONE source, whose all_names carries BOTH names and whose hex
+    #         (#13171A) matches neither family. That is a conflated listing, not a
+    #         rename.
+    #     Removing the entry makes the name DECLINE rather than return Sumatra's
+    #     code, which is the right end of "a wrong code is worse than none".
+    #     Do NOT map it to PAB instead: there is no evidence Land Rover lists a
+    #     Santorini Black Pearl at all, so that would swap one guess for another.
+    #     Reopen ONLY on dealer confirmation, not on a retailer listing.
     # -----------------------------------------------------------------------
     # MODEL-AWARE overrides (paint16b).
     #
@@ -752,7 +768,7 @@ class PaintLookup(models.Model):
         'landrover': {
             'santorini black': 'PAB',
             'santorini black metallic': 'PAB',
-            'santorini black pearl': 'PBF',
+            # 'santorini black pearl' -> PBF REMOVED 8 Aug. See the note above.
             'varesine blue': 'JJA',
             'varesine blue metallic': 'JJA',
         },
