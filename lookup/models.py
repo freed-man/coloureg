@@ -609,7 +609,23 @@ class PaintLookup(models.Model):
                 swatch=swatch,
             )
             # hex may be '' (name-only rows) — normalise to None for the caller
-            return (swatch.hex or None), (swatch.name or None), canonical
+            _name = swatch.name or None
+            if cls.is_combination_name(_name):
+                # A two-tone combination row, not a colour. Suppress the NAME but
+                # keep the hex: 71 of the 6,703 carry a blended hex the merge
+                # resolved, and a swatch with no caption still helps a customer.
+                #
+                # LOGGED, not silent. A combination code arriving from a provider
+                # means an extractor is reading a trim field — that is the signal,
+                # and hiding it quietly would remove the only evidence. This is
+                # exactly how partslink24's "Exterior color" (dealer: TRIM COLOR)
+                # went unnoticed on two Suzukis.
+                logger.warning(
+                    'Combination row suppressed: %s %s -> %r (extractor may be '
+                    'reading a trim field)', manufacturer, paint_code, _name,
+                )
+                _name = None
+            return (swatch.hex or None), _name, canonical
         except Exception:
             return None, None, None
 
@@ -1041,6 +1057,33 @@ class PaintLookup(models.Model):
             return shortest, (exact.hex or None), exact.name
 
         return None
+
+    #: A combination row's name is two OTHER codes joined, e.g. Suzuki C06 is
+    #: "Y33 + Z0N" and BMW 813 is "314 + 303". They are two-tone pairings, not
+    #: colours, and the operands are the real paint codes. 6,703 rows carry this
+    #: shape across nearly every marque.
+    #:
+    #: Showing one to a customer prints "Y33 + Z0N" where a colour name belongs —
+    #: worse than showing nothing, because it looks authoritative. It reaches the
+    #: page whenever a provider returns a combination code, which happened twice
+    #: on Suzuki (C01, C05) when partslink24's "Exterior color" field turned out
+    #: to be TRIM COLOR in the dealer system.
+    #:
+    #: Guarded HERE rather than at the display site so every path is covered —
+    #: results page, email and API each resolve names independently.
+    _COMBINATION_NAME_RE = re.compile(r'^\s*\S+\s+\+\s+\S+\s*$')
+
+    @classmethod
+    def is_combination_name(cls, name):
+        """True when a name is two codes joined rather than a colour.
+
+        Deliberately anchored and whitespace-strict: it must be the WHOLE name,
+        so a genuine colour containing a plus ("Black + Silver Trim", were one to
+        exist) is left alone. 71 of the 6,703 carry a hex, which means the merge
+        resolved a blended colour for them — the hex is still usable for a swatch
+        even though the NAME is not usable as text.
+        """
+        return bool(name) and bool(cls._COMBINATION_NAME_RE.match(str(name)))
 
     @staticmethod
     def _model_matches(vehicle_model, models_list, anywhere=True):
