@@ -1132,6 +1132,19 @@ class PaintLookup(models.Model):
             row = cls.lookup(manufacturer, code)
             if not row or not getattr(row, 'name', None):
                 return None                      # half an answer is worse than none
+            # paint48: lookup() falls back to a near match — asking for '398D'
+            # returns row '398'. Harmless when they are the same paint, but the
+            # expansion would then print a code the combination never named, and
+            # nothing guarantees the next such pair agrees. A slash variant is
+            # accepted ('398/D' answering for '398D') because that IS the same
+            # code differently punctuated; anything else is refused.
+            _got = (row.code or '').upper().replace('/', '').replace('-', '')
+            if _got != code.replace('/', '').replace('-', ''):
+                logger.warning(
+                    'Combination operand mismatch: %s asked %r got %r — refusing',
+                    manufacturer, code, row.code,
+                )
+                return None
             out.append({
                 'code': row.code,
                 'name': row.name,
