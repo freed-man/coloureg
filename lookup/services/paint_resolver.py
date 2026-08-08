@@ -67,8 +67,12 @@ def _enrich_from_lookup(result, make, model=None):
 
         if code and not desc:
             # code -> name (+ swatch)
+            # vdg_colour lets a two-tone row order its halves BODY FIRST
+            # (paint47). Without it "Z11 + Qab" expands black-first even though
+            # DVLA reports the car White and QAB is the Pearl White.
             hex_val, name, _canon = PaintLookup.lookup_with_canonical(
                 manufacturer=make, paint_code=code,
+                vdg_colour=result.get('colour') or '',
             )
             if name:
                 result['paint_description'] = name

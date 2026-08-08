@@ -611,6 +611,23 @@ class PaintLookup(models.Model):
             # hex may be '' (name-only rows) — normalise to None for the caller
             _name = swatch.name or None
             if cls.is_combination_name(_name):
+                # paint47: try to EXPAND it first. A combination row is a real
+                # two-tone car, and both halves usually exist as proper rows —
+                # "QAB Pearl White with Z11 Black Metallic" is useful where
+                # "Z11 + Qab" is not. Only if expansion fails do we fall back to
+                # paint46's suppression.
+                _parts = cls.expand_combination(manufacturer, _name, vdg_colour=vdg_colour)
+                if _parts:
+                    _body = _parts[0]
+                    _roof = _parts[1]
+                    _label = 'Two-tone: %s %s with %s %s' % (
+                        _body['code'], _body['name'], _roof['code'], _roof['name'])
+                    logger.info(
+                        'Combination row expanded: %s %s -> %s',
+                        manufacturer, paint_code, _label,
+                    )
+                    # Body hex drives the swatch; the caption names both halves.
+                    return (_body['hex'] or swatch.hex or None), _label, canonical
                 # A two-tone combination row, not a colour. Suppress the NAME but
                 # keep the hex: 71 of the 6,703 carry a blended hex the merge
                 # resolved, and a swatch with no caption still helps a customer.
@@ -1084,6 +1101,55 @@ class PaintLookup(models.Model):
         even though the NAME is not usable as text.
         """
         return bool(name) and bool(cls._COMBINATION_NAME_RE.match(str(name)))
+
+    @classmethod
+    def expand_combination(cls, manufacturer, name, vdg_colour=None):
+        """Turn "Z11 + Qab" into the two real colours it names (paint47).
+
+        A combination row IS a real vehicle — a two-tone. Nissan XDF is a Pearl
+        White Qashqai with a Black Metallic roof, and both halves exist as proper
+        rows with names and hexes. Showing the raw "Z11 + Qab" tells a customer
+        nothing; showing the expansion gives them two codes they can actually buy
+        paint by.
+
+        Returns a list of dicts [{code, name, hex, is_body}] ordered BODY FIRST,
+        or None when either half cannot be resolved — in which case the caller
+        keeps paint46's suppression, because half an answer is worse than none.
+
+        Body is identified by matching the DVLA/VDG colour rather than by
+        position. "Z11 + Qab" lists black first, but DVLA reports that car as
+        White and QAB is the Pearl White — so position is not reliable, and we
+        have the colour on every lookup anyway. With no colour to match on, the
+        order is left as the data gives it and nothing is labelled.
+        """
+        if not cls.is_combination_name(name):
+            return None
+        parts = [p.strip().upper() for p in str(name).split('+')]
+        if len(parts) != 2:
+            return None
+        out = []
+        for code in parts:
+            row = cls.lookup(manufacturer, code)
+            if not row or not getattr(row, 'name', None):
+                return None                      # half an answer is worse than none
+            out.append({
+                'code': row.code,
+                'name': row.name,
+                'hex': row.hex or None,
+                'is_body': False,
+            })
+        want = (vdg_colour or '').strip().lower()
+        if want:
+            for item in out:
+                grp = (cls.objects.filter(
+                    manufacturer=cls.normalize_manufacturer(manufacturer),
+                    code=item['code'],
+                ).values_list('color_group', flat=True).first() or '').lower()
+                if grp and grp == want:
+                    item['is_body'] = True
+            if any(i['is_body'] for i in out):
+                out.sort(key=lambda i: not i['is_body'])
+        return out
 
     @staticmethod
     def _model_matches(vehicle_model, models_list, anywhere=True):
