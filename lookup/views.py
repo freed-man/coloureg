@@ -2790,6 +2790,16 @@ def submit_manual_lookup(request):
             colour=search.colour,
             message=message,
             extra_attachments=[reply_photo] if reply_photo else None,
+            # paint57: the no-code reply now carries the same detail table as
+            # the paint-code one, so it needs the masked VIN too.
+            vin_masked=mask_vin(search.vin),
+            # The FOURTH outcome, which had no template until paint57: we know
+            # the manufacturer colour NAME but no orderable code. This is the
+            # standard PSA/Stellantis result — partslink24 does not carry PSA
+            # codes, so a name-only answer is what that route returns. Reuses
+            # the description field the form already posts rather than adding
+            # another input; on this path it is the only paint fact we have.
+            colour_name=paint_description_clean,
         )
     else:
         sent = send_user_paint_code(

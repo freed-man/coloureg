@@ -270,10 +270,7 @@ def send_user_paint_code(to_email, registration, vehicle_title, vin_masked, colo
         <div style="max-width: 560px; margin: 0 auto; background: #fff; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.04);">
             {_brand_header()}
             <div style="padding: 40px 32px;">
-                <h1 style="margin: 0 0 8px; font-size: 22px; color: #1a1a1a; font-weight: 600;">Your paint code</h1>
-                <p style="margin: 0 0 24px; color: #666; font-size: 15px; line-height: 1.5;">
-                    Here's the paint code for your vehicle.
-                </p>
+                <h1 style="margin: 0 0 24px; font-size: 22px; color: #1a1a1a; font-weight: 600;">Your paint code:</h1>
                 {swatch_html}
                 <div style="background: #f8f9fa; padding: 32px; border-radius: {box_radius}; text-align: center; margin-bottom: 24px;">
                     <div style="font-family: 'IBM Plex Mono', 'Courier New', Courier, monospace; font-size: 42px; font-weight: 700; letter-spacing: 3px; color: #1a1a1a; font-feature-settings: 'zero' 0;">
@@ -348,56 +345,72 @@ def send_user_paint_code(to_email, registration, vehicle_title, vin_masked, colo
     return _safe_send(payload, context='paint_code')
 
 
-def send_user_no_code_available(to_email, registration, vehicle_title, colour, message='', extra_attachments=None):
-    """Tell the customer that no paint code exists for their vehicle (paint16).
+def send_user_no_code_available(to_email, registration, vehicle_title, colour, message='', extra_attachments=None, vin_masked='', colour_name=''):
+    """Reply to a manual lookup that produced no orderable paint code (paint16).
 
-    The THIRD outcome: we searched every source — the vehicle data provider, the
-    manufacturer parts catalogues, and the dealer route — and this vehicle simply
-    has no published paint code. That is a different thing from "we couldn't find
-    it", and the customer deserves to be told so clearly rather than left with a
-    generic failure. `message` carries the explanation written in the admin panel.
+    paint57 rewrote the copy. It used to ASSERT that no code exists for the
+    vehicle ("there is no paint code published for this vehicle... never issued
+    or recorded"), followed by a fixed "What you can do next" block. That claim
+    is often FALSE. The common case is a PSA/Stellantis car where partslink24
+    returns a colour NAME and no code: the code exists, we could not reach it.
+    Telling a paying customer their car has no code, when a dealer can produce
+    one in a minute, is the kind of wrong answer that earns a refund request.
 
-    BCC'd to ourselves so there is a record of exactly what was sent, same as the
-    paint-code reply.
+    Both fixed paragraphs are therefore gone, and the explanation lives entirely
+    in `message` — which submit_manual_lookup already REQUIRES on this path.
+    Roland writes what is true for that car; the template no longer guesses.
+
+    `colour_name` carries a manufacturer colour name when we have one but no
+    code (e.g. "Black Pearl"). It is the useful half of the answer and lets the
+    customer take a real name to a factor. In practice it is the same
+    `paint_description` field the admin form already posts.
+
+    Layout deliberately mirrors send_user_paint_code — same brand header, same
+    optional payload box, same optional note block, same four-row table — so the
+    two replies read as one product rather than two different emails.
+
+    BCC'd to ourselves so there is a record of exactly what was sent.
     """
 
+    name_block = ''
+    if colour_name and colour_name.strip():
+        name_block = f"""
+                <div style="background: #f8f9fa; padding: 28px 32px; border-radius: 8px; text-align: center; margin-bottom: 24px;">
+                    <div style="font-size: 11px; font-weight: 600; letter-spacing: 0.8px; text-transform: uppercase; color: #666; margin-bottom: 10px;">Colour name</div>
+                    <div style="font-size: 26px; font-weight: 600; color: #1a1a1a; line-height: 1.3;">{_esc(colour_name.strip())}</div>
+                </div>
+        """
+
     note_block = ''
-    if message:
+    if message and message.strip():
+        safe_message = html_lib.escape(message.strip()).replace('\n', '<br>')
         note_block = f"""
-            <div style="background: #f8f9fa; border-left: 3px solid #003399; padding: 16px 20px; margin: 24px 0;">
-                <p style="margin: 0 0 6px; color: #666; font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px;">A note from us</p>
-                <p style="margin: 0; color: #1a1a1a; font-size: 15px; line-height: 1.6; white-space: pre-wrap;">{_esc(message)}</p>
-            </div>
+                <div style="border: 1px solid #e7e7e7; border-radius: 8px; padding: 18px 20px; margin-bottom: 24px;">
+                    <div style="font-size: 11px; font-weight: 600; letter-spacing: 0.8px; text-transform: uppercase; color: #003399; margin-bottom: 8px;">A note from us</div>
+                    <div style="color: #444; font-size: 14px; line-height: 1.55;">{safe_message}</div>
+                </div>
         """
 
     html = f"""
     <div style="background: #f8f9fa; padding: 40px 20px; font-family: 'IBM Plex Sans', Arial, Helvetica, sans-serif;">
         <div style="max-width: 560px; margin: 0 auto; background: #fff; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.04);">
             {_brand_header()}
-            <div style="padding: 32px;">
-                <p style="margin: 0 0 20px; color: #1a1a1a; font-size: 16px; line-height: 1.6;">
-                    We looked into <strong>{_esc(registration)}</strong> by hand.
-                </p>
-                <p style="margin: 0 0 20px; color: #4a4a4a; font-size: 15px; line-height: 1.6;">
-                    Unfortunately there is no paint code published for this vehicle.
-                    We checked every source available to us, including the
-                    manufacturer records — for some vehicles the code simply was
-                    never issued or recorded.
-                </p>
+            <div style="padding: 40px 32px;">
+                <h1 style="margin: 0 0 24px; font-size: 22px; color: #1a1a1a; font-weight: 600;">We looked into {_esc(registration)}</h1>
+                {name_block}
                 {note_block}
-                <div style="background: #f8f9fa; border-radius: 6px; padding: 20px; margin: 24px 0;">
-                    <p style="margin: 0 0 10px; color: #666; font-size: 13px;">What you can do next</p>
-                    <p style="margin: 0; color: #1a1a1a; font-size: 14px; line-height: 1.7;">
-                        Your vehicle's paint code label is the definitive source — it is usually
-                        inside the driver's door shut, under the bonnet, or in the boot.
-                        A local factor or body shop can also match your paint directly from
-                        the panel if no code exists.
-                    </p>
-                </div>
                 <table style="width: 100%; border-collapse: collapse; margin-top: 8px;">
                     <tr style="border-top: 1px solid #eee;">
-                        <td style="padding: 12px 0; color: #666; font-size: 14px;">Vehicle</td>
+                        <td style="padding: 12px 0; color: #666; font-size: 14px; width: 120px;">Vehicle</td>
                         <td style="padding: 12px 0; color: #1a1a1a; font-size: 14px;">{_esc(vehicle_title) or '&mdash;'}</td>
+                    </tr>
+                    <tr style="border-top: 1px solid #eee;">
+                        <td style="padding: 12px 0; color: #666; font-size: 14px;">Registration</td>
+                        <td style="padding: 12px 0; color: #1a1a1a; font-size: 14px;">{_esc(registration)}</td>
+                    </tr>
+                    <tr style="border-top: 1px solid #eee;">
+                        <td style="padding: 12px 0; color: #666; font-size: 14px;">VIN</td>
+                        <td style="padding: 12px 0; color: #1a1a1a; font-size: 14px; word-break: break-all; overflow-wrap: break-word;">{_esc(vin_masked) or '&mdash;'}</td>
                     </tr>
                     <tr style="border-top: 1px solid #eee;">
                         <td style="padding: 12px 0; color: #666; font-size: 14px;">Colour</td>
@@ -414,7 +427,7 @@ def send_user_no_code_available(to_email, registration, vehicle_title, colour, m
         "from": settings.DEFAULT_FROM_EMAIL,
         "to": to_email,
         "bcc": [settings.DEFAULT_FROM_EMAIL],
-        "subject": f"About your paint code request for {registration}",
+        "subject": f"No paint code for {registration}",
         "html": html,
         "attachments": _attachments(extra_attachments),
     }, context='no_code_available')
@@ -535,7 +548,7 @@ def send_user_pending_notification(to_email, registration, vehicle_title, vin_ma
     return _safe_send({
         "from": settings.DEFAULT_FROM_EMAIL,
         "to": to_email,
-        "subject": f"We've received your paint code request for {registration}",
+        "subject": f"We're looking into {registration}",
         "html": html,
         "attachments": _attachments(),
     }, context='user_pending')
