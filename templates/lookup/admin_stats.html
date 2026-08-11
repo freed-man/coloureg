@@ -521,13 +521,6 @@
             <p class="stat-subvalue">code delivered but Stripe capture failed — chase these</p>
         </div>
         {% endif %}
-        {% if no_code_available_count %}
-        <div class="stat-card">
-            <p class="stat-label">No code exists</p>
-            <p class="stat-value">{{ no_code_available_count }}</p>
-            <p class="stat-subvalue">searched everywhere, none published — excluded from rates</p>
-        </div>
-        {% endif %}
         <div class="stat-card">
             <p class="stat-label">Avg lookup time</p>
             <p class="stat-value">{{ avg_duration_s }}s</p>

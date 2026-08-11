@@ -2371,7 +2371,6 @@ def admin_stats(request):
     # from BOTH sides: counting them as failures punishes us for a gap in the
     # manufacturer's data, counting them as successes claims a code we never
     # delivered. They are reported separately instead.
-    no_code_available_count = lookups.filter(no_code_available=True).count()
     searched_to_completion = success_with_code + genuine_miss_count
     success_rate = (
         (success_with_code / searched_to_completion * 100)
@@ -2592,7 +2591,10 @@ def admin_stats(request):
         'vdg_balance_at': vdg_balance_at,
         'provider_breakdown': provider_breakdown,
         # --- paint16 metrics ---
-        'no_code_available_count': no_code_available_count,
+        # paint58: the 'No code exists' stat card was removed from the dashboard,
+        # so this count is no longer rendered. The daily chart still breaks the
+        # same outcome out as its own series (chart_nocode), which is where the
+        # number is actually useful — a trend rather than a running total.
         # Lookups refused by Turnstile. Expected to be near-zero and made up of
         # bots; a rise here alongside a fall in real volume is the signature of
         # the widget failing for genuine users.
