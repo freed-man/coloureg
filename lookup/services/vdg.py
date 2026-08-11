@@ -28,6 +28,32 @@ VDG_LOOKUP_ENDPOINT = f'{VDG_BASE_URL}/lookup'
 # to include VehicleDetails + ModelDetails + PaintCodeDetails.
 VDG_PACKAGE_NAME = 'PaintCodeDetails'
 
+# Client-side timeout for the whole lookup, in seconds (paint56).
+#
+# WHY 45 AND NOT 30. Nothing here is genuinely slow. A warm lookup returns in
+# ~0.5s and VDG's own QueryTimeMs is single-digit milliseconds; the wait is a
+# COLD fetch of the paint document from their upstream supplier, measured at
+# ~15.6s against a fresh VRM, with the identical repeat 0.5s later. VDG raised
+# their upstream timeout on 6 Aug 2026, which doubled first-pass paint returns
+# (21.4% -> 42.0%) and lifted overall success 77.2% -> 90.2%. The cost was that
+# their ceiling moved past OURS: for three months our slowest call every single
+# day was exactly 15.1s, and from 10 Aug it is ~31s. Five requests then died at
+# 30.8s (spread under 400ms — a fixed cap, not variable load) returning NOTHING:
+# no vehicle, no VIN, so pl24 could not run either, since it needs a VIN.
+#
+# So WE are now the binding constraint, not them. Ten lookups since 6 Aug
+# succeeded taking over 15.5s and would have been cut off under the old cap.
+#
+# DO NOT LOWER THIS. 62% of calls in the 9-14.8s band succeed first time, and
+# shortening it throws away the very responses their change made available.
+#
+# Budget: index() spends at most this plus the DVLA fallback (p50 1.25s, max
+# 4.13s) inside one request, against gunicorn's 90s worker timeout — so 45
+# leaves ~40s of headroom. The recovery retry runs in a SEPARATE request
+# (/lookup-status) bounded by PL24_TIMEOUT=65, also under 90. Raising this
+# beyond ~60 would start to crowd both, and Cloudflare serves a 524 at 100s.
+VDG_TIMEOUT_S = float(os.environ.get('VDG_CLIENT_TIMEOUT_S', '45'))
+
 
 class VdgError(Exception):
     pass
@@ -60,7 +86,7 @@ def _make_request(registration, billing_sink=None):
     }
 
     try:
-        response = requests.get(VDG_LOOKUP_ENDPOINT, params=params, timeout=30)
+        response = requests.get(VDG_LOOKUP_ENDPOINT, params=params, timeout=VDG_TIMEOUT_S)
     except requests.exceptions.Timeout as e:
         # Raise the timeout-specific subclass so views.py / Sentry can tell
         # this apart from a generic transport failure or VDG 500.
