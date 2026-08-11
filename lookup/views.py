@@ -741,6 +741,67 @@ def index(request):
                 'lookup_price': dj_settings.LOOKUP_PRICE_PENCE / 100.0,
             })
 
+        # --- Per-registration window (paint54) -----------------------------
+        # LAST gate before the only paid call. Bounds a CACHE STAMPEDE: once a
+        # lookup completes, VrmCache (hit) or the negative cache (miss) serves
+        # every repeat of that reg for free, so the only exposed moment is the
+        # 10-15s while the first call is still in flight. Requests arriving in
+        # that window find nothing stored and each pay again — which is why 8
+        # simultaneous lookups of one reg cost 8x while 8 spread over an hour
+        # cost once.
+        #
+        # ORDER MATTERS, and it is the opposite of the per-IP limiter's:
+        #   BELOW both caches, because a cached repeat costs us NOTHING and
+        #     still bills the customer when payments are on (paint28, ~21% of
+        #     revenue). Gating above the caches would refuse a paying customer
+        #     on our best-margin lookup. Never move this above them.
+        #   ABOVE the VDG call, because bounding spend is the entire point.
+        #
+        # Why this exists when Turnstile already blocks the abuse: in the Aug
+        # 2026 traffic the attacker sent ~250 curl requests/day across 733 IPs
+        # (median ONE request per IP) and 52 registrations, 51 of which were
+        # used on a single day and discarded. The per-IP limiter never fires
+        # against that shape and the blocklists have nothing stable to hold on
+        # to, so Turnstile is the sole guard — and it fails OPEN on a
+        # Cloudflare outage by design. This is the only gate that engages
+        # regardless of IP count AND regardless of Turnstile's state.
+        #
+        # NOT a lock. cache.add() would serialise correctly but the waiters
+        # PARK THREADS, and sixteen of them fills the gunicorn pool including
+        # the healthcheck. Reject immediately instead.
+        #
+        # No access-key exemption, for the same reason the budget breaker sits
+        # above the access exemption: a leaked key must not be able to spend
+        # freely. A trade user repeating a reg is served from cache anyway.
+        if sliding_rate_limited('reg', registration, limit=2, window=60):
+            # The per-IP allowance was already consumed above (that gate must
+            # stay above the caches). Refusing here without refunding would
+            # repeat the paint30 bug, where a refusal burned one of the
+            # visitor's three.
+            credit_sliding_allowance('lookup', get_client_ip(request))
+            burst_search = Search(
+                registration=registration,
+                ip_address=get_client_ip(request),
+                user_agent=request.META.get('HTTP_USER_AGENT', ''),
+                device=parse_device(request.META.get('HTTP_USER_AGENT', '')),
+                provider=Search.PROVIDER_CACHE,
+                success=False,
+                error_message='reg-window: same registration in flight (VDG skipped)',
+                lookup_duration_ms=int((time.time() - start_time) * 1000),
+            )
+            burst_search.save()
+            messages.error(
+                request,
+                'That registration is already being looked up. Please wait a '
+                'few seconds and try again.'
+            )
+            return render(request, 'lookup/index.html', {
+                'turnstile_site_key': dj_settings.TURNSTILE_SITE_KEY,
+                'payments_on': payments_active(config),
+                'payments_configured': payments_configured(),
+                'lookup_price': dj_settings.LOOKUP_PRICE_PENCE / 100.0,
+            })
+
         search = Search(
             registration=registration,
             ip_address=get_client_ip(request),
