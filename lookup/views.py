@@ -1068,16 +1068,39 @@ def index(request):
         if paint_code:
             store_vrm_payload(registration, request.session['vehicle_data'])
             clear_miss(registration)  # a prior miss is now stale — forget it
-        elif bool(vin):
-            # Vehicle found but no paint yet. The pl24/VDG-retry recovery may
-            # still succeed via /lookup-status, so DON'T record a miss here —
-            # that's done only if recovery also comes back empty (see
-            # lookup_status). Recording now would wrongly short-circuit the very
-            # next lookup while recovery could still find the code.
+        elif request.session['vehicle_data']['paint_pending']:
+            # Recovery is ABOUT TO RUN, so don't pre-empt it. The miss is
+            # recorded only if recovery also comes back empty (see
+            # lookup_status). Recording now would short-circuit the very next
+            # lookup while recovery could still find the code.
+            #
+            # paint55: this was `bool(vin)`, which is a DIFFERENT question. The
+            # recovery gate a few lines above is `(not paint_code) and
+            # bool(make)` — deliberately NOT keyed on the VIN, because only the
+            # pl24 leg needs one and the VDG retry works from the registration
+            # alone. Keying this branch on the VIN meant that whenever VDG
+            # failed OUTRIGHT and DVLA supplied the details, we recorded a miss
+            # and then immediately ran a recovery that was still allowed to
+            # succeed — caching a "we checked and found nothing" for an hour
+            # having checked nothing.
+            #
+            # That was latent while VDG always answered. It surfaced on 10 Aug
+            # 2026 when VDG raised their upstream paint timeout past our 30s
+            # client timeout: the call returns NOTHING (no vehicle, no VIN, not
+            # billed) instead of degrading to vehicle-without-paint at ~15s as
+            # it had for the previous three months. DVLA still identifies the
+            # car, so make is set, so recovery runs — but the miss had already
+            # been written. One customer timed out at 20:22 and retried at
+            # 20:25, and was told we had checked recently and found no paint
+            # code for a registration that had never reached VDG at all.
+            #
+            # Keyed on the same expression as the recovery gate, these two can
+            # no longer disagree.
             pass
         else:
-            # No vehicle at all (or a genuine dead end) -> remember the miss so a
-            # repeat within the hour is served instantly without VDG spend.
+            # No vehicle from EITHER source -> a genuine dead end (invalid or
+            # unrecognised reg, the main thing a proxy pool hammers). Remember
+            # it so a repeat within the hour is served instantly without spend.
             record_miss(registration)
 
         return redirect('results')
