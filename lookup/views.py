@@ -1681,6 +1681,31 @@ def _wait_for_recovery_result(search_id):
         except (Search.DoesNotExist, ValueError, TypeError):
             return JsonResponse({'status': 'error'}, status=200)
         if row.paint_code:
+            # PAYWALL RE-CHECK, and it has to be here (paint60).
+            #
+            # The choke point in _lookup_status runs ONCE, before this waiter is
+            # entered, and at that moment the row had no code — so it was not
+            # locked and the poll passed. This loop then re-reads the row until
+            # the winning request lands a code, and _record_paint_hit applies
+            # the paywall in the same breath as writing it. So between that
+            # single check and this return, an unlocked row becomes a locked
+            # one, and without this the recovered code would be handed to the
+            # browser unpaid.
+            #
+            # Exactly the paint27 shape: a poll whose result TURNED OUT to be
+            # chargeable. The comment at the choke point says guarding one place
+            # is deliberate, and it is — but only for exits that read the row
+            # before it. This one reads it after, so it needs its own guard.
+            #
+            # Latent while payments are off, because paywalled is never set.
+            # Live the moment they are switched on.
+            #
+            # Uses the row already in hand rather than _locked_status_response,
+            # which would re-query for a row we just read.
+            if row.is_locked():
+                payload = {'status': 'locked'}
+                payload.update(_locked_payload(row))
+                return JsonResponse(payload)
             paint_hex, paint_name, canonical_code = PaintLookup.lookup_with_canonical(
                 manufacturer=row.make,
                 paint_code=row.paint_code,
