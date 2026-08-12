@@ -69,7 +69,8 @@ def payments_active(config=None):
     return bool(config.payments_enabled)
 
 
-def create_checkout_session(registration, success_url, cancel_url, client_ip=None):
+def create_checkout_session(registration, success_url, cancel_url, client_ip=None,
+                            user_agent=None, search_id=None):
     """Create a manual-capture Checkout Session for one lookup.
 
     Returns the Stripe Checkout Session (caller redirects to session.url), or
