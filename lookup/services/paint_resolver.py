@@ -342,6 +342,26 @@ def _vdg_retry(registration, telemetry=None, search_id=None):
         'paint_description': data.get('paint_description', ''),
         'all_paint_codes': data.get('all_paint_codes', []),
         'balance': data.get('balance'),
+        # The retry calls the SAME bundle endpoint as the first pass, so `data`
+        # carries the vehicle identity too — VIN included. This used to be
+        # dropped: only the paint fields were surfaced (paint61).
+        #
+        # It matters when the FIRST call returned nothing at all. A VDG timeout
+        # yields no vehicle and no VIN, but the retry (which needs only the
+        # registration) comes back with the full bundle. YF23KRN on 12 Aug is
+        # the case: first pass died at 46s with nothing, retry returned C31 —
+        # so a complete response was in hand, and the row still shows vin=''.
+        # The VIN then reads blank on the results page and in the email.
+        #
+        # DOES NOT change which lookups succeed, and it is worth being exact
+        # about why: pl24 is submitted to the executor at the SAME instant as
+        # this retry, with the `vin` variable as it stands then — empty. It
+        # no-ops at its own `if not vin` guard before this value could exist.
+        # So this is data completeness and honest telemetry, not a recovery
+        # improvement. It is also the precondition for sequencing the recovery
+        # (retry first behind a short fuse, then pl24 with the VIN it produced),
+        # which is where it WOULD change outcomes.
+        'vin': data.get('vin', ''),
     }
 
 

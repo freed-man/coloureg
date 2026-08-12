@@ -1610,6 +1610,15 @@ def _lookup_status(request, search_id):
         vdg_colour=vehicle_data.get('colour', ''),
     )
 
+    # A VDG retry carries the whole bundle, so it can supply a VIN the first
+    # pass never returned — the timeout case (paint61). Only ever FILLS a gap:
+    # if the first pass gave us a VIN, that one stands, because it is the
+    # identity the rest of this request was built on.
+    _recovered_vin = (result.get('vin') or '').strip()
+    if _recovered_vin and not (vehicle_data.get('vin') or '').strip():
+        vehicle_data['vin'] = _recovered_vin
+        _persist_recovered_vin(search_id, _recovered_vin)
+
     _record_paint_hit(search_id, paint_code, paint_description, source, telemetry,
                       enriched_from=enriched_from)
 
@@ -1929,6 +1938,25 @@ def _record_paint_hit(search_id, paint_code, paint_description, source, telemetr
     # gated too (paint22). Runs after the save above so the row it inspects
     # already carries the recovered code and name.
     _apply_paywall(search)
+
+
+def _persist_recovered_vin(search_id, vin):
+    """Write a VIN the recovery retry supplied, but only into an empty column.
+
+    An atomic UPDATE filtered on vin='' so it cannot overwrite an identity the
+    first pass already established, and cannot lose a race with the row's own
+    save. Best-effort: this is completeness, never worth breaking a lookup for.
+
+    Truncated because .update() bypasses Model.save() and its global truncation
+    guard — the same reason the other worker-side writes cap their strings.
+    """
+    try:
+        # 17, matching Search.vin's max_length exactly — a VIN is 17 chars and
+        # the column is sized for it. Postgres would raise on anything longer.
+        Search.objects.filter(pk=search_id, vin='').update(vin=(vin or '')[:17])
+    except Exception:  # noqa: BLE001
+        logger.warning('recovered VIN not stored for search=%s', search_id,
+                       exc_info=True)
 
 
 def _record_recovery(search_id, telemetry):
