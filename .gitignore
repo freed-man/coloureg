@@ -7,4 +7,4 @@ staticfiles/
 etc/
 vdg_retry_test.py
 
-oneauto_probe.py
+oneauto*
