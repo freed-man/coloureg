@@ -1182,18 +1182,25 @@ class PaintLookup(models.Model):
                 'name': row.name,
                 'hex': row.hex or None,
                 'is_body': False,
+                # Carried from the row we already hold. The body-colour match
+                # below used to re-query for exactly this field, one SELECT per
+                # operand, for rows that were in hand a few lines earlier. Safe
+                # to reuse because (manufacturer, code) is UNIQUE
+                # (lookup_paintlookup_uniq), so the re-query could only ever
+                # return this same row — it was a duplicate read, not a
+                # different lookup. Two queries saved on every two-tone result.
+                '_group': (row.color_group or '').lower(),
             })
         want = (vdg_colour or '').strip().lower()
         if want:
             for item in out:
-                grp = (cls.objects.filter(
-                    manufacturer=cls.normalize_manufacturer(manufacturer),
-                    code=item['code'],
-                ).values_list('color_group', flat=True).first() or '').lower()
+                grp = item['_group']
                 if grp and grp == want:
                     item['is_body'] = True
             if any(i['is_body'] for i in out):
                 out.sort(key=lambda i: not i['is_body'])
+        for item in out:
+            item.pop('_group', None)     # internal, never reaches the template
         return out
 
     @classmethod
