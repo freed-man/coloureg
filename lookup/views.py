@@ -14,7 +14,7 @@ from django.core.exceptions import ValidationError
 from django.core.validators import validate_email, validate_ipv46_address
 from django.core.cache import caches
 from django.db import connection
-from django.db.models import Count, Avg, Q, Sum, Max, Case, When, IntegerField
+from django.db.models import Count, Avg, Q, Sum
 from django.db.models.functions import TruncDate
 from django.http import JsonResponse, HttpResponse
 from django.utils import timezone

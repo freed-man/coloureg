@@ -239,7 +239,6 @@ def _record_retry_billing(search_id, cost, balance, retry_code):
         _pending_count += 1
     try:
         from decimal import Decimal
-        from django.db import connections
         from django.db.models import DecimalField, F, Value
         from django.db.models.functions import Coalesce
         from lookup.models import Search
