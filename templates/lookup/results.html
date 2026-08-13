@@ -810,6 +810,8 @@
     // did not start.
     var busyRetries = 0;
     var MAX_BUSY_RETRIES = 5;
+    // One extra attempt after an abort/network error, and one only (paint63).
+    var finalAttemptDone = false;
 
     function runRecovery() {
         if (stopped) return;
@@ -850,10 +852,57 @@
                 }
             })
             .catch(function () {
-                // Network error, or we aborted at MAX_WAIT_MS: show the manual offer
-                // so the user is never left on the spinner.
                 clearTimeout(killer);
-                finish(showMissed);
+                // Network error, or we hit MAX_WAIT_MS and aborted. Do NOT give
+                // up yet (paint63).
+                //
+                // Aborting only stops US listening — the server keeps working,
+                // finishes the recovery, and writes both the row and the
+                // session. GY59NBG on 13 Aug is the case: first pass timed out
+                // at 36s, the retry then found 354 / Titansilber Metallic and
+                // stored it, but the page had already stopped waiting, so the
+                // customer was told the servers timed out while the answer sat
+                // in the database. A refresh showed it.
+                //
+                // One more attempt costs nothing and cannot double-charge: the
+                // recovery has already been claimed, so this call returns from
+                // the session as 'already_resolved' in about 2ms with no VDG
+                // request. Measured, not assumed.
+                //
+                // Guarded to a single extra attempt — if the answer genuinely
+                // is not there, we must still show the manual offer rather than
+                // loop.
+                if (finalAttemptDone) { finish(showMissed); return; }
+                finalAttemptDone = true;
+                setTimeout(function () {
+                    if (stopped) return;
+                    var c2 = new AbortController();
+                    var k2 = setTimeout(function () { c2.abort(); }, 15000);
+                    fetch(STATUS_URL, {
+                        headers: { 'X-Requested-With': 'XMLHttpRequest' },
+                        signal: c2.signal
+                    })
+                        .then(function (r) { return r.json(); })
+                        .then(function (data) {
+                            clearTimeout(k2);
+                            if (stopped) return;
+                            var s2 = data && data.status;
+                            if (s2 === 'found' || s2 === 'already_resolved') {
+                                finish(function () { showFound(data); });
+                            } else if (s2 === 'name_only') {
+                                finish(function () { showNameOnly(data); });
+                            } else if (s2 === 'locked') {
+                                stopped = true;
+                                window.location.reload();
+                            } else {
+                                finish(showMissed);
+                            }
+                        })
+                        .catch(function () {
+                            clearTimeout(k2);
+                            finish(showMissed);
+                        });
+                }, 3000);
             });
     }
 
