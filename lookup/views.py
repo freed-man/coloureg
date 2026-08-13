@@ -1565,11 +1565,33 @@ def _lookup_status(request, search_id):
         vehicle_data['paint_pending'] = False
         request.session['vehicle_data'] = vehicle_data
         request.session.modified = True
-        # Recovery is now exhausted for this reg (VDG first pass + VDG retry +
-        # pl24 all came back without a code) — remember the miss so a repeat
-        # within the hour is served instantly without re-running the whole chain.
+        # Remember the miss so a repeat within the hour is served instantly —
+        # but ONLY when the recovery was genuinely able to try everything.
+        #
+        # WITHOUT A VIN, PL24 NEVER RAN (paint64). It returns at its own
+        # `if not vin` guard before making a request, so a no-VIN recovery is
+        # the VDG retry alone. Caching that as an exhausted miss is wrong: we
+        # never asked the source most likely to have the answer.
+        #
+        # FX25DVB on 13 Aug is the case. First pass timed out at 35.8s, so no
+        # vehicle and no VIN; the retry also failed; the miss was cached. Two
+        # retries seconds later were refused from the negative cache. The row
+        # was then deleted by hand and the SAME lookup succeeded in 878ms —
+        # pl24 returning C4W, Skyscraper Grau Metallic. A transient VDG timeout
+        # had been recorded as a permanent dead end on an easy vehicle.
+        #
+        # Same family as paint55, which fixed the equivalent write in index();
+        # this is the recovery-completion write, which that change did not
+        # reach. Note the telemetry reads pl24_attempted=True either way — the
+        # leg IS submitted to the executor — so the row cannot tell you this
+        # happened. Only the empty VIN can.
+        #
+        # This does not weaken the bot defence: a random plate returns no
+        # vehicle from either source and is cached at the other call site,
+        # which is untouched. To reach here at all, a real vehicle had to be
+        # identified. And the per-registration window still bounds repeats.
         reg_missed = vehicle_data.get('registration')
-        if reg_missed:
+        if reg_missed and vin:
             record_miss(reg_missed)
         return JsonResponse({'status': 'not_found'})
 
