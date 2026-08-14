@@ -380,6 +380,46 @@ _VW_COMMERCIAL_MODELS = (
 )
 
 
+# VDG make strings that pl24's MAKE_TO_BRAND has no key for, mapped to one it
+# does (paint65).
+#
+# pl24 turns make strings into catalogues — that IS its job, and its map already
+# carries 46 make strings. The reason this translation lives HERE rather than
+# there is narrower: "Mercedes-AMG" is what VDG calls the car, and VDG's
+# vocabulary is coloureg's business. Put it in both places and two systems are
+# each half-responsible for the same rewrite, with the one that knows why not
+# doing it. Same boundary, same reasoning, same file as _route_category.
+#
+# EVIDENCE, not guesswork: pl24's resolve_brand('Mercedes-AMG') returns
+# "unknown make", so the lookup dies at its routing gate before a browser
+# opens. Mercedes-Benz resolves and returns paint (6 of 54 lookups); every
+# Mercedes-AMG lookup has failed (3 of 3), and partslink24 was confirmed by
+# hand to hold the code for WF70WZR.
+#
+# DELIBERATELY NOT HERE — checked, and the ownership guess was wrong:
+#   Cupra   pl24 has its OWN Cupra catalogue, not SEAT. 10/10 resolved anyway.
+#   Dacia   pl24 has its OWN Dacia catalogue, not Renault. 9/9 resolved.
+#   Alpine, smart  both already keys in pl24's map.
+# Mapping those to a parent would break routing that works. A shared corporate
+# owner is not evidence of a shared catalogue.
+#
+# Renault is a different problem and NOT an alias: it routes cleanly and still
+# never returns (0 of 25 attempted). That belongs to pl24's extractor, and
+# diagnosing it needs a debug dump, not an entry here.
+_PL24_MAKE_ALIASES = {
+    'mercedes-amg': 'Mercedes-Benz',
+}
+
+
+def route_make(make):
+    """The make string pl24 should receive. Only rewrites known-unroutable ones.
+
+    Returns `make` untouched when there is no alias, so an unknown string still
+    reaches pl24 and fails visibly rather than being silently swallowed here.
+    """
+    return _PL24_MAKE_ALIASES.get((make or '').strip().lower(), make)
+
+
 def _route_category(make, model, vin, category):
     """The category pl24 should receive for this vehicle.
 
@@ -433,8 +473,15 @@ def _pl24_lookup(vin, make, category=None, search_id=None):
     # returned by the time we get here and nothing would otherwise keep this.
     # Compare against paint_code afterwards to see whether the two sources
     # agree; vdg_retry_code covers the mirror case.
-    if search_id is not None and code:
-        _record_worker_result(search_id, pl24_code=code[:100])
+    # Record the outcome REGARDLESS of whether a code came back — a failure's
+    # reason is the whole point of storing it (paint65). Capped at the column
+    # width because _record_worker_result writes via .update(), which bypasses
+    # Model.save() and its truncation guard.
+    outcome = (data.get('outcome') or '').strip()[:40]
+    if search_id is not None and (code or outcome):
+        _record_worker_result(search_id,
+                              **({'pl24_code': code[:100]} if code else {}),
+                              **({'pl24_outcome': outcome} if outcome else {}))
     # Keep the result if pl24 returned EITHER a code OR a colour name. The
     # name-only case (code == '' but desc set) covers brands partslink24 carries
     # a colour name but no code for (Ford passenger, Jaguar, older Land Rover,
@@ -516,7 +563,11 @@ def resolve_paint(registration, vin, make, category=None, telemetry=None, model=
         # VDG are sent to pl24 as N1 so the lookup hits the right catalogue
         # first time. See _route_category.
         f_pl24 = ex.submit(
-            _pl24_lookup, vin, make, _route_category(make, model, vin, category),
+            # Make AND category are both routed (not raw) at this boundary. The
+            # Search row keeps VDG's originals either way — this rewrite applies
+            # solely to what pl24 receives.
+            _pl24_lookup, vin, route_make(make),
+            _route_category(make, model, vin, category),
             search_id,
         )
 

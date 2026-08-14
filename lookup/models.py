@@ -141,6 +141,20 @@ class Search(models.Model):
     # rather than record it, and that needs disconnect handling in the pl24
     # service, not here.
     pl24_code = models.CharField(max_length=100, blank=True, default='')
+    # WHY pl24 gave what it gave (paint65). The service returns an outcome
+    # string — success, name_only, paint_data_missing, not_found_as_routed,
+    # catalog_ui_error, page_load_timeout — and coloureg used to read only
+    # paint_code/paint_description and drop it.
+    #
+    # That cost a real diagnosis: 42 Renault lookups have pl24_attempted=True
+    # and pl24_returned=False, and NOTHING on the row distinguishes "the page
+    # had no code" from "the extractor could not read it" from "partslink24
+    # does not carry the car". Those need different fixes, and the stats could
+    # not tell them apart.
+    #
+    # Not retroactive — the existing rows stay blank. This only makes the NEXT
+    # occurrence answerable without a manual debug dump.
+    pl24_outcome = models.CharField(max_length=40, blank=True, default='')
 
     # Which access key (if any) exempted this lookup from the hourly limit
     # (paint41). Stores the LABEL, not the key: the label is what you read on
