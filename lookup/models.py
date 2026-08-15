@@ -650,6 +650,35 @@ class PaintLookup(models.Model):
                 vdg_colour=vdg_colour,
             )
             if not swatch:
+                # L-PREFIX FALLBACK (paint72). BMW paint codes exist in two
+                # forms — bare ('475') and the catalogue form with an L for
+                # Lack ('L475'). Our table holds the bare form (2 of 1825 BMW
+                # rows start with L) and so do pl24 and VDG, but One Auto
+                # returns the full form: it gave 'L475' for the same 530e that
+                # pl24 answered as '475'. Unresolved, that reaches the customer
+                # as a bare number with no colour name and no swatch.
+                #
+                # NOT a blanket strip. Audi codes genuinely start with L —
+                # LY2Z, LI3K, LSP3 are real paints — so this fires ONLY when
+                # the given code missed AND the stripped form hits. An Audi
+                # code resolves on the first attempt and never reaches here.
+                stripped = (paint_code or '').strip()
+                if len(stripped) > 1 and stripped[0] in ('L', 'l'):
+                    alt = cls.lookup(
+                        manufacturer=manufacturer,
+                        paint_code=stripped[1:],
+                        model=model,
+                        year=year,
+                        vdg_colour=vdg_colour,
+                    )
+                    if alt:
+                        logger.info(
+                            'paint code %s resolved as %s after dropping the '
+                            'L prefix (%s)', paint_code, stripped[1:], manufacturer,
+                        )
+                        swatch = alt
+                        paint_code = stripped[1:]
+            if not swatch:
                 return None, None, None
             canonical = cls.find_canonical_code(
                 manufacturer=manufacturer,
