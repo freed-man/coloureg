@@ -70,12 +70,21 @@ BUILD_DECODE_COST = 1.50
 # 21-31s and a Mercedes still fetching at 60s.
 #
 # So One Auto is bounded in the sense that it always answers EVENTUALLY, not
-# that it answers quickly. 45s sits under the pool's own 65s ceiling, so the leg
-# can run to a real conclusion without ever being the thing that holds a lookup
-# open — resolve_paint returns the moment any leg wins, and a straggler is
-# abandoned.
+# that it answers quickly.
+#
+# 30s, not 45, because this budget decides how long a FAILED lookup takes:
+# resolve_paint returns when every leg has finished, so once the others have
+# given up the customer is waiting on this one alone. Fifteen seconds of extra
+# spinner for an answer that is not coming is the worse trade.
+#
+# What that costs is small and measured: the vehicles that sat at 202 for
+# 21-31s in the coverage run were Nissan and Fiat, and when they finally
+# resolved they returned 206 — NO DATA. A longer budget bought nothing there.
+# One Mercedes in fifty was still fetching at 60s and did eventually carry a
+# code, and that one is lost — but its answer is held by One Auto for 24 hours,
+# so a repeat lookup gets it instantly.
 HTTP_TIMEOUT = 12.0
-TOTAL_BUDGET_S = float(os.environ.get('ONEAUTO_BUDGET_S', '45'))
+TOTAL_BUDGET_S = float(os.environ.get('ONEAUTO_BUDGET_S', '30'))
 
 # Poll gap. Measured: their data is ready at ~6s, and every earlier timing of
 # "9.5s" was an artefact of polling every 4 seconds — the numbers clustered on
