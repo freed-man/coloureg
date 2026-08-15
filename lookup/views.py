@@ -1555,6 +1555,10 @@ def _lookup_status(request, search_id):
             registration, vin, make, category, telemetry=telemetry,
             model=vehicle_data.get('model', ''), search_id=search_id,
             vdg_colour=vehicle_data.get('colour', ''),
+            # Mazda is the one make One Auto answers only from 2022 (older
+            # returns a vehicle with a null colour AND still bills 30p), so the
+            # routing needs the year.
+            year=vehicle_data.get('year'),
         )
     except Exception:  # noqa: BLE001 — never let a fallback failure 500 the poll
         # Log it. Sentry only reports UNHANDLED exceptions, so without this a
@@ -1893,6 +1897,13 @@ def _apply_recovery_telemetry(search, telemetry):
     search.pl24_attempted = bool(telemetry.get('pl24_attempted'))
     search.pl24_returned = bool(telemetry.get('pl24_returned'))
     search.recovery_name_only = bool(telemetry.get('pl24_name_only'))
+    # One Auto (paint67). The COST is recorded whatever the outcome, because an
+    # unrecorded charge is invisible to the daily budget breaker — and One Auto
+    # bills on a 200 even when the colour comes back null.
+    if telemetry.get('oneauto_cost') is not None:
+        search.oneauto_cost = telemetry['oneauto_cost']
+    if telemetry.get('oneauto_outcome'):
+        search.oneauto_outcome = telemetry['oneauto_outcome'][:40]
     dur = telemetry.get('duration_ms')
     if dur is not None:
         search.recovery_duration_ms = int(dur)

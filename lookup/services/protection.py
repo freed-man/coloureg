@@ -80,11 +80,17 @@ def london_day_start(now=None):
 
 
 def spend_today(now=None):
-    """Sum of real (refund-net) VDG spend since London midnight, as a Decimal.
+    """Sum of ALL provider spend since London midnight, as a Decimal.
 
-    Reads the stored `vdg_transaction_cost` (net of refunds). Rows without a
-    cost (DVLA-fallback lookups that never called VDG, or pre-field legacy rows)
-    contribute nothing. Returns Decimal('0.00') when there's been no spend.
+    VDG (`vdg_transaction_cost`, net of refunds) plus One Auto
+    (`oneauto_cost`). Both, because the breaker exists to stop a runaway day and
+    a runaway day does not care which supplier caused it — £30 of One Auto with
+    VDG at zero is exactly as bad. Kept in separate COLUMNS so the dashboard can
+    still show which provider spent what.
+
+    Rows without a cost (DVLA-fallback lookups that never called a paid
+    provider, a One Auto 206, or pre-field legacy rows) contribute nothing.
+    Returns Decimal('0.00') when there has been no spend.
     """
     # Imported here to avoid a circular import at module load (models imports
     # nothing from services, but services importing models at top level plus
@@ -95,9 +101,27 @@ def spend_today(now=None):
     agg = (
         Search.objects
         .filter(timestamp__gte=start)
-        .aggregate(total=Sum('vdg_transaction_cost'))
+        .aggregate(vdg=Sum('vdg_transaction_cost'), oneauto=Sum('oneauto_cost'))
     )
-    return agg['total'] or Decimal('0.00')
+    return (agg['vdg'] or Decimal('0.00')) + (agg['oneauto'] or Decimal('0.00'))
+
+
+def spend_today_by_provider(now=None):
+    """Same window, split by provider — for the admin panel.
+
+    Returns {'vdg': Decimal, 'oneauto': Decimal, 'total': Decimal}.
+    """
+    from lookup.models import Search
+
+    start = london_day_start(now)
+    agg = (
+        Search.objects
+        .filter(timestamp__gte=start)
+        .aggregate(vdg=Sum('vdg_transaction_cost'), oneauto=Sum('oneauto_cost'))
+    )
+    vdg = agg['vdg'] or Decimal('0.00')
+    oneauto = agg['oneauto'] or Decimal('0.00')
+    return {'vdg': vdg, 'oneauto': oneauto, 'total': vdg + oneauto}
 
 
 def budget_exceeded(config, now=None):

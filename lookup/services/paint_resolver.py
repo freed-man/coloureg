@@ -38,6 +38,8 @@ import time
 import requests
 
 from .vdg import paint_lookup, VdgError
+from . import oneauto
+from .routing import should_call_oneauto
 
 
 def _enrich_from_lookup(result, make, model=None, vdg_colour=None):
@@ -512,7 +514,7 @@ def _pl24_lookup(vin, make, category=None, search_id=None):
 
 
 def resolve_paint(registration, vin, make, category=None, telemetry=None, model=None,
-                  search_id=None, vdg_colour=None):
+                  search_id=None, vdg_colour=None, year=None):
     """Race the VDG bundle-retry and the pl24 scrape; return the first usable
     paint result, or None if neither recovers a code.
 
@@ -561,6 +563,10 @@ def resolve_paint(registration, vin, make, category=None, telemetry=None, model=
     _t['pl24_attempted'] = True
     _t['pl24_returned'] = False
     _t['pl24_name_only'] = False
+    _t['oneauto_attempted'] = False
+    _t['oneauto_returned'] = False
+    _t['oneauto_cost'] = None
+    _t['oneauto_outcome'] = ''
     try:
         f_vdg = ex.submit(_vdg_retry, registration, _t, search_id)
         # Category is routed (not raw): VW commercial lines misfiled as M1 by
@@ -575,8 +581,26 @@ def resolve_paint(registration, vin, make, category=None, telemetry=None, model=
             search_id,
         )
 
+        # THIRD LEG (paint67). Gated by measured coverage, not by hope: see
+        # routing.py, where every make was established by calling it.
+        #
+        # It earns a place because it is BOUNDED — ~6s whether it answers or
+        # not — while the VDG leg above is now the FIRST paint call rather than
+        # a warm retry, so it is cold: 10-26s typically and up to a 60s gateway
+        # 502 on BMW. One Auto answers 5 of 5 BMWs. Before the vehicle/paint
+        # split this leg would have lost every race to a warm VDG read; now it
+        # frequently wins.
+        f_oneauto = None
+        if should_call_oneauto(make, model, year):
+            _t['oneauto_attempted'] = True
+            _oa_sink = {}
+            f_oneauto = ex.submit(
+                oneauto.lookup, vin=vin, make=make, model=model, year=year,
+                search_id=search_id, cost_sink=_oa_sink,
+            )
+
         deadline = time.monotonic() + PL24_TIMEOUT
-        pending = {f_vdg, f_pl24}
+        pending = {f_vdg, f_pl24} | ({f_oneauto} if f_oneauto else set())
         pl24_code_result = None      # pl24 returned a real CODE (short-circuits)
         pl24_name_only_result = None  # pl24 returned a name but NO code (fallback)
 
@@ -605,6 +629,25 @@ def resolve_paint(registration, vin, make, category=None, telemetry=None, model=
                 if vdg_result is not None:
                     _t['vdg_retry_returned'] = True
                     return _enrich_from_lookup(vdg_result, make, model, vdg_colour=vdg_colour)
+
+            # Then One Auto, ahead of pl24. Ordering rationale: both cost money
+            # only when they answer, but One Auto returns a code AND a colour
+            # name together ('MINERALGRAU METALLIC (B39)') where pl24 often
+            # returns one or the other — and 18 of 27 observed disagreements
+            # between sources were completeness rather than conflict.
+            if f_oneauto is not None and f_oneauto in done:
+                _t['oneauto_cost'] = _oa_sink.get('cost')
+                _t['oneauto_outcome'] = _oa_sink.get('outcome', '')
+                oa = _result_or_none(f_oneauto)
+                if oa is not None and oa.get('code'):
+                    _t['oneauto_returned'] = True
+                    return _enrich_from_lookup(
+                        {'paint_code': oa['code'],
+                         'paint_description': oa['description'],
+                         'all_paint_codes': oa['all_codes'],
+                         'source': 'oneauto'},
+                        make, model, vdg_colour=vdg_colour,
+                    )
 
             # VDG didn't (yet) yield paint. Inspect pl24 if it completed in this
             # batch. A real CODE wins immediately (subject only to a VDG code,

@@ -155,6 +155,16 @@ class Search(models.Model):
     # Not retroactive — the existing rows stay blank. This only makes the NEXT
     # occurrence answerable without a manual debug dump.
     pl24_outcome = models.CharField(max_length=40, blank=True, default='')
+    # What One Auto billed for this lookup (paint67). SEPARATE from
+    # vdg_transaction_cost rather than folded into one total, because the two
+    # answer different questions: the budget breaker wants the sum, but "is One
+    # Auto earning its 30p or duplicating what VDG already had" needs them
+    # apart. A 206 is free and leaves this null; a 200 with a NULL COLOUR still
+    # bills, which is the case worth being able to count.
+    oneauto_cost = models.DecimalField(
+        max_digits=6, decimal_places=2, null=True, blank=True,
+    )
+    oneauto_outcome = models.CharField(max_length=40, blank=True, default='')
 
     # Which access key (if any) exempted this lookup from the hourly limit
     # (paint41). Stores the LABEL, not the key: the label is what you read on
