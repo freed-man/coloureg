@@ -39,7 +39,6 @@ import requests
 
 from .vdg import paint_lookup, VdgError
 from . import oneauto
-from .routing import should_call_oneauto
 
 
 def _enrich_from_lookup(result, make, model=None, vdg_colour=None):
@@ -581,26 +580,33 @@ def resolve_paint(registration, vin, make, category=None, telemetry=None, model=
             search_id,
         )
 
-        # THIRD LEG (paint67). Gated by measured coverage, not by hope: see
-        # routing.py, where every make was established by calling it.
+        # THIRD LEG (paint67). Called for EVERY make that gets this far.
         #
-        # It earns a place because it is BOUNDED — ~6s whether it answers or
+        # There is deliberately no second skip list here. Makes we cannot do at
+        # all live in SiteConfig.unsupported_makes, which is admin-editable and
+        # is the FIRST guard in the chain — a lookup for one of those never
+        # reaches this pool, so filtering again would be dead code that needs a
+        # deploy to change.
+        #
+        # Nor is there a coverage filter. A 206 is free and this leg runs
+        # concurrently with the other two, so calling a make One Auto cannot do
+        # costs nothing — while NOT calling it hides a sellable code and freezes
+        # our picture of a supplier whose coverage demonstrably moves (Tesla was
+        # added to their Build Decode product mid-evaluation).
+        #
+        # It earns its place because it is BOUNDED — ~6s whether it answers or
         # not — while the VDG leg above is now the FIRST paint call rather than
-        # a warm retry, so it is cold: 10-26s typically and up to a 60s gateway
-        # 502 on BMW. One Auto answers 5 of 5 BMWs. Before the vehicle/paint
-        # split this leg would have lost every race to a warm VDG read; now it
-        # frequently wins.
-        f_oneauto = None
-        if should_call_oneauto(make, model, year):
-            _t['oneauto_attempted'] = True
-            _oa_sink = {}
-            f_oneauto = ex.submit(
-                oneauto.lookup, vin=vin, make=make, model=model, year=year,
-                search_id=search_id, cost_sink=_oa_sink,
-            )
+        # a warm retry, so it is cold: 10-26s typically, and up to a 60s gateway
+        # 502 on BMW. One Auto answered 5 of 5 BMWs.
+        _t['oneauto_attempted'] = True
+        _oa_sink = {}
+        f_oneauto = ex.submit(
+            oneauto.lookup, vin=vin, make=make, model=model, year=year,
+            search_id=search_id, cost_sink=_oa_sink,
+        )
 
         deadline = time.monotonic() + PL24_TIMEOUT
-        pending = {f_vdg, f_pl24} | ({f_oneauto} if f_oneauto else set())
+        pending = {f_vdg, f_pl24, f_oneauto}
         pl24_code_result = None      # pl24 returned a real CODE (short-circuits)
         pl24_name_only_result = None  # pl24 returned a name but NO code (fallback)
 
@@ -635,7 +641,7 @@ def resolve_paint(registration, vin, make, category=None, telemetry=None, model=
             # name together ('MINERALGRAU METALLIC (B39)') where pl24 often
             # returns one or the other — and 18 of 27 observed disagreements
             # between sources were completeness rather than conflict.
-            if f_oneauto is not None and f_oneauto in done:
+            if f_oneauto in done:
                 _t['oneauto_cost'] = _oa_sink.get('cost')
                 _t['oneauto_outcome'] = _oa_sink.get('outcome', '')
                 oa = _result_or_none(f_oneauto)
