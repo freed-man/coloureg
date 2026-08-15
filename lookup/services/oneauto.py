@@ -61,11 +61,21 @@ VIN_LOOKUP_COST = 0.30
 BUILD_DECODE_PATH = '/oneauto/oebuilddecode/v2'
 BUILD_DECODE_COST = 1.50
 
-# Total wall-clock budget for one lookup INCLUDING polls. Their answer lands at
-# ~6s; 20s is generous enough to absorb a slow one without holding the pool open
-# while the other legs have long since finished.
+# Total wall-clock budget for one lookup INCLUDING polls.
+#
+# 20s WAS WRONG and was measured to be so: PF68MYJ, a cold BMW, recorded
+# oneauto_outcome 'still_fetching' — polled to the budget and cut off, not
+# failed. The "~6s" figure that produced 20 came from vehicles that happened to
+# answer fast; the same coverage run had Nissan and Fiat still returning 202 at
+# 21-31s and a Mercedes still fetching at 60s.
+#
+# So One Auto is bounded in the sense that it always answers EVENTUALLY, not
+# that it answers quickly. 45s sits under the pool's own 65s ceiling, so the leg
+# can run to a real conclusion without ever being the thing that holds a lookup
+# open — resolve_paint returns the moment any leg wins, and a straggler is
+# abandoned.
 HTTP_TIMEOUT = 12.0
-TOTAL_BUDGET_S = 20.0
+TOTAL_BUDGET_S = float(os.environ.get('ONEAUTO_BUDGET_S', '45'))
 
 # Poll gap. Measured: their data is ready at ~6s, and every earlier timing of
 # "9.5s" was an artefact of polling every 4 seconds — the numbers clustered on
