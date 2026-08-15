@@ -126,12 +126,15 @@ logger = logging.getLogger(__name__)
 PL24_TIMEOUT = float(os.environ.get('PL24_CLIENT_TIMEOUT_S', '65'))
 
 # How long the two PAID legs get before pl24 is brought in regardless (paint68).
-# 8s is chosen from measurement, not taste: One Auto answers or 206s at ~6s
-# (6.06-6.38 on 42 of 45 calls), and a VDG paint MISS refunds fast, so by 8s
-# either leg that was going to fail has usually said so. A VDG paint HIT can
-# take 10-26s, which is why this is a backstop and not a deadline — pl24 joins
-# the race, it does not end it.
-PL24_BACKSTOP_S = float(os.environ.get('PL24_BACKSTOP_S', '8'))
+# 10s: One Auto's quick answers land at ~6s (6.06-6.38 on 42 of 45 calls) and a
+# VDG paint MISS refunds fast, so by 10s either leg that was going to fail has
+# usually said so — while a VDG paint HIT can take 10-26s, which is why this is
+# a backstop and not a deadline. pl24 joins the race; it does not end it.
+#
+# Worth being honest that the earlier "~6s" reading was optimistic: the same
+# coverage run had vehicles still returning 202 at 21-31s. The backstop exists
+# precisely because a leg can be slow rather than failed.
+PL24_BACKSTOP_S = float(os.environ.get('PL24_BACKSTOP_S', '10'))
 
 # Concurrency cap on the recovery race (paint19).
 #
