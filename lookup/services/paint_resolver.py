@@ -512,6 +512,39 @@ def _pl24_lookup(vin, make, category=None, search_id=None):
     }
 
 
+def _oneauto_leg(vin, make, model, year, search_id, sink):
+    """Run the One Auto call and WRITE ITS OWN COST, whoever wins the race.
+
+    Same problem and same fix as _record_worker_result for pl24 (paint26):
+    resolve_paint returns the instant any path produces a code, so a leg that is
+    still in flight finishes AFTER the caller has read its telemetry and saved.
+    Anything it learned — including what it SPENT — is lost unless the worker
+    writes it itself.
+
+    That mattered immediately. GY12CYO, the first BMW through the new pool, had
+    pl24 answer in 1.64s while One Auto needs ~6s; the row recorded
+    oneauto_cost NULL even though the call was made. An unrecorded charge is
+    invisible to the daily budget breaker, which is the one thing standing
+    between a bug and a £30 day.
+
+    Best-effort throughout: recording an observation must never break a lookup
+    a customer is waiting on.
+    """
+    result = oneauto.lookup(
+        vin=vin, make=make, model=model, year=year,
+        search_id=search_id, cost_sink=sink,
+    )
+    if search_id is not None:
+        fields = {}
+        if sink.get('cost') is not None:
+            fields['oneauto_cost'] = sink['cost']
+        if sink.get('outcome'):
+            fields['oneauto_outcome'] = str(sink['outcome'])[:40]
+        if fields:
+            _record_worker_result(search_id, **fields)
+    return result
+
+
 def resolve_paint(registration, vin, make, category=None, telemetry=None, model=None,
                   search_id=None, vdg_colour=None, year=None):
     """Race the VDG bundle-retry and the pl24 scrape; return the first usable
@@ -601,8 +634,7 @@ def resolve_paint(registration, vin, make, category=None, telemetry=None, model=
         _t['oneauto_attempted'] = True
         _oa_sink = {}
         f_oneauto = ex.submit(
-            oneauto.lookup, vin=vin, make=make, model=model, year=year,
-            search_id=search_id, cost_sink=_oa_sink,
+            _oneauto_leg, vin, make, model, year, search_id, _oa_sink,
         )
 
         deadline = time.monotonic() + PL24_TIMEOUT
