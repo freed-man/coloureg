@@ -461,8 +461,8 @@
                     <div class="paint-block">
                         <div class="paint-name-only">{{ paint_description }}</div>
                         <p class="paint-name-only-status">
-                            That&rsquo;s the manufacturer name for your car&rsquo;s paint.
-                            Want the exact paint code too? Leave your email and we&rsquo;ll send it.
+                            We have the colour name, but no factory paint code on the
+                            build sheet for this vehicle.
                         </p>
                     </div>
                 </div>
@@ -473,7 +473,7 @@
                             <div style="font-size: 2.5rem; color: #C8102E; line-height: 1;">&#9888;</div>
                             <div>
                                 <p class="mb-1" style="font-size: 1.1rem; color: #333;">
-                                    {{ make }} servers timed out
+                                    No factory paint code on the build sheet for this vehicle
                                 </p>
                                 <p class="mb-0" style="color: #888; font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.5px;">
                                     (request a manual lookup below)
@@ -528,13 +528,12 @@
                         {% elif paint_name_only %}
                         <h5 class="mb-3 fw-semibold" style="display: flex; gap: 8px; align-items: baseline;"><span>✉️</span><span>Want the exact code?</span></h5>
                         <p class="mb-3" style="font-size: 0.95rem; color: #555;">
-                            We found your colour name but not the manufacturer code yet.
-                            Leave your email and we'll look it up and send it, usually within 1 hour.
+                            Leave your email and we'll look it up manually and send it over, free.
                         </p>
                         {% else %}
                         <h5 class="mb-3 fw-semibold" style="display: flex; gap: 8px; align-items: baseline;"><span>✉️</span><span>No problem — we'll find it</span></h5>
                         <p class="mb-3" style="font-size: 0.95rem; color: #555;">
-                            Sorry for the inconvenience, we'll check {{ make }}'s database manually and email you the code, usually within 1 hour.
+                            Leave your email and we'll look it up manually and send it over, free.
                         </p>
                         {% endif %}
                         {% comment %} paint32: the optional note and photo fields were removed —
@@ -702,7 +701,7 @@
               '<div class="d-flex align-items-center justify-content-center py-4" style="gap: 16px;">' +
                 '<div style="font-size: 2.5rem; color: #C8102E; line-height: 1;">&#9888;</div>' +
                 '<div>' +
-                  '<p class="mb-1" style="font-size: 1.1rem; color: #333;">' + escapeHtml(MAKE) + ' servers timed out</p>' +
+                  '<p class="mb-1" style="font-size: 1.1rem; color: #333;">No factory paint code on the build sheet for this vehicle</p>' +
                   '<p class="mb-0" style="color: #888; font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.5px;">(request a manual lookup below)</p>' +
                 '</div>' +
               '</div>' +
@@ -723,8 +722,8 @@
             '<div id="paint-name-only-state"><div class="paint-block">' +
               '<div class="paint-name-only">' + escapeHtml(name) + '</div>' +
               '<p class="paint-name-only-status">' +
-                'That\u2019s the manufacturer name for your car\u2019s paint. ' +
-                'Want the exact paint code too? Leave your email and we\u2019ll send it.' +
+                'We have the colour name, but no factory paint code on the ' +
+                'build sheet for this vehicle.' +
               '</p>' +
             '</div></div>';
 
@@ -760,14 +759,13 @@
         } else if (mode === 'name_only') {
             heading = '<span>\u2709\uFE0F</span><span>Want the exact code?</span>';
             blurb = '<p class="mb-3" style="font-size: 0.95rem; color: #555;">' +
-                    'We found your colour name but not the manufacturer code yet. ' +
-                    'Leave your email and we\'ll look it up and send it, usually within 1 hour.</p>';
+                    'Leave your email and we\'ll look it up manually and send it over, free.</p>';
             button = 'Send me the code';
             headingMargin = 'mb-3';
         } else {
             heading = '<span>\u2709\uFE0F</span><span>No problem &mdash; we\'ll find it</span>';
-            blurb = '<p class="mb-3" style="font-size: 0.95rem; color: #555;">Sorry for the inconvenience, we\'ll check ' +
-                    escapeHtml(MAKE) + '\'s database manually and email you the code, usually within 1 hour.</p>';
+            blurb = '<p class="mb-3" style="font-size: 0.95rem; color: #555;">' +
+                    'Leave your email and we\'ll look it up manually and send it over, free.</p>';
             button = 'Request code';
             headingMargin = 'mb-3';
         }
