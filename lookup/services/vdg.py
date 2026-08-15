@@ -93,7 +93,7 @@ class VdgTimeoutError(VdgError):
     pass
 
 
-def _make_request(registration, package, billing_sink=None):
+def _make_request(registration, package, billing_sink=None, timeout=None):
     """One call to one package. Returns the parsed JSON dict, or raises.
 
     `package` is explicit rather than defaulted: the two packages differ in
@@ -111,7 +111,10 @@ def _make_request(registration, package, billing_sink=None):
     }
 
     try:
-        response = requests.get(VDG_LOOKUP_ENDPOINT, params=params, timeout=VDG_TIMEOUT_S)
+        response = requests.get(
+            VDG_LOOKUP_ENDPOINT, params=params,
+            timeout=VDG_TIMEOUT_S if timeout is None else timeout,
+        )
     except requests.exceptions.Timeout as e:
         # Raise the timeout-specific subclass so views.py / Sentry can tell
         # this apart from a generic transport failure or VDG 500.
@@ -652,7 +655,7 @@ def vehicle_lookup(registration, billing_sink=None):
     return out
 
 
-def paint_lookup(registration, billing_sink=None):
+def paint_lookup(registration, billing_sink=None, timeout=None):
     """Paint only. Slow, and the half that fails.
 
     Cold this takes 10-26s and on BMW runs to an HTTP 502 from VDG's own gateway
@@ -682,7 +685,7 @@ def paint_lookup(registration, billing_sink=None):
     """
     try:
         data = _make_request(registration, VDG_PAINT_PACKAGE,
-                             billing_sink=billing_sink)
+                             billing_sink=billing_sink, timeout=timeout)
     except VdgNotFoundError:
         return None
 

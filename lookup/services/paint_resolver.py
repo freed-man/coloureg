@@ -37,7 +37,7 @@ import time
 
 import requests
 
-from .vdg import paint_lookup, VdgError
+from .vdg import paint_lookup, VdgError, _log_reg
 from . import oneauto
 
 
@@ -123,7 +123,10 @@ PL24_API_KEY = os.environ.get('PL24_API_KEY', '')
 # wait ("checking manufacturer database...") rather than appearing frozen.
 logger = logging.getLogger(__name__)
 
-PL24_TIMEOUT = float(os.environ.get('PL24_CLIENT_TIMEOUT_S', '65'))
+# The ceiling on how long a customer waits. pl24 is unaffected by the exact
+# value: the backstop guarantees it STARTS by 10s, and its worst observed run is
+# 29s (p50 1.0s, p90 8.0s), so it has ample room either way.
+PL24_TIMEOUT = float(os.environ.get('PL24_CLIENT_TIMEOUT_S', '60'))
 
 # How long the two PAID legs get before pl24 is brought in regardless (paint68).
 # 10s: One Auto's quick answers land at ~6s (6.06-6.38 on 42 of 45 calls) and a
@@ -135,6 +138,26 @@ PL24_TIMEOUT = float(os.environ.get('PL24_CLIENT_TIMEOUT_S', '65'))
 # coverage run had vehicles still returning 202 at 21-31s. The backstop exists
 # precisely because a leg can be slow rather than failed.
 PL24_BACKSTOP_S = float(os.environ.get('PL24_BACKSTOP_S', '10'))
+
+# SECOND-CHANCE STAGE (paint73). When a paid leg finishes with nothing, ask it
+# once more — but only briefly.
+#
+# The two are second chances for different reasons:
+#   VDG      — a failed first call has WARMED their upstream cache, so the
+#              second read is sub-second. GL68VPN timed out twice at 40s and
+#              then returned B85 in 0.74s. Before the vehicle/paint split this
+#              mechanism supplied 214 of 866 answers (25%); the split removed it
+#              because nothing warms the paint route any more.
+#   One Auto — not a retry at all but a COLLECTION. 'still_fetching' means their
+#              job was running server-side when we stopped polling, and results
+#              are held 24 hours. PF68MYJ recorded still_fetching in coloureg
+#              and then answered in 685ms on the next call.
+#
+# 5s, because the call should be fast OR NOT AT ALL: a warm read is sub-second,
+# so anything slower is a cold fetch that will not finish inside the ceiling
+# anyway. Giving up at 5s rather than 30 means a FAILED lookup — where the
+# customer is waiting on the last leg to finish — resolves that much sooner.
+SECOND_CHANCE_S = float(os.environ.get('SECOND_CHANCE_S', '5'))
 
 # Concurrency cap on the recovery race (paint19).
 #
@@ -323,6 +346,25 @@ def _vdg_retry(registration, telemetry=None, search_id=None):
         # so the second read is fast. Asking for the vehicle documents again
         # would pay for identity we already hold.
         data = paint_lookup(registration, billing_sink=sink)
+        # SECOND CHANCE (paint73). The first call has warmed VDG's upstream
+        # cache whether it succeeded or not — that is the whole mechanism behind
+        # the 214 answers the old bundle-retry supplied. A short timeout because
+        # a warm read is sub-second; anything slower is a cold fetch that will
+        # not finish inside the ceiling anyway.
+        #
+        # Only when the first call produced NO PAINT. A hit needs no second
+        # call, and a hit is the only outcome that has already cost the full
+        # price — a paint-less call is refunded.
+        if not (data and data.get('paint_returned')):
+            try:
+                second = paint_lookup(registration, billing_sink=sink,
+                                      timeout=SECOND_CHANCE_S)
+            except (VdgError, Exception):  # noqa: BLE001 — a second chance must never raise
+                second = None
+            if second and second.get('paint_returned'):
+                logger.info('VDG second chance recovered paint for %s',
+                            _log_reg(registration))
+                data = second
     except VdgError:
         pass  # cost below is still recorded — VDG charged us either way
     # Take the cost from whichever source has it. The sink is the only source
@@ -562,6 +604,27 @@ def _oneauto_leg(vin, make, model, year, search_id, sink):
         vin=vin, make=make, model=model, year=year,
         search_id=search_id, cost_sink=sink,
     )
+    # SECOND CHANCE (paint73) — a COLLECTION rather than a retry. 'still_fetching'
+    # means their job was running server-side when we stopped polling, and One
+    # Auto hold a result for 24 hours. PF68MYJ recorded still_fetching in
+    # coloureg and then answered in 685ms on the very next call.
+    #
+    # ONLY on still_fetching. A 206 is a settled "no data" and a 200 has already
+    # answered; asking again would spend time on a question already decided.
+    # Measured to be free: billing is per VIN, not per call — a repeat call on
+    # WBAJA92070BV21477 moved the balance not at all.
+    if result is None and sink.get('outcome') == 'still_fetching':
+        try:
+            again = oneauto.lookup(
+                vin=vin, make=make, model=model, year=year,
+                search_id=search_id, cost_sink=sink,
+                budget=SECOND_CHANCE_S,
+            )
+        except Exception:  # noqa: BLE001 — a second chance must never raise
+            again = None
+        if again:
+            logger.info('One Auto second chance collected a result')
+            result = again
     if search_id is not None:
         fields = {}
         if sink.get('cost') is not None:

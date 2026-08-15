@@ -164,7 +164,7 @@ def _extract(payload):
 
 
 def lookup(vin=None, reg=None, make=None, model=None, year=None,
-           search_id=None, cost_sink=None):
+           search_id=None, cost_sink=None, budget=None):
     """The pool interface. Returns a result dict, or None.
 
     Never raises. `cost_sink`, if given, is populated with what this call cost
@@ -213,7 +213,8 @@ def lookup(vin=None, reg=None, make=None, model=None, year=None,
 
         if resp.status_code == 202:
             # Accepted, still fetching. Polling does NOT bill.
-            if time.monotonic() - started >= TOTAL_BUDGET_S:
+            if time.monotonic() - started >= (TOTAL_BUDGET_S if budget is None
+                                              else budget):
                 sink['outcome'] = 'still_fetching'
                 return None
             time.sleep(POLL_GAP_S)
