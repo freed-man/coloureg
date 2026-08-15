@@ -403,7 +403,11 @@
         border-left: 3px solid #C8102E;
         padding: 10px 13px;
         font-family: 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
-        font-size: 11px;
+        /* paint71: 11 -> 14px. Every media query below overrides this, so it
+           renders nowhere — which is exactly why it was wrong to leave at 11.
+           A dead value contradicting the intent is how the 10.5px mobile rule
+           survived unnoticed. The floor should be real, not incidental. */
+        font-size: 14px;
         color: #444;
         line-height: 1.7;
         text-align: left;
@@ -472,13 +476,19 @@
            ~530px to hold one line, hence 560. */
         .lookup-message { font-size: 17px; white-space: nowrap; }
         /* paint31: enlarged. At 12.5px this was the smallest thing on a page
-           whose whole job at that moment is to stop someone closing the tab. */
-        .lookup-patience { font-size: 14px; padding: 16px 20px; line-height: 1.75; }
+           whose whole job at that moment is to stop someone closing the tab.
+           paint71: 14 -> 15px, and see the mobile rules below — the same
+           argument applied more strongly there and had been missed. */
+        .lookup-patience { font-size: 15px; padding: 16px 20px; line-height: 1.75; }
     }
     /* Below 768px there is no room for one line, so allow wrapping again. */
     @media (max-width: 767px) {
         .lookup-message { white-space: normal; }
-        .lookup-patience { font-size: 12.5px; padding: 13px 16px; }
+        /* paint71: 12.5 -> 15px. NOT smaller than desktop: a phone is where
+           someone is most likely to switch apps mid-lookup, so this is the
+           screen where the warning matters most, and it was the one where it
+           was smallest. */
+        .lookup-patience { font-size: 15px; padding: 15px 18px; line-height: 1.75; }
     }
     /* .stuck is still toggled by the JS at the 10s stage, but both stages now
        share one identical style (mono 15px #000). The class is kept as a hook
@@ -503,7 +513,11 @@
         .lookup-spinner .dot:nth-child(15) { transform: rotateY(247deg) rotateX(-55deg) translateZ(40px); }
         .lookup-spinner .dot:nth-child(16) { transform: rotateY(337deg) rotateX(-55deg) translateZ(40px); }
         .lookup-message { font-size: 13.5px; }
-        .lookup-patience { font-size: 10.5px; }
+        /* paint71: 10.5 -> 14px. It was 10.5px here — below the browser default
+           of 16 by a third, on the smallest screens, for the one message that
+           has to be read. Shrinking it to fit the box was the wrong trade:
+           the text may now wrap to three lines and that is fine. */
+        .lookup-patience { font-size: 14px; padding: 14px 16px; line-height: 1.7; }
     }
 </style>
 {% endblock %}
