@@ -165,6 +165,13 @@ class Search(models.Model):
         max_digits=6, decimal_places=2, null=True, blank=True,
     )
     oneauto_outcome = models.CharField(max_length=40, blank=True, default='')
+    # WHY pl24 was brought into the race, or blank if it never was (paint68).
+    # pl24 is now held back as reinforcement rather than started on every
+    # lookup, so "did it run" is no longer implied by "a lookup happened" — and
+    # when it does run, the reason (a paid leg empty, a name with no code, or
+    # the backstop firing on two slow legs) is the thing that tells you whether
+    # the holding-back is costing answers.
+    pl24_started_because = models.CharField(max_length=24, blank=True, default='')
 
     # Which access key (if any) exempted this lookup from the hourly limit
     # (paint41). Stores the LABEL, not the key: the label is what you read on

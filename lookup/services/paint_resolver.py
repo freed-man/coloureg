@@ -125,6 +125,14 @@ logger = logging.getLogger(__name__)
 
 PL24_TIMEOUT = float(os.environ.get('PL24_CLIENT_TIMEOUT_S', '65'))
 
+# How long the two PAID legs get before pl24 is brought in regardless (paint68).
+# 8s is chosen from measurement, not taste: One Auto answers or 206s at ~6s
+# (6.06-6.38 on 42 of 45 calls), and a VDG paint MISS refunds fast, so by 8s
+# either leg that was going to fail has usually said so. A VDG paint HIT can
+# take 10-26s, which is why this is a backstop and not a deadline — pl24 joins
+# the race, it does not end it.
+PL24_BACKSTOP_S = float(os.environ.get('PL24_BACKSTOP_S', '8'))
+
 # Concurrency cap on the recovery race (paint19).
 #
 # resolve_paint parks its calling thread for up to PL24_TIMEOUT seconds. Gunicorn
@@ -592,11 +600,15 @@ def resolve_paint(registration, vin, make, category=None, telemetry=None, model=
     # always submitted, so "attempted" is True for both once we get here.
     _t['recovery_attempted'] = True
     _t['vdg_retry_returned'] = False
-    _t['pl24_attempted'] = True
+    # pl24 is no longer started unconditionally, so 'attempted' is set when it
+    # actually is (paint68).
+    _t['pl24_attempted'] = False
+    _t['pl24_started_because'] = ''
     _t['pl24_returned'] = False
     _t['pl24_name_only'] = False
     _t['oneauto_attempted'] = False
     _t['oneauto_returned'] = False
+    _t['oneauto_name_only'] = False
     _t['oneauto_cost'] = None
     _t['oneauto_outcome'] = ''
     try:
@@ -604,14 +616,36 @@ def resolve_paint(registration, vin, make, category=None, telemetry=None, model=
         # Category is routed (not raw): VW commercial lines misfiled as M1 by
         # VDG are sent to pl24 as N1 so the lookup hits the right catalogue
         # first time. See _route_category.
-        f_pl24 = ex.submit(
+        # pl24 is NOT started here (paint68). It is the one source we do not own
+        # — a partslink24 subscription with a browser session that can be locked
+        # out, as it was on 13 Aug when amended T&Cs blocked the login and four
+        # lookups failed until a human logged in by hand. So it is held back as
+        # REINFORCEMENT and started only when a paid leg has already dropped
+        # out, which keeps it on a fraction of lookups instead of all of them.
+        #
+        # Holding it back costs nothing in the common case because the two paid
+        # legs start immediately and failure is FAST while success is slow: a
+        # One Auto 206 lands in ~6s and a VDG paint miss refunds quickly, while
+        # a VDG paint HIT can take 10-26s. So "one has dropped out" is a signal
+        # that arrives early — exactly when reinforcement is useful.
+        f_pl24 = None
+
+        def _start_pl24(reason):
+            """Bring pl24 into the race. Idempotent."""
+            nonlocal f_pl24
+            if f_pl24 is not None:
+                return None
+            _t['pl24_attempted'] = True
+            _t['pl24_started_because'] = reason
             # Make AND category are both routed (not raw) at this boundary. The
             # Search row keeps VDG's originals either way — this rewrite applies
             # solely to what pl24 receives.
-            _pl24_lookup, vin, route_make(make),
-            _route_category(make, model, vin, category),
-            search_id,
-        )
+            f_pl24 = ex.submit(
+                _pl24_lookup, vin, route_make(make),
+                _route_category(make, model, vin, category),
+                search_id,
+            )
+            return f_pl24
 
         # THIRD LEG (paint67). Called for EVERY make that gets this far.
         #
@@ -638,7 +672,12 @@ def resolve_paint(registration, vin, make, category=None, telemetry=None, model=
         )
 
         deadline = time.monotonic() + PL24_TIMEOUT
-        pending = {f_vdg, f_pl24, f_oneauto}
+        pending = {f_vdg, f_oneauto}
+        # BACKSTOP. The drop-out trigger fires on failure, but two legs can
+        # simply be SLOW rather than failed — a cold VDG at 26s with One Auto
+        # still polling would leave pl24 idle throughout. Bring it in anyway
+        # once the paid legs have had a fair run.
+        pl24_backstop_at = time.monotonic() + PL24_BACKSTOP_S
         pl24_code_result = None      # pl24 returned a real CODE (short-circuits)
         pl24_name_only_result = None  # pl24 returned a name but NO code (fallback)
 
@@ -648,16 +687,29 @@ def resolve_paint(registration, vin, make, category=None, telemetry=None, model=
             except Exception:  # noqa: BLE001  (any worker failure -> no paint)
                 return None
 
+        oneauto_name_only_result = None  # One Auto gave a NAME but no code
+
         while pending:
             remaining = deadline - time.monotonic()
             if remaining <= 0:
                 break  # deadline hit — stop waiting, abandon stragglers
+            # Wake up for the backstop even if nothing has completed, so a pair
+            # of slow-but-alive paid legs cannot leave pl24 unstarted.
+            if f_pl24 is None:
+                remaining = min(remaining,
+                                max(0.05, pl24_backstop_at - time.monotonic()))
             done, pending = concurrent.futures.wait(
                 pending, timeout=remaining,
                 return_when=concurrent.futures.FIRST_COMPLETED,
             )
             if not done:
-                break  # wait timed out with nothing newly completed
+                # Nothing completed in this slice. If that was the backstop
+                # waking us, bring pl24 in and keep waiting; otherwise the real
+                # deadline has passed.
+                if f_pl24 is None and time.monotonic() >= pl24_backstop_at:
+                    pending = pending | {_start_pl24('backstop')}
+                    continue
+                break
 
             # Enforce the VDG-over-pl24 preference within this batch: if the VDG
             # future is among the just-completed ones and produced paint, that
@@ -667,6 +719,9 @@ def resolve_paint(registration, vin, make, category=None, telemetry=None, model=
                 if vdg_result is not None:
                     _t['vdg_retry_returned'] = True
                     return _enrich_from_lookup(vdg_result, make, model, vdg_colour=vdg_colour)
+                # VDG has DROPPED OUT — it finished with nothing. Bring pl24 in.
+                if f_pl24 is None:
+                    pending = pending | {_start_pl24('vdg_empty')}
 
             # Then One Auto, ahead of pl24. Ordering rationale: both cost money
             # only when they answer, but One Auto returns a code AND a colour
@@ -686,13 +741,25 @@ def resolve_paint(registration, vin, make, category=None, telemetry=None, model=
                          'source': 'oneauto'},
                         make, model, vdg_colour=vdg_colour,
                     )
+                # No CODE from One Auto. Either a colour NAME with no code
+                # (Stellantis and Ford do this — 'BANQUISE WHITE PAINT',
+                # 'Race Red') or nothing at all. Both are a drop-out, so pl24
+                # joins; but a name is kept as a fallback because it is real
+                # manufacturer data and _enrich_from_lookup may still resolve it
+                # to a code through our own table.
+                if oa is not None and oa.get('description'):
+                    _t['oneauto_name_only'] = True
+                    oneauto_name_only_result = oa
+                if f_pl24 is None:
+                    pending = pending | {_start_pl24(
+                        'oneauto_name_only' if oa is not None else 'oneauto_empty')}
 
             # VDG didn't (yet) yield paint. Inspect pl24 if it completed in this
             # batch. A real CODE wins immediately (subject only to a VDG code,
             # already handled above). A name-only result (colour name, no code)
             # is held aside as a FALLBACK — we do NOT return it here, because a
             # real code from a still-pending VDG-retry must be able to beat it.
-            if f_pl24 in done:
+            if f_pl24 is not None and f_pl24 in done:
                 p = _result_or_none(f_pl24)
                 if p is not None:
                     if p.get('name_only'):
@@ -709,11 +776,32 @@ def resolve_paint(registration, vin, make, category=None, telemetry=None, model=
             if pl24_code_result is not None:
                 return _enrich_from_lookup(pl24_code_result, make, model, vdg_colour=vdg_colour)
 
-        # No real code from either path. Surface the pl24 name-only result if we
-        # got one (a partial but useful answer), else None (a true miss).
-        # Enrichment may upgrade a name-only result to a full code if the colour
-        # name maps unambiguously to a single code in our table.
-        return _enrich_from_lookup(pl24_name_only_result, make, model, vdg_colour=vdg_colour)
+        # No real code from any path. Fall back to a colour NAME if one was
+        # offered — a partial answer, but real manufacturer data and often
+        # enough for someone at a paint counter.
+        #
+        # pl24's name is preferred over One Auto's because pl24 reads the
+        # manufacturer's own catalogue for THIS vehicle, while One Auto's
+        # Stellantis names arrive stripped of their code ('OKENITE WHITE PAINT-')
+        # and are a marketing name rather than a catalogue entry.
+        #
+        # Either way _enrich_from_lookup may upgrade it to a full code: it runs
+        # the name through code_from_name, which returns a code ONLY when the
+        # candidates collapse to a single paint. Names are 1:many with codes
+        # ('Race Red' matches 13, 'Black Pearl' 481), so it declines far more
+        # often than it resolves — deliberately, because a wrong code is worse
+        # than none when the customer is about to buy paint.
+        fallback = pl24_name_only_result
+        if fallback is None and oneauto_name_only_result is not None:
+            oa = oneauto_name_only_result
+            fallback = {
+                'paint_code': '',
+                'paint_description': oa.get('description', ''),
+                'all_paint_codes': oa.get('all_codes', []),
+                'source': 'oneauto',
+                'name_only': True,
+            }
+        return _enrich_from_lookup(fallback, make, model, vdg_colour=vdg_colour)
     finally:
         # Do NOT block on stragglers. wait=False means we don't join running
         # threads; cancel_futures cancels any not-yet-started work. A pl24 thread

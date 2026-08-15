@@ -1904,6 +1904,8 @@ def _apply_recovery_telemetry(search, telemetry):
         search.oneauto_cost = telemetry['oneauto_cost']
     if telemetry.get('oneauto_outcome'):
         search.oneauto_outcome = telemetry['oneauto_outcome'][:40]
+    if telemetry.get('pl24_started_because'):
+        search.pl24_started_because = telemetry['pl24_started_because'][:24]
     dur = telemetry.get('duration_ms')
     if dur is not None:
         search.recovery_duration_ms = int(dur)
