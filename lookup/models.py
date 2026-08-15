@@ -173,6 +173,23 @@ class Search(models.Model):
     # the holding-back is costing answers.
     pl24_started_because = models.CharField(max_length=24, blank=True, default='')
 
+    # WHAT EACH PROVIDER ACTUALLY SAID (paint69). Until now only pl24 recorded
+    # its own answer, so a row could not tell you whether two sources agreed,
+    # disagreed, or one merely had less of the same answer. That distinction is
+    # the whole question: of 27 observed disagreements between pl24 and VDG, 18
+    # were COMPLETENESS rather than conflict — pl24 returning 'C9X' where VDG
+    # returned '2T2T/C9X', or '755' against '755U'. Only nine were genuinely
+    # different codes, and five of those were Jaguar using a different code
+    # system entirely.
+    #
+    # Each provider's answer is stored whether or not it won the race, because
+    # the loser's answer is what makes the comparison possible — and because a
+    # name we could not resolve today may be resolvable once the table grows.
+    pl24_name = models.CharField(max_length=120, blank=True, default='')
+    vdg_paint_name = models.CharField(max_length=120, blank=True, default='')
+    oneauto_code = models.CharField(max_length=100, blank=True, default='')
+    oneauto_name = models.CharField(max_length=120, blank=True, default='')
+
     # Which access key (if any) exempted this lookup from the hourly limit
     # (paint41). Stores the LABEL, not the key: the label is what you read on
     # the dashboard, and it keeps the secret out of the row.

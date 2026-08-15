@@ -219,7 +219,7 @@ def _record_worker_result(search_id, **fields):
             pass
 
 
-def _record_retry_billing(search_id, cost, balance, retry_code):
+def _record_retry_billing(search_id, cost, balance, retry_code, retry_name=''):
     """Write the retry's own spend straight to its Search row (paint21).
 
     The retry used to hand its cost back through the telemetry dict, which the
@@ -263,6 +263,12 @@ def _record_retry_billing(search_id, cost, balance, retry_code):
             updates['vdg_balance_after_call'] = Decimal(str(balance))
         if retry_code is not None:
             updates['vdg_retry_code'] = (retry_code or '')[:100]
+        # Only write a NAME we actually have. A blank must not clobber a name
+        # already on the row: the first pass and the retry both write here, and
+        # the second one arriving empty should leave the first one's answer
+        # alone rather than erase it.
+        if retry_name:
+            updates['vdg_paint_name'] = retry_name[:120]
         if updates:
             Search.objects.filter(pk=search_id).update(**updates)
     except Exception:  # noqa: BLE001 — never let bookkeeping break a lookup
@@ -340,10 +346,19 @@ def _vdg_retry(registration, telemetry=None, search_id=None):
     # existing tests and for the case where the caller is still waiting, but
     # they are no longer what the cost DEPENDS on — see _record_retry_billing.
     retry_code = ''
+    retry_name = ''
     if data:
         retry_code = (data.get('paint_code') or '')
+        # The NAME too (paint69). VDG can return a colour name with no code, and
+        # until now that was thrown away — so a row could not show that VDG had
+        # said anything at all. It is also what makes source comparison
+        # possible: 18 of 27 observed disagreements were the same paint at
+        # different completeness, which only the names reveal.
+        retry_name = (data.get('paint_description') or '')
     _t['vdg_retry_code'] = retry_code
-    _record_retry_billing(search_id, retry_cost, retry_balance, retry_code)
+    _t['vdg_paint_name'] = retry_name
+    _record_retry_billing(search_id, retry_cost, retry_balance, retry_code,
+                          retry_name=retry_name)
     if data is None:
         return None
     if not data or not data.get('paint_returned'):
@@ -491,9 +506,11 @@ def _pl24_lookup(vin, make, category=None, search_id=None):
     # width because _record_worker_result writes via .update(), which bypasses
     # Model.save() and its truncation guard.
     outcome = (data.get('outcome') or '').strip()[:40]
-    if search_id is not None and (code or outcome):
+    name = (data.get('paint_description') or '').strip()[:120]
+    if search_id is not None and (code or outcome or name):
         _record_worker_result(search_id,
                               **({'pl24_code': code[:100]} if code else {}),
+                              **({'pl24_name': name} if name else {}),
                               **({'pl24_outcome': outcome} if outcome else {}))
     # Keep the result if pl24 returned EITHER a code OR a colour name. The
     # name-only case (code == '' but desc set) covers brands partslink24 carries
@@ -548,6 +565,14 @@ def _oneauto_leg(vin, make, model, year, search_id, sink):
             fields['oneauto_cost'] = sink['cost']
         if sink.get('outcome'):
             fields['oneauto_outcome'] = str(sink['outcome'])[:40]
+        # What it SAID, win or lose. A losing answer is what makes source
+        # comparison possible, and a name we cannot resolve today may resolve
+        # once the table grows.
+        if result:
+            if result.get('code'):
+                fields['oneauto_code'] = str(result['code'])[:100]
+            if result.get('description'):
+                fields['oneauto_name'] = str(result['description'])[:120]
         if fields:
             _record_worker_result(search_id, **fields)
     return result
