@@ -5,7 +5,7 @@ When the initial VDG bundle call returns a vehicle but NO paint code, this
 module tries to recover the paint code two ways IN PARALLEL and returns
 whichever produces a code first:
 
-  1. VDG bundle retry  -- an immediate second get_combined_lookup() call.
+  1. VDG paint retry   -- an immediate second paint_lookup() call.
      Empirically this sometimes recovers paint that the first call missed
      (VDG's upstream paint source is intermittent/slow on the first hit).
      Fast (~a few seconds) and cheap-ish (~£0.15-0.50), so it's worth racing.
@@ -37,7 +37,7 @@ import time
 
 import requests
 
-from .vdg import get_combined_lookup, VdgError
+from .vdg import paint_lookup, VdgError
 
 
 def _enrich_from_lookup(result, make, model=None, vdg_colour=None):
@@ -300,7 +300,11 @@ def _vdg_retry(registration, telemetry=None, search_id=None):
     sink = {}
     data = None
     try:
-        data = get_combined_lookup(registration, billing_sink=sink)
+        # PAINT package only (paint66). The retry never needed the vehicle
+        # half — it exists because a cold first call warms VDG's upstream cache,
+        # so the second read is fast. Asking for the vehicle documents again
+        # would pay for identity we already hold.
+        data = paint_lookup(registration, billing_sink=sink)
     except VdgError:
         pass  # cost below is still recorded — VDG charged us either way
     # Take the cost from whichever source has it. The sink is the only source

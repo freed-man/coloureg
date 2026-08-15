@@ -26,7 +26,20 @@ VDG_LOOKUP_ENDPOINT = f'{VDG_BASE_URL}/lookup'
 
 # The single package name used for every lookup. Configured on the VDG side
 # to include VehicleDetails + ModelDetails + PaintCodeDetails.
-VDG_PACKAGE_NAME = 'PaintCodeDetails'
+# TWO packages, asked for separately (paint66). VDG previously had
+# 'PaintCodeDetails' configured as a BUNDLE (VehicleDetails + ModelDetails +
+# PaintCodeDetails) and coloureg made one call for everything. That was fatal
+# when the paint half hung: a timeout returned no make, no model and NO VIN, so
+# pl24 and One Auto — which both need a VIN — could not run either. Seven of
+# eight logged timeouts were BMW Group.
+#
+# MEASURED on five cold registrations (GL68VPN, BG73YXY, AK60ADO, NL75FVP,
+# PF19XGM): the vehicle half answers in 0.46-0.57s at £0.08 with QueryTimeMs
+# 5-8, while the paint half takes 10-26s cold and on BMW runs to a 502 from
+# VDG's own gateway at ~60s. Same total cost — £0.08 + £0.30 is the £0.38 the
+# bundle charged — and a miss costs £0.08 instead of £0.16.
+VDG_VEHICLE_PACKAGE = 'VehicleDetails'
+VDG_PAINT_PACKAGE = 'PaintCodeDetails'
 
 # Client-side timeout for the whole lookup, in seconds (paint56, revised
 # paint59). Override with VDG_CLIENT_TIMEOUT_S; no deploy needed.
@@ -80,14 +93,19 @@ class VdgTimeoutError(VdgError):
     pass
 
 
-def _make_request(registration, billing_sink=None):
-    """Single combined call. Returns the parsed JSON dict, or raises."""
+def _make_request(registration, package, billing_sink=None):
+    """One call to one package. Returns the parsed JSON dict, or raises.
+
+    `package` is explicit rather than defaulted: the two packages differ in
+    cost, latency and failure mode, and a caller that does not say which it
+    wants is almost certainly a bug.
+    """
     api_key = os.environ.get('VDG_API_KEY')
     if not api_key:
         raise VdgError('VDG_API_KEY not configured')
 
     params = {
-        'packagename': VDG_PACKAGE_NAME,
+        'packagename': package,
         'apikey': api_key,
         'vrm': registration,
     }
@@ -597,54 +615,98 @@ def _parse_paint_fields(results):
     }
 
 
-def get_combined_lookup(registration, billing_sink=None):
-    """Single combined VDG call. Returns vehicle + paint data + per-doc flags.
+def vehicle_lookup(registration, billing_sink=None):
+    """Vehicle identity only. Fast, cheap, and never blocked by the paint fetch.
+
+    THE POINT OF THIS FUNCTION is that it always answers. Measured at 0.46-0.57s
+    on five cold registrations at £0.08 with QueryTimeMs 5-8, because it reads
+    VDG's own vehicle record rather than fetching a paint document from their
+    upstream supplier. That means the VIN is in hand within a second no matter
+    what the paint call goes on to do — which is what pl24 and One Auto both
+    need, and what a bundled timeout used to destroy.
 
     Returns dict with:
-      - 'make', 'model', 'year', 'colour', 'vin', 'fuel_type',
-        'transmission', 'engine_description'  -- vehicle/model fields
-      - 'paint_code', 'paint_description', 'all_paint_codes'  -- paint fields
+      - 'make', 'model', 'year', 'colour', 'vin', 'fuel_type', 'transmission',
+        'engine_description', 'category'
       - 'vehicle_returned': bool — Results.VehicleDetails StatusCode == 0
-      - 'paint_returned':   bool — Results.PaintCodeDetails succeeded AND returned
-                            ≥1 paint ENTRY. An entry can carry a colour name with
-                            an empty code, so this being True does not guarantee
-                            'paint_code' is non-empty.
-      - 'balance': float — VDG account balance after this call (or None)
-      - 'transaction_cost': float — the real amount VDG billed this call (or None)
+      - 'balance', 'transaction_cost'
 
-    Returns None if VDG reports the vehicle was not found at all.
-    Raises VdgError on HTTP / config / unexpected-payload errors.
+    Returns None if VDG reports the vehicle was not found at all. Raises
+    VdgError on HTTP / config / unexpected-payload errors.
     """
     try:
-        data = _make_request(registration, billing_sink=billing_sink)
+        data = _make_request(registration, VDG_VEHICLE_PACKAGE,
+                             billing_sink=billing_sink)
     except VdgNotFoundError:
-        # Still returns None — the caller's contract is unchanged — but
         # billing_sink has already been populated inside _make_request, so the
-        # cost of this call is no longer lost with the response (paint18).
+        # cost of this call is not lost with the response (paint18).
         return None
 
     results = data.get('Results', {}) or {}
-    vehicle_details_doc = results.get('VehicleDetails', {}) or {}
-    paint_details_doc = results.get('PaintCodeDetails', {}) or {}
-
-    vehicle_returned = _doc_succeeded(vehicle_details_doc)
-    # Paint is "returned" only if both StatusCode is OK *and* there's at least
-    # one paint code. An empty PaintCodeList is what triggers VDG's auto-refund.
-    paint_list = paint_details_doc.get('PaintCodeList', []) or []
-    paint_returned = _doc_succeeded(paint_details_doc) and len(paint_list) > 0
-
     out = {
-        'vehicle_returned': vehicle_returned,
-        'paint_returned': paint_returned,
+        'vehicle_returned': _doc_succeeded(results.get('VehicleDetails', {}) or {}),
         'balance': _extract_balance(data),
         'transaction_cost': _extract_transaction_cost(data),
     }
-
-    # Always pull what we can from each document, even on partial success.
     out.update(_parse_vehicle_fields(results))
-    paint = _parse_paint_fields(results)
-    out['paint_code'] = paint['code']
-    out['paint_description'] = paint['description']
-    out['all_paint_codes'] = paint['all_codes']
-
     return out
+
+
+def paint_lookup(registration, billing_sink=None):
+    """Paint only. Slow, and the half that fails.
+
+    Cold this takes 10-26s and on BMW runs to an HTTP 502 from VDG's own gateway
+    at ~60s (FN16UEY 60.45s, MF67UTK 60.44s, KN26UBX succeeded at 55.45s with
+    QueryTimeMs 24970). Warm it returns in under a second. A vehicle with no
+    paint answers fast and is FULLY REFUNDED, so a miss is free.
+
+    The package also carries identity fields — VehicleCodes.Vin plus Make,
+    Model, FuelType, VehicleClass and CurrentColour on the paint document
+    itself. Those are surfaced because a retry that lands paint should not have
+    to be paired with a second vehicle call to know what it is looking at
+    (paint61), and because they are the only identity available if the vehicle
+    call itself failed.
+
+    NOTE the field names differ from the vehicle package: flat 'Make'/'Model'
+    here, against DvlaMake/DvlaModel nested under VehicleIdentification there.
+
+    Returns dict with:
+      - 'paint_code', 'paint_description', 'all_paint_codes'
+      - 'vin', 'make', 'model', 'colour' — identity, from the paint document
+      - 'paint_returned': bool — StatusCode OK AND at least one paint ENTRY. An
+        entry can carry a colour name with an empty code, so True does not
+        guarantee 'paint_code' is non-empty.
+      - 'balance', 'transaction_cost'
+
+    Returns None if VDG reports the vehicle was not found at all.
+    """
+    try:
+        data = _make_request(registration, VDG_PAINT_PACKAGE,
+                             billing_sink=billing_sink)
+    except VdgNotFoundError:
+        return None
+
+    results = data.get('Results', {}) or {}
+    paint_doc = results.get('PaintCodeDetails', {}) or {}
+
+    # Paint is "returned" only if StatusCode is OK *and* there is at least one
+    # entry. An empty PaintCodeList is what triggers VDG's auto-refund.
+    paint_list = paint_doc.get('PaintCodeList', []) or []
+    paint = _parse_paint_fields(results)
+
+    # Identity, best-effort. VehicleCodes.Vin is the reliable one; the rest sit
+    # on the paint document and are absent when it did not succeed.
+    codes_doc = results.get('VehicleCodes', {}) or {}
+
+    return {
+        'paint_returned': _doc_succeeded(paint_doc) and len(paint_list) > 0,
+        'balance': _extract_balance(data),
+        'transaction_cost': _extract_transaction_cost(data),
+        'paint_code': paint['code'],
+        'paint_description': paint['description'],
+        'all_paint_codes': paint['all_codes'],
+        'vin': (codes_doc.get('Vin') or paint_doc.get('Vin') or '').strip(),
+        'make': fix_make_case((paint_doc.get('Make') or '').strip()),
+        'model': smart_title((paint_doc.get('Model') or '').strip()),
+        'colour': (paint_doc.get('CurrentColour') or '').title(),
+    }

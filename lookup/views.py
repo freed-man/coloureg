@@ -23,7 +23,7 @@ from django.views.decorators.csrf import csrf_exempt
 from django_ratelimit.core import is_ratelimited
 from .models import Search, PaintLookup, SiteConfig, VrmCache
 from .services.vdg import (
-    get_combined_lookup,
+    vehicle_lookup,
     smart_title,
     normalize_fuel_type,
     fix_make_case,
@@ -830,7 +830,12 @@ def index(request):
         try:
             vdg_data = _timed_call(
                 'vdg', registration,
-                lambda: get_combined_lookup(registration, billing_sink=vdg_billing),
+                # VEHICLE package only (paint66). This call is on the request
+                # path, so it must always answer — 0.46-0.57s measured cold on
+                # five registrations. Paint is fetched later from the poll,
+                # where 10-26s (or a 60s gateway 502 on BMW) costs the customer
+                # nothing but a spinner on an already-rendered page.
+                lambda: vehicle_lookup(registration, billing_sink=vdg_billing),
             )
             if vdg_data:
                 # Per-document tracking: each doc has its own StatusCode
@@ -984,6 +989,11 @@ def index(request):
         paint_code = None
         paint_description = None
         all_paint_codes = []
+        # vehicle_lookup NEVER returns paint, so this is always False now and
+        # every lookup goes to the pool. Kept rather than deleted because it is
+        # the single place paint enters from the first pass: if a future package
+        # change puts paint back in the vehicle response, this picks it up
+        # instead of silently ignoring it.
         if vdg_data and vdg_data.get('paint_returned'):
             paint_code = vdg_data.get('paint_code', '')
             paint_description = vdg_data.get('paint_description', '')
