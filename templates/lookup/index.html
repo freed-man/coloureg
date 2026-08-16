@@ -892,14 +892,12 @@
 
         // Two honest stages — message stays put until the 10s threshold is hit.
         // 0s:  initial ("Connecting to manufacturer server...", already in DOM)
-        // 10s: reassure during a genuinely slow lookup
-
-        // --- Make lookup, now BEFORE the submit (paint23) --------------------
-        // This used to fire alongside the POST, purely so the spinner could say
-        // "Requesting Ford build sheet". It now also decides whether to submit
+        // --- Make lookup, BEFORE the submit (paint23) ------------------------
+        // It once existed only so the spinner could name the make. That message
+        // is gone (paint75), and what remains is the reason it is worth a call
         // at all: some makes we can never resolve a paint code for, and running
-        // the full pipeline on one costs two paid VDG calls and ends in a
-        // failure the visitor waited up to a minute for.
+        // the full pipeline on one spends money and ends in a failure the
+        // visitor waited for.
         //
         // Sequential rather than parallel, because in parallel it is a race —
         // the POST can reach the server before the make has been resolved, and
@@ -914,7 +912,6 @@
         // submits anyway — the server re-checks with what it knows for free, so
         // a DVLA outage costs us the gate, not the site.
         var reg = regInput.value.trim().toUpperCase().replace(/\s/g, '');
-        var makeArrived = false;
 
         function submitAnyway() {
             if (window.__makeChecked) return;
@@ -967,10 +964,14 @@
                     showUnsupported(d.make);
                     return;                     // deliberately does NOT submit
                 }
-                if (d && d.make) {
-                    makeArrived = true;
-                    fadeTo('Requesting ' + d.make + ' build sheet\u2026', false);
-                }
+                // paint75: the second message is gone. It read "Requesting BMW
+                // build sheet…" and replaced the first one milliseconds before
+                // the page navigated — two labels flickering past inside ~190ms
+                // read as a glitch rather than as progress.
+                //
+                // The make check itself STAYS: it is what stops an unsupported
+                // make above, and it is the only thing standing between a
+                // Honda and a pointless lookup.
                 submitAnyway();
             })
             .catch(function () {
@@ -982,14 +983,9 @@
             return;
         }
 
-        function fadeTo(text, isStuck) {
-            msgEl.style.opacity = '0';
-            setTimeout(function() {
-                msgEl.textContent = text;
-                if (isStuck) msgEl.classList.add('stuck');
-                msgEl.style.opacity = '1';
-            }, 300);
-        }
+        // paint75: fadeTo() removed with the last message that used it. It
+        // cross-faded the caption over 300ms, which only ever made sense while
+        // this page held a 10-60s wait with stages to move between.
 
         // paint74: the 10s slow-server stage and the 3s patience note are gone.
         // Both were scheduled against a page that now returns in ~190ms, so
