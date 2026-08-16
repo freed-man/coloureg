@@ -214,6 +214,21 @@
         from { transform: rotateY(0deg)   rotateX(0deg); }
         to   { transform: rotateY(360deg) rotateX(720deg); }
     }
+    /* THE BAR (paint74). Two changes.
+       COLOUR: the site's own brand spectrum rather than flat blue, fixed to the
+       track width so it REVEALS left to right — red early, violet only near the
+       end — which reads as distance travelled rather than as a logo.
+       MOTION: it creeps continuously instead of jumping between stages. A
+       stepped bar sat still for the eight seconds between stages, and a still
+       bar reads as hung. It eases toward 96% and never arrives on its own —
+       only a real answer completes it. */
+    .pending-bar-fill {
+        background: linear-gradient(90deg, #e74c3c, #f39c12, #f1c40f, #2ecc71, #3498db, #9b59b6);
+        background-size: 240px 100%;
+        background-repeat: no-repeat;
+        transition: width 0.45s linear;
+    }
+
     .paint-pending-message {
         font-family: 'IBM Plex Sans', sans-serif;
         font-size: 18px;
@@ -442,13 +457,15 @@
                                is what buys patience; people abandon when they can't
                                tell if it's 2 seconds or 2 minutes.{% endcomment %}
                             <p class="paint-pending-message" id="paint-pending-message" aria-live="polite">
-                                Found your {{ make }} manufacturer build sheet<br><span id="pending-stage">Extracting paint records&hellip;</span>
+                                Found your {{ make }} build sheet<br><span id="pending-stage">Searching paint data&hellip;</span>
                             </p>
-                            <p id="pending-substage" style="margin: 6px 0 0; font-size: 0.8rem; color: #999; min-height: 1.2em;">
-                                Most lookups take a few seconds
-                            </p>
-                            <div style="margin: 14px auto 0; max-width: 240px; height: 3px; background: #eee; border-radius: 2px; overflow: hidden;">
-                                <div id="pending-bar" style="height: 100%; width: 4%; background: #003399; border-radius: 2px; transition: width 1.2s linear;"></div>
+                            {% comment %} paint74: the substage line is gone. Three stacked
+                               messages under a rotating globe is more than anyone reads
+                               while waiting; the "please stay on this page" half now
+                               rides on the stage line itself, which is the part that
+                               actually needs saying.{% endcomment %}
+                            <div style="margin: 14px auto 0; max-width: 240px; height: 4px; background: #eee; border-radius: 2px; overflow: hidden;">
+                                <div id="pending-bar" class="pending-bar-fill" style="height: 100%; width: 4%; border-radius: 2px;"></div>
                             </div>
                         </div>
                     </div>
@@ -610,33 +627,56 @@
     //
     // The bar is deliberately never allowed to reach 100% or stall: a static
     // spinner reads as "hung", a crawling bar reads as "working".
+    // Four stages, retimed to the pipeline as it now runs (paint74). Each marks
+    // something real, which is what makes them honest rather than theatre:
+    //   0s   both paid legs (VDG paint, One Auto) start together
+    //   10s  pl24 joins via the backstop
+    //   30s  One Auto's polling budget ends; the VDG second chance is what runs
+    //   45s  15s short of the 60s ceiling
+    // The old 4s stage marked nothing once both legs began at zero, and 50s left
+    // only 10s after the ceiling moved 65 -> 60.
     var STAGES = [
-        { at: 0,     text: 'Extracting paint records&hellip;',             sub: 'Most lookups take a few seconds',                                  pct: 15 },
-        { at: 4000,  text: 'Checking the full colour records&hellip;',      sub: 'This can take up to a minute. Please stay on this page.',          pct: 35 },
-        { at: 12000, text: 'Running a deeper search&hellip;',               sub: 'Deeper searches take longer, but often find codes the quick search misses', pct: 55 },
-        { at: 30000, text: 'Still searching&hellip;',                       sub: 'Thanks for your patience. Please stay on this page.',              pct: 75 },
-        { at: 50000, text: 'Final checks&hellip;',                          sub: 'Nearly done',                                                       pct: 90 }
+        { at: 0,     text: 'Searching paint data&hellip;' },
+        { at: 10000, text: 'Checking colour records. Please stay on this page.' },
+        { at: 30000, text: 'Running a deeper extraction. This can take a little longer.' },
+        { at: 45000, text: 'Final checks, nearly done&hellip;' }
     ];
     var stageTimers = [];
+    var barTimer = null;
 
     function runStages() {
         var stageEl = el('pending-stage');
-        var subEl = el('pending-substage');
         var barEl = el('pending-bar');
         if (!stageEl && !barEl) return;
         STAGES.forEach(function (st) {
             stageTimers.push(setTimeout(function () {
                 if (stopped) return;
                 if (stageEl) stageEl.innerHTML = st.text;
-                if (subEl) subEl.innerHTML = st.sub;
-                if (barEl) barEl.style.width = st.pct + '%';
             }, st.at));
         });
+
+        // The bar is decoupled from the stages (paint74) and eases continuously
+        // toward 96%, never arriving on its own. Stepping it meant it sat still
+        // for the twenty seconds between stages, and a still bar reads as hung.
+        // Decoupling also means the stage wording and timings can be changed
+        // freely without the bar looking wrong.
+        if (barEl) {
+            var t0 = Date.now();
+            barTimer = setInterval(function () {
+                if (stopped) { clearInterval(barTimer); return; }
+                var secs = (Date.now() - t0) / 1000;
+                // 6% floor: the easing curve starts at zero, which would show
+                // an empty track for the first moment — and an empty bar reads
+                // as "nothing is happening" at exactly the wrong time.
+                barEl.style.width = (6 + 90 * (1 - Math.exp(-secs / 18))).toFixed(1) + '%';
+            }, 400);
+        }
     }
 
     function stopStages() {
         stageTimers.forEach(clearTimeout);
         stageTimers = [];
+        if (barTimer) { clearInterval(barTimer); barTimer = null; }
         var barEl = el('pending-bar');
         if (barEl) barEl.style.width = '100%';
     }

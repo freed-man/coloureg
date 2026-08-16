@@ -331,45 +331,23 @@
     .lookup-loader.active {
         display: flex;
     }
-    .lookup-spinner {
-        position: relative;
-        width: 140px;
-        height: 140px;
-        transform-style: preserve-3d;
-        animation: spinner-tumble 5s linear infinite;
+    /* paint74: the ellipsis animates so the rare slow case does not look
+       frozen. On a ~190ms page it never completes a cycle, which is fine — it
+       exists for the DVLA-fallback path, which is p50 1.25s and occasionally a
+       few seconds. */
+    .lookup-message .dots span { animation: dot-fade 1.4s infinite; }
+    .lookup-message .dots span:nth-child(2) { animation-delay: 0.2s; }
+    .lookup-message .dots span:nth-child(3) { animation-delay: 0.4s; }
+    @keyframes dot-fade {
+        0%, 20%   { opacity: 0; }
+        40%, 100% { opacity: 1; }
     }
-    .lookup-spinner .dot {
-        position: absolute;
-        top: 50%;
-        left: 50%;
-        width: 18px;
-        height: 18px;
-        margin: -9px 0 0 -9px;
-        border-radius: 50%;
-        box-shadow: 0 2px 6px rgba(0, 0, 0, 0.25);
-        transform-style: preserve-3d;
-    }
-    /* 16 paint-shop colours distributed on sphere surface (radius 52px) */
-    .lookup-spinner .dot:nth-child(1)  { background: #C8102E; transform: rotateY(0deg)   rotateX(0deg)   translateZ(52px); }  /* cherry red */
-    .lookup-spinner .dot:nth-child(2)  { background: #FF6B35; transform: rotateY(45deg)  rotateX(0deg)   translateZ(52px); }  /* sunset orange */
-    .lookup-spinner .dot:nth-child(3)  { background: #F4B400; transform: rotateY(90deg)  rotateX(0deg)   translateZ(52px); }  /* sunflower yellow */
-    .lookup-spinner .dot:nth-child(4)  { background: #B8E23E; transform: rotateY(135deg) rotateX(0deg)   translateZ(52px); }  /* lime */
-    .lookup-spinner .dot:nth-child(5)  { background: #0F9D58; transform: rotateY(180deg) rotateX(0deg)   translateZ(52px); }  /* forest green */
-    .lookup-spinner .dot:nth-child(6)  { background: #00C2A8; transform: rotateY(225deg) rotateX(0deg)   translateZ(52px); }  /* teal */
-    .lookup-spinner .dot:nth-child(7)  { background: #2196F3; transform: rotateY(270deg) rotateX(0deg)   translateZ(52px); }  /* sky blue */
-    .lookup-spinner .dot:nth-child(8)  { background: #003399; transform: rotateY(315deg) rotateX(0deg)   translateZ(52px); }  /* deep blue */
-    .lookup-spinner .dot:nth-child(9)  { background: #6f42c1; transform: rotateY(22deg)  rotateX(55deg)  translateZ(52px); }  /* royal purple */
-    .lookup-spinner .dot:nth-child(10) { background: #E91E63; transform: rotateY(112deg) rotateX(55deg)  translateZ(52px); }  /* magenta */
-    .lookup-spinner .dot:nth-child(11) { background: #FF8FA3; transform: rotateY(202deg) rotateX(55deg)  translateZ(52px); }  /* pink */
-    .lookup-spinner .dot:nth-child(12) { background: #B5651D; transform: rotateY(292deg) rotateX(55deg)  translateZ(52px); }  /* copper */
-    .lookup-spinner .dot:nth-child(13) { background: #6D4C41; transform: rotateY(67deg)  rotateX(-55deg) translateZ(52px); }  /* chocolate */
-    .lookup-spinner .dot:nth-child(14) { background: #8B0000; transform: rotateY(157deg) rotateX(-55deg) translateZ(52px); }  /* maroon */
-    .lookup-spinner .dot:nth-child(15) { background: #1a1a1a; transform: rotateY(247deg) rotateX(-55deg) translateZ(52px); }  /* jet black */
-    .lookup-spinner .dot:nth-child(16) { background: #E8E8E8; border: 1px solid rgba(0,0,0,0.08); transform: rotateY(337deg) rotateX(-55deg) translateZ(52px); }  /* pearl white */
-    @keyframes spinner-tumble {
-        from { transform: rotateY(0deg)   rotateX(0deg); }
-        to   { transform: rotateY(360deg) rotateX(720deg); }
-    }
+
+    /* paint74: .lookup-spinner and its 16 paint-shop dots have MOVED to the
+       results page. On a 190ms index page the globe was a flash nobody sees;
+       the results page holds the 10-26s paint wait, which is where it earns
+       its keep. */
+
     /* paint24: mono status line instead of the Playfair italic. The caption is
        reporting machine progress, so it reads better as a readout than as
        editorial prose — and at 15px it sits under the sphere rather than
@@ -396,27 +374,8 @@
        so the sphere does not jump when it appears — the note fades in where it
        already was. Nobody pays for that reservation visually: the lookups it
        would affect finish in under a fifth of a second. */
-    .lookup-patience {
-        margin: 16px 0 0;
-        max-width: 320px;
-        background: #f6f8fa;
-        border-left: 3px solid #C8102E;
-        padding: 10px 13px;
-        font-family: 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
-        /* paint71: 11 -> 14px. Every media query below overrides this, so it
-           renders nowhere — which is exactly why it was wrong to leave at 11.
-           A dead value contradicting the intent is how the 10.5px mobile rule
-           survived unnoticed. The floor should be real, not incidental. */
-        font-size: 14px;
-        color: #444;
-        line-height: 1.7;
-        text-align: left;
-        opacity: 0;
-        transition: opacity 0.5s ease;
-        pointer-events: none;
-    }
-    .lookup-patience.show { opacity: 1; }
-    .lookup-patience b { color: #111; font-weight: 500; }
+    /* paint74: .lookup-patience removed — the box moved to the results page
+       as the stage lines, which carry "Please stay on this page" inline. */
 
     /* paint28: sized in CSS rather than inline so it can respond to viewport.
        The narrow 420px box wrapped this message onto four lines on a desktop
@@ -464,11 +423,13 @@
            in a shrink-to-fit box just looks like a narrower left-aligned box. */
         text-align: center;
     }
-    /* Flex children now: centred and bounded by the loader above. */
-    .lookup-message,
-    .lookup-patience {
+    /* Flex children now: centred and bounded by the loader above. The rule used
+       to cover .lookup-patience too; that element moved to the results page in
+       paint74. */
+    .lookup-message {
         max-width: 100%;
     }
+
     @media (min-width: 768px) {
         .unsupported-note { font-size: 15px; padding: 14px 18px; }
         /* 17px mono: "Manufacturer servers are slow today, hang tight..." is the
@@ -479,7 +440,6 @@
            whose whole job at that moment is to stop someone closing the tab.
            paint71: 14 -> 15px, and see the mobile rules below — the same
            argument applied more strongly there and had been missed. */
-        .lookup-patience { font-size: 15px; padding: 16px 20px; line-height: 1.75; }
     }
     /* Below 768px there is no room for one line, so allow wrapping again. */
     @media (max-width: 767px) {
@@ -488,36 +448,16 @@
            someone is most likely to switch apps mid-lookup, so this is the
            screen where the warning matters most, and it was the one where it
            was smallest. */
-        .lookup-patience { font-size: 15px; padding: 15px 18px; line-height: 1.75; }
     }
     /* .stuck is still toggled by the JS at the 10s stage, but both stages now
        share one identical style (mono 15px #000). The class is kept as a hook
        in case a future stage wants distinct styling. */
     @media (max-width: 480px) {
-        .lookup-spinner { width: 110px; height: 110px; }
-        .lookup-spinner .dot { width: 14px; height: 14px; margin: -7px 0 0 -7px; }
-        .lookup-spinner .dot:nth-child(1)  { transform: rotateY(0deg)   rotateX(0deg)   translateZ(40px); }
-        .lookup-spinner .dot:nth-child(2)  { transform: rotateY(45deg)  rotateX(0deg)   translateZ(40px); }
-        .lookup-spinner .dot:nth-child(3)  { transform: rotateY(90deg)  rotateX(0deg)   translateZ(40px); }
-        .lookup-spinner .dot:nth-child(4)  { transform: rotateY(135deg) rotateX(0deg)   translateZ(40px); }
-        .lookup-spinner .dot:nth-child(5)  { transform: rotateY(180deg) rotateX(0deg)   translateZ(40px); }
-        .lookup-spinner .dot:nth-child(6)  { transform: rotateY(225deg) rotateX(0deg)   translateZ(40px); }
-        .lookup-spinner .dot:nth-child(7)  { transform: rotateY(270deg) rotateX(0deg)   translateZ(40px); }
-        .lookup-spinner .dot:nth-child(8)  { transform: rotateY(315deg) rotateX(0deg)   translateZ(40px); }
-        .lookup-spinner .dot:nth-child(9)  { transform: rotateY(22deg)  rotateX(55deg)  translateZ(40px); }
-        .lookup-spinner .dot:nth-child(10) { transform: rotateY(112deg) rotateX(55deg)  translateZ(40px); }
-        .lookup-spinner .dot:nth-child(11) { transform: rotateY(202deg) rotateX(55deg)  translateZ(40px); }
-        .lookup-spinner .dot:nth-child(12) { transform: rotateY(292deg) rotateX(55deg)  translateZ(40px); }
-        .lookup-spinner .dot:nth-child(13) { transform: rotateY(67deg)  rotateX(-55deg) translateZ(40px); }
-        .lookup-spinner .dot:nth-child(14) { transform: rotateY(157deg) rotateX(-55deg) translateZ(40px); }
-        .lookup-spinner .dot:nth-child(15) { transform: rotateY(247deg) rotateX(-55deg) translateZ(40px); }
-        .lookup-spinner .dot:nth-child(16) { transform: rotateY(337deg) rotateX(-55deg) translateZ(40px); }
         .lookup-message { font-size: 13.5px; }
         /* paint71: 10.5 -> 14px. It was 10.5px here — below the browser default
            of 16 by a third, on the smallest screens, for the one message that
            has to be read. Shrinking it to fit the box was the wrong trade:
            the text may now wrap to three lines and that is fine. */
-        .lookup-patience { font-size: 14px; padding: 14px 16px; line-height: 1.7; }
     }
 </style>
 {% endblock %}
@@ -657,30 +597,24 @@
                         <a href="{% url 'help' %}#contact-section">Send us the registration</a>
                         and we'll look it up manually, for free.
                     </div>
+                    <!-- paint74: the globe, the staged messages and the patience
+                         note have MOVED to the results page.
+
+                         They were built when a lookup took 10-60 seconds and
+                         this page held the whole wait. Since the vehicle/paint
+                         split it returns in ~190ms (measured on live rows), so
+                         the globe was a flash below the threshold at which
+                         anyone registers it, and the two staged messages could
+                         never fire at all: the patience note was scheduled for
+                         3s and the slow-server message for 10s, against a page
+                         that is gone in a fifth of a second.
+
+                         What is left is one line, for the rare slow case — a
+                         failed VDG vehicle call falls back to DVLA and MOT,
+                         which is p50 1.25s and occasionally a few seconds. The
+                         ellipsis animates so that case does not look frozen. -->
                     <div class="lookup-loader" id="lookup-loader" aria-live="polite">
-                        <div class="lookup-spinner" aria-hidden="true">
-                            <span class="dot"></span>
-                            <span class="dot"></span>
-                            <span class="dot"></span>
-                            <span class="dot"></span>
-                            <span class="dot"></span>
-                            <span class="dot"></span>
-                            <span class="dot"></span>
-                            <span class="dot"></span>
-                            <span class="dot"></span>
-                            <span class="dot"></span>
-                            <span class="dot"></span>
-                            <span class="dot"></span>
-                            <span class="dot"></span>
-                            <span class="dot"></span>
-                            <span class="dot"></span>
-                            <span class="dot"></span>
-                        </div>
-                        <p class="lookup-message" id="lookup-message">Connecting to manufacturer server...</p>
-                        <div class="lookup-patience" id="lookup-patience" aria-hidden="true">
-                            This can take up to <b>60 seconds</b>.<br>
-                            Please don't close or refresh the page.
-                        </div>
+                        <p class="lookup-message" id="lookup-message">Connecting to manufacturer server<span class="dots" aria-hidden="true"><span>.</span><span>.</span><span>.</span></span></p>
                     </div>
                     {% endif %}
                 </div>
@@ -959,7 +893,6 @@
         // Two honest stages — message stays put until the 10s threshold is hit.
         // 0s:  initial ("Connecting to manufacturer server...", already in DOM)
         // 10s: reassure during a genuinely slow lookup
-        var stage10 = "Manufacturer servers are slow today, hang tight...";
 
         // --- Make lookup, now BEFORE the submit (paint23) --------------------
         // This used to fire alongside the POST, purely so the spinner could say
@@ -996,8 +929,6 @@
 
         function showUnsupported(make) {
             loader.classList.remove('active');
-            var patReset = document.getElementById('lookup-patience');
-            if (patReset) patReset.classList.remove('show');
             form.style.display = '';
             var box = document.getElementById('unsupported-make');
             if (box) {
@@ -1060,27 +991,14 @@
             }, 300);
         }
 
-        var t10 = setTimeout(function() {
-            makeArrived = true;   // stop a late make overwriting the slow-server notice
-            fadeTo(stage10, true);
-        }, 10000);
+        // paint74: the 10s slow-server stage and the 3s patience note are gone.
+        // Both were scheduled against a page that now returns in ~190ms, so
+        // neither could ever fire. The equivalent staging lives on the results
+        // page, where the 10-26s paint wait actually happens.
+        var t10 = null;
 
-        // Patience note at 3s (paint24). NOT shown immediately: measured on real
-        // traffic, lookups are bimodal — 42% finish under 3 seconds (mostly
-        // cache hits returning in ~0.17s) and the rest run on to about 15. A
-        // note promising "up to 60 seconds" shown to the fast group would make
-        // an instant answer feel slow. At 3s it only reaches people who are
-        // genuinely waiting, so it reads as reassurance rather than a warning.
-        // The threshold is insensitive: 2.5s and 4s reach 57.7% and 51.7%
-        // respectively, so this is not a number worth tuning.
-        var patienceEl = document.getElementById('lookup-patience');
-        var tPat = setTimeout(function () {
-            if (patienceEl) patienceEl.classList.add('show');
-        }, 3000);
+        form._loaderTimers = [];
 
-        // Stash handles on the form so the pageshow handler can clear them on
-        // back-navigation.
-        form._loaderTimers = [t10, tPat];
     });
 
     // Reset loader state on page show (covers back-button navigation from a bfcache).
@@ -1125,13 +1043,12 @@
 
         // Hide loader, restore form, reset message to initial state.
         loader.classList.remove('active');
-        var patReset = document.getElementById('lookup-patience');
-        if (patReset) patReset.classList.remove('show');
         lookupForm.style.display = '';
         if (msgEl) {
             msgEl.classList.remove('stuck');
             msgEl.style.opacity = '1';
-            msgEl.textContent = 'Connecting to manufacturer server...';
+            msgEl.innerHTML = 'Connecting to manufacturer server' +
+                '<span class="dots" aria-hidden="true"><span>.</span><span>.</span><span>.</span></span>';
         }
     });
     }
