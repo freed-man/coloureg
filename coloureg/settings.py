@@ -22,14 +22,18 @@ DEBUG = os.environ.get('DEVELOPMENT', '') == 'True'
 
 ALLOWED_HOSTS = ['127.0.0.1', 'localhost', '.coloureg.com', '.coloureg.co.uk']
 
-# The Railway-assigned public URL (e.g. 'coloureg-production.up.railway.app').
-# Allow the whole '.up.railway.app' suffix so direct hits to that URL are
-# accepted. We can't rely on RAILWAY_PUBLIC_DOMAIN for this: once a custom
-# domain (coloureg.com) is attached, Railway sets RAILWAY_PUBLIC_DOMAIN to the
-# custom domain, so the original *.up.railway.app URL would otherwise fall out
-# of ALLOWED_HOSTS and throw DisallowedHost (noise in Sentry, and the URL would
-# 400).
-ALLOWED_HOSTS.append('.up.railway.app')
+# REMOVED (F3): ALLOWED_HOSTS.append('.up.railway.app').
+#
+# The wildcard was here to stop DisallowedHost noise from direct hits to the
+# Railway-assigned URL. Measured 16 Aug 2026: there is no such URL. Public
+# Networking lists only coloureg.com and www.coloureg.com, and both CNAME
+# targets return 404 with 'x-railway-fallback: true' when hit by name — Railway
+# has no service registered under either, so nothing can arrive with a
+# .up.railway.app Host. The wildcard was accepting a suffix that only ever
+# resolves to other people's services.
+#
+# Nothing breaks if a Railway domain is generated later: the RAILWAY_PUBLIC_DOMAIN
+# append immediately below covers whatever Railway considers canonical.
 
 # Railway provides the service's current public domain in RAILWAY_PUBLIC_DOMAIN
 # (the custom domain once attached, otherwise the *.up.railway.app URL). Append
@@ -128,6 +132,10 @@ MIDDLEWARE = [
     # Railway's internal healthcheck probe (which uses an internal Host header
     # not in ALLOWED_HOSTS) gets a clean 200 instead of a 400 DisallowedHost.
     'lookup.middleware.HealthCheckMiddleware',
+    # Counts requests arriving without Cloudflare's Transform Rule header (F2).
+    # After the healthcheck short-circuit, so Railway's internal probe is never
+    # miscounted as a direct hit. Observation only — see the middleware.
+    'lookup.middleware.OriginGateObserverMiddleware',
     'django.middleware.security.SecurityMiddleware',
     'whitenoise.middleware.WhiteNoiseMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',

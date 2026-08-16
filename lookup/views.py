@@ -10,6 +10,7 @@ from django.shortcuts import render, redirect
 from django.conf import settings as dj_settings
 from django.contrib import messages
 from django.contrib.admin.views.decorators import staff_member_required
+import secrets
 from django.core.exceptions import ValidationError
 from django.core.validators import validate_email, validate_ipv46_address
 from django.core.cache import caches
@@ -102,9 +103,48 @@ def _valid_ip(value):
     return value
 
 
+# Origin gate config (F2). Read once at import; both come from Railway.
+#   ORIGIN_SECRET     - matches the Cloudflare Transform Rule's header value.
+#   ORIGIN_GATE_MODE  - 'observe' (default, log only) or 'enforce'.
+# With no secret configured the gate is inert and behaviour is exactly as before,
+# which is the correct fail-open: a half-configured gate must not start refusing
+# to trust the proxy headers that every legitimate visitor depends on.
+ORIGIN_SECRET = os.environ.get('ORIGIN_SECRET', '').strip()
+ORIGIN_GATE_MODE = os.environ.get('ORIGIN_GATE_MODE', 'observe').strip().lower()
+
+
+def via_cloudflare(request):
+    """True when this request provably arrived through Cloudflare (F2).
+
+    Measured 16 Aug 2026: Railway's edge IP is directly reachable and routes by
+    Host header, so `curl --resolve coloureg.com:443:<railway-edge-ip>` returns
+    the homepage with a 200. Cloudflare is therefore bypassable, and every
+    per-IP control below keys off CF-Connecting-IP — a header the caller writes
+    themselves on that route. A forged one per request means unlimited fresh
+    rate-limit buckets.
+
+    Note the audit's proposed fix (404 anything using the Railway hostname)
+    would NOT have helped: there is no reachable Railway hostname, and the
+    bypass sends the genuine coloureg.com Host. A host check waves it through.
+
+    A Cloudflare Transform Rule sets ORIGIN_SECRET_HEADER on every request that
+    passes through, using 'Set static' so a client-supplied value of the same
+    name is overwritten rather than appended. A direct connection cannot produce
+    it.
+
+    compare_digest, not ==, so the comparison does not leak the secret one
+    character at a time through response timing.
+    """
+    if not ORIGIN_SECRET:
+        return False
+    sent = request.META.get('HTTP_X_COLOUREG_ORIGIN', '')
+    if not sent:
+        return False
+    return secrets.compare_digest(sent, ORIGIN_SECRET)
+
+
 def get_client_ip(request):
-    # All traffic is proxied through Cloudflare (orange-cloud), which sets
-    # CF-Connecting-IP to the single real client IP. Trust that first.
+    # CF-Connecting-IP is the real client IP *when Cloudflare set it*.
     # X-Forwarded-For is unreliable here: Cloudflare appends its edge IP and
     # Railway's proxy rewrites the chain, so the visitor isn't dependably the
     # first entry (that's why logs were showing 172.6x Cloudflare IPs).
@@ -116,16 +156,34 @@ def get_client_ip(request):
     # have already paid for. Rate limiting degrades safely too — junk-IP callers
     # all key to the same bucket, so they share one allowance between them
     # instead of getting a fresh one per forged header.
-    cf_ip = request.META.get('HTTP_CF_CONNECTING_IP')
-    if cf_ip:
-        ip = _valid_ip(cf_ip.strip())
-        if ip:
-            return ip
-    x_forwarded_for = request.META.get('HTTP_X_FORWARDED_FOR')
-    if x_forwarded_for:
-        ip = _valid_ip(x_forwarded_for.split(',')[0].strip())
-        if ip:
-            return ip
+    #
+    # ORIGIN GATE (F2). Under 'enforce', the proxy headers are only trusted when
+    # via_cloudflare() confirms the request came through Cloudflare; otherwise
+    # we fall through to REMOTE_ADDR, which on Railway is the platform proxy —
+    # so ALL direct-origin callers share the single bucket described above
+    # rather than minting a new one per forged header.
+    #
+    # THE DEFAULT IS 'observe', and deliberately so. Under enforce, a Transform
+    # Rule that silently stops firing would put every legitimate visitor on that
+    # one shared bucket too, and the fourth caller of the hour would be refused.
+    # That failure is worse than the hole it closes, so enforcement waits until
+    # the logs show the header arriving on effectively all traffic. Flip
+    # ORIGIN_GATE_MODE in Railway — no deploy needed.
+    trust_proxy_headers = True
+    if ORIGIN_GATE_MODE == 'enforce' and ORIGIN_SECRET:
+        trust_proxy_headers = via_cloudflare(request)
+
+    if trust_proxy_headers:
+        cf_ip = request.META.get('HTTP_CF_CONNECTING_IP')
+        if cf_ip:
+            ip = _valid_ip(cf_ip.strip())
+            if ip:
+                return ip
+        x_forwarded_for = request.META.get('HTTP_X_FORWARDED_FOR')
+        if x_forwarded_for:
+            ip = _valid_ip(x_forwarded_for.split(',')[0].strip())
+            if ip:
+                return ip
     return _valid_ip(request.META.get('REMOTE_ADDR'))
 
 
@@ -862,7 +920,8 @@ def index(request):
             # after VDG has already charged us. Treat anything unexpected as
             # "provider failed" so we degrade to the DVLA/MOT fallback instead,
             # and log it so a genuine API change is visible rather than silent.
-            logger.exception('VDG returned an unparseable payload for %s', registration)
+            logger.exception('VDG returned an unparseable payload for %s',
+                             _log_reg(registration))
             search.error_message = f'VDG: unparseable response ({type(e).__name__})'
 
         # Whatever happened above, if VDG billed us and nothing was recorded on
@@ -2686,16 +2745,26 @@ def admin_stats(request):
         'incomplete_count': incomplete_count,
         'name_only_miss_count': name_only_miss_count,
         'avg_duration_s': avg_duration_s,
-        'chart_labels': chart_labels,
-        'chart_delivered': chart_delivered,
-        'chart_failed': chart_failed,
-        'chart_nocode': chart_nocode,
-        'chart_excluded': chart_excluded,
-        'src_vdg': src_vdg,
-        'src_retry': src_retry,
-        'src_pl24': src_pl24,
-        'src_manual': src_manual,
-        'src_cache': src_cache,
+        # ONE JSON BLOB, rendered by json_script (F14 / handoff item 2).
+        # These were eleven separate `{{ x|safe }}` interpolations straight into
+        # a <script> block. Nothing user-controlled reaches them today — they are
+        # strftime dates and integer counts — so there was no live XSS. The
+        # problem was that it only stayed true by accident: adding a make name or
+        # any other string carrying data to a chart would have made it an
+        # injection, silently, with no reviewer prompt. json_script escapes
+        # correctly whatever the content turns out to be.
+        'chart_json': {
+            'labels': chart_labels,
+            'delivered': chart_delivered,
+            'failed': chart_failed,
+            'nocode': chart_nocode,
+            'excluded': chart_excluded,
+            'src_vdg': src_vdg,
+            'src_retry': src_retry,
+            'src_pl24': src_pl24,
+            'src_manual': src_manual,
+            'src_cache': src_cache,
+        },
         'top_makes': top_makes,
         'top_regs': top_regs,
         'failed_makes': failed_makes,

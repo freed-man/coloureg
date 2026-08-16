@@ -1530,6 +1530,7 @@
     })();
 </script>
 
+{{ chart_json|json_script:"chart-data" }}
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <script>
     // paint16: click a row with a note marker to reveal its detail row.
@@ -1540,17 +1541,23 @@
         if (detail) detail.hidden = !detail.hidden;
     });
 
+    // Chart data arrives as JSON in a separate application/json block (see
+    // the view). json_script escapes it properly, so a value carrying a quote
+    // or an angle bracket can never break out into executable code the way a
+    // bare safe-filtered interpolation could.
+    var CHART = JSON.parse(document.getElementById('chart-data').textContent);
+
     // Daily lookups, stacked by outcome
     var ctx = document.getElementById('dailyChart').getContext('2d');
     new Chart(ctx, {
         type: 'bar',
         data: {
-            labels: {{ chart_labels|safe }},
+            labels: CHART.labels,
             datasets: [
-                { label: 'Code delivered', data: {{ chart_delivered|safe }}, backgroundColor: '#1b7f4d' },
-                { label: 'No code found',  data: {{ chart_failed|safe }},    backgroundColor: '#c8102e' },
-                { label: 'No code exists', data: {{ chart_nocode|safe }},    backgroundColor: '#b8860b' },
-                { label: 'Excluded',       data: {{ chart_excluded|safe }},  backgroundColor: '#d9d9d9' }
+                { label: 'Code delivered', data: CHART.delivered, backgroundColor: '#1b7f4d' },
+                { label: 'No code found',  data: CHART.failed,    backgroundColor: '#c8102e' },
+                { label: 'No code exists', data: CHART.nocode,    backgroundColor: '#b8860b' },
+                { label: 'Excluded',       data: CHART.excluded,  backgroundColor: '#d9d9d9' }
             ]
         },
         options: {
@@ -1569,13 +1576,13 @@
     new Chart(sctx, {
         type: 'bar',
         data: {
-            labels: {{ chart_labels|safe }},
+            labels: CHART.labels,
             datasets: [
-                { label: 'First pass',   data: {{ src_vdg|safe }},    backgroundColor: '#003399' },
-                { label: 'Retry',        data: {{ src_retry|safe }},  backgroundColor: '#4a7bd4' },
-                { label: 'Deep search',  data: {{ src_pl24|safe }},   backgroundColor: '#7fb069' },
-                { label: 'Manual',       data: {{ src_manual|safe }}, backgroundColor: '#b8860b' },
-                { label: 'Cache',        data: {{ src_cache|safe }},  backgroundColor: '#999' }
+                { label: 'First pass',   data: CHART.src_vdg,    backgroundColor: '#003399' },
+                { label: 'Retry',        data: CHART.src_retry,  backgroundColor: '#4a7bd4' },
+                { label: 'Deep search',  data: CHART.src_pl24,   backgroundColor: '#7fb069' },
+                { label: 'Manual',       data: CHART.src_manual, backgroundColor: '#b8860b' },
+                { label: 'Cache',        data: CHART.src_cache,  backgroundColor: '#999' }
             ]
         },
         options: {
