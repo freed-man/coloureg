@@ -378,7 +378,12 @@ class PaintLookup(models.Model):
     # It also sidesteps the trap in the .only() approach this replaces, where
     # reading any field outside the deferred set silently costs a query PER ROW.
     # These tuples simply have no other fields to read.
-    _MATCH_FIELDS = ('code', 'hex', 'name', 'normalized_names', 'models_list')
+    # 'all_names' added (paint80) so a name-resolved lookup can DISPLAY the name
+    # it actually matched. Costs one more column on a values_list that paint17
+    # measured; the row count is unchanged and the name test still runs on the
+    # raw tuple before any namedtuple is built.
+    _MATCH_FIELDS = ('code', 'hex', 'name', 'normalized_names', 'models_list',
+                     'all_names')
     _MatchRow = namedtuple('_MatchRow', _MATCH_FIELDS)
     # Positional index used to test the name before paying for the namedtuple.
     # Derived from the field list so the two cannot drift apart.
@@ -1126,7 +1131,7 @@ class PaintLookup(models.Model):
                 return None, None, None
 
             # Try to collapse the full candidate set to a single code.
-            resolved = cls._collapse_to_single_code(rows)
+            resolved = cls._collapse_to_single_code(rows, name_norm)
             if resolved is not None:
                 return resolved
 
@@ -1139,7 +1144,7 @@ class PaintLookup(models.Model):
                 if cls.normalize_name(r.name or '') == name_norm
             ]
             if primary_rows and len(primary_rows) < len(rows):
-                resolved = cls._collapse_to_single_code(primary_rows)
+                resolved = cls._collapse_to_single_code(primary_rows, name_norm)
                 if resolved is not None:
                     return resolved
 
@@ -1171,7 +1176,7 @@ class PaintLookup(models.Model):
                         if cls._model_matches(model, r.models_list, anywhere=True)
                     ]
                 if model_rows and len(model_rows) < len(rows):
-                    resolved = cls._collapse_to_single_code(model_rows)
+                    resolved = cls._collapse_to_single_code(model_rows, name_norm)
                     if resolved is not None:
                         return resolved
                     # Model-matched set still ambiguous — narrow again to the rows
@@ -1181,7 +1186,7 @@ class PaintLookup(models.Model):
                         if cls.normalize_name(r.name or '') == name_norm
                     ]
                     if primary_model_rows:
-                        resolved = cls._collapse_to_single_code(primary_model_rows)
+                        resolved = cls._collapse_to_single_code(primary_model_rows, name_norm)
                         if resolved is not None:
                             return resolved
 
@@ -1191,10 +1196,37 @@ class PaintLookup(models.Model):
             return None, None, None
 
     @staticmethod
-    def _collapse_to_single_code(rows):
+    def _display_name(row, name_norm):
+        """The name to SHOW for a row matched by name (paint80).
+
+        A row's primary `name` is whichever spelling won a frequency vote when
+        the table was built, and on a code-reuse row that can be a completely
+        different colour. Peugeot EEQ is named 'Brun Epicee' — spiced brown —
+        while also carrying 'Jaune Agueda' and 'Agueda Yellow' for the yellow
+        that a 2024 208 actually is. Showing the primary there gives the
+        customer a brown name against a #A69A37 yellow swatch: right code,
+        wrong label, and a label wrong enough to undermine the code beside it.
+
+        So when the match was made BY NAME, prefer the stored spelling that
+        matched. Falls back to the primary whenever nothing matches, which keeps
+        every code-resolved lookup exactly as it was — this can only affect the
+        name->code direction.
+        """
+        if not name_norm:
+            return row.name
+        for candidate in (getattr(row, 'all_names', None) or []):
+            if PaintLookup.normalize_name(candidate) == name_norm:
+                return candidate
+        return row.name
+
+    @staticmethod
+    def _collapse_to_single_code(rows, name_norm=None):
         """Try to reduce a set of matching rows to one code via (in order):
         exact-single, dash-suffix collapse, then prefix collapse. Returns
         (code, hex, name) if the rows resolve to a single paint, else None.
+
+        `name_norm` is the normalised query, used only to choose WHICH stored
+        spelling to display — see _display_name. Omitted, behaviour is unchanged.
 
         Pure/stateless helper for code_from_name; never raises on normal input.
         """
@@ -1203,14 +1235,14 @@ class PaintLookup(models.Model):
         # 1. Exactly one code.
         if len(codes) == 1:
             r = rows[0]
-            return r.code, (r.hex or None), r.name
+            return r.code, (r.hex or None), PaintLookup._display_name(r, name_norm)
 
         # 2. Dash-suffix variants of a single base ('B554P-L'/'B554P-S').
         bases = {c.split('-')[0] for c in codes}
         if len(bases) == 1:
             base = next(iter(bases))
             exact = next((r for r in rows if r.code == base), rows[0])
-            return base, (exact.hex or None), exact.name
+            return base, (exact.hex or None), PaintLookup._display_name(exact, name_norm)
 
         # 3. Prefix variants: the shortest code is a strict prefix of all others
         #    (Ford 'FLVA' prefixes 'FLVAWWA'). Same paint, two code conventions —
@@ -1226,7 +1258,7 @@ class PaintLookup(models.Model):
                 # No row for the bare code itself — use a suffixed row's hex/name
                 # but still return the canonical short code.
                 exact = next((r for r in rows if r.hex), rows[0])
-            return shortest, (exact.hex or None), exact.name
+            return shortest, (exact.hex or None), PaintLookup._display_name(exact, name_norm)
 
         return None
 
