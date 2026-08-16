@@ -355,7 +355,7 @@ def _vdg_retry(registration, telemetry=None, search_id=None):
         # so the second read is fast. Asking for the vehicle documents again
         # would pay for identity we already hold.
         data = paint_lookup(registration, billing_sink=sink)
-    except VdgError:
+    except Exception as e:  # noqa: BLE001 — see below; this must never escape
         # A TIMEOUT LANDS HERE, and the second chance below must still run
         # (paint84). It previously sat inside this try, so an exception jumped
         # straight past it — leaving the stage unreachable on the one case that
@@ -363,8 +363,18 @@ def _vdg_retry(registration, telemetry=None, search_id=None):
         # returned B85 in 0.74s; that is a timeout followed by a warm read, and
         # the code could not reach the warm read.
         #
-        # Cost is still recorded below either way: VDG charged us whether or not
-        # the response arrived.
+        # CATCHES EVERYTHING, not just VdgError (F5). `sink` is populated by
+        # _make_request the moment VDG answers, BEFORE the response is parsed —
+        # so a parse-side failure (_parse_paint_fields meeting an unexpected
+        # shape, e.g. a list of strings in PaintCodeList) arrives with the
+        # charge ALREADY INCURRED. Catching only VdgError let that escape past
+        # the cost read and _record_retry_billing below, losing a real charge:
+        # the exact blind spot paint18 exists to close, and invisible spend is
+        # what lets the daily budget breaker read low. views.py added the same
+        # trust-boundary catch on the first pass; the retry lacked it.
+        if not isinstance(e, VdgError):
+            logger.exception('VDG paint call failed unexpectedly for %s',
+                             _log_reg(registration))
         data = None
 
     # SECOND CHANCE (paint73). The first call has warmed VDG's upstream cache

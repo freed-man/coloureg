@@ -93,6 +93,33 @@ class VdgTimeoutError(VdgError):
     pass
 
 
+# Query-string parameters that must never survive into an exception string.
+# `apikey` is the live credential; `vrm` is personal data under the same
+# hashing discipline _log_reg enforces everywhere else.
+_SECRET_PARAMS = ('apikey', 'vrm')
+_SCRUB_RE = re.compile(r'\b(' + '|'.join(_SECRET_PARAMS) + r')=[^&\s\'"]+')
+
+
+def _scrub(exc):
+    """Exception text with the API key and registration removed (F1).
+
+    urllib3 embeds the full request URL in MaxRetryError, so a DNS failure or
+    refused connection puts `apikey=<live key>&vrm=<plate>` into str(e). That
+    string is stored on Search.error_message and reaches Sentry.
+
+    Belt and braces: the parameter pattern catches the URL form, and the
+    literal key value is replaced separately in case the URL was encoded or
+    the key surfaced through some other path. The key is read from the
+    environment rather than closed over so this stays correct if it rotates.
+    """
+    text = _SCRUB_RE.sub(lambda m: f'{m.group(1)}=REDACTED', str(exc))
+    key = os.environ.get('VDG_API_KEY', '')
+    # A short or empty key would turn this into a destructive substitution.
+    if len(key) >= 8:
+        text = text.replace(key, 'REDACTED')
+    return text
+
+
 def _make_request(registration, package, billing_sink=None, timeout=None):
     """One call to one package. Returns the parsed JSON dict, or raises.
 
@@ -118,9 +145,18 @@ def _make_request(registration, package, billing_sink=None, timeout=None):
     except requests.exceptions.Timeout as e:
         # Raise the timeout-specific subclass so views.py / Sentry can tell
         # this apart from a generic transport failure or VDG 500.
-        raise VdgTimeoutError(f'VDG request timed out: {e}')
+        raise VdgTimeoutError(f'VDG request timed out: {_scrub(e)}')
     except requests.exceptions.RequestException as e:
-        raise VdgError(f'VDG request failed: {e}')
+        # SCRUBBED (F1). The API key travels in the query string, so on any
+        # connection-class failure urllib3's MaxRetryError carries the whole
+        # URL — key and plaintext VRM included — inside str(e). views.py stores
+        # this in Search.error_message, a column visible in /admin/ and echoed
+        # to Sentry, which both leaks the live credential and defeats the
+        # _log_reg hashing discipline. The read-timeout string does not carry
+        # the URL, so the everyday BMW path was never affected; this fires on
+        # network-level failures, which is exactly when nobody is watching.
+        # oneauto.py:204 already got this right by logging type(e).__name__.
+        raise VdgError(f'VDG request failed: {_scrub(e)}')
 
     if response.status_code != 200:
         raise VdgError(f'VDG returned {response.status_code}')

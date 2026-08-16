@@ -234,6 +234,24 @@ def lookup(vin=None, reg=None, make=None, model=None, year=None,
 
     code, desc, all_codes = _extract(payload)
 
+    # BUILD DECODE IS BILLED PER RESULT (F4). This module's own header says so
+    # and the probe script warns it at run time, but the adapter recorded a flat
+    # £1.50 however many results came back, because _extract collapses a list
+    # payload to result[0]. A VIN returning three results is £4.50 and would
+    # have been counted as £1.50 — under-reporting spend to the daily budget
+    # breaker, the same invisible-charge class as paint18/paint21/paint26 and
+    # paint67. Both Teslas tested returned one result, so nothing has been lost
+    # yet; the count is taken here so it stays right when one does not.
+    #
+    # VIN Lookup is billed per CALL, so its cost is untouched by the count.
+    if path == BUILD_DECODE_PATH:
+        _results = (payload or {}).get('result')
+        if isinstance(_results, list) and len(_results) > 1:
+            cost = round(BUILD_DECODE_COST * len(_results), 2)
+            logger.warning(
+                'One Auto Build Decode returned %d results: charged %.2f',
+                len(_results), cost)
+
     # A 200 BILLS whether or not it carried a colour. Record the cost before
     # deciding there is nothing to return, or the spend vanishes.
     sink['cost'] = cost
