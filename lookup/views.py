@@ -58,6 +58,7 @@ from .services.payments import (
     create_checkout_session,
     get_session,
     capture,
+    cancel,
     construct_webhook_event,
 )
 from .services.email import (
@@ -3201,10 +3202,16 @@ def _sget(obj, key, default=None):
 def _append_search_note(search, note):
     """Append a marker to Search.error_message without destroying what's there.
 
-    error_message doubles as the paid-flow idempotency key (it carries
-    `stripe_session=<id>`), so this MUST append rather than overwrite — clobbering
-    it would let the webhook and the success redirect both fulfil the same
-    session again.
+    CORRECTED (F8). This docstring used to claim error_message doubled as the
+    paid-flow idempotency key, carrying `stripe_session=<id>`. Nothing writes
+    that any more. Idempotency is `paid_unlocked` plus the `fulfil-lock:{id}`
+    cache lock, and a future reader who "protected" the invariant described
+    here would be protecting a ghost — on the money path, which is where
+    believing a stale comment costs the most.
+
+    It still appends rather than overwrites, for the ordinary reason: this
+    column also carries lookup diagnostics, and a fulfilment note must not
+    erase the reason a lookup failed.
     """
     if search is None:
         return
@@ -3218,7 +3225,8 @@ def _append_search_note(search, note):
         logger.exception('Could not append note %r to search %s', note, getattr(search, 'id', None))
 
 
-def _record_capture_outcome(search, captured, session_id):
+def _record_capture_outcome(search, captured, session_id,
+                            payment_intent_id=None):
     """Record whether the money was actually taken.
 
     capture() returns a bool, and it was previously discarded. That meant a
@@ -3239,7 +3247,28 @@ def _record_capture_outcome(search, captured, session_id):
         '(session=%s, search=%s) — payment not taken',
         session_id, getattr(search, 'id', None),
     )
-    _append_search_note(search, 'stripe_capture_failed')
+    # RELEASE THE HOLD (F8). Capture failed, so no money is coming; leaving the
+    # authorisation in place would freeze the customer's £2 for about seven days
+    # over a payment that did not happen. Stripe refuses to cancel an intent
+    # that was in fact captured, so this cannot release a hold on money actually
+    # taken — the refusal is the safety net, not our own bookkeeping.
+    #
+    # Wrapped as well as best-effort inside cancel(): this runs AFTER the code
+    # has been delivered, and no bookkeeping step is allowed to turn a completed
+    # fulfilment into an error for the customer.
+    released = False
+    if payment_intent_id:
+        try:
+            released = cancel(payment_intent_id)
+        except Exception:
+            logger.exception('Releasing the authorisation raised for session=%s',
+                             session_id)
+    # Stamp the row EITHER WAY. The note is what gets chased, and a failed
+    # release is precisely the case that most needs chasing by hand.
+    _append_search_note(
+        search,
+        'stripe_capture_failed' if released else 'stripe_capture_failed_hold_stuck',
+    )
 
 
 def _fulfil_paid_session(session):
@@ -3316,7 +3345,8 @@ def _fulfil_paid_session(session):
         search.save(update_fields=['paid_unlocked'])
 
         captured = capture(payment_intent_id)
-        _record_capture_outcome(search, captured, session_id)
+        _record_capture_outcome(search, captured, session_id,
+                                payment_intent_id=payment_intent_id)
 
         # A paid lookup should not count against the free allowance (paint22).
         # Credited on CAPTURE, not on unlock: this rewards money actually taken,

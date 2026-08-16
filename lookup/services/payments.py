@@ -6,9 +6,18 @@ only when a result is actually delivered. Stripe's manual-capture (auth-then-
 capture) does exactly this:
 
     1. AUTHORISE the fee (place a hold) when the customer pays at Checkout.
-    2. Run the lookup.
-    3. CAPTURE the fee if a paint code was found.
-    4. CANCEL the authorisation (free) if not — the customer is never charged.
+    2. CAPTURE the fee when the result is unlocked.
+
+REWRITTEN (F8). The four-step flow this docstring used to describe — authorise,
+run the lookup, then capture or cancel on the outcome — has not been the
+behaviour since paint22, and the note at the bottom of this file has said so
+while the top of it said otherwise. The lookup now happens BEFORE anything is
+offered for sale, so there is no "no result found" branch left to reverse: a
+result is only ever sold once it exists and is complete.
+
+Cancellation therefore survives for exactly one case, which is not step 4 above:
+if CAPTURE fails, the code has already been delivered and the authorisation must
+be released rather than left to expire. See cancel() below.
 
 The amount is settings.LOOKUP_PRICE_PENCE (currently 200 = £2.00), not a
 literal anywhere in this module — earlier revisions of this docstring said £1
@@ -24,9 +33,11 @@ against Stripe TEST keys with zero effect on production behaviour.
 Fraud posture (built in, see the flow in views): Checkout is Stripe-hosted so
 Stripe owns card-testing detection and Radar; wallets (Apple/Google Pay) are
 enabled for tokenised, biometric payment; and Turnstile guards the page before
-a PaymentIntent is ever created. The auth is cancelled immediately (an
-authorisation reversal, not an expiry) to stay clear of card-network limits on
-uncaptured low-value auths.
+a PaymentIntent is ever created. An authorisation that will never be captured
+is reversed explicitly rather than left to expire, which keeps us clear of
+card-network limits on uncaptured low-value auths — but note this now applies
+only to the capture-failure case described above, not to a routine no-result
+outcome, which can no longer occur.
 """
 
 import logging
@@ -225,6 +236,57 @@ def capture(payment_intent_id):
 # offered for sale once it exists and is complete, so fulfilment has nothing to
 # fail at and nothing to reverse. Reversals were the thing this redesign set out
 # to eliminate; keeping the machinery for them would just invite their return.
+#
+# RESTORED, NARROWLY (F8). The paint22 reasoning above is still correct about
+# the case it describes, and that case is still unreachable. But it left a
+# different one uncovered: when CAPTURE ITSELF fails — a decline, a Stripe
+# error — the code is delivered, the row is stamped stripe_capture_failed, and
+# the authorisation stays on the customer's card for about seven days with no
+# code path anywhere that releases it. That is not a reversal of a completed
+# sale; it is releasing a hold for money that was never taken and now never will
+# be. The loss is already fixed at that point (the code has gone out), so the
+# only remaining question is whether the customer ALSO has their money frozen
+# for a week over a payment that failed, and there is no argument for that.
+#
+# Deliberately NOT a general-purpose reversal: the only caller is the capture
+# failure branch, and the id it passes comes from the Stripe-verified session,
+# never from a request.
+
+
+def cancel(payment_intent_id):
+    """Release an authorisation that will never be captured (F8).
+
+    Called ONLY after capture() has failed. Best-effort by design and returns a
+    bool rather than raising: fulfilment has already delivered the code by this
+    point, and a failure to release the hold must never turn into an error for
+    a customer who has their answer. A failed release leaves exactly the
+    situation that existed before this function — a dangling hold that expires
+    on its own — plus a log line naming the intent to chase.
+
+    Stripe refuses to cancel an intent in several states (already captured,
+    already cancelled, still processing). 'Already cancelled' is the desired
+    state, so it counts as success; the rest are logged and reported False.
+    """
+    stripe = _stripe()
+    if stripe is None:
+        return False
+    if not payment_intent_id:
+        return False
+    try:
+        stripe.PaymentIntent.cancel(payment_intent_id)
+        logger.info('Stripe authorisation released for %s', payment_intent_id)
+        return True
+    except Exception as e:
+        msg = str(e).lower()
+        if 'already been canceled' in msg or 'already canceled' in msg \
+                or 'already been cancelled' in msg or 'already cancelled' in msg:
+            return True
+        # Includes the case where the capture actually DID succeed upstream and
+        # we misread it: cancelling a captured intent is refused by Stripe, and
+        # being refused is the correct outcome — we must never release a hold on
+        # money that was taken.
+        logger.warning('Stripe cancel failed for %s: %s', payment_intent_id, e)
+        return False
 
 def construct_webhook_event(payload, sig_header):
     """Verify a webhook payload against STRIPE_WEBHOOK_SECRET and return the
