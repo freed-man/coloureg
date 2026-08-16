@@ -39,7 +39,12 @@ class Search(models.Model):
         # paint76. Without this a One Auto win left `provider` unset, so the one
         # question the second paid leg exists to answer — is it earning its 30p,
         # or duplicating what VDG already had — could not be asked of the data.
-        (PROVIDER_ONEAUTO, 'One Auto'),
+        # One word (paint82): this label renders in the Source badge, which is a
+        # narrow uppercase pill in a table column. 'ONE AUTO' wraps or crowds
+        # its neighbours where 'ONEAUTO' sits on one line like PARTSLINK24 and
+        # VDG. The supplier's own name has the space; the badge does not have
+        # the room, and consistency across that column matters more here.
+        (PROVIDER_ONEAUTO, 'OneAuto'),
         (PROVIDER_MANUAL, 'Manual'),
         (PROVIDER_CACHE, 'Cache'),
         (PROVIDER_NONE, 'None'),
