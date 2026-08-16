@@ -958,7 +958,23 @@ class PaintLookup(models.Model):
     # curated-override lookup, and a name stripped by one but not the other
     # silently misses in whichever path it wasn't stripped in.
     # Verified safe: neither phrase appears in any of the 120,465 stored names.
-    PROVIDER_WRAPPER_WORDS = ('exterior paint', 'paintwork')
+    # 'paint' added (paint79) for One Auto, which renders Stellantis names with
+    # the word attached at either end and a trailing dash: 'PAINT AGUEDA
+    # YELLOW-', 'OKENITE WHITE PAINT-', 'BANQUISE WHITE PAINT'. Left in, those
+    # normalise to 'paint agueda yellow' and 'okenite white paint', which match
+    # nothing — while the same colours from partslink24 arrive bare and resolve.
+    #
+    # It belongs HERE rather than in the One Auto adapter because it is the same
+    # class of thing as the two beside it: a provider's wrapper vocabulary, not
+    # a finish. Fixing it here covers every Stellantis colour at once instead of
+    # one curated alias per incident — the ESU alias shipped this morning has
+    # the identical gap and this closes it too.
+    #
+    # Verified safe by the same test as the original two: the standalone word
+    # 'paint' appears in NONE of the 120,594 stored colour names, so stripping
+    # it can only remove noise. It is LAST in the tuple so 'exterior paint' is
+    # consumed whole before the shorter word can break it.
+    PROVIDER_WRAPPER_WORDS = ('exterior paint', 'paintwork', 'paint')
 
     @staticmethod
     def _light_normalize_name(colour_name):
