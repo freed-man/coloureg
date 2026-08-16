@@ -21,8 +21,20 @@ class Search(models.Model):
     PROVIDER_CACHE = 'cache'
     PROVIDER_NONE = 'none'
     PROVIDER_CHOICES = [
-        (PROVIDER_VDG, 'VDG'),
-        (PROVIDER_VDG_RETRY, 'VDG (retry)'),
+        # paint78: the labels, corrected for the vehicle/paint split.
+        #
+        # 'vdg' meant a paint code arriving in the FIRST call, back when that
+        # call was a bundle carrying vehicle and paint together. It cannot
+        # happen any more — vehicle_lookup never returns paint — so the value
+        # only appears on historical rows and is labelled as what it was.
+        #
+        # 'vdg_retry' is no longer a retry. Post-split it is the ONLY VDG paint
+        # call there is, so "VDG (retry)" was telling the reader a second
+        # attempt had been needed when in fact nothing had been attempted before
+        # it. The stored value stays put — renaming it would rewrite the meaning
+        # of every historical row — but the label now says what it does.
+        (PROVIDER_VDG, 'VDG (bundle)'),
+        (PROVIDER_VDG_RETRY, 'VDG'),
         (PROVIDER_PARTSLINK24, 'Partslink24'),
         # paint76. Without this a One Auto win left `provider` unset, so the one
         # question the second paid leg exists to answer — is it earning its 30p,

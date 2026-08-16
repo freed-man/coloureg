@@ -1901,17 +1901,30 @@ def _apply_recovery_telemetry(search, telemetry):
     # One Auto (paint67). The COST is recorded whatever the outcome, because an
     # unrecorded charge is invisible to the daily budget breaker — and One Auto
     # bills on a 200 even when the colour comes back null.
+    # EVERY assignment above must also appear in `fields` below (paint78). The
+    # caller saves with update_fields, so a column set here and absent there is
+    # written to the object and then silently dropped — which is exactly what
+    # happened to these three: pl24_started_because was blank on all five
+    # partslink24 wins in production despite the reason being computed
+    # correctly, because the name never reached the save list.
+    fields = ['recovery_attempted', 'vdg_retry_returned', 'pl24_attempted',
+              'pl24_returned', 'recovery_name_only', 'recovery_duration_ms']
+
+    # One Auto (paint67). The COST is recorded whatever the outcome, because an
+    # unrecorded charge is invisible to the daily budget breaker — and One Auto
+    # bills on a 200 even when the colour comes back null.
     if telemetry.get('oneauto_cost') is not None:
         search.oneauto_cost = telemetry['oneauto_cost']
+        fields.append('oneauto_cost')
     if telemetry.get('oneauto_outcome'):
         search.oneauto_outcome = telemetry['oneauto_outcome'][:40]
+        fields.append('oneauto_outcome')
     if telemetry.get('pl24_started_because'):
         search.pl24_started_because = telemetry['pl24_started_because'][:24]
+        fields.append('pl24_started_because')
     dur = telemetry.get('duration_ms')
     if dur is not None:
         search.recovery_duration_ms = int(dur)
-    fields = ['recovery_attempted', 'vdg_retry_returned', 'pl24_attempted',
-              'pl24_returned', 'recovery_name_only', 'recovery_duration_ms']
 
     # --- Retry spend (paint15) ------------------------------------------------
     # The recovery makes a SECOND VDG call, which VDG bills whether or not it
