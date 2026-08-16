@@ -185,7 +185,16 @@ DATABASES = {
 # row would be written, and all of it would vanish on the next deploy — with no
 # error anywhere to say so. Refusing to boot is enormously preferable to
 # silently serving from the wrong database.
-if not DEBUG and not os.environ.get('DATABASE_URL'):
+#
+# EXCEPT under collectstatic. The Dockerfile runs it at BUILD time with
+# DEVELOPMENT=False and deliberately no DATABASE_URL, because the step only
+# writes to the filesystem — that contract is stated in the Dockerfile itself.
+# The first version of this check did not exempt it and failed the Railway
+# build. Keyed on sys.argv rather than an opt-out env var on purpose: gunicorn's
+# argv can never contain 'collectstatic', so the guard cannot be switched off in
+# production by setting the wrong variable.
+_BUILD_ONLY = len(sys.argv) > 1 and sys.argv[1] == 'collectstatic'
+if not DEBUG and not _BUILD_ONLY and not os.environ.get('DATABASE_URL'):
     raise ImproperlyConfigured(
         'DATABASE_URL is not set and DEBUG is off. Refusing to start against '
         'the sqlite fallback — set DATABASE_URL, or set DEVELOPMENT=True if '
