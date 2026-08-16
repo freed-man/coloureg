@@ -41,6 +41,7 @@ from .services.uploads import process_image_upload
 from .services.protection import (
     budget_exceeded,
     spend_today,
+    spend_today_by_provider,
     get_cached_vrm_payload,
     store_vrm_payload,
     verify_turnstile,
@@ -1955,6 +1956,8 @@ def _record_paint_hit(search_id, paint_code, paint_description, source, telemetr
         search.provider = Search.PROVIDER_PARTSLINK24
     elif source == 'vdg_retry':
         search.provider = Search.PROVIDER_VDG_RETRY
+    elif source == 'oneauto':
+        search.provider = Search.PROVIDER_ONEAUTO
     search.enriched_from = enriched_from or ''
     fields = ['paint_code', 'paint_description', 'success', 'provider', 'enriched_from']
     fields += _apply_recovery_telemetry(search, telemetry)
@@ -2711,6 +2714,11 @@ def admin_stats(request):
         # --- Protection panel (A) ---
         'site_config': SiteConfig.get(),
         'spend_today': spend_today(),
+        # Split by provider (paint76). The breaker trips on the TOTAL — a
+        # runaway day does not care which supplier caused it — but the panel
+        # needs them apart to answer whether One Auto is earning its 30p or
+        # duplicating what VDG already had.
+        'spend_by_provider': spend_today_by_provider(),
         'vrm_cache_count': VrmCache.objects.count(),
         'vrm_cache_hits': _cache_hits,
         # What those hits saved: each was a repeat lookup answered from storage,

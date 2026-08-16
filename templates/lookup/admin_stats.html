@@ -385,13 +385,19 @@
             <span class="maint-dot"></span>
             <div>
                 <div class="maint-toggle-title">
-                    Daily VDG budget
+                    Daily API budget
                     {% if site_config.budget_tripped %}— TRIPPED (lookups paused today){% endif %}
                 </div>
                 <div class="maint-toggle-sub">
                     <strong>£{{ spend_today|floatformat:2 }}</strong> of
                     £{{ site_config.daily_budget_gbp|floatformat:2 }} spent today{% if site_config.daily_budget_gbp == 0 %} (no limit set){% endif %}. Resets at midnight.
                     {% if site_config.budget_tripped %}Saving a new amount re-arms the breaker.{% endif %}
+                    {% comment %} paint76: the breaker trips on the TOTAL, since a runaway
+                       day does not care which supplier caused it — but the split is what
+                       answers whether the second paid leg is earning its 30p. One Auto
+                       has no balance endpoint (checked all 148 paths), so its figure is
+                       our own tally rather than theirs.{% endcomment %}
+                    <br><span style="opacity: 0.75;">VDG £{{ spend_by_provider.vdg|floatformat:2 }} · One Auto £{{ spend_by_provider.oneauto|floatformat:2 }}</span>
                 </div>
             </div>
         </div>
@@ -1250,17 +1256,23 @@
                     </td>
                     {% comment %}
                        Per-lookup cost — the cheapest way to read what the pipeline
-                       actually did on each row:
-                         0.38  clean first-pass hit
-                         0.46  recovery ran and won
-                         0.16  recovery ran and lost
-                         0.00  served from cache, no VDG call
-                         —     VDG returned nothing, so the billing block was
-                               discarded and the true cost is unknown
+                       actually did on each row. Post-split (paint66) and with One
+                       Auto in the pool (paint67) the shapes are:
+                         0.08  vehicle call only — no paint found, or a paint miss
+                               (VDG refunds a paint call that returns nothing)
+                         0.38  vehicle + a VDG paint hit
+                         0.38  vehicle + a One Auto hit (0.08 + 0.30)
+                         0.68  BOTH paid legs returned data — the expensive case,
+                               and the one worth watching
+                         1.58  Tesla, which only Build Decode covers at £1.50
+                         0.00  served from cache, no call at all
+                         —     nothing recorded a cost
+                       BOTH providers are summed here: showing VDG alone would
+                       understate a lookup that One Auto answered.
                     {% endcomment %}
                     <td style="text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums;">
                         {% if s.provider == 'cache' %}£0.00
-                        {% elif s.vdg_transaction_cost is not None %}£{{ s.vdg_transaction_cost|floatformat:2 }}
+                        {% elif s.total_cost is not None %}£{{ s.total_cost|floatformat:2 }}
                         {% else %}<span style="color: #ccc;">—</span>
                         {% endif %}
                     </td>
@@ -1339,7 +1351,7 @@
                     </span>
                     <span style="font-variant-numeric: tabular-nums;">
                         {% if s.provider == 'cache' %}£0.00
-                        {% elif s.vdg_transaction_cost is not None %}£{{ s.vdg_transaction_cost|floatformat:2 }}
+                        {% elif s.total_cost is not None %}£{{ s.total_cost|floatformat:2 }}
                         {% else %}<span style="color: #ccc;">—</span>
                         {% endif %}
                     </span>

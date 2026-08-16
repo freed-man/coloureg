@@ -16,6 +16,7 @@ class Search(models.Model):
     PROVIDER_VDG = 'vdg'
     PROVIDER_VDG_RETRY = 'vdg_retry'
     PROVIDER_PARTSLINK24 = 'partslink24'
+    PROVIDER_ONEAUTO = 'oneauto'
     PROVIDER_MANUAL = 'manual'
     PROVIDER_CACHE = 'cache'
     PROVIDER_NONE = 'none'
@@ -23,6 +24,10 @@ class Search(models.Model):
         (PROVIDER_VDG, 'VDG'),
         (PROVIDER_VDG_RETRY, 'VDG (retry)'),
         (PROVIDER_PARTSLINK24, 'Partslink24'),
+        # paint76. Without this a One Auto win left `provider` unset, so the one
+        # question the second paid leg exists to answer — is it earning its 30p,
+        # or duplicating what VDG already had — could not be asked of the data.
+        (PROVIDER_ONEAUTO, 'One Auto'),
         (PROVIDER_MANUAL, 'Manual'),
         (PROVIDER_CACHE, 'Cache'),
         (PROVIDER_NONE, 'None'),
@@ -189,6 +194,19 @@ class Search(models.Model):
     vdg_paint_name = models.CharField(max_length=120, blank=True, default='')
     oneauto_code = models.CharField(max_length=100, blank=True, default='')
     oneauto_name = models.CharField(max_length=120, blank=True, default='')
+
+    @property
+    def total_cost(self):
+        """What this lookup actually cost across every paid provider (paint76).
+
+        A property rather than a column: it is derived, and a stored copy would
+        be one more thing to keep in step with two workers that both write late.
+        Returns None only when NOTHING recorded a cost — which is different from
+        zero, and the dashboard shows the two differently.
+        """
+        parts = [c for c in (self.vdg_transaction_cost, self.oneauto_cost)
+                 if c is not None]
+        return sum(parts) if parts else None
 
     # Which access key (if any) exempted this lookup from the hourly limit
     # (paint41). Stores the LABEL, not the key: the label is what you read on
