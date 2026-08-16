@@ -507,6 +507,13 @@
             <p class="stat-value">{{ success_rate }}%</p>
             <p class="stat-subvalue">{{ success_with_code }} of {{ searched_to_completion }} completed searches</p>
         </div>
+        {% comment %} paint77: Avg lookup time moved up to sit beside the success
+           rate — the two together say whether the pipeline is working and how
+           long it takes, which is the pair you read first.{% endcomment %}
+        <div class="stat-card">
+            <p class="stat-label">Avg lookup time</p>
+            <p class="stat-value">{{ avg_duration_s }}s</p>
+        </div>
         {% if turnstile_blocks_week %}
         {% comment %}
            Only rendered when non-zero. Expected to be bots; a rise here at the
@@ -527,10 +534,6 @@
             <p class="stat-subvalue">code delivered but Stripe capture failed — chase these</p>
         </div>
         {% endif %}
-        <div class="stat-card">
-            <p class="stat-label">Avg lookup time</p>
-            <p class="stat-value">{{ avg_duration_s }}s</p>
-        </div>
         <div class="stat-card balance">
             <p class="stat-label">VDG balance</p>
             {% if vdg_balance is not None %}
@@ -541,18 +544,47 @@
             <p class="stat-subvalue">updates after each search</p>
             {% endif %}
         </div>
+        {% comment %} paint77: SPEND, not balance. One Auto expose no balance
+           endpoint anywhere in their 148-path spec, so a figure labelled
+           "balance" here would be an invention. What we can know is what we
+           have been charged, because we record it per call.{% endcomment %}
+        <div class="stat-card balance">
+            <p class="stat-label">One Auto spend</p>
+            {% if oneauto_cost_count %}
+            <p class="stat-value balance-highlight">£{{ oneauto_cost_sum|floatformat:2 }}</p>
+            <p class="stat-subvalue">{{ oneauto_cost_count }} billed call{{ oneauto_cost_count|pluralize }} — they publish no balance</p>
+            {% else %}
+            <p class="stat-value" style="color: #999;">£0.00</p>
+            <p class="stat-subvalue">no billed calls yet</p>
+            {% endif %}
+        </div>
     </div>
 
     <div class="panel">
-        <h3>VDG API costs</h3>
+        {% comment %} paint77: was "VDG API costs". VDG is no longer the only paid
+           API — One Auto joined the pool — so a panel counting one of them
+           under-reported what the pipeline spends. Split by provider rather
+           than merged, because "which supplier did the money go to" is the
+           question this panel exists to answer.{% endcomment %}
+        <h3>API costs</h3>
 
             <div class="cost-row">
                 <div>
-                    <span class="cost-label">Billed spend</span>
+                    <span class="cost-label">VDG — billed spend</span>
                     <span class="cost-detail">({{ real_cost_count }} lookups, actual amounts charged by VDG)</span>
                 </div>
                 <span class="cost-amount">£{{ real_cost_sum|floatformat:2 }}</span>
             </div>
+
+            {% if oneauto_cost_count %}
+            <div class="cost-row">
+                <div>
+                    <span class="cost-label">One Auto — billed spend</span>
+                    <span class="cost-detail">({{ oneauto_cost_count }} billed call{{ oneauto_cost_count|pluralize }} — a 206 &ldquo;no data&rdquo; is free and is not counted)</span>
+                </div>
+                <span class="cost-amount">£{{ oneauto_cost_sum|floatformat:2 }}</span>
+            </div>
+            {% endif %}
 
             {% if legacy_n > 0 %}
             <div class="cost-row">
@@ -582,7 +614,7 @@
                     <span class="cost-label" style="color: #1b7f4d;">Saved by the cache</span>
                     <span class="cost-detail">
                         ({{ vrm_cache_hits }} repeat lookup{{ vrm_cache_hits|pluralize }} answered from
-                        {{ vrm_cache_count }} stored registration{{ vrm_cache_count|pluralize }} — no VDG call made)
+                        {{ vrm_cache_count }} stored registration{{ vrm_cache_count|pluralize }} — no API call made)
                     </span>
                 </div>
                 <span class="cost-amount" style="color: #1b7f4d;">£{{ cache_saved|floatformat:2 }}</span>

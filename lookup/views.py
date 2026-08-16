@@ -2445,6 +2445,12 @@ def admin_stats(request):
         # null and fall back to the per-document estimate below).
         real_cost_sum=Sum('vdg_transaction_cost'),
         real_cost_count=Count('id', filter=Q(vdg_transaction_cost__isnull=False)),
+        # One Auto, separately (paint77). VDG is no longer the only paid API, so
+        # a panel headed "VDG API costs" was under-reporting what the pipeline
+        # actually spends. Kept apart rather than summed into the above because
+        # the useful question is which provider the money went to.
+        oneauto_cost_sum=Sum('oneauto_cost'),
+        oneauto_cost_count=Count('id', filter=Q(oneauto_cost__isnull=False)),
         # Average lookup duration (filtered nulls handled by Avg)
         avg_duration_ms=Avg('lookup_duration_ms'),
     )
@@ -2625,7 +2631,10 @@ def admin_stats(request):
     legacy_paint_refunds = round((legacy_n - (legacy['paint_ret'] or 0)) * 0.35, 2)
     legacy_estimate = round(legacy_vehicle + legacy_paint_charged - legacy_paint_refunds, 2)
 
-    estimated_cost = round(real_cost_sum + legacy_estimate, 2)
+    # EVERY paid provider, not just VDG (paint77). Showing a One Auto line above
+    # a total that excluded it would be worse than not showing the line at all.
+    oneauto_cost_sum = float(top_metrics['oneauto_cost_sum'] or 0)
+    estimated_cost = round(real_cost_sum + legacy_estimate + oneauto_cost_sum, 2)
 
     # Kept for the admin template's existing labels.
     vdg_vehicle_calls = top_metrics['vdg_vehicle_returned_count']
@@ -2686,6 +2695,13 @@ def admin_stats(request):
         'estimated_cost': estimated_cost,
         'real_cost_sum': round(real_cost_sum, 2),
         'real_cost_count': real_cost_count,
+        'oneauto_cost_sum': round(oneauto_cost_sum, 2),
+        'oneauto_cost_count': top_metrics['oneauto_cost_count'] or 0,
+        # NOTE for the balance card: One Auto expose NO balance endpoint —
+        # checked across all 148 paths of their spec — so there is no equivalent
+        # of vdg_balance. 'oneauto_cost_sum' above is total SPEND, which is a
+        # different quantity, and the card must say so rather than imply a
+        # balance we cannot know.
         'legacy_estimate': legacy_estimate,
         'legacy_n': legacy_n,
         'vdg_balance': vdg_balance,
