@@ -464,7 +464,13 @@
                                while waiting; the "please stay on this page" half now
                                rides on the stage line itself, which is the part that
                                actually needs saying.{% endcomment %}
-                            <div style="margin: 14px auto 0; max-width: 240px; height: 4px; background: #eee; border-radius: 2px; overflow: hidden;">
+                            <!-- width:100% is load-bearing (paint75). The parent is
+                                 align-items:center, so a child with only max-width
+                                 shrinks to fit its content — and this track's only
+                                 content is a percentage-width fill, which has nothing
+                                 to resolve against. The track collapsed to zero and
+                                 the bar was invisible. -->
+                            <div style="margin: 14px auto 0; width: 100%; max-width: 240px; height: 4px; background: #eee; border-radius: 2px; overflow: hidden;">
                                 <div id="pending-bar" class="pending-bar-fill" style="height: 100%; width: 4%; border-radius: 2px;"></div>
                             </div>
                         </div>
