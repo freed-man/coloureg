@@ -890,6 +890,51 @@ class PaintLookup(models.Model):
         },
     }
 
+    # CODE -> CODE, where a provider reports a real code that nobody sells.
+    #
+    # Distinct from CURATED_NAME_OVERRIDES below (name -> code) and
+    # CURATED_MODEL_OVERRIDES above (model-scoped disambiguation). This one axis
+    # over: same paint, two identifiers, one of which is the one a customer can
+    # actually buy.
+    #
+    # mitsubishi P26B -> P26. Both pl24 AND the dealer return P26B, so it is
+    # genuinely what Mitsubishi's system holds and NOT an extractor artefact.
+    # But no retailer sells it — Central Paints, PaintScratch, TouchUpDirect and
+    # Color N Drive all list P26, and TouchUpDirect states Mitsubishi codes are
+    # three characters (our own table agrees: 1,619 three-character Mitsubishi
+    # codes against 125 four-character). Delivering P26B would hand someone a
+    # code they cannot search for, with a colour name attached to make it look
+    # authoritative.
+    #
+    # WHY A MAPPING AND NOT A ROW. paintscraper has P26B in none of its 251,709
+    # raw records, so a row would be hand-written with no provenance and would
+    # need defending against every rebuild — and it would deliver the
+    # unpurchasable code, which is the problem it was meant to solve.
+    #
+    # WHY NOT A GENERAL SUFFIX RULE. Measured across the table: of 2,948
+    # four-character codes whose three-character base also exists, 94% are a
+    # DIFFERENT colour by name and 91% by hex. acura/R513 is Rallye Red while
+    # R51 is Phoenix Red; alfaromeo/109C is Rosso Granturismo while 109 is Ochre
+    # Yellow. Stripping blindly would be wrong five times in six, so each entry
+    # here is one verified pair and nothing is inferred from it.
+    #
+    # The provider's original string is NOT lost: pl24_code and oneauto_code
+    # keep what was actually returned, so this stays auditable.
+    CURATED_CODE_OVERRIDES = {
+        'mitsubishi': {'P26B': 'P26'},
+    }
+
+    @classmethod
+    def map_code(cls, manufacturer, code):
+        """Rewrite a provider code to the one a customer can buy, if we know of
+        one. Returns the code unchanged otherwise — this must never invent."""
+        if not code:
+            return code
+        by_make = cls.CURATED_CODE_OVERRIDES.get((manufacturer or '').strip().lower())
+        if not by_make:
+            return code
+        return by_make.get(code.strip().upper(), code)
+
     CURATED_NAME_OVERRIDES = {
         'landrover': {
             'santorini black': 'PAB',

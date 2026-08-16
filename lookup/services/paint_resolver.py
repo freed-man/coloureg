@@ -64,6 +64,15 @@ def _enrich_from_lookup(result, make, model=None, vdg_colour=None):
         from lookup.models import PaintLookup
 
         code = (result.get('paint_code') or '').strip()
+        # A provider can return a real code that no retailer sells (paint85).
+        # Rewritten HERE, where the provider's answer arrives, so the mapped
+        # code flows to the row, the page and the email alike — mapping later
+        # would leave the customer looking at the unpurchasable one.
+        mapped = PaintLookup.map_code(make, code)
+        if mapped != code:
+            logger.info('code %s mapped to %s for %s', code, mapped, make)
+            code = mapped
+            result['paint_code'] = mapped
         desc = (result.get('paint_description') or '').strip()
 
         if code and not desc:
@@ -346,27 +355,37 @@ def _vdg_retry(registration, telemetry=None, search_id=None):
         # so the second read is fast. Asking for the vehicle documents again
         # would pay for identity we already hold.
         data = paint_lookup(registration, billing_sink=sink)
-        # SECOND CHANCE (paint73). The first call has warmed VDG's upstream
-        # cache whether it succeeded or not — that is the whole mechanism behind
-        # the 214 answers the old bundle-retry supplied. A short timeout because
-        # a warm read is sub-second; anything slower is a cold fetch that will
-        # not finish inside the ceiling anyway.
-        #
-        # Only when the first call produced NO PAINT. A hit needs no second
-        # call, and a hit is the only outcome that has already cost the full
-        # price — a paint-less call is refunded.
-        if not (data and data.get('paint_returned')):
-            try:
-                second = paint_lookup(registration, billing_sink=sink,
-                                      timeout=SECOND_CHANCE_S)
-            except (VdgError, Exception):  # noqa: BLE001 — a second chance must never raise
-                second = None
-            if second and second.get('paint_returned'):
-                logger.info('VDG second chance recovered paint for %s',
-                            _log_reg(registration))
-                data = second
     except VdgError:
-        pass  # cost below is still recorded — VDG charged us either way
+        # A TIMEOUT LANDS HERE, and the second chance below must still run
+        # (paint84). It previously sat inside this try, so an exception jumped
+        # straight past it — leaving the stage unreachable on the one case that
+        # justified building it. GL68VPN timed out twice at 40s and then
+        # returned B85 in 0.74s; that is a timeout followed by a warm read, and
+        # the code could not reach the warm read.
+        #
+        # Cost is still recorded below either way: VDG charged us whether or not
+        # the response arrived.
+        data = None
+
+    # SECOND CHANCE (paint73). The first call has warmed VDG's upstream cache
+    # whether it succeeded, came back empty, or timed out — that is the whole
+    # mechanism behind the 214 answers the old bundle-retry supplied. A short
+    # timeout because a warm read is sub-second; anything slower is a cold fetch
+    # that will not finish inside the ceiling anyway.
+    #
+    # Only when the first call produced NO PAINT. A hit needs no second call,
+    # and a hit is the only outcome that has already cost the full price — a
+    # paint-less call is refunded.
+    if not (data and data.get('paint_returned')):
+        try:
+            second = paint_lookup(registration, billing_sink=sink,
+                                  timeout=SECOND_CHANCE_S)
+        except Exception:  # noqa: BLE001 — a second chance must never raise
+            second = None
+        if second and second.get('paint_returned'):
+            logger.info('VDG second chance recovered paint for %s',
+                        _log_reg(registration))
+            data = second
     # Take the cost from whichever source has it. The sink is the only source
     # on the not-found and error paths (where `data` is None), but `data`
     # carries it on the success path — and reading BOTH means this keeps
