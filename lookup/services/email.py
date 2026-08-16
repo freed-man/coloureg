@@ -504,7 +504,8 @@ def send_admin_failure_notification(registration, vehicle_title, vin_full, colou
     }, context='admin_failure')
 
 
-def send_user_pending_notification(to_email, registration, vehicle_title, vin_masked, colour):
+def send_user_pending_notification(to_email, registration, vehicle_title, vin_masked,
+                                   colour, make=''):
     """Email user confirming we'll do manual lookup."""
 
     html = f"""
@@ -512,9 +513,9 @@ def send_user_pending_notification(to_email, registration, vehicle_title, vin_ma
         <div style="max-width: 560px; margin: 0 auto; background: #fff; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.04);">
             {_brand_header()}
             <div style="padding: 40px 32px;">
-                <h1 style="margin: 0 0 12px; font-size: 22px; color: #1a1a1a; font-weight: 600;">Thanks — we're on it</h1>
+                <h1 style="margin: 0 0 12px; font-size: 22px; color: #1a1a1a; font-weight: 600;">Thanks, we're on it</h1>
                 <p style="margin: 0 0 24px; color: #4a4a4a; font-size: 15px; line-height: 1.6;">
-                    The manufacturer's servers didn't respond in time. We'll retrieve the paint code directly from the manufacturer database and email it to you, usually within 1 hour.
+                    The {_esc(make) or 'manufacturer'} build sheet was ambiguous. We'll retrieve the paint code manually and email it to you, free, usually within 1 hour.
                 </p>
                 <table style="width: 100%; border-collapse: collapse; margin-bottom: 24px;">
                     <tr style="border-bottom: 1px solid #eee;">

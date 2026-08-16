@@ -2186,6 +2186,10 @@ def submit_email(request):
             vehicle_title=search.vehicle_title,
             vin_masked=vin_masked,
             colour=search.colour,
+            # paint81: named so the email says "the Peugeot build sheet" rather
+            # than blaming "the manufacturer's servers", which was usually
+            # untrue — most misses are a coverage gap, not an outage.
+            make=search.make or '',
         )
         if admin_sent and user_sent:
             # The riskiest of the three: this runs after BOTH sends above, so
