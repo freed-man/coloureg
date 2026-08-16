@@ -7,6 +7,10 @@ Disallow: /submit-email/
 Disallow: /submit-contact/
 Disallow: /paige/
 Disallow: /health/
+Disallow: /warm/
+Disallow: /lookup-status/
+Disallow: /paid/
+Disallow: /vehicle-make/
 Allow: /.well-known/security.txt
 
 Sitemap: https://coloureg.com/sitemap.xml

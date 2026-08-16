@@ -542,7 +542,7 @@
                            flex item in this row — see .turnstile-holder above. {% endcomment %}
                         <div class="search-form">
                             <input type="text" class="search-input" id="reg-input"
-                                name="registration" maxlength="7" placeholder="">
+                                name="registration" maxlength="8" placeholder="">
                             <button type="submit" class="search-btn" id="search-btn" aria-label="Search">
                                 <i class="fas fa-search"></i>
                             </button>
@@ -816,6 +816,21 @@
     // safe place for it: a human typing is the only thing that fires 'input',
     // whereas the submit handler is re-entered by our own requestSubmit().
     regInput.addEventListener('input', function () {
+        // maxlength is 8, not 7 (F10). Most people write a plate the way it is
+        // printed — "AB12 CDE" — which is eight characters, and at 7 the final
+        // letter was silently swallowed. The space is stripped at submit and
+        // the backend accepts [A-Z0-9]{1,8} after stripping, so widening the
+        // field is all that was missing.
+        //
+        // Uppercase live, but do NOT strip the space here: removing a character
+        // the user has just typed moves the caret and fights them mid-plate.
+        // Case-folding is safe because it never changes the length.
+        var up = this.value.toUpperCase();
+        if (up !== this.value) {
+            var caret = this.selectionStart;
+            this.value = up;
+            this.setSelectionRange(caret, caret);
+        }
         window.__makeChecked = false;
         var note = document.getElementById('unsupported-make');
         if (note) note.style.display = 'none';

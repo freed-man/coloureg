@@ -1,5 +1,6 @@
 from pathlib import Path
 from django.contrib.messages import constants as messages_constants
+from django.core.exceptions import ImproperlyConfigured
 import dj_database_url
 import os
 import sys
@@ -176,6 +177,20 @@ DATABASES = {
         conn_health_checks=True,
     )
 }
+
+# FAIL FAST (F14). The sqlite default above is what makes a fresh clone work
+# without configuration, but in production it is a trap: an unset or misspelled
+# DATABASE_URL would start the site perfectly happily against an empty local
+# sqlite file inside an ephemeral container. Every lookup would succeed, every
+# row would be written, and all of it would vanish on the next deploy — with no
+# error anywhere to say so. Refusing to boot is enormously preferable to
+# silently serving from the wrong database.
+if not DEBUG and not os.environ.get('DATABASE_URL'):
+    raise ImproperlyConfigured(
+        'DATABASE_URL is not set and DEBUG is off. Refusing to start against '
+        'the sqlite fallback — set DATABASE_URL, or set DEVELOPMENT=True if '
+        'this really is a development machine.'
+    )
 
 # Password validation
 # https://docs.djangoproject.com/en/6.0/ref/settings/#auth-password-validators

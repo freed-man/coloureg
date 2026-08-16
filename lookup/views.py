@@ -2794,7 +2794,15 @@ def send_compose_email(request):
 
     # Basic validation. Reject before any work happens (same pattern as
     # submit_manual_lookup) so we don't half-send.
-    if not to_email or '@' not in to_email or '.' not in to_email:
+    #
+    # validate_email, not an '@'-and-'.' substring test (F14). Every other
+    # address path in this file uses the validator; this one did not, so it
+    # accepted things like '.@.' and rejected nothing a real typo would produce.
+    # Consistency matters more than the edge cases here — one rule for what
+    # counts as an address.
+    try:
+        validate_email(to_email or '')
+    except ValidationError:
         return JsonResponse({'success': False, 'error': 'Recipient must be a valid email address.'}, status=400)
     if not subject:
         return JsonResponse({'success': False, 'error': 'Subject is required.'}, status=400)
