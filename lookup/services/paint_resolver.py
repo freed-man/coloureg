@@ -683,7 +683,16 @@ def resolve_paint(registration, vin, make, category=None, telemetry=None, model=
     waiting (wait=False, cancel_futures=True), abandoning any straggler. The
     abandoned pl24 thread's HTTP request has its own timeout and ends on its own.
     """
-    ex = concurrent.futures.ThreadPoolExecutor(max_workers=2)
+    # THREE workers for three legs (paint83). It was 2 when the pool held only
+    # the VDG retry and pl24; One Auto made a third, and a third leg in a
+    # two-worker pool does not run — it QUEUES.
+    #
+    # LF73YMU showed exactly that: One Auto polled to its 30s budget while pl24,
+    # submitted by the backstop at 10s, sat waiting for a free worker. It only
+    # started once One Auto released one, and the lookup took 36.7s to return a
+    # code pl24 could have supplied in about one. The backstop had fired
+    # correctly; there was simply nothing to run it on.
+    ex = concurrent.futures.ThreadPoolExecutor(max_workers=3)
     _t = telemetry if telemetry is not None else {}
     _start = time.monotonic()
     # Recovery telemetry, finalised in the `finally` block so it is written no
