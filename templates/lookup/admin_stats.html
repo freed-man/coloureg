@@ -60,7 +60,6 @@
         color: #666;
         margin-top: 2px;
     }
-    .maint-toggle.is-on .origin-gate-detail > summary { color: #854F0B; }
     .maint-toggle-status {
         display: flex;
         align-items: flex-start;
@@ -368,7 +367,12 @@
          its button right. The toggle row is therefore kept as terse as
          Maintenance and Paid lookups (one line, dot, button), and the evidence
          moved into a .panel below where longer content belongs. -->
-    <div class="maint-toggle {% if origin_gate.mode == 'enforce' %}is-on{% endif %}">
+    <!-- NO is-on HERE, unlike Maintenance and Paid lookups. That class paints the
+         row amber, which on those two correctly flags an unusual state that
+         wants attention. Enforcing is the DESIRED state for this gate, so amber
+         would read as a warning about the very thing you just fixed. The row
+         stays neutral; only the button changes. -->
+    <div class="maint-toggle">
         <div class="maint-toggle-status">
             <span class="maint-dot"></span>
             <div>
