@@ -1093,7 +1093,12 @@
            green says "no verdict", and a word rather than a glyph keeps it out
            of the tick/cross/half-circle family it does not belong to. Styled to
            match .db-badge so it reads as the same kind of annotation. */
-        .manual-badge { display: inline-block; font-size: 10px; font-weight: 600; color: #5a5a5a; background: #f0f0f0; border: 0.5px solid #ccc; border-radius: 4px; padding: 1px 5px; vertical-align: middle; letter-spacing: 0.5px; }
+        /* Unsupported make: a FOURTH outcome, not a shade of failure. We did
+           not search and fail, we chose not to search — so it gets its own mark
+           rather than a red cross. Grey says "no verdict", and the hollow circle
+           completes the set: filled tick, half circle, cross, empty. Sized to
+           match .outcome-cross so the column stays optically even. */
+        .outcome-none { color: #8a8a8a; font-weight: 600; font-size: 16px; }
 
         /* Recent paint code lookups: paint code + wrap-friendly description.
            Sized and styled to match the surrounding row text (14px, dark, sans)
@@ -1429,7 +1434,7 @@
                         {% elif s.paint_description %}
                         <span class="outcome-partial" title="Colour name found — no code">◐</span>
                         {% elif s.error_message == 'make_not_automated' %}
-                        <span class="manual-badge" title="Make not automated — manual lookup offered">MANUAL</span>
+                        <span class="outcome-none" title="Make not automated — manual lookup offered">&#9675;</span>
                         {% else %}
                         <span class="outcome-cross" title="Not found">✗</span>
                         {% endif %}
@@ -1473,7 +1478,7 @@
                     {% elif s.paint_description %}
                     <span class="outcome-partial" title="Colour name found — no code">◐</span>
                     {% elif s.error_message == 'make_not_automated' %}
-                    <span class="manual-badge" title="Make not automated — manual lookup offered">MANUAL</span>
+                    <span class="outcome-none" title="Make not automated — manual lookup offered">&#9675;</span>
                     {% else %}
                     <span class="outcome-cross" title="Not found">✗</span>
                     {% endif %}
