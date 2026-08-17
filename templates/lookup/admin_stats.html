@@ -1673,12 +1673,19 @@
         data: {
             labels: CHART.labels,
             datasets: [
-                { label: 'Code delivered', data: CHART.delivered, backgroundColor: '#1b7f4d' },
-                { label: 'No code found',  data: CHART.failed,    backgroundColor: '#c8102e' },
-                { label: 'No code exists', data: CHART.nocode,    backgroundColor: '#b8860b' },
-                { label: 'Not automated',  data: CHART.not_automated, backgroundColor: '#8a8a8a' },
-                { label: 'Bad plate',      data: CHART.bad_plate, backgroundColor: '#d9d9d9' },
-                { label: 'Abandoned',      data: CHART.abandoned, backgroundColor: '#efefef' }
+                // Ordered best to worst, and worded so each is distinguishable
+                // at a glance. 'No code found' and 'No code exists' were a
+                // confusing pair — one is the pipeline failing, the other is a
+                // determination YOU make by hand when replying from the manual
+                // queue (no_code_available), which sends a different email.
+                // Naming the second 'Manufacturer has none' says whose finding
+                // it is; 'Searched, nothing found' says the machine tried.
+                { label: 'Delivered',            data: CHART.delivered,     backgroundColor: '#1b7f4d' },
+                { label: 'Searched, nothing found', data: CHART.failed,     backgroundColor: '#c8102e' },
+                { label: 'Manufacturer has none', data: CHART.nocode,       backgroundColor: '#b8860b' },
+                { label: 'Not automated',        data: CHART.not_automated, backgroundColor: '#8a8a8a' },
+                { label: 'Plate not recognised', data: CHART.bad_plate,     backgroundColor: '#d9d9d9' },
+                { label: 'Left before finishing', data: CHART.abandoned,    backgroundColor: '#efefef' }
             ]
         },
         options: {
@@ -1699,12 +1706,19 @@
         data: {
             labels: CHART.labels,
             datasets: [
-                { label: 'First pass',   data: CHART.src_vdg,     backgroundColor: '#003399' },
-                { label: 'One Auto',     data: CHART.src_oneauto, backgroundColor: '#00857a' },
-                { label: 'Retry',        data: CHART.src_retry,  backgroundColor: '#4a7bd4' },
-                { label: 'Deep search',  data: CHART.src_pl24,   backgroundColor: '#7fb069' },
-                { label: 'Manual',       data: CHART.src_manual, backgroundColor: '#b8860b' },
-                { label: 'Cache',        data: CHART.src_cache,  backgroundColor: '#999' }
+                // PROVIDER NAMES, not customer-facing euphemisms. This page is
+                // staff-only, and 'First pass' / 'Deep search' hid which supplier
+                // each bar corresponded to — the one thing you look at this chart
+                // to find out. 'Retry' in particular floated unattached: it is
+                // specifically the VDG retry, and One Auto has no retry at all
+                // (it polls one job to completion; there is no second call), so
+                // an unqualified label implied a symmetry that does not exist.
+                { label: 'VDG',         data: CHART.src_vdg,     backgroundColor: '#003399' },
+                { label: 'VDG retry',   data: CHART.src_retry,   backgroundColor: '#4a7bd4' },
+                { label: 'One Auto',    data: CHART.src_oneauto, backgroundColor: '#00857a' },
+                { label: 'PL24',        data: CHART.src_pl24,    backgroundColor: '#7fb069' },
+                { label: 'Manual',      data: CHART.src_manual,  backgroundColor: '#b8860b' },
+                { label: 'Cache',       data: CHART.src_cache,   backgroundColor: '#999' }
             ]
         },
         options: {

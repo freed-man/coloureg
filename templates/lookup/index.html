@@ -590,32 +590,8 @@
                     {% comment %} paint23: shown when the make is one we cannot resolve. No
                        lookup is submitted, so nothing is spent and the answer is
                        immediate instead of a minute of spinner.{% endcomment %}
-                    <div id="unsupported-make" class="alert alert-warning unsupported-note"
-                         role="alert" style="display: none;">
-                        We can't currently find paint codes for
-                        <strong data-make></strong> vehicles.<br>
-                        <a href="{% url 'help' %}#contact-section">Send us the registration</a>
-                        and we'll look it up manually, for free.
-                    </div>
-                    <!-- paint74: the globe, the staged messages and the patience
-                         note have MOVED to the results page.
-
-                         They were built when a lookup took 10-60 seconds and
-                         this page held the whole wait. Since the vehicle/paint
-                         split it returns in ~190ms (measured on live rows), so
-                         the globe was a flash below the threshold at which
-                         anyone registers it, and the two staged messages could
-                         never fire at all: the patience note was scheduled for
-                         3s and the slow-server message for 10s, against a page
-                         that is gone in a fifth of a second.
-
-                         What is left is one line, for the rare slow case — a
-                         failed VDG vehicle call falls back to DVLA and MOT,
-                         which is p50 1.25s and occasionally a few seconds. The
-                         ellipsis animates so that case does not look frozen. -->
-                    <div class="lookup-loader" id="lookup-loader" aria-live="polite">
-                        <p class="lookup-message" id="lookup-message">Connecting to manufacturer server<span class="dots" aria-hidden="true"><span>.</span><span>.</span><span>.</span></span></p>
-                    </div>
+                    <!-- unsupported-make notice removed: the lookup now proceeds and the
+                         results page explains it (see views.make_not_automated). -->
                     {% endif %}
                 </div>
             </div>
@@ -831,9 +807,6 @@
             this.value = up;
             this.setSelectionRange(caret, caret);
         }
-        window.__makeChecked = false;
-        var note = document.getElementById('unsupported-make');
-        if (note) note.style.display = 'none';
     });
 
     lookupForm.addEventListener('submit', function(e) {
@@ -843,11 +816,6 @@
             return;
         }
 
-        // Clear any previous unsupported-make notice (paint28). It used to
-        // persist across searches, so a refusal for one registration stayed on
-        // screen while a different vehicle was being looked up.
-        var staleNote = document.getElementById('unsupported-make');
-        if (staleNote) staleNote.style.display = 'none';
         //
         // paint29: the flag is deliberately NOT reset here. paint28 did, and it
         // hung every lookup on the site. submitAnyway() re-fires submit
@@ -926,77 +894,30 @@
         // It must NEVER block a lookup. Any failure, timeout or missing field
         // submits anyway — the server re-checks with what it knows for free, so
         // a DVLA outage costs us the gate, not the site.
-        var reg = regInput.value.trim().toUpperCase().replace(/\s/g, '');
 
-        function submitAnyway() {
-            if (window.__makeChecked) return;
-            window.__makeChecked = true;
-            if (form.requestSubmit) { form.requestSubmit(); } else { form.submit(); }
-        }
 
-        function hideUnsupported() {
-            var box = document.getElementById('unsupported-make');
-            if (box) box.style.display = 'none';
-        }
 
-        function showUnsupported(make) {
-            loader.classList.remove('active');
-            form.style.display = '';
-            var box = document.getElementById('unsupported-make');
-            if (box) {
-                box.querySelector('[data-make]').textContent = make;
-                box.style.display = '';
-            }
-            // The widget consumed a token getting here and we never submitted,
-            // so reset it or the next search starts with a spent one.
-            if (window.turnstile) { try { window.turnstile.reset(); } catch (e) {} }
-        }
 
-        if (!window.__makeChecked) {
-            e.preventDefault();
-            var settled = false;
-            var mc = new AbortController();
-            // Hard ceiling. If DVLA is slow we would rather run the lookup than
-            // leave someone staring at a spinner for the sake of a gate.
-            var mkTimer = setTimeout(function () {
-                if (settled) return;
-                settled = true;
-                try { mc.abort(); } catch (e) {}
-                submitAnyway();
-            }, 3500);
-            var mfd = new FormData();
-            mfd.append('registration', reg);
-            mfd.append('csrfmiddlewaretoken', form.querySelector('[name=csrfmiddlewaretoken]').value);
-            fetch("{% url 'vehicle_make' %}", {
-                method: 'POST', body: mfd, signal: mc.signal, credentials: 'same-origin'
-            })
-            .then(function (r) { return r.ok ? r.json() : {}; })
-            .then(function (d) {
-                if (settled) return;
-                settled = true;
-                clearTimeout(mkTimer);
-                if (d && d.make && d.supported === false) {
-                    showUnsupported(d.make);
-                    return;                     // deliberately does NOT submit
-                }
-                // paint75: the second message is gone. It read "Requesting BMW
-                // build sheet…" and replaced the first one milliseconds before
-                // the page navigated — two labels flickering past inside ~190ms
-                // read as a glitch rather than as progress.
-                //
-                // The make check itself STAYS: it is what stops an unsupported
-                // make above, and it is the only thing standing between a
-                // Honda and a pointless lookup.
-                submitAnyway();
-            })
-            .catch(function () {
-                if (settled) return;
-                settled = true;
-                clearTimeout(mkTimer);
-                submitAnyway();
-            });
-            return;
-        }
+        // REMOVED: the pre-flight /vehicle-make/ call and its unsupported-make
+        // block. It intercepted submission, asked the server for the make, and
+        // if the make was on SiteConfig.unsupported_makes it showed a warning
+        // and DELIBERATELY DID NOT SUBMIT — the customer never left the
+        // homepage. That is the behaviour the unsupported-makes rework
+        // replaced: they now get a results page showing their vehicle plus a
+        // manual-lookup offer, which cannot happen if the form never submits.
+        //
+        // The whole block went, not just the gate. Its only other job was
+        // feeding the spinner a "Requesting <make> build sheet" caption, and
+        // paint75 removed that message. What remained was a DVLA call and up to
+        // 3.5s of ceiling in front of every single lookup, buying nothing.
+        //
+        // Worth recording how this survived: the server gate was removed and
+        // verified, but every check posts to '/' directly, so none of them ever
+        // executed this. A battery that cannot run the browser cannot see a
+        // browser-side gate — the check added alongside this asserts the
+        // template contains no submission-blocking path, which is the most that
+        // can be tested from here.
+
 
         // paint75: fadeTo() removed with the last message that used it. It
         // cross-faded the caption over 300ms, which only ever made sense while
@@ -1032,9 +953,6 @@
         // normal navigations that re-run scripts, so they were never affected.
         if (event.persisted) {
             window.__turnstileWaiting = false;
-            window.__makeChecked = false;
-            var noteReset = document.getElementById('unsupported-make');
-            if (noteReset) noteReset.style.display = 'none';
             if (window.turnstile) {
                 try { window.turnstile.reset(); } catch (e) {}
             }
