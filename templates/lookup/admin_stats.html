@@ -1676,7 +1676,9 @@
                 { label: 'Code delivered', data: CHART.delivered, backgroundColor: '#1b7f4d' },
                 { label: 'No code found',  data: CHART.failed,    backgroundColor: '#c8102e' },
                 { label: 'No code exists', data: CHART.nocode,    backgroundColor: '#b8860b' },
-                { label: 'Excluded',       data: CHART.excluded,  backgroundColor: '#d9d9d9' }
+                { label: 'Not automated',  data: CHART.not_automated, backgroundColor: '#8a8a8a' },
+                { label: 'Bad plate',      data: CHART.bad_plate, backgroundColor: '#d9d9d9' },
+                { label: 'Abandoned',      data: CHART.abandoned, backgroundColor: '#efefef' }
             ]
         },
         options: {
@@ -1697,7 +1699,8 @@
         data: {
             labels: CHART.labels,
             datasets: [
-                { label: 'First pass',   data: CHART.src_vdg,    backgroundColor: '#003399' },
+                { label: 'First pass',   data: CHART.src_vdg,     backgroundColor: '#003399' },
+                { label: 'One Auto',     data: CHART.src_oneauto, backgroundColor: '#00857a' },
                 { label: 'Retry',        data: CHART.src_retry,  backgroundColor: '#4a7bd4' },
                 { label: 'Deep search',  data: CHART.src_pl24,   backgroundColor: '#7fb069' },
                 { label: 'Manual',       data: CHART.src_manual, backgroundColor: '#b8860b' },
