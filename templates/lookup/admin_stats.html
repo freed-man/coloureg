@@ -48,6 +48,10 @@
         border-color: #EF9F27;
         background: #FAEEDA;
     }
+    /* Caps the origin gate's expanded detail. .maint-toggle-status is flex, so
+       an unconstrained child sizes to max-content and pushes the button onto its
+       own line — which is exactly what happened when this content lived inline. */
+    .origin-gate-detail { max-width: 60ch; }
     .maint-toggle-status {
         display: flex;
         align-items: flex-start;
@@ -371,14 +375,49 @@
                     {% else %}
                         IPs trusted as before.
                     {% endif %}
-                    {% if origin_gate.secret_configured %}
-                        {% if origin_gate.stats.count %}
-                            <strong>{{ origin_gate.stats.count }} bypassed Cloudflare</strong> — see below.
-                        {% else %}
-                            Nothing has bypassed Cloudflare.
-                        {% endif %}
+                    {% if origin_gate.secret_configured and not origin_gate.stats.count %}
+                        Nothing has bypassed Cloudflare.
                     {% endif %}
                 </div>
+
+                {% if origin_gate.auto_reverted_at %}
+                <div class="maint-toggle-sub origin-gate-detail" style="color:#b42318;">
+                    <strong>Enforcement switched off automatically at
+                    {{ origin_gate.auto_reverted_at|date:"j M H:i" }}.</strong>
+                    Almost no traffic carried the Cloudflare header — check the
+                    Transform Rule before enforcing again.
+                </div>
+                {% endif %}
+                {% if origin_gate.env_override %}
+                <div class="maint-toggle-sub origin-gate-detail">
+                    <strong>ORIGIN_GATE_MODE={{ origin_gate.env_override }}</strong>
+                    is set in Railway and overrides this switch
+                    (saved: {{ origin_gate.stored_mode }}).
+                </div>
+                {% endif %}
+
+                {% if origin_gate.stats.count %}
+                <!-- COLLAPSED BY DEFAULT. Native <details>, no JS. The summary
+                     stays one short line so .maint-toggle's flex-wrap keeps the
+                     button on the right; expanding adds HEIGHT, not width, and
+                     .origin-gate-detail caps the width so long path lists wrap
+                     instead of pushing the button onto its own line. -->
+                <details class="origin-gate-detail">
+                    <summary style="cursor:pointer;">
+                        <strong>{{ origin_gate.stats.count }} bypassed Cloudflare</strong>
+                    </summary>
+                    <div class="maint-toggle-sub" style="margin-top:6px;">
+                        Since {{ origin_gate.stats.since|slice:":16" }}.
+                        Arriving from:
+                        {% for a in origin_gate.stats.remotes %}<code>{{ a }}</code>{% if not forloop.last %} &middot; {% endif %}{% empty %}—{% endfor %}
+                        <br>Paths:
+                        {% for p in origin_gate.stats.paths %}<code>{{ p }}</code>{% if not forloop.last %} &middot; {% endif %}{% endfor %}
+                        <br><span style="opacity:.7;">The address above is what the
+                        site falls back to when enforcing. One Railway address means
+                        every direct caller shares a single allowance.</span>
+                    </div>
+                </details>
+                {% endif %}
             </div>
         </div>
         <form method="post" action="{% url 'admin_stats' %}" style="margin:0;">
@@ -607,22 +646,6 @@
         </div>
     </div>
 
-    <!-- NOT gated on secret_configured. The auto-revert banner is the one thing
-         that must never disappear: if ORIGIN_SECRET were removed after a revert,
-         hiding this panel would take the only explanation with it, leaving the
-         gate silently off for a reason nobody could see. -->
-    {% if origin_gate.auto_reverted_at or origin_gate.env_override or origin_gate.stats.count or not origin_gate.secret_configured %}
-    <div class="panel" style="margin-bottom:1.5rem;">
-        <h2>Cloudflare bypass</h2>
-        {% if origin_gate.auto_reverted_at %}
-        <p style="color:#b42318;margin-top:0;">
-            <strong>Enforcement was switched off automatically at
-            {{ origin_gate.auto_reverted_at|date:"j M H:i" }}.</strong>
-            Almost no traffic was carrying the Cloudflare header, which usually
-            means the Transform Rule has stopped firing. Check it in Cloudflare
-            before enforcing again.
-        </p>
-        {% endif %}
         {% if origin_gate.env_override %}
         <p style="margin-top:0;">
             <strong>ORIGIN_GATE_MODE={{ origin_gate.env_override }}</strong> is set
@@ -630,33 +653,6 @@
             (saved setting: {{ origin_gate.stored_mode }}).
         </p>
         {% endif %}
-        {% if not origin_gate.secret_configured %}
-        <p style="margin-bottom:0;">
-            <strong>ORIGIN_SECRET is not set in Railway</strong>, so nothing is
-            being checked and every proxy header is trusted. Set it, and add the
-            matching Cloudflare Transform Rule, to activate the gate.
-        </p>
-        {% elif origin_gate.stats.count %}
-        <p style="margin-top:0;">
-            <strong>{{ origin_gate.stats.count }}</strong> request(s) reached the
-            site without passing through Cloudflare since
-            {{ origin_gate.stats.since|slice:":16" }}.
-        </p>
-        <p>
-            Seen arriving from:
-            {% for a in origin_gate.stats.remotes %}<code>{{ a }}</code>{% if not forloop.last %} &middot; {% endif %}{% empty %}—{% endfor %}
-            <br><span style="opacity:.7;">This is what the site falls back to when
-            enforcing. If it is one Railway address, every direct caller shares a
-            single allowance; if they are varied, each is keyed to an address it
-            cannot forge.</span>
-        </p>
-        <p style="margin-bottom:0;">
-            Recent paths:
-            {% for p in origin_gate.stats.paths %}<code>{{ p }}</code>{% if not forloop.last %} &middot; {% endif %}{% endfor %}
-        </p>
-        {% endif %}
-    </div>
-    {% endif %}
 
     <div class="panel">
         {% comment %} paint77: was "VDG API costs". VDG is no longer the only paid
