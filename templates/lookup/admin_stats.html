@@ -642,6 +642,14 @@
             site without passing through Cloudflare since
             {{ origin_gate.stats.since|slice:":16" }}.
         </p>
+        <p>
+            Seen arriving from:
+            {% for a in origin_gate.stats.remotes %}<code>{{ a }}</code>{% if not forloop.last %} &middot; {% endif %}{% empty %}—{% endfor %}
+            <br><span style="opacity:.7;">This is what the site falls back to when
+            enforcing. If it is one Railway address, every direct caller shares a
+            single allowance; if they are varied, each is keyed to an address it
+            cannot forge.</span>
+        </p>
         <p style="margin-bottom:0;">
             Recent paths:
             {% for p in origin_gate.stats.paths %}<code>{{ p }}</code>{% if not forloop.last %} &middot; {% endif %}{% endfor %}

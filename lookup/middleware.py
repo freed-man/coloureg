@@ -50,6 +50,7 @@ _ORIGIN_STATS_KEY = 'origin-gate:stats'
 _ORIGIN_LOG_EVERY_S = 300
 _ORIGIN_STATS_TTL = 60 * 60 * 24 * 14
 _ORIGIN_MAX_PATHS = 8
+_ORIGIN_MAX_REMOTES = 5
 
 # Breaker tuning. A window must carry a real sample before it can conclude
 # anything, and the share must be overwhelming — a partial outage is not what
@@ -129,6 +130,17 @@ class OriginGateObserverMiddleware:
         # a wordlist cannot bloat the cache row.
         paths = [p for p in (stats.get('paths') or []) if p != request.path]
         stats['paths'] = ([request.path] + paths)[:_ORIGIN_MAX_PATHS]
+
+        # THE SOURCE ADDRESS RAILWAY REPORTS for a connection that skipped
+        # Cloudflare. This is the open question about enforcing: if it is
+        # Railway's own proxy, every direct caller shares one rate-limit bucket;
+        # if it is the caller's real address, they get one each but keyed to
+        # something they cannot forge. Both defeat the attack, so it does not
+        # change whether to enforce — but it decides what the limit actually
+        # does, and it is answerable by looking rather than reasoning.
+        remote = (request.META.get('REMOTE_ADDR') or '?').strip()
+        seen = [a for a in (stats.get('remotes') or []) if a != remote]
+        stats['remotes'] = ([remote] + seen)[:_ORIGIN_MAX_REMOTES]
         cache.set(_ORIGIN_STATS_KEY, stats, _ORIGIN_STATS_TTL)
 
         # Throttled so a flood cannot drown Sentry in identical lines.
