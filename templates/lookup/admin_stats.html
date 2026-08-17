@@ -52,6 +52,15 @@
        an unconstrained child sizes to max-content and pushes the button onto its
        own line — which is exactly what happened when this content lived inline. */
     .origin-gate-detail { max-width: 60ch; }
+    /* The <summary> sits OUTSIDE .maint-toggle-sub, so it inherited the base
+       body size and rendered LARGER than the row's own title — the one thing a
+       disclosure label must never do. Match .maint-toggle-sub exactly. */
+    .origin-gate-detail > summary {
+        font-size: 13px;
+        color: #666;
+        margin-top: 2px;
+    }
+    .maint-toggle.is-on .origin-gate-detail > summary { color: #854F0B; }
     .maint-toggle-status {
         display: flex;
         align-items: flex-start;
