@@ -279,7 +279,19 @@ STORAGES = {
 
 # Email configuration (Resend)
 RESEND_API_KEY = os.environ.get('RESEND_API_KEY', '')
+# The SENDER identity. Must stay on coloureg.com: DKIM signs as coloureg.com
+# (selector 'resend') and SPF passes for send.coloureg.com, which is what makes
+# DMARC align. Pointing this at a personal address would break authentication
+# for every email the site sends.
 DEFAULT_FROM_EMAIL = os.environ.get('DEFAULT_FROM_EMAIL', 'hello@coloureg.com')
+
+# WHERE COPIES AND NOTIFICATIONS GO. Deliberately a separate setting from the
+# sender above, and overridable: hello@coloureg.com is a Dynadot forward to
+# Gmail, and Gmail has rate-limited that forwarder ('421 4.7.28 unusual rate of
+# unsolicited mail', observed 6 Aug 2026 on an inbound DMARC report). A refused
+# forward bounces to the SENDER, so a dropped copy is invisible from this end.
+# Set ADMIN_EMAIL in the environment to a mailbox that is delivered to directly,
+# and notifications stop depending on the forward at all.
 ADMIN_EMAIL = os.environ.get('ADMIN_EMAIL', 'hello@coloureg.com')
 
 # Upload ceiling. Manual-lookup photos are validated and capped at 10 MB in

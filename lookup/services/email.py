@@ -189,8 +189,11 @@ def send_custom_message(to_email, subject, markdown_body, extra_attachments=None
     result is wrapped in coloureg's brand shell so the email looks like
     every other coloureg email.
 
-    BCC: a copy goes to settings.DEFAULT_FROM_EMAIL (hello@coloureg.com) so
-    you have a sent-folder record via your existing Dynadot forward to Gmail.
+    BCC: a copy goes to settings.ADMIN_EMAIL so you have a sent-folder record.
+    ADMIN_EMAIL, not DEFAULT_FROM_EMAIL — the copy is a DELIVERY, and addressing
+    it to the sender identity forced it through the Dynadot forward that Gmail
+    has rate-limited. Set ADMIN_EMAIL to a directly-delivered mailbox and these
+    copies stop depending on that forward.
     """
     # Local import so the rest of email.py doesn't pull in markdown unless
     # this function is actually used.
@@ -206,7 +209,7 @@ def send_custom_message(to_email, subject, markdown_body, extra_attachments=None
     return _safe_send({
         "from": settings.DEFAULT_FROM_EMAIL,
         "to": [to_email],
-        "bcc": [settings.DEFAULT_FROM_EMAIL],
+        "bcc": [settings.ADMIN_EMAIL],
         "subject": subject,
         "html": html,
         "attachments": _attachments(extra_attachments),
@@ -341,7 +344,7 @@ def send_user_paint_code(to_email, registration, vehicle_title, vin_masked, colo
         "attachments": _attachments(extra_attachments),
     }
     if bcc_owner:
-        payload["bcc"] = [settings.DEFAULT_FROM_EMAIL]
+        payload["bcc"] = [settings.ADMIN_EMAIL]
     return _safe_send(payload, context='paint_code')
 
 
@@ -426,7 +429,7 @@ def send_user_no_code_available(to_email, registration, vehicle_title, colour, m
     return _safe_send({
         "from": settings.DEFAULT_FROM_EMAIL,
         "to": to_email,
-        "bcc": [settings.DEFAULT_FROM_EMAIL],
+        "bcc": [settings.ADMIN_EMAIL],
         "subject": f"No paint code for {registration}",
         "html": html,
         "attachments": _attachments(extra_attachments),
