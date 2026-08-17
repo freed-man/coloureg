@@ -369,7 +369,14 @@
                     {% elif origin_gate.mode == 'enforce' %}
                         Visitor IPs are trusted only from Cloudflare.
                     {% else %}
-                        IPs trusted as before. Direct hits recorded below.
+                        IPs trusted as before.
+                    {% endif %}
+                    {% if origin_gate.secret_configured %}
+                        {% if origin_gate.stats.count %}
+                            <strong>{{ origin_gate.stats.count }} bypassed Cloudflare</strong> — see below.
+                        {% else %}
+                            Nothing has bypassed Cloudflare.
+                        {% endif %}
                     {% endif %}
                 </div>
             </div>
@@ -381,54 +388,6 @@
                 {% if origin_gate.stored_mode == 'enforce' %}Back to watching{% else %}Start enforcing{% endif %}
             </button>
         </form>
-    </div>
-
-    <!-- NOT gated on secret_configured. The auto-revert banner is the one thing
-         that must never disappear: if ORIGIN_SECRET were removed after a revert,
-         hiding this panel would take the only explanation with it, leaving the
-         gate silently off for a reason nobody could see. -->
-    <div class="panel" style="margin-bottom:1.5rem;">
-        <h2>Cloudflare bypass</h2>
-        {% if origin_gate.auto_reverted_at %}
-        <p style="color:#b42318;margin-top:0;">
-            <strong>Enforcement was switched off automatically at
-            {{ origin_gate.auto_reverted_at|date:"j M H:i" }}.</strong>
-            Almost no traffic was carrying the Cloudflare header, which usually
-            means the Transform Rule has stopped firing. Check it in Cloudflare
-            before enforcing again.
-        </p>
-        {% endif %}
-        {% if origin_gate.env_override %}
-        <p style="margin-top:0;">
-            <strong>ORIGIN_GATE_MODE={{ origin_gate.env_override }}</strong> is set
-            in Railway and overrides the switch above
-            (saved setting: {{ origin_gate.stored_mode }}).
-        </p>
-        {% endif %}
-        {% if not origin_gate.secret_configured %}
-        <p style="margin-bottom:0;">
-            <strong>ORIGIN_SECRET is not set in Railway</strong>, so nothing is
-            being checked and every proxy header is trusted. Set it, and add the
-            matching Cloudflare Transform Rule, to activate the gate.
-        </p>
-        {% elif origin_gate.stats.count %}
-        <p style="margin-top:0;">
-            <strong>{{ origin_gate.stats.count }}</strong> request(s) reached the
-            site without passing through Cloudflare since
-            {{ origin_gate.stats.since|slice:":16" }}.
-        </p>
-        <p style="margin-bottom:0;">
-            Recent paths:
-            {% for p in origin_gate.stats.paths %}<code>{{ p }}</code>{% if not forloop.last %} &middot; {% endif %}{% endfor %}
-        </p>
-        {% else %}
-        <p style="margin-bottom:0;">
-            Nothing has bypassed Cloudflare since this deploy — every request so
-            far arrived through it. Note this only covers paths that have
-            actually run: a webhook that has never fired is not evidence either
-            way.
-        </p>
-        {% endif %}
     </div>
 
     <!-- ================= Protection panel (paint15) ==================== -->
@@ -647,6 +606,49 @@
             {% endif %}
         </div>
     </div>
+
+    <!-- NOT gated on secret_configured. The auto-revert banner is the one thing
+         that must never disappear: if ORIGIN_SECRET were removed after a revert,
+         hiding this panel would take the only explanation with it, leaving the
+         gate silently off for a reason nobody could see. -->
+    {% if origin_gate.auto_reverted_at or origin_gate.env_override or origin_gate.stats.count or not origin_gate.secret_configured %}
+    <div class="panel" style="margin-bottom:1.5rem;">
+        <h2>Cloudflare bypass</h2>
+        {% if origin_gate.auto_reverted_at %}
+        <p style="color:#b42318;margin-top:0;">
+            <strong>Enforcement was switched off automatically at
+            {{ origin_gate.auto_reverted_at|date:"j M H:i" }}.</strong>
+            Almost no traffic was carrying the Cloudflare header, which usually
+            means the Transform Rule has stopped firing. Check it in Cloudflare
+            before enforcing again.
+        </p>
+        {% endif %}
+        {% if origin_gate.env_override %}
+        <p style="margin-top:0;">
+            <strong>ORIGIN_GATE_MODE={{ origin_gate.env_override }}</strong> is set
+            in Railway and overrides the switch above
+            (saved setting: {{ origin_gate.stored_mode }}).
+        </p>
+        {% endif %}
+        {% if not origin_gate.secret_configured %}
+        <p style="margin-bottom:0;">
+            <strong>ORIGIN_SECRET is not set in Railway</strong>, so nothing is
+            being checked and every proxy header is trusted. Set it, and add the
+            matching Cloudflare Transform Rule, to activate the gate.
+        </p>
+        {% elif origin_gate.stats.count %}
+        <p style="margin-top:0;">
+            <strong>{{ origin_gate.stats.count }}</strong> request(s) reached the
+            site without passing through Cloudflare since
+            {{ origin_gate.stats.since|slice:":16" }}.
+        </p>
+        <p style="margin-bottom:0;">
+            Recent paths:
+            {% for p in origin_gate.stats.paths %}<code>{{ p }}</code>{% if not forloop.last %} &middot; {% endif %}{% endfor %}
+        </p>
+        {% endif %}
+    </div>
+    {% endif %}
 
     <div class="panel">
         {% comment %} paint77: was "VDG API costs". VDG is no longer the only paid
