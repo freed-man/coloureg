@@ -11,6 +11,7 @@ from django.conf import settings as dj_settings
 from django.contrib import messages
 from django.contrib.admin.views.decorators import staff_member_required
 import secrets
+from .middleware import origin_gate_stats
 from django.core.exceptions import ValidationError
 from django.core.validators import validate_email, validate_ipv46_address
 from django.core.cache import caches
@@ -103,14 +104,41 @@ def _valid_ip(value):
     return value
 
 
-# Origin gate config (F2). Read once at import; both come from Railway.
+# Origin gate config (F2).
 #   ORIGIN_SECRET     - matches the Cloudflare Transform Rule's header value.
-#   ORIGIN_GATE_MODE  - 'observe' (default, log only) or 'enforce'.
+#   ORIGIN_GATE_MODE  - OPTIONAL Railway override; when set it beats the database.
 # With no secret configured the gate is inert and behaviour is exactly as before,
 # which is the correct fail-open: a half-configured gate must not start refusing
 # to trust the proxy headers that every legitimate visitor depends on.
 ORIGIN_SECRET = os.environ.get('ORIGIN_SECRET', '').strip()
-ORIGIN_GATE_MODE = os.environ.get('ORIGIN_GATE_MODE', 'observe').strip().lower()
+ORIGIN_GATE_ENV_OVERRIDE = os.environ.get('ORIGIN_GATE_MODE', '').strip().lower()
+
+
+def origin_gate_mode():
+    """The live gate mode: 'observe' or 'enforce'.
+
+    The switch lives on SiteConfig so it can be flipped from the dashboard
+    without a redeploy — see the field's comment for why reversal speed is the
+    whole point. SiteConfig.get() is already called on every homepage request
+    and answers from the per-process cache, so this adds no database traffic.
+
+    ORIGIN_GATE_MODE in the environment overrides the database when set. That is
+    the escape hatch: if enforcing ever went wrong in a way that made the admin
+    dashboard itself hard to reach, the recovery route must not depend on the
+    thing that is broken.
+
+    ANY failure resolves to 'observe'. A cold database or a missing row must
+    degrade towards trusting the headers and serving customers, never towards
+    refusing them.
+    """
+    if ORIGIN_GATE_ENV_OVERRIDE in ('observe', 'enforce'):
+        return ORIGIN_GATE_ENV_OVERRIDE
+    try:
+        mode = SiteConfig.get().origin_gate_mode
+    except Exception:
+        logger.warning('Origin gate: config unreadable, falling back to observe')
+        return 'observe'
+    return mode if mode in ('observe', 'enforce') else 'observe'
 
 
 def via_cloudflare(request):
@@ -167,10 +195,10 @@ def get_client_ip(request):
     # Rule that silently stops firing would put every legitimate visitor on that
     # one shared bucket too, and the fourth caller of the hour would be refused.
     # That failure is worse than the hole it closes, so enforcement waits until
-    # the logs show the header arriving on effectively all traffic. Flip
-    # ORIGIN_GATE_MODE in Railway — no deploy needed.
+    # the dashboard shows which paths are arriving without the header. Flip it
+    # from /admin-stats/ — no deploy, effective within SiteConfig's cache TTL.
     trust_proxy_headers = True
-    if ORIGIN_GATE_MODE == 'enforce' and ORIGIN_SECRET:
+    if ORIGIN_SECRET and origin_gate_mode() == 'enforce':
         trust_proxy_headers = via_cloudflare(request)
 
     if trust_proxy_headers:
@@ -2358,6 +2386,40 @@ def admin_stats(request):
         )
         return redirect('admin_stats')
 
+    # Origin gate switch (F2). Same shape as the maintenance toggle above:
+    # POST, flip, redirect-after-POST, staff-only via the decorator.
+    if request.method == 'POST' and request.POST.get('action') == 'toggle_origin_gate':
+        cfg = SiteConfig.get()
+        cfg.origin_gate_mode = (
+            SiteConfig.ORIGIN_GATE_OBSERVE
+            if cfg.origin_gate_mode == SiteConfig.ORIGIN_GATE_ENFORCE
+            else SiteConfig.ORIGIN_GATE_ENFORCE
+        )
+        cfg.save(update_fields=['origin_gate_mode', 'updated_at'])
+        if ORIGIN_GATE_ENV_OVERRIDE in ('observe', 'enforce'):
+            # Saving it is still correct — the override may be removed later —
+            # but say so plainly rather than let the dashboard imply a change
+            # that is not in effect.
+            messages.warning(
+                request,
+                f'Saved, but ORIGIN_GATE_MODE={ORIGIN_GATE_ENV_OVERRIDE} is set '
+                'in the environment and overrides this. Remove it in Railway '
+                'for the dashboard switch to take effect.'
+            )
+        elif cfg.origin_gate_mode == SiteConfig.ORIGIN_GATE_ENFORCE:
+            messages.success(
+                request,
+                'Origin gate ENFORCING — proxy headers are trusted only from '
+                'Cloudflare. Live within a minute on all workers.'
+            )
+        else:
+            messages.success(
+                request,
+                'Origin gate OBSERVING — headers trusted as before, direct hits '
+                'still recorded.'
+            )
+        return redirect('admin_stats')
+
     # Save the daily VDG budget (A). Same redirect-after-POST pattern as the
     # maintenance toggle. Accepts a decimal amount; 0 disables the breaker.
     # Also clears the tripped flag so a raised budget takes effect immediately
@@ -2745,6 +2807,13 @@ def admin_stats(request):
         'incomplete_count': incomplete_count,
         'name_only_miss_count': name_only_miss_count,
         'avg_duration_s': avg_duration_s,
+        'origin_gate': {
+            'mode': origin_gate_mode(),
+            'stored_mode': SiteConfig.get().origin_gate_mode,
+            'secret_configured': bool(ORIGIN_SECRET),
+            'env_override': ORIGIN_GATE_ENV_OVERRIDE or '',
+            'stats': origin_gate_stats(),
+        },
         # ONE JSON BLOB, rendered by json_script (F14 / handoff item 2).
         # These were eleven separate `{{ x|safe }}` interpolations straight into
         # a <script> block. Nothing user-controlled reaches them today — they are

@@ -1558,6 +1558,24 @@ class SiteConfig(models.Model):
     # can occur even via a direct POST. Flip from /admin-stats/.
     maintenance_mode = models.BooleanField(default=False)
 
+    # ORIGIN GATE (F2). Whether CF-Connecting-IP is trusted unconditionally, or
+    # only when the Cloudflare Transform Rule's secret header proves the request
+    # came through Cloudflare. Lives here rather than in an environment variable
+    # so it can be flipped from the dashboard without a redeploy: enforcing has a
+    # bad failure mode (if the Transform Rule stops firing, every visitor keys to
+    # Railway's proxy address and shares ONE rate-limit bucket), and the whole
+    # point of a switch is that reversing it is fast. A Railway variable change
+    # restarts both workers; this takes effect within _CACHE_TTL.
+    ORIGIN_GATE_OBSERVE = 'observe'
+    ORIGIN_GATE_ENFORCE = 'enforce'
+    ORIGIN_GATE_CHOICES = [
+        (ORIGIN_GATE_OBSERVE, 'Observe — log only, trust headers as before'),
+        (ORIGIN_GATE_ENFORCE, 'Enforce — only trust headers from Cloudflare'),
+    ]
+    origin_gate_mode = models.CharField(
+        max_length=10, choices=ORIGIN_GATE_CHOICES, default=ORIGIN_GATE_OBSERVE,
+    )
+
     # --- Daily spend breaker (A) -------------------------------------------
     # Hard ceiling on VDG spend per calendar day (London time). When the sum of
     # today's real (refund-net) VDG cost reaches this, the backend refuses new
