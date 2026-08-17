@@ -350,12 +350,12 @@
          and on WHICH paths. The paths are the decision, not the count: scanner
          noise means enforcing is safe, /stripe/webhook/ appearing here means it
          is not. -->
-    <div class="maint-toggle-row">
-        <div style="display:flex;align-items:flex-start;gap:12px;">
+    <div class="maint-toggle {% if origin_gate.mode == 'enforce' %}is-on{% endif %}" style="margin-top: 12px;">
+        <div class="maint-toggle-status">
             <span class="maint-dot"></span>
             <div>
                 <div class="maint-toggle-title">
-                    Origin gate is {{ origin_gate.mode|upper }}
+                    Origin gate is {% if origin_gate.mode == 'enforce' %}ENFORCING{% else %}watching{% endif %}
                     {% if not origin_gate.secret_configured %}
                         — INERT, no secret configured
                     {% endif %}
@@ -386,7 +386,10 @@
                             <code>{{ p }}</code>{% if not forloop.last %} · {% endif %}
                         {% endfor %}
                     {% elif origin_gate.secret_configured %}
-                        No requests have bypassed Cloudflare. Safe to enforce.
+                        Nothing has bypassed Cloudflare since this deploy — every
+                        request so far arrived through it. Note this only covers
+                        paths that have actually run: a webhook that has never
+                        fired is not evidence either way.
                     {% endif %}
                 </div>
             </div>
