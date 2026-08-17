@@ -2544,7 +2544,19 @@ def admin_stats(request):
     # carry no make, pile into the funnel's "no vehicle identified" bucket as
     # though people had mistyped their registration. The blocks have their own
     # counter instead.
-    lookups = Search.objects.exclude(error_message__contains='turnstile_blocked')
+    # ONE DEFINITION of "a real lookup", applied to every statistic below.
+    # A Turnstile block never ran a lookup: no VDG call, no provider, no cost,
+    # no registration the customer chose. Counting those rows in demand or
+    # provider stats does not merely add noise, it INVERTS the answer — with a
+    # scraper running, the top-registrations panel reports the scraper's target
+    # list rather than what customers actually searched for. Measured 17 Aug
+    # 2026: all ten top registrations were blocked attempts, the real leader
+    # having 9 hits against an apparent 144.
+    #
+    # The turnstile_blocks_* counters below deliberately do NOT use this: their
+    # whole purpose is to count the blocked rows.
+    real_lookups = Search.objects.exclude(error_message__contains='turnstile_blocked')
+    lookups = real_lookups
 
     top_metrics = lookups.aggregate(
         # Volume / time windows
@@ -2684,7 +2696,7 @@ def admin_stats(request):
 
     # Top searched makes
     top_makes = (
-        Search.objects.exclude(make='')
+        real_lookups.exclude(make='')
         .values('make')
         .annotate(count=Count('id'))
         .order_by('-count')[:10]
@@ -2692,14 +2704,14 @@ def admin_stats(request):
 
     # Top searched registrations
     top_regs = (
-        Search.objects.values('registration')
+        real_lookups.values('registration')
         .annotate(count=Count('id'))
         .order_by('-count')[:10]
     )
 
     # Top makes with NO paint code
     failed_makes = (
-        Search.objects.filter(paint_code='').exclude(make='')
+        real_lookups.filter(paint_code='').exclude(make='')
         .values('make')
         .annotate(count=Count('id'))
         .order_by('-count')[:10]
@@ -2715,7 +2727,7 @@ def admin_stats(request):
     )
 
     # Provider breakdown — where did the paint code come from? Single aggregate.
-    provider_breakdown = Search.objects.aggregate(
+    provider_breakdown = real_lookups.aggregate(
         prov_vdg=Count('id', filter=Q(provider=Search.PROVIDER_VDG)),
         prov_vdg_retry=Count('id', filter=Q(provider=Search.PROVIDER_VDG_RETRY)),
         prov_pl24=Count('id', filter=Q(provider=Search.PROVIDER_PARTSLINK24)),
@@ -2763,7 +2775,7 @@ def admin_stats(request):
 
     # Legacy rows (no recorded cost): those before this field. Estimate them with
     # the per-document method, scoped to ONLY the rows lacking a real cost.
-    legacy = Search.objects.filter(vdg_transaction_cost__isnull=True).aggregate(
+    legacy = real_lookups.filter(vdg_transaction_cost__isnull=True).aggregate(
         n=Count('id'),
         veh=Count('id', filter=Q(vdg_vehicle_returned=True)),
         paint_ret=Count('id', filter=Q(vdg_paint_returned=True)),
