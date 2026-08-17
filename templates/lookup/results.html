@@ -500,10 +500,14 @@
                 <div id="paint-not-automated-state">
                     <div class="card-body">
                         <div class="d-flex align-items-center justify-content-center py-4" style="gap: 16px;">
-                            <div style="font-size: 2.5rem; color: #888; line-height: 1;">&#9997;</div>
+                            <div style="font-size: 2.5rem; color: #C8102E; line-height: 1;">&#9888;</div>
                             <div>
                                 <p class="mb-1" style="font-size: 1.1rem; color: #333;">
                                     {{ make }} build sheets aren't automated yet
+                                </p>
+                                <p class="mb-1" style="font-size: 0.95rem; color: #555;">
+                                    Your vehicle is identified above, but we can't
+                                    extract the paint code automatically.
                                 </p>
                                 <p class="mb-0" style="color: #888; font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.5px;">
                                     (request a manual lookup below)
@@ -575,23 +579,6 @@
                         <h5 class="mb-3 fw-semibold" style="display: flex; gap: 8px; align-items: baseline;"><span>✉️</span><span>Want the exact code?</span></h5>
                         <p class="mb-3" style="font-size: 0.95rem; color: #555;">
                             Leave your email and we'll look it up manually and send it over, free, usually within 1 hour.
-                        </p>
-                        {% elif make_not_automated %}
-                        {% comment %}
-                        Unsupported make. NOT a failure: we identified the
-                        vehicle and chose not to spend 60s failing to find a
-                        code we know we cannot get automatically. The wording
-                        says "build sheets" to match the language already shown
-                        on this page ("Found your ... build sheet", "No factory
-                        paint code on the build sheet"), so the customer sees
-                        one consistent term rather than a new one at the point
-                        of disappointment.
-                        {% endcomment %}
-                        <h5 class="mb-3 fw-semibold" style="display: flex; gap: 8px; align-items: baseline;"><span>✉️</span><span>{{ make }} build sheets aren't automated yet</span></h5>
-                        <p class="mb-3" style="font-size: 0.95rem; color: #555;">
-                            Your vehicle is identified above, but we can't extract
-                            the paint code automatically. Leave your email and we'll
-                            send it over, free, usually within 1 hour.
                         </p>
                         {% else %}
                         <h5 class="mb-3 fw-semibold" style="display: flex; gap: 8px; align-items: baseline;"><span>✉️</span><span>No problem, we'll find it</span></h5>

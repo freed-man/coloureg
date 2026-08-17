@@ -264,38 +264,17 @@ def _remember_make(registration, make):
         pass
 
 
-def _known_make(registration):
-    """The make, if we can get it WITHOUT paying for it (paint23).
-
-    Cheapest first, and never calls VDG:
-      1. the cache /vehicle-make/ just populated
-      2. VrmCache — we have served this reg before
-      3. our own Search history
-
-    Returns '' when only a paid call could tell us. Deliberately does NOT fall
-    through to DVLA: index() decides whether that round-trip is worth it, and
-    on the normal path /vehicle-make/ has already made it.
-    """
-    if not registration:
-        return ''
-    try:
-        key = _make_cache_key(registration)
-        cached = caches['default'].get(key) if key else None
-        if cached:
-            return cached
-    except Exception:  # noqa: BLE001
-        pass
-    payload = get_cached_vrm_payload(registration, count_hit=False)
-    if payload and payload.get('make'):
-        return payload['make']
-    prior = (
-        Search.objects.filter(registration=registration)
-        .exclude(make='')
-        .order_by('-timestamp')
-        .values_list('make', flat=True)
-        .first()
-    )
-    return prior or ''
+# REMOVED: _known_make(registration).
+#
+# It answered "what make is this, without paying for it" by checking the
+# /vehicle-make/ cache, then VrmCache, then Search history. Its only caller was
+# the pre-lookup refusal gate, which is gone: an unsupported make is now
+# discovered from the vehicle call itself and shown a results page rather than
+# refused. Nothing else ever used it, so what remained was ~25 lines describing
+# a decision the code no longer makes.
+#
+# The cheap-lookup chain it encoded is not lost: /vehicle-make/ still does the
+# same VrmCache-then-history walk for its own answer.
 
 
 def get_dvla_data(registration):
@@ -628,18 +607,6 @@ def index(request):
         # and ends in a failure the visitor waited up to a minute for. Refusing
         # here costs nothing and answers instantly.
         #
-        # POSITION MATTERS, and it was wrong. This sat BELOW
-        # sliding_rate_limited(), so a refusal burned one of the visitor's three
-        # hourly searches despite looking nothing up and spending nothing — the
-        # exact opposite of the intent. It now sits with the blocklists, the
-        # other free refusals, and uses the same already-normalised posted_reg
-        # (`registration` is not assigned until after the limiter).
-        #
-        # _known_make never calls VDG. On the normal path /vehicle-make/ has
-        # just cached the make for the spinner, so this is a free cache read.
-        # It returns '' when only a paid call could tell us the make, and that
-        # is deliberately allowed through: refusing on a guess would block real
-        # vehicles. This gate only ever fires on a make we KNOW.
         # REMOVED: the pre-lookup refusal for unsupported makes.
         #
         # It redirected to the homepage with a red error and cost nothing, but
@@ -1318,6 +1285,18 @@ def vehicle_make(request):
     client_ip = get_client_ip(request)
     if config.is_ip_blocked(client_ip) or config.is_reg_blocked(registration):
         return JsonResponse({})
+
+    # CHEAPEST HOP FIRST: the key this endpoint writes on every answer. It had
+    # no reader once _known_make went with the refusal gate, so three call sites
+    # below were writing to the database cache for nothing. Reading it here
+    # restores the point of the write AND saves a DVLA round-trip on a repeat.
+    try:
+        _hit = caches['default'].get(_make_cache_key(registration))
+    except Exception:  # noqa: BLE001 — a cache fault must not break the answer
+        _hit = None
+    if _hit:
+        return JsonResponse({'make': _hit,
+                             'supported': not config.is_make_unsupported(_hit)})
 
     # Separate, roomier bucket than the 3/h lookup limit — a typo shouldn't cost
     # someone their allowance, but this can't be hammered for free either.
@@ -2756,9 +2735,25 @@ def admin_stats(request):
             failed=Count('id', filter=Q(
                 paint_code='', no_code_available=False,
                 recovery_attempted=True, make__gt='')),
-            excluded=Count('id', filter=Q(paint_code='', no_code_available=False) &
-                           (Q(make='') | Q(recovery_attempted=False))),
+            # `excluded` WAS ONE BAR holding two unrelated things: rows where
+            # VDG could not identify the vehicle at all (a mistyped plate, 183
+            # of 249 measured 17 Aug 2026) and rows where the vehicle WAS found
+            # but recovery never ran. Stacked together they said nothing you
+            # could act on, and unsupported makes land there too by design
+            # (recovery_attempted is False for those), quietly growing a bar
+            # nobody could interpret. Split into three.
+            bad_plate=Count('id', filter=Q(paint_code='', no_code_available=False,
+                                           make='')),
+            not_automated=Count('id', filter=Q(error_message='make_not_automated')),
+            abandoned=Count('id', filter=Q(paint_code='', no_code_available=False,
+                                           recovery_attempted=False)
+                            & ~Q(make='') & ~Q(error_message='make_not_automated')),
             s_vdg=Count('id', filter=Q(paint_code__gt='', provider=Search.PROVIDER_VDG)),
+            # One Auto races VDG on every lookup and is billed for it, but had
+            # no series here: the one provider you pay for whose contribution
+            # the chart could not show.
+            s_oneauto=Count('id', filter=Q(paint_code__gt='',
+                                           provider=Search.PROVIDER_ONEAUTO)),
             s_retry=Count('id', filter=Q(paint_code__gt='', provider=Search.PROVIDER_VDG_RETRY)),
             s_pl24=Count('id', filter=Q(paint_code__gt='', provider=Search.PROVIDER_PARTSLINK24)),
             s_manual=Count('id', filter=Q(paint_code__gt='', provider=Search.PROVIDER_MANUAL)),
@@ -2769,17 +2764,28 @@ def admin_stats(request):
     daily_map = {r['date']: r for r in daily_rows}
 
     chart_labels = []
-    chart_delivered, chart_failed, chart_nocode, chart_excluded = [], [], [], []
-    src_vdg, src_retry, src_pl24, src_manual, src_cache = [], [], [], [], []
+    chart_delivered, chart_failed, chart_nocode = [], [], []
+    chart_bad_plate, chart_not_automated, chart_abandoned = [], [], []
+    src_vdg, src_oneauto, src_retry, src_pl24, src_manual, src_cache = [], [], [], [], [], []
+    # LOCAL dates, not UTC. TruncDate above buckets by the CURRENT timezone
+    # (Europe/London), so `now.date()` — which is UTC — disagrees with it
+    # whenever London is ahead: between 23:00 and midnight UTC through BST, a
+    # row written "today" is filed under tomorrow's London date, which this loop
+    # never generates. The whole chart shifted by a day and today read zero.
+    # Caught at 23:17 UTC on 17 Aug 2026, when every series came back empty.
+    _local_now = timezone.localtime(now)
     for i in range(30, -1, -1):
-        d = (now - timedelta(days=i)).date()
+        d = (_local_now - timedelta(days=i)).date()
         row = daily_map.get(d, {})
         chart_labels.append(d.strftime('%b %d'))
         chart_delivered.append(row.get('delivered', 0))
         chart_failed.append(row.get('failed', 0))
         chart_nocode.append(row.get('no_code', 0))
-        chart_excluded.append(row.get('excluded', 0))
+        chart_bad_plate.append(row.get('bad_plate', 0))
+        chart_not_automated.append(row.get('not_automated', 0))
+        chart_abandoned.append(row.get('abandoned', 0))
         src_vdg.append(row.get('s_vdg', 0))
+        src_oneauto.append(row.get('s_oneauto', 0))
         src_retry.append(row.get('s_retry', 0))
         src_pl24.append(row.get('s_pl24', 0))
         src_manual.append(row.get('s_manual', 0))
@@ -2936,8 +2942,11 @@ def admin_stats(request):
             'delivered': chart_delivered,
             'failed': chart_failed,
             'nocode': chart_nocode,
-            'excluded': chart_excluded,
+            'bad_plate': chart_bad_plate,
+            'not_automated': chart_not_automated,
+            'abandoned': chart_abandoned,
             'src_vdg': src_vdg,
+            'src_oneauto': src_oneauto,
             'src_retry': src_retry,
             'src_pl24': src_pl24,
             'src_manual': src_manual,

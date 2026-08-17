@@ -590,8 +590,39 @@
                     {% comment %} paint23: shown when the make is one we cannot resolve. No
                        lookup is submitted, so nothing is spent and the answer is
                        immediate instead of a minute of spinner.{% endcomment %}
-                    <!-- unsupported-make notice removed: the lookup now proceeds and the
-                         results page explains it (see views.make_not_automated). -->
+                    <!-- The unsupported-make notice was removed here: the lookup now
+                         proceeds and the results page explains it (see
+                         views.make_not_automated).
+
+                         THE LOADER BELOW WENT WITH IT BY MISTAKE and is restored
+                         verbatim from 54910a8. The removal walked forward to the
+                         second closing div after the notice; the notice closes
+                         only once, so the second belonged to the loader and
+                         everything between was swallowed. Tag counts still
+                         balanced, which is why it passed review. With
+                         #lookup-loader absent, getElementById returned null and
+                         loader.classList.add('active') threw, killing every
+                         staged caption and leaving the bare page on submit. -->
+
+                    <!-- paint74: the globe, the staged messages and the patience
+                         note have MOVED to the results page.
+
+                         They were built when a lookup took 10-60 seconds and
+                         this page held the whole wait. Since the vehicle/paint
+                         split it returns in ~190ms (measured on live rows), so
+                         the globe was a flash below the threshold at which
+                         anyone registers it, and the two staged messages could
+                         never fire at all: the patience note was scheduled for
+                         3s and the slow-server message for 10s, against a page
+                         that is gone in a fifth of a second.
+
+                         What is left is one line, for the rare slow case: a
+                         failed VDG vehicle call falls back to DVLA and MOT,
+                         which is p50 1.25s and occasionally a few seconds. The
+                         ellipsis animates so that case does not look frozen. -->
+                    <div class="lookup-loader" id="lookup-loader" aria-live="polite">
+                        <p class="lookup-message" id="lookup-message">Connecting to manufacturer server<span class="dots" aria-hidden="true"><span>.</span><span>.</span><span>.</span></span></p>
+                    </div>
                     {% endif %}
                 </div>
             </div>
