@@ -346,59 +346,30 @@
     <!-- ================= Origin gate (F2) ============================== -->
     <!-- Railway's edge is directly reachable and routes by Host, so Cloudflare
          can be bypassed. A Cloudflare Transform Rule sets a secret header on
-         everything that passes through; this panel shows whether it is arriving,
-         and on WHICH paths. The paths are the decision, not the count: scanner
-         noise means enforcing is safe, /stripe/webhook/ appearing here means it
-         is not. -->
-    <div class="maint-toggle {% if origin_gate.mode == 'enforce' %}is-on{% endif %}" style="margin-top: 12px;">
+         everything that passes through it.
+
+         TWO BLOCKS, deliberately. .maint-toggle is flex with space-between and
+         flex-wrap, so a status block wider than the row forces the button onto
+         its own line — which is what happened when all of this lived in one
+         row: the button wrapped and sat left while every neighbouring row had
+         its button right. The toggle row is therefore kept as terse as
+         Maintenance and Paid lookups (one line, dot, button), and the evidence
+         moved into a .panel below where longer content belongs. -->
+    <div class="maint-toggle {% if origin_gate.mode == 'enforce' %}is-on{% endif %}">
         <div class="maint-toggle-status">
             <span class="maint-dot"></span>
             <div>
                 <div class="maint-toggle-title">
                     Origin gate is {% if origin_gate.mode == 'enforce' %}ENFORCING{% else %}watching{% endif %}
-                    {% if not origin_gate.secret_configured %}
-                        — INERT, no secret configured
-                    {% endif %}
+                    {% if not origin_gate.secret_configured %} — inert, no secret set{% endif %}
                 </div>
                 <div class="maint-toggle-sub">
                     {% if not origin_gate.secret_configured %}
-                        ORIGIN_SECRET is not set in Railway, so nothing is checked and
-                        all proxy headers are trusted. Set it to activate the gate.
+                        ORIGIN_SECRET is not set, so nothing is checked.
                     {% elif origin_gate.mode == 'enforce' %}
-                        Visitor IPs are trusted only when the request came through
-                        Cloudflare. Direct callers share one rate-limit bucket.
+                        Visitor IPs are trusted only from Cloudflare.
                     {% else %}
-                        Watching only — IPs are trusted exactly as before. Direct
-                        hits are recorded below.
-                    {% endif %}
-                    {% if origin_gate.env_override %}
-                        <br><strong>ORIGIN_GATE_MODE={{ origin_gate.env_override }}</strong>
-                        is set in Railway and overrides the switch
-                        (saved setting: {{ origin_gate.stored_mode }}).
-                    {% endif %}
-                </div>
-                {% if origin_gate.auto_reverted_at %}
-                <div class="maint-toggle-sub" style="margin-top:6px;color:#b42318;">
-                    <strong>Enforcement was switched off automatically at
-                    {{ origin_gate.auto_reverted_at|date:"j M H:i" }}.</strong>
-                    Almost no traffic was carrying the Cloudflare header, which
-                    usually means the Transform Rule has stopped firing. Check it
-                    in Cloudflare before enforcing again.
-                </div>
-                {% endif %}
-                <div class="maint-toggle-sub" style="margin-top:6px;">
-                    {% if origin_gate.stats.count %}
-                        <strong>{{ origin_gate.stats.count }}</strong> request(s)
-                        bypassed Cloudflare since {{ origin_gate.stats.since|slice:":16" }}.
-                        Recent paths:
-                        {% for p in origin_gate.stats.paths %}
-                            <code>{{ p }}</code>{% if not forloop.last %} · {% endif %}
-                        {% endfor %}
-                    {% elif origin_gate.secret_configured %}
-                        Nothing has bypassed Cloudflare since this deploy — every
-                        request so far arrived through it. Note this only covers
-                        paths that have actually run: a webhook that has never
-                        fired is not evidence either way.
+                        IPs trusted as before. Direct hits recorded below.
                     {% endif %}
                 </div>
             </div>
@@ -407,9 +378,57 @@
             {% csrf_token %}
             <input type="hidden" name="action" value="toggle_origin_gate">
             <button type="submit" class="btn btn-sm {% if origin_gate.stored_mode == 'enforce' %}btn-success{% else %}btn-danger{% endif %}">
-                {% if origin_gate.stored_mode == 'enforce' %}Back to observing{% else %}Start enforcing{% endif %}
+                {% if origin_gate.stored_mode == 'enforce' %}Back to watching{% else %}Start enforcing{% endif %}
             </button>
         </form>
+    </div>
+
+    <!-- NOT gated on secret_configured. The auto-revert banner is the one thing
+         that must never disappear: if ORIGIN_SECRET were removed after a revert,
+         hiding this panel would take the only explanation with it, leaving the
+         gate silently off for a reason nobody could see. -->
+    <div class="panel" style="margin-bottom:1.5rem;">
+        <h2>Cloudflare bypass</h2>
+        {% if origin_gate.auto_reverted_at %}
+        <p style="color:#b42318;margin-top:0;">
+            <strong>Enforcement was switched off automatically at
+            {{ origin_gate.auto_reverted_at|date:"j M H:i" }}.</strong>
+            Almost no traffic was carrying the Cloudflare header, which usually
+            means the Transform Rule has stopped firing. Check it in Cloudflare
+            before enforcing again.
+        </p>
+        {% endif %}
+        {% if origin_gate.env_override %}
+        <p style="margin-top:0;">
+            <strong>ORIGIN_GATE_MODE={{ origin_gate.env_override }}</strong> is set
+            in Railway and overrides the switch above
+            (saved setting: {{ origin_gate.stored_mode }}).
+        </p>
+        {% endif %}
+        {% if not origin_gate.secret_configured %}
+        <p style="margin-bottom:0;">
+            <strong>ORIGIN_SECRET is not set in Railway</strong>, so nothing is
+            being checked and every proxy header is trusted. Set it, and add the
+            matching Cloudflare Transform Rule, to activate the gate.
+        </p>
+        {% elif origin_gate.stats.count %}
+        <p style="margin-top:0;">
+            <strong>{{ origin_gate.stats.count }}</strong> request(s) reached the
+            site without passing through Cloudflare since
+            {{ origin_gate.stats.since|slice:":16" }}.
+        </p>
+        <p style="margin-bottom:0;">
+            Recent paths:
+            {% for p in origin_gate.stats.paths %}<code>{{ p }}</code>{% if not forloop.last %} &middot; {% endif %}{% endfor %}
+        </p>
+        {% else %}
+        <p style="margin-bottom:0;">
+            Nothing has bypassed Cloudflare since this deploy — every request so
+            far arrived through it. Note this only covers paths that have
+            actually run: a webhook that has never fired is not evidence either
+            way.
+        </p>
+        {% endif %}
     </div>
 
     <!-- ================= Protection panel (paint15) ==================== -->
