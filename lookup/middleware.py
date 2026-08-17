@@ -51,6 +51,14 @@ _ORIGIN_LOG_EVERY_S = 300
 _ORIGIN_STATS_TTL = 60 * 60 * 24 * 14
 _ORIGIN_MAX_PATHS = 8
 
+# Breaker tuning. A window must carry a real sample before it can conclude
+# anything, and the share must be overwhelming — a partial outage is not what
+# this detects, a total one is.
+_BREAKER_KEY = 'origin-gate:window'
+_BREAKER_WINDOW_S = 120
+_BREAKER_MIN_SAMPLE = 30
+_BREAKER_THRESHOLD = 0.9
+
 
 def origin_gate_stats():
     """Direct-hit stats for the dashboard: {'count': int, 'paths': [...], 'since': str}.
@@ -104,7 +112,12 @@ class OriginGateObserverMiddleware:
 
     def _observe(self, request):
         from lookup.views import ORIGIN_SECRET, via_cloudflare
-        if not ORIGIN_SECRET or via_cloudflare(request):
+        if not ORIGIN_SECRET:
+            return
+
+        ok = via_cloudflare(request)
+        self._tick(ok)
+        if ok:
             return
 
         cache = caches['default']
@@ -126,3 +139,63 @@ class OriginGateObserverMiddleware:
                 'bypassed, or the Transform Rule is not firing.',
                 stats['count'], request.path,
             )
+
+    # -- breaker ----------------------------------------------------------
+    def _tick(self, ok):
+        """Track the share of traffic arriving without the header, and if
+        enforcement is on and almost NONE of it has one, drop back to observe.
+
+        The failure this exists for: the Cloudflare Transform Rule is deleted,
+        disabled, or its secret rotated on one side only. Enforcement then keys
+        every genuine visitor to Railway's proxy address, so they all share one
+        rate-limit bucket and the fourth caller of the hour is refused — with
+        nothing broken, nothing logged, and no visible cause. Same shape as the
+        daily budget breaker: stop automatically rather than quietly do harm.
+
+        Counted in the PER-PROCESS cache, never the database. Counting every
+        request in the shared cache would mean a query per request, which would
+        hold Neon's compute awake permanently — the exact regression SiteConfig's
+        cache exists to prevent. Each worker therefore evaluates its own window,
+        which is fine: the state it writes on tripping IS shared.
+        """
+        try:
+            cache = caches['local']
+            now = time.time()
+            w = cache.get(_BREAKER_KEY)
+            if not w or (now - w['start']) > _BREAKER_WINDOW_S:
+                if w:
+                    self._evaluate(w)
+                w = {'start': now, 'total': 0, 'missing': 0}
+            w['total'] += 1
+            if not ok:
+                w['missing'] += 1
+            cache.set(_BREAKER_KEY, w, _BREAKER_WINDOW_S * 3)
+        except Exception:
+            pass
+
+    def _evaluate(self, w):
+        from lookup.views import origin_gate_mode
+        # Needs a real sample. On a quiet site three stray scanner hits must not
+        # be read as "Cloudflare is broken".
+        if w['total'] < _BREAKER_MIN_SAMPLE:
+            return
+        if w['missing'] / w['total'] < _BREAKER_THRESHOLD:
+            return
+        if origin_gate_mode() != 'enforce':
+            return
+
+        from lookup.models import SiteConfig
+        cfg = SiteConfig.get()
+        if cfg.origin_gate_mode != SiteConfig.ORIGIN_GATE_ENFORCE:
+            return
+        cfg.origin_gate_mode = SiteConfig.ORIGIN_GATE_OBSERVE
+        cfg.origin_gate_auto_reverted_at = timezone.now()
+        cfg.save(update_fields=['origin_gate_mode',
+                                'origin_gate_auto_reverted_at', 'updated_at'])
+        logger.error(
+            'ORIGIN GATE AUTO-REVERTED to observe: %d of %d recent requests '
+            'arrived without the Cloudflare header. Either the Transform Rule '
+            'has stopped firing (check it) or the origin is being flooded '
+            'directly. Enforcement is now OFF and must be re-enabled by hand.',
+            w['missing'], w['total'],
+        )

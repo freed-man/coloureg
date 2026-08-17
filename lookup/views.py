@@ -2395,7 +2395,11 @@ def admin_stats(request):
             if cfg.origin_gate_mode == SiteConfig.ORIGIN_GATE_ENFORCE
             else SiteConfig.ORIGIN_GATE_ENFORCE
         )
-        cfg.save(update_fields=['origin_gate_mode', 'updated_at'])
+        # Clear the auto-revert flag: the operator has now seen it and acted,
+        # so leaving the banner up would just be noise on the next screen.
+        cfg.origin_gate_auto_reverted_at = None
+        cfg.save(update_fields=['origin_gate_mode',
+                                'origin_gate_auto_reverted_at', 'updated_at'])
         if ORIGIN_GATE_ENV_OVERRIDE in ('observe', 'enforce'):
             # Saving it is still correct — the override may be removed later —
             # but say so plainly rather than let the dashboard imply a change
@@ -2812,6 +2816,7 @@ def admin_stats(request):
             'stored_mode': SiteConfig.get().origin_gate_mode,
             'secret_configured': bool(ORIGIN_SECRET),
             'env_override': ORIGIN_GATE_ENV_OVERRIDE or '',
+            'auto_reverted_at': SiteConfig.get().origin_gate_auto_reverted_at,
             'stats': origin_gate_stats(),
         },
         # ONE JSON BLOB, rendered by json_script (F14 / handoff item 2).

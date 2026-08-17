@@ -1575,6 +1575,11 @@ class SiteConfig(models.Model):
     origin_gate_mode = models.CharField(
         max_length=10, choices=ORIGIN_GATE_CHOICES, default=ORIGIN_GATE_OBSERVE,
     )
+    # Set when the breaker drops enforcement automatically (see the middleware).
+    # Durable and shown on the dashboard: an automatic revert that left no trace
+    # would be worse than no revert at all, because the gate would silently be
+    # off and the reason gone.
+    origin_gate_auto_reverted_at = models.DateTimeField(null=True, blank=True)
 
     # --- Daily spend breaker (A) -------------------------------------------
     # Hard ceiling on VDG spend per calendar day (London time). When the sum of

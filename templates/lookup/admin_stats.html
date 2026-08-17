@@ -377,6 +377,15 @@
                         (saved setting: {{ origin_gate.stored_mode }}).
                     {% endif %}
                 </div>
+                {% if origin_gate.auto_reverted_at %}
+                <div class="maint-toggle-sub" style="margin-top:6px;color:#b42318;">
+                    <strong>Enforcement was switched off automatically at
+                    {{ origin_gate.auto_reverted_at|date:"j M H:i" }}.</strong>
+                    Almost no traffic was carrying the Cloudflare header, which
+                    usually means the Transform Rule has stopped firing. Check it
+                    in Cloudflare before enforcing again.
+                </div>
+                {% endif %}
                 <div class="maint-toggle-sub" style="margin-top:6px;">
                     {% if origin_gate.stats.count %}
                         <strong>{{ origin_gate.stats.count }}</strong> request(s)
