@@ -640,16 +640,17 @@ def index(request):
         # It returns '' when only a paid call could tell us the make, and that
         # is deliberately allowed through: refusing on a guess would block real
         # vehicles. This gate only ever fires on a make we KNOW.
-        if posted_reg:
-            _known = _known_make(posted_reg)
-            if _known and config.is_make_unsupported(_known):
-                messages.error(
-                    request,
-                    f'We cannot currently find paint codes for {_known} '
-                    f'vehicles. No charge has been made, and this has not used '
-                    f'one of your searches.'
-                )
-                return redirect('index')
+        # REMOVED: the pre-lookup refusal for unsupported makes.
+        #
+        # It redirected to the homepage with a red error and cost nothing, but
+        # only fired on makes already in cache or history — a first-time Honda
+        # ran the whole pipeline anyway, ~60s and ~£0.38, because nothing free
+        # could tell us the make. The customer got a rejection either way.
+        #
+        # The gate now sits AFTER the vehicle call instead (search for
+        # make_not_automated). That costs £0.08 where this cost £0, and buys a
+        # results page showing their vehicle plus the manual-lookup offer — and
+        # it covers the first-time case this never could.
 
         # --- Turnstile verification (E) -------------------------------------
         # When configured (both keys in env), every lookup POST must carry a
@@ -767,14 +768,28 @@ def index(request):
                 make=cached_payload.get('make', ''),
                 model=cached_payload.get('model', ''),
                 year=cached_payload.get('year'),
-                colour=cached_payload.get('colour', ''),
-                vehicle_title=cached_payload.get('vehicle_title', ''),
-                category=cached_payload.get('category', ''),
-                vin=cached_payload.get('vin', '') or '',
-                paint_code=cached_payload.get('paint_code', ''),
-                paint_description=cached_payload.get('paint_description', ''),
+                colour=cached_payload.get('colour') or '',
+                vehicle_title=cached_payload.get('vehicle_title') or '',
+                category=cached_payload.get('category') or '',
+                vin=cached_payload.get('vin') or '',
+                # `or ''`, NOT .get(key, ''). The default only applies when the
+                # key is ABSENT; a key present with a None value passes None
+                # straight through and the NOT NULL column rejects it. That was
+                # latent while only complete successes were cached (they always
+                # carry a code) and became reachable the moment unsupported
+                # makes started being cached with paint_code None. `vin` already
+                # had the `or ''`, which suggests this was met once before.
+                paint_code=cached_payload.get('paint_code') or '',
+                paint_description=cached_payload.get('paint_description') or '',
                 provider=Search.PROVIDER_CACHE,
                 success=bool(cached_payload.get('paint_code')),
+                # Carry the marker onto the cache-served row. Without it a
+                # repeat unsupported make would show no MANUAL badge and would
+                # fall into `incomplete` — the bucket that means "the user left
+                # before recovery ran" — quietly corrupting the one statistic
+                # this marker exists to keep honest.
+                error_message=('make_not_automated'
+                               if cached_payload.get('make_not_automated') else ''),
                 lookup_duration_ms=int((time.time() - start_time) * 1000),
             )
             cache_search.save()
@@ -788,7 +803,10 @@ def index(request):
 
             payload = dict(cached_payload)
             payload['search_id'] = cache_search.id
-            payload['paint_pending'] = False  # cached results are complete
+            # Never poll from a cached serve: either the code is already here,
+            # or the make is one we do not automate and recovery would be the
+            # 60s of spend this whole path exists to avoid.
+            payload['paint_pending'] = False
             request.session['vehicle_data'] = payload
             return redirect('results')
 
@@ -1116,6 +1134,30 @@ def index(request):
         search.success = bool(paint_code)
         search.lookup_duration_ms = int((time.time() - start_time) * 1000)
         search.access_label = access_label or ''
+
+        # UNSUPPORTED MAKE, decided once and used four times below: the row
+        # marker here, the recovery gate, the cache rule and the results
+        # message. Requires an actual make AND no paint code already in hand —
+        # if the vehicle call happened to return a code we deliver it whatever
+        # the list says, because a code in hand beats a policy about codes we
+        # usually cannot get. A blank make means VDG identified nothing, a
+        # different failure entirely, which must not be dressed up as "we do
+        # not automate this".
+        #
+        # Decided BEFORE save() on purpose. The first version set this after,
+        # so the attribute was assigned to an already-saved row and silently
+        # never persisted — the session carried the flag, the database did not,
+        # and the admin badge and every statistic that reads the marker were
+        # wrong while the customer-facing page looked correct.
+        #
+        # Recorded via error_message, the mechanism turnstile_blocked already
+        # uses: a STORED marker, not a live re-read of the makes list, so
+        # removing a make later cannot retroactively reclassify history.
+        make_not_automated = bool(make) and not paint_code \
+            and config.is_make_unsupported(make)
+        if make_not_automated:
+            search.error_message = 'make_not_automated'
+
         search.save()
 
         # Gate BEFORE the session is written and the redirect happens (paint22).
@@ -1155,18 +1197,51 @@ def index(request):
             # used to skip BOTH legs when we could still have run the retry.
             # _pl24_lookup already returns None without a VIN, so the pl24 leg
             # simply no-ops and the retry still gets its chance.
-            'paint_pending': (not paint_code) and bool(make),
+            'paint_pending': (not paint_code) and bool(make)
+                             and not make_not_automated,
+            # Drives the results-page message and the admin badge. Distinct from
+            # a miss: we did not search and fail, we chose not to search.
+            'make_not_automated': make_not_automated,
         }
 
+        # --- Unsupported make: stop here, deliberately ----------------------
+        # The make is on SiteConfig.unsupported_makes, so recovery cannot
+        # succeed: the VDG retry and pl24 would burn ~60s and another ~£0.30 to
+        # reach the same empty result the July analysis already established.
+        # paint_pending is therefore False above, which by itself skips BOTH
+        # recovery legs — there is no second gate to add.
+        #
+        # This REPLACES the old pre-lookup refusal, which redirected to the
+        # homepage with a red error and cost nothing. The trade is deliberate:
+        # £0.08 for the vehicle call buys the customer a results page with their
+        # own car on it and a manual-lookup offer, instead of a rejection. And
+        # it now also catches the case the old gate could not — a make we have
+        # never seen, which previously ran the whole pipeline because nothing
+        # free could tell us what it was.
+        #
+        # Marked via error_message, the same mechanism turnstile_blocked uses:
+        # a stored marker rather than a live re-read of the makes list, so
+        # removing a make later does not retroactively reclassify history.
         # --- VRM cache write (A) -------------------------------------------
         # A successful lookup (paint code delivered) is stored so the next
         # request for this reg is served from cache with zero VDG spend. Only
         # complete successes are cached — a miss must stay live so recovery /
         # retry always gets a fresh shot. Payload excludes the request-specific
         # keys (search_id, paint_pending); store_vrm_payload strips them anyway.
-        if paint_code:
+        if paint_code or make_not_automated:
+            # UNSUPPORTED MAKES ARE CACHED TOO. The rule above is "only complete
+            # successes", because "a miss must stay live so recovery / retry
+            # always gets a fresh shot". For a make we do not automate, recovery
+            # will never run — so there is nothing to keep live, and the reason
+            # for the rule does not apply. A repeat inside the cache window
+            # costs £0 instead of £0.08.
+            #
+            # Safe against the list changing: is_make_unsupported() is consulted
+            # live when a cached row is served, so removing a make immediately
+            # resumes normal lookups rather than serving a stale verdict.
             store_vrm_payload(registration, request.session['vehicle_data'])
-            clear_miss(registration)  # a prior miss is now stale — forget it
+            if paint_code:
+                clear_miss(registration)  # a prior miss is now stale
         elif request.session['vehicle_data']['paint_pending']:
             # Recovery is ABOUT TO RUN, so don't pre-empt it. The miss is
             # recorded only if recovery also comes back empty (see
@@ -1506,6 +1581,7 @@ def results(request):
         # "finding your paint code" state and polls /lookup-status. Only true if
         # we don't already have a paint_code here.
         'paint_pending': bool(vehicle_data.get('paint_pending')) and not paint_code,
+        'make_not_automated': bool(vehicle_data.get('make_not_automated')),
         # True when a prior recovery resolved to name-only (colour name, no code).
         # Lets a page reload re-render the name-only card instead of re-polling.
         # Only meaningful when there's no code and we're not pending.
@@ -2586,7 +2662,22 @@ def admin_stats(request):
         incomplete=Count('id', filter=(
             ~Q(make='') & Q(paint_code='')
             & ~(Q(recovery_attempted=True) & Q(recovery_duration_ms__isnull=False))
+            & ~Q(error_message='make_not_automated')
         )),
+        # A FOURTH outcome, reported on its own. Unsupported makes never run
+        # recovery, so without this they would fall into `incomplete` — which
+        # means "the user left before recovery could run", a signal about
+        # customer behaviour. Filling it with deliberate non-attempts would make
+        # that number climb and read as people bouncing off the results page.
+        #
+        # Excluded from the success rate for the same reason paint16 excludes
+        # no_code_available: counting them as failures punishes us for something
+        # we did not do, counting them as successes claims a code we never
+        # delivered. The denominator below is success + genuine_miss, and a row
+        # with recovery_attempted=False cannot be a genuine miss, so this is
+        # already outside it — the exclusion here is what keeps `incomplete`
+        # honest, not what keeps the rate honest.
+        not_automated=Count('id', filter=Q(error_message='make_not_automated')),
         # Sub-count: vehicle found and a colour NAME recovered, but still no code.
         name_only_miss=Count('id', filter=Q(recovery_name_only=True) & Q(paint_code='')),
         # Email pipeline
@@ -2815,6 +2906,7 @@ def admin_stats(request):
         'week_searches': week_searches,
         'month_searches': month_searches,
         'success_rate': round(success_rate, 1),
+        'not_automated': top_metrics['not_automated'],
         'success_with_code': success_with_code,
         'vehicle_found': vehicle_found,
         'searched_to_completion': searched_to_completion,
