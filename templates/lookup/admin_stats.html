@@ -597,25 +597,6 @@
             <p class="stat-label">Total</p>
             <p class="stat-value">{{ total_searches }}</p>
         </div>
-    </div>
-
-    <!-- Top metrics: row 2 = quality + balance -->
-    <div class="stats-grid">
-        <div class="stat-card">
-            <p class="stat-label">Success rate today</p>
-            <p class="stat-value">{% if today_rate is not None %}{{ today_rate }}%{% else %}&mdash;{% endif %}</p>
-        </div>
-        <div class="stat-card">
-            <p class="stat-label">Success rate</p>
-            <p class="stat-value">{{ success_rate }}%</p>
-        </div>
-        {% comment %} paint77: Avg lookup time moved up to sit beside the success
-           rate — the two together say whether the pipeline is working and how
-           long it takes, which is the pair you read first.{% endcomment %}
-        <div class="stat-card">
-            <p class="stat-label">Avg lookup time</p>
-            <p class="stat-value">{{ avg_duration_s }}s</p>
-        </div>
         {% if turnstile_blocks_week %}
         {% comment %}
            Only rendered when non-zero. Expected to be bots; a rise here at the
@@ -629,6 +610,25 @@
             <p class="stat-subvalue">today · {{ turnstile_blocks_week }} in the last 7 days</p>
         </div>
         {% endif %}
+    </div>
+
+    <!-- Top metrics: row 2 = quality + balance -->
+    <div class="stats-grid">
+        <div class="stat-card">
+            <p class="stat-label">Success rate today</p>
+            <p class="stat-value">{% if today_rate is not None %}{{ today_rate }}%{% else %}&mdash;{% endif %}</p>
+        </div>
+        <div class="stat-card">
+            <p class="stat-label">Success rate overall</p>
+            <p class="stat-value">{{ success_rate }}%</p>
+        </div>
+        {% comment %} paint77: Avg lookup time moved up to sit beside the success
+           rate — the two together say whether the pipeline is working and how
+           long it takes, which is the pair you read first.{% endcomment %}
+        <div class="stat-card">
+            <p class="stat-label">Avg lookup time</p>
+            <p class="stat-value">{{ avg_duration_s }}s</p>
+        </div>
         {% if capture_failures %}
         <div class="stat-card" style="border: 1px solid #C8102E;">
             <p class="stat-label" style="color: #C8102E;">Payments not taken</p>
@@ -1095,7 +1095,7 @@
            rather than a red cross. Grey says "no verdict", and the hollow circle
            completes the set: filled tick, half circle, cross, empty. Sized to
            match .outcome-cross so the column stays optically even. */
-        .outcome-none { color: #7a7a7a; font-weight: 700; font-size: 19px; line-height: 1; }
+        .outcome-none { display: inline-block; width: 12px; height: 12px; border-radius: 50%; border: 3px solid #6e6e6e; vertical-align: middle; }
 
         /* Recent paint code lookups: paint code + wrap-friendly description.
            Sized and styled to match the surrounding row text (14px, dark, sans)
@@ -1431,7 +1431,7 @@
                         {% elif s.paint_description %}
                         <span class="outcome-partial" title="Colour name found — no code">◐</span>
                         {% elif s.error_message == 'make_not_automated' %}
-                        <span class="outcome-none" title="Make not automated — manual lookup offered">&#9675;</span>
+                        <span class="outcome-none" title="Make not automated — manual lookup offered" aria-label="Not automated"></span>
                         {% else %}
                         <span class="outcome-cross" title="Not found">✗</span>
                         {% endif %}
@@ -1475,7 +1475,7 @@
                     {% elif s.paint_description %}
                     <span class="outcome-partial" title="Colour name found — no code">◐</span>
                     {% elif s.error_message == 'make_not_automated' %}
-                    <span class="outcome-none" title="Make not automated — manual lookup offered">&#9675;</span>
+                    <span class="outcome-none" title="Make not automated — manual lookup offered" aria-label="Not automated"></span>
                     {% else %}
                     <span class="outcome-cross" title="Not found">✗</span>
                     {% endif %}
