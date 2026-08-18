@@ -583,7 +583,7 @@
     <div class="stats-grid">
         <div class="stat-card">
             <p class="stat-label">Today</p>
-            <p class="stat-value">{{ today_searches }}{% if today_rate is not None %}<span style="font-size: 14px; font-weight: 500; color: #888; margin-left: 6px;">{{ today_rate }}%</span>{% endif %}</p>
+            <p class="stat-value">{{ today_searches }}</p>
         </div>
         <div class="stat-card">
             <p class="stat-label">Last 7 days</p>
@@ -602,9 +602,12 @@
     <!-- Top metrics: row 2 = quality + balance -->
     <div class="stats-grid">
         <div class="stat-card">
+            <p class="stat-label">Success rate today</p>
+            <p class="stat-value">{% if today_rate is not None %}{{ today_rate }}%{% else %}&mdash;{% endif %}</p>
+        </div>
+        <div class="stat-card">
             <p class="stat-label">Success rate</p>
             <p class="stat-value">{{ success_rate }}%</p>
-            <p class="stat-subvalue">{{ success_with_code }} of {{ searched_to_completion }} completed searches</p>
         </div>
         {% comment %} paint77: Avg lookup time moved up to sit beside the success
            rate — the two together say whether the pipeline is working and how
