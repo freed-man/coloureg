@@ -37,6 +37,7 @@ import logging
 
 from django.db.models import F, Sum
 from django.utils import timezone
+from .http import get_session
 
 
 # How long a cached VRM result stays fresh.
@@ -229,7 +230,7 @@ def verify_turnstile(token, remote_ip=None, timeout=5):
     if not token:
         return False  # feature on + no token -> reject (this is the bot case)
     try:
-        resp = requests.post(
+        resp = get_session().post(
             TURNSTILE_VERIFY_URL,
             data={
                 'secret': settings.TURNSTILE_SECRET_KEY,
@@ -294,6 +295,7 @@ def is_recent_miss(registration):
     VDG. Never raises — a cache hiccup just means we do the live lookup.
     """
     from django.core.cache import caches
+
     try:
         return caches['default'].get(_neg_key(registration)) is not None
     except Exception:

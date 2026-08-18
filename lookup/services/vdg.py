@@ -18,6 +18,8 @@ import re
 
 import requests
 
+from .http import get_session
+
 
 VDG_BASE_URL = 'https://uk.api.vehicledataglobal.com/r2'
 logger = logging.getLogger(__name__)
@@ -138,7 +140,7 @@ def _make_request(registration, package, billing_sink=None, timeout=None):
     }
 
     try:
-        response = requests.get(
+        response = get_session().get(
             VDG_LOOKUP_ENDPOINT, params=params,
             timeout=VDG_TIMEOUT_S if timeout is None else timeout,
         )

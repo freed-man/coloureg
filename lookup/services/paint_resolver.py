@@ -37,6 +37,8 @@ import time
 
 import requests
 
+from .http import get_session
+
 from .vdg import paint_lookup, VdgError, _log_reg
 from . import oneauto
 
@@ -555,7 +557,7 @@ def _pl24_lookup(vin, make, category=None, search_id=None):
         params['category'] = category
     headers = {'X-API-Key': PL24_API_KEY} if PL24_API_KEY else {}
     try:
-        resp = requests.get(
+        resp = get_session().get(
             f'{PL24_BASE_URL}/lookup-paint',
             params=params, headers=headers, timeout=_PL24_HTTP_TIMEOUT,
         )

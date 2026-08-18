@@ -11,6 +11,11 @@ from django.conf import settings as dj_settings
 from django.contrib import messages
 from django.contrib.admin.views.decorators import staff_member_required
 import secrets
+
+# F12: one shared Session for every outbound call, with retries pinned off.
+# Imported under a distinct name — views.get_session() already exists and is the
+# Stripe session lookup on the money path.
+from .services.http import get_session as http_session
 from .middleware import origin_gate_stats
 from django.core.exceptions import ValidationError
 from django.core.validators import validate_email, validate_ipv46_address
@@ -297,7 +302,7 @@ def get_dvla_data(registration):
     # call sites for one of them.
     get_dvla_data.last_answered = False
     try:
-        response = requests.post(url, json=payload, headers=headers, timeout=10)
+        response = http_session().post(url, json=payload, headers=headers, timeout=10)
         if response.status_code == 200:
             get_dvla_data.last_answered = True
             return response.json()
@@ -421,7 +426,7 @@ def get_mot_access_token(force_refresh=False):
     }
 
     try:
-        response = requests.post(token_url, data=data, timeout=10)
+        response = http_session().post(token_url, data=data, timeout=10)
         if response.status_code != 200:
             return None
         payload = response.json()
@@ -467,7 +472,7 @@ def get_mot_data(registration, retried=False):
     }
 
     try:
-        response = requests.get(url, headers=headers, timeout=10)
+        response = http_session().get(url, headers=headers, timeout=10)
         if response.status_code == 200:
             return response.json()
         # A cached token that the provider no longer accepts would otherwise

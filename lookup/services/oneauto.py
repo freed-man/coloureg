@@ -46,6 +46,8 @@ import time
 
 import requests
 
+from .http import get_session
+
 logger = logging.getLogger(__name__)
 
 BASE_URL = 'https://api.oneautoapi.com'
@@ -198,7 +200,7 @@ def lookup(vin=None, reg=None, make=None, model=None, year=None,
     while True:
         attempts += 1
         try:
-            resp = requests.get(url, params=params, headers=headers,
+            resp = get_session().get(url, params=params, headers=headers,
                                 timeout=HTTP_TIMEOUT)
         except requests.exceptions.RequestException as e:
             logger.warning('One Auto transport failure: %s', type(e).__name__)
