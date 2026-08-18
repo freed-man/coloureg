@@ -286,10 +286,24 @@ def get_dvla_data(registration):
     }
     payload = {'registrationNumber': registration}
 
+    # RECORDS WHETHER DVLA ANSWERED, not just what it said. A 404 ("we have no
+    # such vehicle") and a timeout ("we could not ask") both returned None, so
+    # the caller could not tell a plate that does not exist from two suppliers
+    # being unreachable — and told the customer to check their typing either
+    # way, then remembered the registration as a dud for an hour.
+    #
+    # The flag rides on the function rather than the return value because every
+    # caller expects None-or-dict, and changing that shape would touch several
+    # call sites for one of them.
+    get_dvla_data.last_answered = False
     try:
         response = requests.post(url, json=payload, headers=headers, timeout=10)
         if response.status_code == 200:
+            get_dvla_data.last_answered = True
             return response.json()
+        if response.status_code == 404:
+            # A definite "no such vehicle" — DVLA answered, the answer is no.
+            get_dvla_data.last_answered = True
     except requests.exceptions.RequestException:
         return None
     return None
@@ -896,6 +910,11 @@ def index(request):
         # everything we used to fetch in two. Latency roughly halved at the
         # same £0.50 cost.
         vdg_data = None
+        # Whether VDG gave us an ANSWER — including a definite "no such
+        # vehicle" — as distinct from failing to respond at all. Read at the
+        # not-found exit far below, where the two must lead to different things
+        # being said to the customer and a different caching decision.
+        vdg_answered = False
         latest_balance = None
         # We always attempt the combined call. The OUTCOME is captured by:
         #   success + paint     -> vehicle_returned=True,  paint_returned=True
@@ -922,6 +941,10 @@ def index(request):
                 # Per-document tracking: each doc has its own StatusCode
                 # inside the response, exposed by vdg.py as boolean flags.
                 search.vdg_vehicle_returned = vdg_data.get('vehicle_returned', False)
+                # The call returned, so VDG answered — whatever the answer was.
+                # Set here rather than before the call: an exception on the way
+                # out would otherwise leave this True and defeat the whole point.
+                vdg_answered = True
                 search.vdg_paint_returned = vdg_data.get('paint_returned', False)
                 if vdg_data.get('balance') is not None:
                     latest_balance = vdg_data.get('balance')
@@ -929,11 +952,22 @@ def index(request):
                 # of any refund) so admin can sum exact spend.
                 if vdg_data.get('transaction_cost') is not None:
                     search.vdg_transaction_cost = vdg_data.get('transaction_cost')
-        except (VdgError, VdgNotFoundError) as e:
-            # vehicle_returned / paint_returned stay False (their defaults), and
-            # the error is recorded — together these mark a VDG failure.
+        except VdgNotFoundError as e:
+            # VDG ANSWERED, and the answer is "no such vehicle". That is a fact
+            # about the registration, so it is safe to tell the customer their
+            # plate is wrong and to remember it as a dud.
+            vdg_answered = True
+            search.error_message = f'VDG: {str(e)[:200]}'
+        except VdgError as e:
+            # VDG did NOT answer: a timeout, a transport failure, a 5xx. This
+            # says nothing about the registration. Keeping vdg_answered False
+            # stops the not-found exit below from blaming the customer's typing
+            # and from negative-caching a plate we never actually checked.
             search.error_message = f'VDG: {str(e)[:200]}'
         except Exception as e:  # noqa: BLE001 — trust boundary
+            # An unparseable payload means VDG answered SOMETHING, but we could
+            # not read it — which tells us nothing about the registration, so
+            # this counts as "did not answer" for the not-found decision below.
             # VDG is an external system whose response shape we don't control.
             # A structurally unexpected payload (a null inside PaintCodeList, a
             # field that becomes a string, an API revision) would otherwise raise
@@ -1015,6 +1049,7 @@ def index(request):
 
             dvla = _timed_call('dvla', registration,
                                lambda: get_dvla_data(registration))
+            dvla_answered = getattr(get_dvla_data, 'last_answered', False)
             if not dvla:
                 # DVLA has nothing. Normally that's a genuine "not found" — but
                 # if VDG already identified the vehicle (we salvaged a VIN just
@@ -1024,20 +1059,51 @@ def index(request):
                 if not vin:
                     search.success = False
                     search.lookup_duration_ms = int((time.time() - start_time) * 1000)
+
+                    # DID EITHER SUPPLIER ACTUALLY ANSWER? "No such vehicle" and
+                    # "we could not reach anyone" arrive here identically, and
+                    # were treated identically: the customer was told to check
+                    # their typing, and the registration was remembered as a dud
+                    # for an hour. When both suppliers are down that is wrong
+                    # twice over — it blames the customer for our outage, and
+                    # then refuses to try again for an hour, so the retry they
+                    # were told to make cannot work either.
+                    #
+                    # Not hypothetical: paint55 records VDG raising its upstream
+                    # paint timeout past our client timeout on 10 Aug 2026, so
+                    # calls returned nothing at all. A customer timed out at
+                    # 20:22, retried at 20:25 and was told we had already checked.
+                    answered = vdg_answered or dvla_answered
                     if not search.error_message:
                         search.error_message = 'DVLA + VDG: vehicle not found'
                     else:
                         search.error_message += ' | DVLA: not found'
+                    if not answered:
+                        search.error_message += ' | NEITHER PROVIDER ANSWERED'
                     search.save()
-                    # Remember this dud reg so a repeat within the hour is served
-                    # instantly (this is the common not-found exit — an invalid or
-                    # unrecognised reg — and the main thing a proxy pool hammers).
-                    record_miss(registration)
-                    messages.error(
-                        request,
-                        'Vehicle not found. Please check the registration '
-                        'number is correct and try again.'
-                    )
+
+                    if answered:
+                        # A supplier positively said "no such vehicle". That is
+                        # a fact about the registration, so it is safe to say so
+                        # and to remember it — this is the common exit, an
+                        # invalid reg, and the main thing a proxy pool hammers.
+                        record_miss(registration)
+                        messages.error(
+                            request,
+                            'Vehicle not found. Please check the registration '
+                            'number is correct and try again.'
+                        )
+                    else:
+                        # Deliberately NOT record_miss(): we have established
+                        # nothing about this registration, and caching a miss
+                        # would turn a supplier outage into an hour of false
+                        # "we checked recently" replies.
+                        messages.error(
+                            request,
+                            'We could not reach our data provider just now. '
+                            'This is our end, not your registration — please '
+                            'try again in a minute.'
+                        )
                     return redirect('index')
                 # else: fall through with the salvaged VDG fields (make/model/etc
                 # already set above); MOT can still add a model below.
