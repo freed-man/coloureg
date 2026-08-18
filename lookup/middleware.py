@@ -141,6 +141,16 @@ class OriginGateObserverMiddleware:
         remote = (request.META.get('REMOTE_ADDR') or '?').strip()
         seen = [a for a in (stats.get('remotes') or []) if a != remote]
         stats['remotes'] = ([remote] + seen)[:_ORIGIN_MAX_REMOTES]
+
+        # WHO, not just where and what. The paths and the source address say a
+        # request skipped Cloudflare; they do not say whether it was a scanner
+        # or something of ours. An uptime monitor pointed at the wrong URL
+        # produces a steady 1,440 hits a day that look exactly like an attack
+        # until you read the agent — and that ambiguity is the only thing
+        # standing between here and turning blocking on.
+        ua = (request.META.get('HTTP_USER_AGENT') or '(none)').strip()[:60]
+        seen_ua = [u for u in (stats.get('agents') or []) if u != ua]
+        stats['agents'] = ([ua] + seen_ua)[:_ORIGIN_MAX_REMOTES]
         cache.set(_ORIGIN_STATS_KEY, stats, _ORIGIN_STATS_TTL)
 
         # Throttled so a flood cannot drown Sentry in identical lines.
@@ -211,3 +221,49 @@ class OriginGateObserverMiddleware:
             'directly. Enforcement is now OFF and must be re-enabled by hand.',
             w['missing'], w['total'],
         )
+
+
+# ---------------------------------------------------------------------------
+# Junk-path short circuit
+# ---------------------------------------------------------------------------
+
+_JUNK_SUFFIXES = ('.php', '.asp', '.aspx', '.jsp', '.cgi', '.env', '.sql',
+                  '.bak', '.old', '.swp', '.git', '.yml', '.ini', '.conf')
+_JUNK_PREFIXES = ('/wp-', '/wordpress', '/vendor/', '/.git', '/.env',
+                  '/phpmyadmin', '/cgi-bin', '/.aws', '/.ssh')
+
+_JUNK_BODY = b'Not Found'
+
+
+class JunkPathMiddleware:
+    """Answer obvious scanner probes with nine bytes instead of 13,720.
+
+    A webshell scanner walked the site on 18 Aug 2026 — /file.php, /dex.php,
+    /wsomini.php, /wp_motu_4r80b.php, /.admin.php and some fifty more. Every one
+    correctly 404d, but Django rendered templates/404.html, which extends
+    base.html: the whole navigation, the stylesheet links, the Turnstile script.
+    13,720 bytes to tell a bot a path does not exist, roughly 800KB in the four
+    minutes that log covers.
+
+    This site serves no PHP, no ASP and no dotfiles, so a request for one is
+    never a customer who mistyped — it is always a probe. Genuine 404s (a real
+    path typed wrong, an old link) still get the styled page, because those DO
+    reach a person who benefits from a way back.
+
+    Placed AFTER HealthCheckMiddleware and BEFORE the origin gate observer: the
+    gate exists to count requests that skipped Cloudflare, and counting scanner
+    noise there would bury the signal it is meant to surface.
+
+    Returns 404, not 403 or 444: a scanner reading 403 learns the path is
+    defended and therefore interesting. 404 says nothing at all.
+    """
+
+    def __init__(self, get_response):
+        self.get_response = get_response
+
+    def __call__(self, request):
+        path = (request.path or '').lower()
+        if path.endswith(_JUNK_SUFFIXES) or path.startswith(_JUNK_PREFIXES):
+            return HttpResponse(_JUNK_BODY, status=404,
+                                content_type='text/plain; charset=utf-8')
+        return self.get_response(request)

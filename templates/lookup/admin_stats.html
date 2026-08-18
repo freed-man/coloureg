@@ -423,6 +423,8 @@
                         Since {{ origin_gate.stats.since|slice:":16" }}.
                         Arriving from:
                         {% for a in origin_gate.stats.remotes %}<code>{{ a }}</code>{% if not forloop.last %} &middot; {% endif %}{% empty %}—{% endfor %}
+                        <br>Sent by:
+                        {% for u in origin_gate.stats.agents %}<code>{{ u }}</code>{% if not forloop.last %} &middot; {% endif %}{% empty %}&mdash;{% endfor %}
                         <br>Paths:
                         {% for p in origin_gate.stats.paths %}<code>{{ p }}</code>{% if not forloop.last %} &middot; {% endif %}{% endfor %}
                         <br><span style="opacity:.7;">The address above is what the

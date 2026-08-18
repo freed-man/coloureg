@@ -135,6 +135,10 @@ MIDDLEWARE = [
     # Counts requests arriving without Cloudflare's Transform Rule header (F2).
     # After the healthcheck short-circuit, so Railway's internal probe is never
     # miscounted as a direct hit. Observation only — see the middleware.
+    # Answers obvious scanner probes (.php, .env, /wp-) with nine bytes instead
+    # of the 13,720-byte styled 404. Before the origin gate so scanner noise
+    # does not bury the bypass signal that panel exists to surface.
+    'lookup.middleware.JunkPathMiddleware',
     'lookup.middleware.OriginGateObserverMiddleware',
     'django.middleware.security.SecurityMiddleware',
     'whitenoise.middleware.WhiteNoiseMiddleware',
