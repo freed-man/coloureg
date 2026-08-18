@@ -333,7 +333,7 @@
                 <img src="{% static 'images/palette.png' %}" alt="" height="40" class="me-2">Paint Code
             </h2>
 
-            <div class="card paint-card" id="paint-card">
+            <div class="card paint-card" id="paint-card" data-make="{{ make }}">
                 {% comment %} paint22 — LOCKED state.
                    There is no paint_code or paint_description in this context at
                    all. results() builds the locked context separately rather than
@@ -503,7 +503,7 @@
                             <div style="font-size: 2.5rem; color: #C8102E; line-height: 1;">&#9888;</div>
                             <div>
                                 <p class="mb-0" style="font-size: 1.1rem; color: #333;">
-                                    Extracting {{ make }} build sheets isn't automated yet
+                                    Extracting paint data from {{ make }} build sheets isn't automated yet
                                 </p>
                             </div>
                         </div>
@@ -516,7 +516,7 @@
                             <div style="font-size: 2.5rem; color: #C8102E; line-height: 1;">&#9888;</div>
                             <div>
                                 <p class="mb-0" style="font-size: 1.1rem; color: #333;">
-                                    No factory paint code on the build sheet for this vehicle
+                                    No factory paint data was found on this {{ make }} build sheet
                                 </p>
                             </div>
                         </div>
@@ -759,12 +759,14 @@
     function showMissed() {
         var card = el('paint-card');
         if (!card) return;
+        var mk = (card.getAttribute('data-make') || '').trim();
+        var sheet = mk ? ('this ' + mk + ' build sheet') : 'this build sheet';
         card.innerHTML =
             '<div id="paint-missed-state"><div class="card-body">' +
               '<div class="d-flex align-items-center justify-content-center py-4" style="gap: 16px;">' +
                 '<div style="font-size: 2.5rem; color: #C8102E; line-height: 1;">&#9888;</div>' +
                 '<div>' +
-                  '<p class="mb-0" style="font-size: 1.1rem; color: #333;">No factory paint code on the build sheet for this vehicle</p>' +
+                  '<p class="mb-0" style="font-size: 1.1rem; color: #333;">No factory paint data was found on ' + sheet + '</p>' +
                 '</div>' +
               '</div>' +
             '</div></div>';
