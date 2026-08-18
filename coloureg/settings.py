@@ -328,8 +328,33 @@ TURNSTILE_ALLOWED_HOSTNAMES = [
 # SiteConfig.payments_enabled must be flipped in /admin-stats/ (defaults False).
 # Until both are true the site behaves exactly as today (free lookups).
 # STRIPE_WEBHOOK_SECRET comes from the webhook endpoint you register in the
-# Stripe dashboard (use the Railway hostname directly, not the Cloudflare-
-# proxied domain, so bot protection can never challenge Stripe's POSTs).
+# Stripe dashboard.
+#
+# ============================ BEFORE GO-LIVE =============================
+# REGISTER THE WEBHOOK AT https://coloureg.com/stripe/webhook/
+#
+# NOT a Railway hostname. This note previously said the opposite — use the
+# Railway address so bot protection could never challenge Stripe's POSTs — and
+# that advice is now actively wrong, for two reasons.
+#
+# 1. THE ORIGIN GATE. Cloudflare adds a secret header to everything passing
+#    through it (F2, see views.via_cloudflare). A POST straight to Railway
+#    carries no such header, so under enforce its IP is not trusted, and under
+#    the blocking stage that is still to come it would be refused outright.
+#    Stripe retries a refused webhook quietly in the background for hours: the
+#    customer is charged, nothing is fulfilled, and no error surfaces anywhere.
+#
+# 2. THE CONCERN THAT MOTIVATED IT IS HANDLED. Bot protection cannot challenge
+#    this path — Turnstile is checked on the lookup form, not on POSTs to
+#    /stripe/webhook/, and Cloudflare's own challenges do not apply to a plain
+#    API POST with no browser session.
+#
+# Verified 18 Aug 2026: the Stripe dashboard has NO webhook destination
+# configured at all, so nothing currently depends on either address. That also
+# means full Cloudflare blocking is safe to enable today — there is no webhook
+# for it to break — but the moment one is registered, it must be on
+# coloureg.com or blocking has to be reconsidered first.
+# ==========================================================================
 STRIPE_PUBLISHABLE_KEY = os.environ.get('STRIPE_PUBLISHABLE_KEY', '')
 STRIPE_SECRET_KEY = os.environ.get('STRIPE_SECRET_KEY', '')
 STRIPE_WEBHOOK_SECRET = os.environ.get('STRIPE_WEBHOOK_SECRET', '')
