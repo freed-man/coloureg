@@ -757,6 +757,14 @@ def index(request):
                 # this marker exists to keep honest.
                 error_message=('make_not_automated'
                                if cached_payload.get('make_not_automated') else ''),
+                # THE ACCESS LABEL WAS MISSING HERE. The normal path stamps it
+                # from _access_label(); this branch never did, so a visitor
+                # holding an unlimited-access key lost the marker the moment
+                # their registration came from cache — the same lookup showed
+                # the dot or not depending on whether someone had searched that
+                # plate before. It is also what tells you, reading the row back,
+                # whether a lookup counted against anyone's allowance.
+                access_label=access_label or '',
                 lookup_duration_ms=int((time.time() - start_time) * 1000),
             )
             cache_search.save()
@@ -2617,6 +2625,12 @@ def admin_stats(request):
         # Volume / time windows
         total=Count('id'),
         today=Count('id', filter=Q(timestamp__gte=today_start)),
+        today_delivered=Count('id', filter=Q(timestamp__gte=today_start,
+                                             paint_code__gt='')),
+        today_genuine_miss=Count('id', filter=Q(
+            timestamp__gte=today_start, paint_code='', no_code_available=False,
+            recovery_attempted=True, recovery_duration_ms__isnull=False)
+            & ~Q(make='')),
         week=Count('id', filter=Q(timestamp__gte=week_ago)),
         month=Count('id', filter=Q(timestamp__gte=month_ago)),
         # Success / paint hit rate
@@ -2681,6 +2695,15 @@ def admin_stats(request):
     )
     total_searches = top_metrics['total']
     today_searches = top_metrics['today']
+
+    # TODAY'S SUCCESS RATE, on the same definition as the headline rate below:
+    # delivered / (delivered + genuine miss). Rows that never reached a
+    # definitive outcome — an unsupported make we chose not to search, a
+    # mistyped plate, someone leaving before recovery ran — are excluded from
+    # both sides, so a quiet day with two Hondas does not read as 0%.
+    _t_ok = top_metrics['today_delivered']
+    _t_miss = top_metrics['today_genuine_miss']
+    today_rate = round(_t_ok / (_t_ok + _t_miss) * 100) if (_t_ok + _t_miss) else None
     week_searches = top_metrics['week']
     month_searches = top_metrics['month']
     success_with_code = top_metrics['with_code']
@@ -2909,6 +2932,7 @@ def admin_stats(request):
     context = {
         'total_searches': total_searches,
         'today_searches': today_searches,
+        'today_rate': today_rate,
         'week_searches': week_searches,
         'month_searches': month_searches,
         'success_rate': round(success_rate, 1),
