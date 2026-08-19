@@ -700,16 +700,6 @@
             </div>
             {% endif %}
 
-            {% if legacy_n > 0 %}
-            <div class="cost-row">
-                <div>
-                    <span class="cost-label">Earlier lookups (estimated)</span>
-                    <span class="cost-detail">({{ legacy_n }} lookups from before per-call cost was recorded)</span>
-                </div>
-                <span class="cost-amount">£{{ legacy_estimate|floatformat:2 }}</span>
-            </div>
-            {% endif %}
-
             <div class="cost-divider"></div>
 
             <div class="cost-row cost-total">

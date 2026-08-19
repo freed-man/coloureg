@@ -2972,33 +2972,34 @@ def admin_stats(request):
     # Preferred source: the REAL amount VDG billed per lookup
     # (vdg_transaction_cost, captured from BillingInformation.TransactionCost) —
     # tier-correct and net of refunds, so no assumed per-document price. Rows from
-    # before that field existed are null; for those we fall back to the old
-    # per-document estimate so historical totals don't suddenly drop to zero.
+    # before that field existed are null.
     #
-    # Fallback estimate uses the ORIGINAL Tier-1 document prices (£0.12 vehicle +
-    # £0.33 paint are the current Tier-2 prices, but the legacy rows were billed
-    # at the Tier-1 £0.15/£0.35 they were actually charged, so the estimate stays
-    # honest for that era).
+    # THE LEGACY ESTIMATE IS GONE. It guessed at those rows with per-document
+    # prices so historical totals would not drop, and by 19 Aug 2026 it was
+    # wrong in two ways at once.
+    #
+    # It used £0.15 vehicle + £0.35 paint — Tier-1 prices, two tiers stale by
+    # then (Tier-2 was £0.08/£0.30, Tier-4 is £0.06/£0.27). Every tier change
+    # since had silently widened the error.
+    #
+    # Worse, "rows with no recorded cost" stopped meaning "rows from before the
+    # field". Of 422 such rows, 110 were from that month alone and 58 were CACHE
+    # HITS — which never call VDG and cost nothing. The estimate billed each of
+    # them £0.35 for a paint call that never happened: 234 rows showing no VDG
+    # activity at all, roughly £82 of invented spend, growing with every cache
+    # hit. A guess is one thing; a guess that inflates as the site gets more
+    # efficient is a number that misleads in the wrong direction.
+    #
+    # 1,395 rows now carry a real recorded cost read from VDG's own response, so
+    # the total below is measured rather than estimated. Costs before May 2026
+    # are simply not shown, which is honest.
     real_cost_sum = float(top_metrics['real_cost_sum'] or 0)
     real_cost_count = top_metrics['real_cost_count'] or 0
-
-    # Legacy rows (no recorded cost): those before this field. Estimate them with
-    # the per-document method, scoped to ONLY the rows lacking a real cost.
-    legacy = real_lookups.filter(vdg_transaction_cost__isnull=True).aggregate(
-        n=Count('id'),
-        veh=Count('id', filter=Q(vdg_vehicle_returned=True)),
-        paint_ret=Count('id', filter=Q(vdg_paint_returned=True)),
-    )
-    legacy_n = legacy['n'] or 0
-    legacy_vehicle = round((legacy['veh'] or 0) * 0.15, 2)
-    legacy_paint_charged = round(legacy_n * 0.35, 2)
-    legacy_paint_refunds = round((legacy_n - (legacy['paint_ret'] or 0)) * 0.35, 2)
-    legacy_estimate = round(legacy_vehicle + legacy_paint_charged - legacy_paint_refunds, 2)
 
     # EVERY paid provider, not just VDG (paint77). Showing a One Auto line above
     # a total that excluded it would be worse than not showing the line at all.
     oneauto_cost_sum = float(top_metrics['oneauto_cost_sum'] or 0)
-    estimated_cost = round(real_cost_sum + legacy_estimate + oneauto_cost_sum, 2)
+    estimated_cost = round(real_cost_sum + oneauto_cost_sum, 2)
 
     # Kept for the admin template's existing labels.
     vdg_vehicle_calls = top_metrics['vdg_vehicle_returned_count']
@@ -3089,8 +3090,6 @@ def admin_stats(request):
         # of vdg_balance. 'oneauto_cost_sum' above is total SPEND, which is a
         # different quantity, and the card must say so rather than imply a
         # balance we cannot know.
-        'legacy_estimate': legacy_estimate,
-        'legacy_n': legacy_n,
         'vdg_balance': vdg_balance,
         'vdg_balance_at': vdg_balance_at,
         'provider_breakdown': provider_breakdown,
