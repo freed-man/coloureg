@@ -136,14 +136,14 @@ def origin_gate_mode():
     degrade towards trusting the headers and serving customers, never towards
     refusing them.
     """
-    if ORIGIN_GATE_ENV_OVERRIDE in ('observe', 'enforce'):
+    if ORIGIN_GATE_ENV_OVERRIDE in ('observe', 'enforce', 'block'):
         return ORIGIN_GATE_ENV_OVERRIDE
     try:
         mode = SiteConfig.get().origin_gate_mode
     except Exception:
         logger.warning('Origin gate: config unreadable, falling back to observe')
         return 'observe'
-    return mode if mode in ('observe', 'enforce') else 'observe'
+    return mode if mode in ('observe', 'enforce', 'block') else 'observe'
 
 
 def via_cloudflare(request):
@@ -203,7 +203,10 @@ def get_client_ip(request):
     # the dashboard shows which paths are arriving without the header. Flip it
     # from /admin-stats/ — no deploy, effective within SiteConfig's cache TTL.
     trust_proxy_headers = True
-    if ORIGIN_SECRET and origin_gate_mode() == 'enforce':
+    # 'block' implies 'enforce'. A blocked request never reaches here, but an
+    # EXEMPT one does — the Stripe webhook — and its claimed IP must be no more
+    # trusted than any other request that skipped Cloudflare.
+    if ORIGIN_SECRET and origin_gate_mode() in ('enforce', 'block'):
         trust_proxy_headers = via_cloudflare(request)
 
     if trust_proxy_headers:
@@ -2524,17 +2527,24 @@ def admin_stats(request):
     # POST, flip, redirect-after-POST, staff-only via the decorator.
     if request.method == 'POST' and request.POST.get('action') == 'toggle_origin_gate':
         cfg = SiteConfig.get()
-        cfg.origin_gate_mode = (
-            SiteConfig.ORIGIN_GATE_OBSERVE
-            if cfg.origin_gate_mode == SiteConfig.ORIGIN_GATE_ENFORCE
-            else SiteConfig.ORIGIN_GATE_ENFORCE
-        )
+        # THREE STATES, cycled deliberately in that order: watching, then
+        # trusting only Cloudflare, then refusing everything else. Each step is
+        # stricter than the last, so a mis-click advances one notch rather than
+        # jumping from observing straight to refusing traffic. From block it
+        # returns to observe, which is the safe landing if something is wrong.
+        _next = {
+            SiteConfig.ORIGIN_GATE_OBSERVE: SiteConfig.ORIGIN_GATE_ENFORCE,
+            SiteConfig.ORIGIN_GATE_ENFORCE: SiteConfig.ORIGIN_GATE_BLOCK,
+            SiteConfig.ORIGIN_GATE_BLOCK: SiteConfig.ORIGIN_GATE_OBSERVE,
+        }
+        cfg.origin_gate_mode = _next.get(cfg.origin_gate_mode,
+                                         SiteConfig.ORIGIN_GATE_OBSERVE)
         # Clear the auto-revert flag: the operator has now seen it and acted,
         # so leaving the banner up would just be noise on the next screen.
         cfg.origin_gate_auto_reverted_at = None
         cfg.save(update_fields=['origin_gate_mode',
                                 'origin_gate_auto_reverted_at', 'updated_at'])
-        if ORIGIN_GATE_ENV_OVERRIDE in ('observe', 'enforce'):
+        if ORIGIN_GATE_ENV_OVERRIDE in ('observe', 'enforce', 'block'):
             # Saving it is still correct — the override may be removed later —
             # but say so plainly rather than let the dashboard imply a change
             # that is not in effect.
@@ -2543,6 +2553,14 @@ def admin_stats(request):
                 f'Saved, but ORIGIN_GATE_MODE={ORIGIN_GATE_ENV_OVERRIDE} is set '
                 'in the environment and overrides this. Remove it in Railway '
                 'for the dashboard switch to take effect.'
+            )
+        elif cfg.origin_gate_mode == SiteConfig.ORIGIN_GATE_BLOCK:
+            messages.success(
+                request,
+                'Origin gate BLOCKING — anything that did not come through '
+                'Cloudflare is refused, which puts the WAF and bot protection '
+                'back in front of the site. /health and the Stripe webhook are '
+                'exempt. Live within a minute on all workers.'
             )
         elif cfg.origin_gate_mode == SiteConfig.ORIGIN_GATE_ENFORCE:
             messages.success(

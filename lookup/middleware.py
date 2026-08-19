@@ -109,7 +109,46 @@ class OriginGateObserverMiddleware:
             # Observation must never affect a response. If the cache table is
             # missing (see F6) or anything else misbehaves, the request continues.
             pass
+
+        # BLOCK MODE. Everything enforce does, plus refusing the request
+        # outright — which is what restores Cloudflare's WAF and bot protection,
+        # since neither can act on traffic that goes round them.
+        #
+        # Wrapped and fail-open: if deciding the mode raises for any reason, the
+        # request is served. A gate that takes the site down when its own
+        # config is unreadable is worse than the hole it closes.
+        try:
+            if self._should_block(request):
+                logger.warning(
+                    'Origin gate BLOCKED a request that skipped Cloudflare '
+                    '(path=%s agent=%s)', request.path,
+                    (request.META.get('HTTP_USER_AGENT') or '')[:60],
+                )
+                # 403, not 404: this is not a scanner probe being told nothing,
+                # it is a real path refused for a reason. A monitor of ours
+                # pointed at the wrong address should see a clear refusal in its
+                # own logs rather than think the page has gone.
+                return HttpResponse(b'Forbidden', status=403,
+                                    content_type='text/plain; charset=utf-8')
+        except Exception:
+            pass
         return self.get_response(request)
+
+    #: Paths that must answer even when they did not come through Cloudflare.
+    #: /health/ never reaches here — HealthCheckMiddleware short-circuits above
+    #: this in the stack — but it is listed because that ordering is a fact
+    #: about another file, and a future reorder must not silently break deploys.
+    _BLOCK_EXEMPT = ('/health', '/stripe/webhook/')
+
+    def _should_block(self, request):
+        from lookup.views import ORIGIN_SECRET, via_cloudflare, origin_gate_mode
+        if not ORIGIN_SECRET:
+            return False          # inert until configured — never fail closed
+        if origin_gate_mode() != 'block':
+            return False
+        if request.path.startswith(self._BLOCK_EXEMPT):
+            return False
+        return not via_cloudflare(request)
 
     def _observe(self, request):
         from lookup.views import ORIGIN_SECRET, via_cloudflare
@@ -203,12 +242,16 @@ class OriginGateObserverMiddleware:
             return
         if w['missing'] / w['total'] < _BREAKER_THRESHOLD:
             return
-        if origin_gate_mode() != 'enforce':
+        if origin_gate_mode() not in ('enforce', 'block'):
             return
 
         from lookup.models import SiteConfig
         cfg = SiteConfig.get()
-        if cfg.origin_gate_mode != SiteConfig.ORIGIN_GATE_ENFORCE:
+        # FROM BLOCK TOO, and this is where it matters most: under enforce a
+        # Transform Rule that stops firing skews rate limits, under block it
+        # refuses every visitor. Reverting to observe restores service.
+        if cfg.origin_gate_mode not in (SiteConfig.ORIGIN_GATE_ENFORCE,
+                                        SiteConfig.ORIGIN_GATE_BLOCK):
             return
         cfg.origin_gate_mode = SiteConfig.ORIGIN_GATE_OBSERVE
         cfg.origin_gate_auto_reverted_at = timezone.now()

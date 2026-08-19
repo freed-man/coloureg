@@ -1568,9 +1568,17 @@ class SiteConfig(models.Model):
     # restarts both workers; this takes effect within _CACHE_TTL.
     ORIGIN_GATE_OBSERVE = 'observe'
     ORIGIN_GATE_ENFORCE = 'enforce'
+    #: Refuse anything that did not come through Cloudflare. Everything the
+    #: enforce mode does, PLUS restoring Cloudflare's WAF and bot protection —
+    #: neither of which can act on a request that goes round it. Enabled after
+    #: the dashboard showed a clean bypass panel over several days: with no
+    #: Cloudflare traffic bypassing and no Stripe webhook configured, there was
+    #: nothing left for it to break.
+    ORIGIN_GATE_BLOCK = 'block'
     ORIGIN_GATE_CHOICES = [
         (ORIGIN_GATE_OBSERVE, 'Observe — log only, trust headers as before'),
         (ORIGIN_GATE_ENFORCE, 'Enforce — only trust headers from Cloudflare'),
+        (ORIGIN_GATE_BLOCK, 'Block — refuse anything not from Cloudflare'),
     ]
     origin_gate_mode = models.CharField(
         max_length=10, choices=ORIGIN_GATE_CHOICES, default=ORIGIN_GATE_OBSERVE,
