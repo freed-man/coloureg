@@ -442,6 +442,16 @@ class PaintLookup(models.Model):
         # (Note: 'blmcrover', the British-Leyland-era bucket, is deliberately kept
         # separate — it is NOT folded here.)
         'rangerover': 'landrover',
+        # AMG is a Mercedes sub-brand, not a separate marque: the paint data
+        # files every AMG colour under 'mercedes'. Without this an AMG lookup
+        # normalises to 'mercedesamg', which has ZERO rows, so a correct code
+        # resolves to no name, no swatch and no catalogue cross-check — the
+        # same failure 'mercedesbenz' above was added to prevent, for the same
+        # marque, just never extended to the performance badge.
+        #
+        # Verified 19 Aug 2026: the codes AMG lookups delivered (799, 144) are
+        # present under 'mercedes' and absent under 'mercedesamg'.
+        'mercedesamg': 'mercedes',
     }
 
     @staticmethod
@@ -1007,13 +1017,11 @@ class PaintLookup(models.Model):
         if not candidates:
             return code
 
-        # AMG paints are catalogued under Mercedes: normalize gives
-        # 'mercedesamg', which has ZERO rows, so every lookup under it fails.
-        # Without this the rule silently does nothing for AMG cars — harmless,
-        # since it returns the code unchanged, but it would miss every rescue on
-        # a make that produces the suffixed form constantly.
-        _PARENT = {'mercedesamg': 'mercedes'}
-        mfr_cat = _PARENT.get(mfr, mfr)
+        # AMG needs no special case here any more: MANUFACTURER_ALIASES routes
+        # 'mercedesamg' to 'mercedes' for every caller, so normalize_manufacturer
+        # has already done it. This used to carry a private _PARENT table, which
+        # was the same knowledge in two places and would have drifted.
+        mfr_cat = mfr
 
         def sellable(value):
             """Does the catalogue stock this, under this make?
