@@ -6,3 +6,4 @@ env.py
 staticfiles/
 etc/
 vdg_retry_test.py
+sources.py
