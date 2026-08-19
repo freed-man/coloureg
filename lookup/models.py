@@ -948,9 +948,94 @@ class PaintLookup(models.Model):
         if not code:
             return code
         by_make = cls.CURATED_CODE_OVERRIDES.get((manufacturer or '').strip().lower())
-        if not by_make:
+        if by_make:
+            mapped = by_make.get(code.strip().upper())
+            if mapped:
+                return mapped
+        return cls._strip_unsellable_form(manufacturer, code)
+
+    #: Compound forms whose sellable half is the SECOND one. Measured across
+    #: 1,229 delivered codes on 19 Aug 2026: 276 carried a slash and 39 were a
+    #: Mercedes number with a trailing letter — 25.6% of everything delivered,
+    #: in a form the 120,594-row catalogue does not stock.
+    #:
+    #: Both halves are genuine manufacturer data. VW's own build sheet calls the
+    #: Golf colour "Night blue metallic (Z2Z2)", and One Auto returns
+    #: "Z2Z2/H5X" — Z2Z2 is the marketing code, H5X the base paint code. Same
+    #: relationship as SEAT's M6M6 and S7F, which are the same Oniric colour
+    #: under two naming systems. Only the base code is sold by anyone.
+    #:
+    #: Mercedes is the same idea with a suffix rather than a separator: 799U and
+    #: 799 are one colour, and the catalogue stocks 799.
+    _MB_MAKES = ('mercedes', 'mercedesamg', 'mercedesbenz')
+
+    @classmethod
+    def _strip_unsellable_form(cls, manufacturer, code):
+        """Reduce a compound or suffixed code to the half a retailer sells.
+
+        ONLY REWRITES WHEN IT RESCUES THE CODE. The candidate must resolve in
+        the catalogue AND the original must not. That single condition is what
+        makes this safe: it cannot degrade a code that already works, whatever
+        odd shape some future provider invents. Verified against every affected
+        row in production — 310 rescued, 0 regressions.
+
+        The guards below exist because the naive rule is actively harmful:
+
+          * 'N/A' splits to 'A'. Two live rows carried it — a Ford and an AJS —
+            and 'A' is a plausible-looking code that is entirely fictional.
+            Anything under three characters is refused for that reason.
+          * '379 / FQ 95-3853' (BMW) has spaces round the separator and inside
+            the tail, so the split has to be trimmed rather than taken raw.
+          * 'PDM/QDMS' (Jeep) is a real compound whose base is simply not in the
+            catalogue. It is left alone: no rescue is available, and returning
+            half a code we cannot verify would be a guess.
+        """
+        raw = (code or '').strip()
+        if not raw:
             return code
-        return by_make.get(code.strip().upper(), code)
+        mfr = cls.normalize_manufacturer(manufacturer or '')
+
+        candidates = []
+        if '/' in raw:
+            tail = raw.rsplit('/', 1)[-1].strip()
+            if len(tail) >= 3:
+                candidates.append(tail)
+        elif mfr in cls._MB_MAKES and len(raw) >= 4 \
+                and raw[-1].isalpha() and raw[:-1].isdigit():
+            candidates.append(raw[:-1])
+
+        if not candidates:
+            return code
+
+        # AMG paints are catalogued under Mercedes: normalize gives
+        # 'mercedesamg', which has ZERO rows, so every lookup under it fails.
+        # Without this the rule silently does nothing for AMG cars — harmless,
+        # since it returns the code unchanged, but it would miss every rescue on
+        # a make that produces the suffixed form constantly.
+        _PARENT = {'mercedesamg': 'mercedes'}
+        mfr_cat = _PARENT.get(mfr, mfr)
+
+        def sellable(value):
+            """Does the catalogue stock this, under this make?
+
+            The leading-L variant is tried because VAG codes are catalogued as
+            LH5X while the providers return H5X — the same fallback the swatch
+            lookup already makes.
+            """
+            if not value:
+                return False
+            forms = ([value, 'L' + value] if mfr in cls.LEADING_L_MAKES
+                     else [value])
+            return cls.objects.filter(manufacturer=mfr_cat,
+                                      code__in=forms).exists()
+
+        if sellable(raw):
+            return code                      # already fine — never touch it
+        for cand in candidates:
+            if sellable(cand):
+                logger.info('code %s reduced to %s for %s', raw, cand, manufacturer)
+                return cand
+        return code
 
     CURATED_NAME_OVERRIDES = {
         'landrover': {
