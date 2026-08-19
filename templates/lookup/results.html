@@ -112,10 +112,10 @@
         margin: 0;
         font-weight: 400;
     }
-    /* Name-only state: pl24 found the colour NAME but no code. The name takes
+    {% comment %} Name-only state: pl24 found the colour NAME but no code. The name takes
        the headline slot (where the code normally sits) but is deliberately
        styled as a NAME — sans-serif, not the monospace code look — so a customer
-       can't mistake "Most Yellow" for a code to type into a paint supplier. */
+       can't mistake "Most Yellow" for a code to type into a paint supplier. {% endcomment %}
     .paint-name-only {
         font-family: 'IBM Plex Sans', sans-serif;
         font-size: 40px;
@@ -652,9 +652,9 @@
     // spinner reads as "hung", a crawling bar reads as "working".
     // Four stages, retimed to the pipeline as it now runs (paint74). Each marks
     // something real, which is what makes them honest rather than theatre:
-    //   0s   both paid legs (VDG paint, One Auto) start together
-    //   10s  pl24 joins via the backstop
-    //   30s  One Auto's polling budget ends; the VDG second chance is what runs
+    {% comment %}0s   both paid legs (VDG paint, One Auto) start together{% endcomment %}
+    {% comment %}10s  pl24 joins via the backstop{% endcomment %}
+    {% comment %}30s  One Auto's polling budget ends; the VDG second chance is what runs{% endcomment %}
     //   45s  15s short of the 60s ceiling
     // The old 4s stage marked nothing once both legs began at zero, and 50s left
     // only 10s after the ceiling moved 65 -> 60.
@@ -774,7 +774,7 @@
         revealEmail(false);
     }
 
-    // Render the name-only state: pl24 found the colour NAME but no code. The
+    {% comment %}Render the name-only state: pl24 found the colour NAME but no code. The{% endcomment %}
     // name goes in the headline slot (styled as a name, not a code), with a
     // quiet status line below. The email form is revealed in name-only mode
     // ("leave your email, we'll send the exact code").
@@ -858,14 +858,14 @@
     }
 
     // The /lookup-status endpoint DOES the recovery work synchronously (parallel
-    // VDG-retry + pl24), which can take up to ~65s on a slow/commercial vehicle.
+    {% comment %}VDG-retry + pl24), which can take up to ~65s on a slow/commercial vehicle.{% endcomment %}
     // So we fire it exactly ONCE and await that single response — we must NOT poll
-    // it repeatedly, because each call re-runs the full recovery (re-charging VDG
-    // and queueing behind pl24's single warm session), which piles up and never
+    {% comment %}it repeatedly, because each call re-runs the full recovery (re-charging VDG{% endcomment %}
+    {% comment %}and queueing behind pl24's single warm session), which piles up and never{% endcomment %}
     // settles. A client-side AbortController guarantees we stop waiting and show
     // the manual offer even if the request hangs past our ceiling.
     // 'busy' retries (paint19). The server declines when every recovery slot is
-    // taken, which costs nothing: no row is claimed and no VDG call is made, so
+    {% comment %}taken, which costs nothing: no row is claimed and no VDG call is made, so{% endcomment %}
     // retrying runs the recovery properly rather than re-charging for one
     // already in progress. That is why this is safe even though the endpoint
     // must otherwise be called exactly ONCE — a busy response means the work
@@ -928,7 +928,7 @@
                 //
                 // One more attempt costs nothing and cannot double-charge: the
                 // recovery has already been claimed, so this call returns from
-                // the session as 'already_resolved' in about 2ms with no VDG
+                {% comment %}the session as 'already_resolved' in about 2ms with no VDG{% endcomment %}
                 // request. Measured, not assumed.
                 //
                 // Guarded to a single extra attempt — if the answer genuinely
