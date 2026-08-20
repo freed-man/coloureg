@@ -48,7 +48,7 @@ class Search(models.Model):
         # distinction and making the history less honest rather than more.
         # Anyone aggregating VDG performance across 15 August is comparing two
         # architectures and should say so.
-        (PROVIDER_VDG, 'VDG (bundle)'),
+        (PROVIDER_VDG, 'VDG (pre-15 Aug)'),
         (PROVIDER_VDG_RETRY, 'VDG'),
         (PROVIDER_PARTSLINK24, 'Partslink24'),
         # paint76. Without this a One Auto win left `provider` unset, so the one
@@ -274,6 +274,27 @@ class Search(models.Model):
     pl24_returned = models.BooleanField(default=False)
     recovery_name_only = models.BooleanField(default=False)
     recovery_duration_ms = models.IntegerField(null=True, blank=True)
+
+    @property
+    def source_label(self):
+        """What the Source column shows for THIS row.
+
+        get_provider_display() can only see `provider`, so every VDG win reads
+        the same whether the first paint call produced it or the second. Now
+        that vdg_second_chance records which attempt won, the row itself can
+        say so — which is the question "was that one VDG call or two?" answered
+        where it is actually asked, instead of in a separate column nobody
+        opens.
+
+        'VDG (pre-15 Aug)' rather than 'VDG (bundle)': the reader does not need
+        to know what a bundle was, only that the value is historical and
+        nothing new will land there.
+        """
+        if self.provider == self.PROVIDER_VDG_RETRY:
+            if self.vdg_second_chance == self.SECOND_CHANCE_WON:
+                return 'VDG (2nd)'
+            return 'VDG'
+        return self.get_provider_display()
 
     #: Which attempt produced the answer, per provider. Both VDG and One Auto
     #: make a SECOND call when the first comes back without paint, and until now

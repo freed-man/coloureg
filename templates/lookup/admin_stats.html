@@ -1390,7 +1390,7 @@
                     </td>
                     <td style="text-align: center;">
                         {% if s.provider and s.provider != 'none' %}
-                        <span class="provider-badge provider-{{ s.provider }}">{{ s.get_provider_display }}</span>
+                        <span class="provider-badge provider-{{ s.provider }}">{{ s.source_label }}</span>
                         {% else %}
                         <span class="recent-empty">—</span>
                         {% endif %}
@@ -1491,7 +1491,7 @@
                 <div class="recent-card-meta" style="margin-top: 6px; display: flex; align-items: center; justify-content: space-between; gap: 8px;">
                     <span>
                         {% if s.provider and s.provider != 'none' %}
-                        <span class="provider-badge provider-{{ s.provider }}">{{ s.get_provider_display }}</span>
+                        <span class="provider-badge provider-{{ s.provider }}">{{ s.source_label }}</span>
                         {% endif %}
                     </span>
                     <span style="font-variant-numeric: tabular-nums;">
@@ -1717,7 +1717,13 @@
                 happen. 'vdg_retry' is not a retry post-split: it is the only
                 VDG paint call there is.
                 {% endcomment %}
-                { label: 'VDG (bundle)', data: CHART.src_vdg,    backgroundColor: '#003399' },
+                {% comment %}
+                The chart is an aggregate, so it cannot split the second
+                chance out the way a row can — that detail lives in the
+                Source column. Here the two series only need to say which
+                era they belong to.
+                {% endcomment %}
+                { label: 'VDG (pre-15 Aug)', data: CHART.src_vdg,  backgroundColor: '#003399' },
                 { label: 'VDG',          data: CHART.src_retry,  backgroundColor: '#4a7bd4' },
                 { label: 'One Auto',    data: CHART.src_oneauto, backgroundColor: '#00857a' },
                 { label: 'PL24',        data: CHART.src_pl24,    backgroundColor: '#7fb069' },
