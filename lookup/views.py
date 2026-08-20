@@ -2866,7 +2866,22 @@ def admin_stats(request):
             # the chart could not show.
             s_oneauto=Count('id', filter=Q(paint_code__gt='',
                                            provider=Search.PROVIDER_ONEAUTO)),
-            s_retry=Count('id', filter=Q(paint_code__gt='', provider=Search.PROVIDER_VDG_RETRY)),
+            # SPLIT BY WHICH VDG CALL WON, matching what the Source column
+            # shows per row. A lookup makes one paint call, and a second only
+            # when the first came back empty — so "VDG" and "VDG (2nd)" are
+            # genuinely different work at different cost, and lumping them
+            # together hid whether that second £0.27 call was earning its keep.
+            #
+            # vdg_second_chance is only populated on rows written since it was
+            # deployed (20 Aug 2026). Older rows read blank and therefore count
+            # as first-call wins, so the (2nd) series under-reports until the
+            # 30-day window has rolled past that date.
+            s_retry=Count('id', filter=Q(paint_code__gt='',
+                                         provider=Search.PROVIDER_VDG_RETRY)
+                          & ~Q(vdg_second_chance=Search.SECOND_CHANCE_WON)),
+            s_retry2=Count('id', filter=Q(paint_code__gt='',
+                                          provider=Search.PROVIDER_VDG_RETRY,
+                                          vdg_second_chance=Search.SECOND_CHANCE_WON)),
             s_pl24=Count('id', filter=Q(paint_code__gt='', provider=Search.PROVIDER_PARTSLINK24)),
             s_manual=Count('id', filter=Q(paint_code__gt='', provider=Search.PROVIDER_MANUAL)),
             s_cache=Count('id', filter=Q(paint_code__gt='', provider=Search.PROVIDER_CACHE)),
@@ -2879,6 +2894,7 @@ def admin_stats(request):
     chart_delivered, chart_failed, chart_nocode = [], [], []
     chart_bad_plate, chart_not_automated, chart_abandoned = [], [], []
     src_vdg, src_oneauto, src_retry, src_pl24, src_manual, src_cache = [], [], [], [], [], []
+    src_retry2 = []
     # LOCAL dates, not UTC. TruncDate above buckets by the CURRENT timezone
     # (Europe/London), so `now.date()` — which is UTC — disagrees with it
     # whenever London is ahead: between 23:00 and midnight UTC through BST, a
@@ -2899,6 +2915,7 @@ def admin_stats(request):
         src_vdg.append(row.get('s_vdg', 0))
         src_oneauto.append(row.get('s_oneauto', 0))
         src_retry.append(row.get('s_retry', 0))
+        src_retry2.append(row.get('s_retry2', 0))
         src_pl24.append(row.get('s_pl24', 0))
         src_manual.append(row.get('s_manual', 0))
         src_cache.append(row.get('s_cache', 0))
@@ -3062,6 +3079,7 @@ def admin_stats(request):
             'src_vdg': src_vdg,
             'src_oneauto': src_oneauto,
             'src_retry': src_retry,
+            'src_retry2': src_retry2,
             'src_pl24': src_pl24,
             'src_manual': src_manual,
             'src_cache': src_cache,
