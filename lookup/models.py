@@ -33,6 +33,21 @@ class Search(models.Model):
         # attempt had been needed when in fact nothing had been attempted before
         # it. The stored value stays put — renaming it would rewrite the meaning
         # of every historical row — but the label now says what it does.
+        #
+        # THE CUTOVER IS 15 AUGUST 2026, and this is the part that will mislead
+        # anyone analysing across it. 'vdg_retry' means two different things
+        # depending on which side of that date a row was written:
+        #
+        #   before  — the bundle came back without paint and a SECOND bundle
+        #             call was made. A genuine retry. 261 rows.
+        #   after   — the single PaintCodeDetails call. Not a retry at all,
+        #             because nothing precedes it. 58 rows as of 19 Aug.
+        #
+        # That is exactly why the values are not being renamed. 'vdg_paint'
+        # would be right for the 58 and wrong for the 261, collapsing a real
+        # distinction and making the history less honest rather than more.
+        # Anyone aggregating VDG performance across 15 August is comparing two
+        # architectures and should say so.
         (PROVIDER_VDG, 'VDG (bundle)'),
         (PROVIDER_VDG_RETRY, 'VDG'),
         (PROVIDER_PARTSLINK24, 'Partslink24'),

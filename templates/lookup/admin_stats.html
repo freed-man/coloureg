@@ -1709,8 +1709,16 @@
                 // specifically the VDG retry, and One Auto has no retry at all
                 // (it polls one job to completion; there is no second call), so
                 // an unqualified label implied a symmetry that does not exist.
-                { label: 'VDG',         data: CHART.src_vdg,     backgroundColor: '#003399' },
-                { label: 'VDG retry',   data: CHART.src_retry,   backgroundColor: '#4a7bd4' },
+                {% comment %}
+                MATCHES THE TABLE, which paint78 already got right. The series
+                were labelled from the raw field names, so the chart said "VDG
+                retry" where the table said "VDG" — the same rows under two
+                names, one of them implying a second attempt that does not
+                happen. 'vdg_retry' is not a retry post-split: it is the only
+                VDG paint call there is.
+                {% endcomment %}
+                { label: 'VDG (bundle)', data: CHART.src_vdg,    backgroundColor: '#003399' },
+                { label: 'VDG',          data: CHART.src_retry,  backgroundColor: '#4a7bd4' },
                 { label: 'One Auto',    data: CHART.src_oneauto, backgroundColor: '#00857a' },
                 { label: 'PL24',        data: CHART.src_pl24,    backgroundColor: '#7fb069' },
                 { label: 'Manual',      data: CHART.src_manual,  backgroundColor: '#b8860b' },
