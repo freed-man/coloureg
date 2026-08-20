@@ -66,6 +66,9 @@ class SearchAdmin(admin.ModelAdmin):
         'pl24_returned',
         'recovery_name_only',
         'recovery_duration_ms',
+        'vdg_second_chance',
+        'oneauto_second_chance',
+        'second_chance_after_race',
         'email',
         'email_sent',
         # Everything below was added after paint65 and was invisible in the row
@@ -123,6 +126,12 @@ class SearchAdmin(admin.ModelAdmin):
                 'pl24_returned',
                 'recovery_name_only',
                 'recovery_duration_ms',
+                # Which attempt produced the answer, and whether the race was
+                # already decided when it fired. Readonly: both are written by
+                # worker threads and mean nothing if edited by hand.
+                'vdg_second_chance',
+                'oneauto_second_chance',
+                'second_chance_after_race',
             )
         }),
         ('Manual Fallback', {

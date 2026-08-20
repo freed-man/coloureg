@@ -324,7 +324,7 @@ def _record_retry_billing(search_id, cost, balance, retry_code, retry_name=''):
             pass
 
 
-def _vdg_retry(registration, telemetry=None, search_id=None):
+def _vdg_retry(registration, telemetry=None, search_id=None, race_over=None):
     """Second VDG bundle call. Returns a paint dict if paint came back, else
     None. Never raises — VDG errors degrade to None (no recovery).
 
@@ -389,6 +389,15 @@ def _vdg_retry(registration, telemetry=None, search_id=None):
     # and a hit is the only outcome that has already cost the full price — a
     # paint-less call is refunded.
     if not (data and data.get('paint_returned')):
+        # RECORDED, not just done. Until now `data = second` overwrote silently,
+        # so a row won on the second attempt looked identical to one won on the
+        # first — and the question "does this £0.27 earn its keep" had no answer
+        # in the data. Captured BEFORE the call so a raise still leaves a trace.
+        from lookup.models import Search   # lazy: circular import at module load
+        second_chance = Search.SECOND_CHANCE_EMPTY
+        # Was the race already decided when this fired? Every True here is spend
+        # a race-over flag would have prevented.
+        after_race = bool(race_over is not None and race_over.is_set())
         try:
             second = paint_lookup(registration, billing_sink=sink,
                                   timeout=SECOND_CHANCE_S)
@@ -398,6 +407,10 @@ def _vdg_retry(registration, telemetry=None, search_id=None):
             logger.info('VDG second chance recovered paint for %s',
                         _log_reg(registration))
             data = second
+            second_chance = Search.SECOND_CHANCE_WON
+        if search_id is not None:
+            _record_worker_result(search_id, vdg_second_chance=second_chance,
+                                  second_chance_after_race=after_race)
     # Take the cost from whichever source has it. The sink is the only source
     # on the not-found and error paths (where `data` is None), but `data`
     # carries it on the success path — and reading BOTH means this keeps
@@ -613,7 +626,7 @@ def _pl24_lookup(vin, make, category=None, search_id=None):
     }
 
 
-def _oneauto_leg(vin, make, model, year, search_id, sink):
+def _oneauto_leg(vin, make, model, year, search_id, sink, race_over=None):
     """Run the One Auto call and WRITE ITS OWN COST, whoever wins the race.
 
     Same problem and same fix as _record_worker_result for pl24 (paint26):
@@ -645,6 +658,12 @@ def _oneauto_leg(vin, make, model, year, search_id, sink):
     # Measured to be free: billing is per VIN, not per call — a repeat call on
     # WBAJA92070BV21477 moved the balance not at all.
     if result is None and sink.get('outcome') == 'still_fetching':
+        # Recorded for the same reason as VDG's, though this one is FREE —
+        # One Auto bills per VIN, not per call. Worth measuring anyway: if it
+        # rarely collects anything, the wait it adds is not buying much.
+        from lookup.models import Search   # lazy: circular import at module load
+        oa_second = Search.SECOND_CHANCE_EMPTY
+        oa_after_race = bool(race_over is not None and race_over.is_set())
         try:
             again = oneauto.lookup(
                 vin=vin, make=make, model=model, year=year,
@@ -656,6 +675,11 @@ def _oneauto_leg(vin, make, model, year, search_id, sink):
         if again:
             logger.info('One Auto second chance collected a result')
             result = again
+            oa_second = Search.SECOND_CHANCE_WON
+        if search_id is not None:
+            _record_worker_result(search_id, oneauto_second_chance=oa_second)
+            if oa_after_race:
+                _record_worker_result(search_id, second_chance_after_race=True)
     if search_id is not None:
         fields = {}
         if sink.get('cost') is not None:
@@ -742,8 +766,18 @@ def resolve_paint(registration, vin, make, category=None, telemetry=None, model=
     _t['oneauto_name_only'] = False
     _t['oneauto_cost'] = None
     _t['oneauto_outcome'] = ''
+    # RACE FLAG. Set the moment a usable code is found, so a second chance that
+    # fires afterwards can record that it did. Measurement only right now — it
+    # cancels nothing, because nothing here CAN be cancelled: an HTTP call
+    # already in flight completes and is billed whatever a flag says (paint21).
+    #
+    # What it makes answerable is whether a race-over flag is worth building at
+    # all. The only call it could ever prevent is a second chance not yet
+    # started, and until this field exists there is no way to know how often
+    # that happens.
+    race_over = threading.Event()
     try:
-        f_vdg = ex.submit(_vdg_retry, registration, _t, search_id)
+        f_vdg = ex.submit(_vdg_retry, registration, _t, search_id, race_over)
         # Category is routed (not raw): VW commercial lines misfiled as M1 by
         # VDG are sent to pl24 as N1 so the lookup hits the right catalogue
         # first time. See _route_category.
@@ -799,7 +833,7 @@ def resolve_paint(registration, vin, make, category=None, telemetry=None, model=
         _t['oneauto_attempted'] = True
         _oa_sink = {}
         f_oneauto = ex.submit(
-            _oneauto_leg, vin, make, model, year, search_id, _oa_sink,
+            _oneauto_leg, vin, make, model, year, search_id, _oa_sink, race_over,
         )
 
         deadline = time.monotonic() + PL24_TIMEOUT
@@ -849,6 +883,7 @@ def resolve_paint(registration, vin, make, category=None, telemetry=None, model=
                 vdg_result = _result_or_none(f_vdg)
                 if vdg_result is not None:
                     _t['vdg_retry_returned'] = True
+                    race_over.set()   # a usable code exists from here on
                     return _enrich_from_lookup(vdg_result, make, model, vdg_colour=vdg_colour)
                 # VDG has DROPPED OUT — it finished with nothing. Bring pl24 in.
                 if f_pl24 is None:
@@ -865,6 +900,7 @@ def resolve_paint(registration, vin, make, category=None, telemetry=None, model=
                 oa = _result_or_none(f_oneauto)
                 if oa is not None and oa.get('code'):
                     _t['oneauto_returned'] = True
+                    race_over.set()   # a usable code exists from here on
                     return _enrich_from_lookup(
                         {'paint_code': oa['code'],
                          'paint_description': oa['description'],
@@ -905,6 +941,7 @@ def resolve_paint(registration, vin, make, category=None, telemetry=None, model=
             # while anything is still pending; the loop exits naturally when
             # nothing remains and we fall through to the name-only fallback.
             if pl24_code_result is not None:
+                race_over.set()   # a usable code exists from here on
                 return _enrich_from_lookup(pl24_code_result, make, model, vdg_colour=vdg_colour)
 
         # No real code from any path. Fall back to a colour NAME if one was

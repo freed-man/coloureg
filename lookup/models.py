@@ -275,6 +275,41 @@ class Search(models.Model):
     recovery_name_only = models.BooleanField(default=False)
     recovery_duration_ms = models.IntegerField(null=True, blank=True)
 
+    #: Which attempt produced the answer, per provider. Both VDG and One Auto
+    #: make a SECOND call when the first comes back without paint, and until now
+    #: both recovered silently: `data = second` simply overwrote, leaving no
+    #: trace. So a row that won on the second attempt was indistinguishable from
+    #: one that won on the first.
+    #:
+    #: That mattered for two open questions neither of which could be answered:
+    #:
+    #:   1. Does VDG's second chance earn its £0.27? It is justified by
+    #:      pre-split evidence — the 214 answers the old bundle-retry supplied —
+    #:      measured under an architecture that no longer exists.
+    #:   2. How often does it fire AFTER another provider has already won? That
+    #:      is the entire value of a race-over flag, and without this it can
+    #:      only be guessed at.
+    #:
+    #: Nullable on purpose: null means "no second call was made", which is the
+    #: common case and must not be confused with "made and failed".
+    SECOND_CHANCE_NOT_RUN = ''
+    SECOND_CHANCE_EMPTY = 'empty'
+    SECOND_CHANCE_WON = 'won'
+    SECOND_CHANCE_CHOICES = [
+        (SECOND_CHANCE_EMPTY, 'Fired, returned nothing'),
+        (SECOND_CHANCE_WON, 'Fired, produced the code'),
+    ]
+    vdg_second_chance = models.CharField(
+        max_length=8, blank=True, default='', choices=SECOND_CHANCE_CHOICES,
+        help_text='Blank = no second VDG paint call was made.')
+    oneauto_second_chance = models.CharField(
+        max_length=8, blank=True, default='', choices=SECOND_CHANCE_CHOICES,
+        help_text='Blank = no second One Auto call was made.')
+    #: True when a provider had ALREADY won by the time this row's second chance
+    #: fired. Every one of these is spend a race-over flag would have prevented,
+    #: which turns that feature from an intuition into a number.
+    second_chance_after_race = models.BooleanField(default=False)
+
     # Which part (if any) was filled from the PaintLookup database rather than
     # returned by the provider: 'code' (name→code), 'name' (code→name), or ''
     # (provider supplied everything / nothing filled).
