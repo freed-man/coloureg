@@ -2520,9 +2520,13 @@ def help_page(request):
     # Prefer the spelling from SUPPORTED_MAKES where we have one, so "mg" typed
     # into the admin box still renders as "MG" and "skoda" as "Škoda". Anything
     # we don't know shows exactly as it was typed.
+    # PUBLISHED ONLY. The gate holds motorcycle marques too, and they are
+    # skipped exactly as an unsupported car is — but a paint-code site for cars
+    # has no reason to advertise a bike list to people reading its coverage.
+    # A "#... hidden" section header in the admin box draws that line.
     _makes_manual = sorted(
-        {_canonical.get(SiteConfig._norm_make(raw), raw.strip())
-         for raw in _cfg._parse_list(_cfg.unsupported_makes) if raw.strip()},
+        {_canonical.get(SiteConfig._norm_make(raw), raw)
+         for raw in _cfg.published_unsupported_makes()},
         key=lambda m: m.lower())
 
     return render(request, 'lookup/help.html', {

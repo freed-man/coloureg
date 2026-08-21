@@ -1868,9 +1868,50 @@ class SiteConfig(models.Model):
         folded = ''.join(ch for ch in folded if not unicodedata.combining(ch))
         return folded.upper().replace(' ', '').replace('-', '').strip()
 
+    #: A section header in the unsupported list marks everything under it as
+    #: gated but NOT published on the Help page. Motorcycles are the case this
+    #: exists for: the pipeline should skip them exactly as it skips an
+    #: unsupported car, but a paint-code site for cars has no reason to
+    #: advertise a motorcycle list to the people reading its coverage.
+    _HIDDEN_SECTION = re.compile(r'^\s*#.*\b(hidden|unlisted|hide)\b', re.I)
+
+    @classmethod
+    def _parse_sections(cls, raw):
+        """Split the list into (make, published) pairs.
+
+        Lines beginning with # are section headers, never makes. Without this a
+        header typed as "#CARS" would itself be blocked as a make called
+        "#CARS" — silently, since nothing would ever match it.
+
+        A header containing "hidden", "unlisted" or "hide" turns publishing off
+        for the entries beneath it, until the next header. Everything is gated
+        either way; only visibility changes.
+        """
+        out, published = [], True
+        for line in (raw or '').splitlines():
+            if line.strip().startswith('#'):
+                published = not cls._HIDDEN_SECTION.match(line)
+                continue
+            for token in cls._parse_list(line):
+                if token.strip():
+                    out.append((token.strip(), published))
+        return out
+
     def unsupported_make_set(self):
-        return {self._norm_make(m) for m in self._parse_list(self.unsupported_makes)
+        """Every gated make, published or not. The gate ignores sections."""
+        return {self._norm_make(m) for m, _pub in
+                self._parse_sections(self.unsupported_makes)
                 if self._norm_make(m)}
+
+    def published_unsupported_makes(self):
+        """Only the gated makes the Help page should list."""
+        seen, out = set(), []
+        for m, pub in self._parse_sections(self.unsupported_makes):
+            key = self._norm_make(m)
+            if pub and key and key not in seen:
+                seen.add(key)
+                out.append(m)
+        return out
 
     def is_make_unsupported(self, make):
         if not make:
