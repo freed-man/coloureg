@@ -1913,6 +1913,33 @@ class SiteConfig(models.Model):
                 out.append(m)
         return out
 
+    @staticmethod
+    def is_category_unsupported(category):
+        """True for EU type-approval class L — mopeds and motorcycles.
+
+        VDG returns TypeApprovalCategory on the vehicle call we already pay
+        for, so this costs nothing extra. It catches bikes a make list never
+        could: DMZ3018 was a Mash Force 400, a marque nobody would think to
+        add, and it arrived tagged L3.
+
+        Better than a make list in the other direction too. BMW builds cars and
+        motorcycles, so no name-based rule can gate the S 1000 R while leaving
+        the 3 Series alone. The category can.
+
+        Seven L-category lookups to 21 Aug 2026, none of which resolved
+        automatically: pl24 answered unsupported_brand where it was asked at
+        all, One Auto had no data, and the two that produced a code were both
+        done by hand.
+
+        ABSENCE MEANS NOTHING. 2,058 of 3,639 rows carry no category, mostly
+        cache hits and DVLA-fallback rows where VDG's ModelClassification never
+        came back. So this only ever says yes to an explicit L; it never
+        assumes a missing category is a car, and the make list still covers
+        whatever arrives unclassified.
+        """
+        cat = (category or '').strip().upper()
+        return cat.startswith('L') and (len(cat) == 1 or cat[1].isdigit())
+
     def is_make_unsupported(self, make):
         if not make:
             return False

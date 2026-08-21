@@ -77,6 +77,18 @@ def _enrich_from_lookup(result, make, model=None, vdg_colour=None):
             result['paint_code'] = mapped
         desc = (result.get('paint_description') or '').strip()
 
+        # A NAME THAT IS JUST THE CODE IS NOT A NAME. One Auto returned
+        # "(MG2)" as the colour of a Hyundai i20 on 21 Aug, so the customer saw
+        # "MG2 (MG2)" and learned nothing — the catalogue had MG2 as Mangrove
+        # Green Metallic all along. Same shape as the SEAT "(M6M6)".
+        # Treated as blank so the fill below runs; if the catalogue has no name
+        # either, we are no worse off than before.
+        if desc and code and desc.strip('()').strip().upper() == code.upper():
+            logger.info('description %r was just the code for %s; refilling',
+                        desc, make)
+            desc = ''
+            result['paint_description'] = ''
+
         if code and not desc:
             # code -> name (+ swatch)
             # vdg_colour lets a two-tone row order its halves BODY FIRST

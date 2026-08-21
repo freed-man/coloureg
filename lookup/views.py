@@ -1202,8 +1202,12 @@ def index(request):
         # Recorded via error_message, the mechanism turnstile_blocked already
         # uses: a STORED marker, not a live re-read of the makes list, so
         # removing a make later cannot retroactively reclassify history.
+        # Gated on the MAKE list, or on the vehicle class VDG already gave us.
+        # The category catches motorcycles the list never would, and gates a
+        # BMW bike without touching BMW cars — which no name rule can do.
         make_not_automated = bool(make) and not paint_code \
-            and config.is_make_unsupported(make)
+            and (config.is_make_unsupported(make)
+                 or SiteConfig.is_category_unsupported(category))
         if make_not_automated:
             search.error_message = 'make_not_automated'
 
