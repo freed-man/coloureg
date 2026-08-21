@@ -2504,12 +2504,26 @@ SUPPORTED_MAKES = [
 def help_page(request):
     contact_submitted = request.session.pop('contact_submitted', None)
     # Split the published list against the live gate.
+    #
+    # THE MANUAL COLUMN IS THE WHOLE GATE LIST, not the part of it that happens
+    # to appear in SUPPORTED_MAKES. Those 43 are the car marques the pipeline
+    # was built around; the gate also holds things it never covered, motorcycle
+    # marques being the obvious case. Those still get done — by hand, by
+    # ringing a dealer — so leaving them off the page entirely would hide a
+    # service that exists rather than admit a gap that doesn't.
     _cfg = SiteConfig.get()
     _blocked = _cfg.unsupported_make_set()
+    _canonical = {SiteConfig._norm_make(m): m for m in SUPPORTED_MAKES}
+
     _makes_auto = [m for m in SUPPORTED_MAKES
                    if SiteConfig._norm_make(m) not in _blocked]
-    _makes_manual = [m for m in SUPPORTED_MAKES
-                     if SiteConfig._norm_make(m) in _blocked]
+    # Prefer the spelling from SUPPORTED_MAKES where we have one, so "mg" typed
+    # into the admin box still renders as "MG" and "skoda" as "Škoda". Anything
+    # we don't know shows exactly as it was typed.
+    _makes_manual = sorted(
+        {_canonical.get(SiteConfig._norm_make(raw), raw.strip())
+         for raw in _cfg._parse_list(_cfg.unsupported_makes) if raw.strip()},
+        key=lambda m: m.lower())
 
     return render(request, 'lookup/help.html', {
         'contact_submitted': contact_submitted,

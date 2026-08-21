@@ -1858,7 +1858,15 @@ class SiteConfig(models.Model):
         mismatch here fails SILENTLY, leaving you convinced a make is blocked
         while still paying for every lookup of it.
         """
-        return (value or '').upper().replace(' ', '').replace('-', '').strip()
+        # DIACRITICS FOLD TOO. Uppercasing alone leaves ŠKODA != SKODA and
+        # CITROËN != CITROEN, so an admin who types "citroen" — or copies
+        # "Citroën" off the Help page while DVLA sends "CITROEN" — gets a list
+        # that silently matches nothing and keeps paying for every lookup.
+        # Found 20 Aug 2026 when "skoda" in the admin box left Škoda sitting in
+        # the supported column on Help, blocked and unblocked at the same time.
+        folded = unicodedata.normalize('NFKD', value or '')
+        folded = ''.join(ch for ch in folded if not unicodedata.combining(ch))
+        return folded.upper().replace(' ', '').replace('-', '').strip()
 
     def unsupported_make_set(self):
         return {self._norm_make(m) for m in self._parse_list(self.unsupported_makes)
