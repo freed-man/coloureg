@@ -2448,11 +2448,74 @@ def disclaimer(request):
     })
 
 
+#: Every make the pipeline is built to handle. The Help page renders this
+#: and splits it against SiteConfig.unsupported_makes, so the page and
+#: the gate cannot disagree. Before this, Help listed Honda, MG and
+#: Isuzu as supported while the gate blocked all three, so a customer
+#: could read "Honda is supported", search, and be told it was not.
+#: Moving a make between the two columns is now an admin edit, not a
+#: template edit that someone will forget.
+SUPPORTED_MAKES = [
+    'Abarth',
+    'Alfa Romeo',
+    'Alpine',
+    'Audi',
+    'Bentley',
+    'BMW',
+    'Citroën',
+    'Cupra',
+    'Dacia',
+    'DS',
+    'Fiat',
+    'Ford',
+    'Genesis',
+    'Honda',
+    'Hyundai',
+    'Infiniti',
+    'Isuzu',
+    'Iveco',
+    'Jaguar',
+    'Jeep',
+    'Kia',
+    'Land Rover',
+    'Lexus',
+    'MAN',
+    'Mazda',
+    'Mercedes-Benz',
+    'MG',
+    'MINI',
+    'Mitsubishi',
+    'Nissan',
+    'Peugeot',
+    'Porsche',
+    'Renault',
+    'Rover',
+    'SEAT',
+    'Škoda',
+    'smart',
+    'Suzuki',
+    'Tesla',
+    'Toyota',
+    'Vauxhall',
+    'Volkswagen',
+    'Volvo',
+]
+
 def help_page(request):
     contact_submitted = request.session.pop('contact_submitted', None)
+    # Split the published list against the live gate.
+    _cfg = SiteConfig.get()
+    _blocked = _cfg.unsupported_make_set()
+    _makes_auto = [m for m in SUPPORTED_MAKES
+                   if SiteConfig._norm_make(m) not in _blocked]
+    _makes_manual = [m for m in SUPPORTED_MAKES
+                     if SiteConfig._norm_make(m) in _blocked]
+
     return render(request, 'lookup/help.html', {
         'contact_submitted': contact_submitted,
         'payments_on': payments_active(),
+        'makes_auto': _makes_auto,
+        'makes_manual': _makes_manual,
     })
 
 

@@ -39,7 +39,7 @@
       "name": "What manufacturers does coloureg support?",
       "acceptedAnswer": {
         "@type": "Answer",
-        "text": "Automated lookup covers most manufacturers sold in the UK, including Abarth, Alfa Romeo, Alpine, Audi, Bentley, BMW, Citroën, Cupra, Dacia, DS, Fiat, Ford, Genesis, Honda, Hyundai, Infiniti, Isuzu, Iveco, Jaguar, Jeep, Kia, Land Rover, Lexus, MAN, Mazda, Mercedes-Benz, MG, MINI, Mitsubishi, Nissan, Peugeot, Porsche, Renault, Rover, SEAT, Škoda, smart, Suzuki, Tesla, Toyota, Vauxhall, Volkswagen, and Volvo. The list isn't exhaustive and coverage can't be guaranteed for every vehicle, so it's always worth checking your registration."
+        "text": "Most manufacturers sold in the UK are covered. Most resolve instantly and automatically; a few we look up by hand and email over, usually within the hour. The list isn't exhaustive and coverage can't be guaranteed for every vehicle, so it's always worth checking your registration."
       }
     },
     {
@@ -153,11 +153,36 @@
         color: #1a1a1a;
         padding: 4px 0;
     }
-    .makes-grid div::before {
-        content: '✓';
-        color: #16a34a;
-        font-weight: 700;
-        margin-right: 8px;
+    .makes-grid div {
+        display: flex;
+        align-items: center;
+    }
+    /* A DOT, NOT A TICK. Every make used to get a green ✓, including the ones
+       the gate blocks — which is how Help came to promise Honda. The dot
+       carries the distinction, and the key above says what it means. Colour is
+       never the only signal: the two lists are separated and labelled in
+       words, so this still reads correctly in monochrome or to a screen
+       reader, which a red/green pair alone would not. */
+    .dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        margin-right: 9px;
+        flex: 0 0 8px;
+    }
+    .dot-auto   { background: #16a34a; }
+    .dot-manual { background: #d97706; }
+    .makes-key {
+        list-style: none;
+        padding: 0;
+        margin: 10px 0 4px;
+        font-size: 0.92rem;
+        color: #4b5563;
+    }
+    .makes-key li {
+        display: flex;
+        align-items: center;
+        padding: 3px 0;
     }
     .help-page code {
         background: #f1f3f5;
@@ -214,51 +239,22 @@
                         <span class="faq-icon">▼</span>
                     </button>
                     <div class="faq-answer" id="faq-4" style="display: none;">
-                        <p>Automated lookup covers most manufacturers sold in the UK, including:</p>
+                        <p>Most manufacturers sold in the UK are covered. The dot shows how:</p>
+                        <ul class="makes-key">
+                            <li><span class="dot dot-auto" aria-hidden="true"></span>Instant, automatic lookup</li>
+                            <li><span class="dot dot-manual" aria-hidden="true"></span>Manual lookup, usually within the hour</li>
+                        </ul>
                         <div class="makes-grid">
-                            <div>Abarth</div>
-                            <div>Alfa Romeo</div>
-                            <div>Alpine</div>
-                            <div>Audi</div>
-                            <div>Bentley</div>
-                            <div>BMW</div>
-                            <div>Citroën</div>
-                            <div>Cupra</div>
-                            <div>Dacia</div>
-                            <div>DS</div>
-                            <div>Fiat</div>
-                            <div>Ford</div>
-                            <div>Genesis</div>
-                            <div>Honda</div>
-                            <div>Hyundai</div>
-                            <div>Infiniti</div>
-                            <div>Isuzu</div>
-                            <div>Iveco</div>
-                            <div>Jaguar</div>
-                            <div>Jeep</div>
-                            <div>Kia</div>
-                            <div>Land Rover</div>
-                            <div>Lexus</div>
-                            <div>MAN</div>
-                            <div>Mazda</div>
-                            <div>Mercedes-Benz</div>
-                            <div>MG</div>
-                            <div>MINI</div>
-                            <div>Mitsubishi</div>
-                            <div>Nissan</div>
-                            <div>Peugeot</div>
-                            <div>Porsche</div>
-                            <div>Renault</div>
-                            <div>Rover</div>
-                            <div>SEAT</div>
-                            <div>Škoda</div>
-                            <div>smart</div>
-                            <div>Suzuki</div>
-                            <div>Tesla</div>
-                            <div>Toyota</div>
-                            <div>Vauxhall</div>
-                            <div>Volkswagen</div>
-                            <div>Volvo</div>
+                            {% for make in makes_auto %}<div class="make-auto"><span class="dot dot-auto" aria-hidden="true"></span>{{ make }}</div>{% endfor %}
+                        </div>
+                        {% if makes_manual %}
+                        <p>These we look up by hand. The factory data isn't available to us
+                           automatically, so leave your email on the results page and we'll
+                           send the code over.</p>
+                        <div class="makes-grid">
+                            {% for make in makes_manual %}<div class="make-manual"><span class="dot dot-manual" aria-hidden="true"></span>{{ make }}</div>{% endfor %}
+                        </div>
+                        {% endif %}
                         </div>
                         <p>This list isn't exhaustive, and coverage can't be guaranteed for every vehicle — results depend on what the manufacturer holds for your specific car, and some models (especially very new, very old, imported, or commercial vehicles) may not return a code. If your make isn't listed, it's still worth checking your registration, or <a href="#contact-section" style="color: #003399;">send us a message</a> and we'll do our best to track it down.{% if payments_on %} <strong>If we can't find your code, you don't pay.</strong>{% endif %}</p>
                     </div>
