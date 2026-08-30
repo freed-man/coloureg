@@ -1098,7 +1098,20 @@
         .recent-paint-code {
             font-size: 14px;
             color: #1a1a1a;
-            white-space: nowrap;
+            /* paint87: was `nowrap`, so a code could never split mid-code —
+               'LY9' above 'B' reads as two codes. Correct for every provider
+               answer: the longest of 696 distinct delivered codes is 16 chars.
+               A MANUAL entry on 30 Aug 2026 put 47 chars and three codes in one
+               field, that row set the column width, and the whole table began
+               scrolling sideways. The manual paint_code input is free text, so
+               it has no ceiling a provider answer has.
+
+               KNOWN, ACCEPTED EXPOSURE: hyphens are default break points, so a
+               narrow enough column can split 'BU-2957C' after 'BU-'. Two of the
+               696 delivered codes contain a hyphen. If hyphenated codes stop
+               being rare, this trade stops being right — the fix then is to
+               wrap each code in its own nowrap span via a template filter. */
+            white-space: normal;
             /* Paint codes are always upper-case in practice; force the display
                so legacy rows stored in mixed case still render correctly. */
             text-transform: uppercase;
