@@ -523,6 +523,35 @@ class PaintLookup(models.Model):
         # Verified 19 Aug 2026: the codes AMG lookups delivered (799, 144) are
         # present under 'mercedes' and absent under 'mercedesamg'.
         'mercedesamg': 'mercedes',
+        # DS is stored by the merge as 'dsautomobiles' (the marque's full legal
+        # name), but every provider reports the make as bare 'DS'. That
+        # normalises to 'ds', which has ZERO rows, so all 103 DS colours were
+        # unreachable — the same shape of miss as 'mercedesamg' above.
+        #
+        # Measured 27 Aug 2026 against 3,825 real lookups. Two properties were
+        # checked before adding this, because an alias changes which table the
+        # code->name fill reads from and could in principle displace a working
+        # answer:
+        #   1. NOT DISPLACING. All 752 distinct (make, code) pairs that have
+        #      ever delivered a code were resolved with and without the alias.
+        #      Exactly two changed, both None -> a name (DS/EWP, DS/KTV). No
+        #      pair that already resolved moved. Additive by construction: the
+        #      fill at paint_resolver.py only runs `if code and not desc`, so a
+        #      provider-supplied name is never overwritten.
+        #   2. RECOVERING. ML23UCP (DS4, 27 Aug) arrived name-only as
+        #      'Pearlescent White' and delivered nothing. Under the alias it
+        #      resolves to KWE via the model-narrowing rule — EFC lists only
+        #      ds3 variants, KWE lists ds4 — which is the whole point of
+        #      routing DS at its real key rather than an empty one.
+        'ds': 'dsautomobiles',
+        # Lagonda is an Aston Martin marque and normalises to 'lagonda', which
+        # has ZERO rows; 'astonmartin' has 689. UNMEASURED, unlike the entries
+        # above: one Lagonda lookup exists in the traffic (CS24, 3 Aug) and it
+        # returned no code at all, so there is nothing to verify a recovery
+        # against. Included because an empty key can only decline, so routing it
+        # somewhere with data is weakly better than routing it nowhere — but it
+        # is reasoning, not evidence. Drop it if a wrong Lagonda name appears.
+        'lagonda': 'astonmartin',
     }
 
     @staticmethod
