@@ -48,6 +48,39 @@
         border-color: #EF9F27;
         background: #FAEEDA;
     }
+    /* paint88: a bypass is the one thing on this row worth seeing from across
+       the screen, and it read as ordinary grey body text — the same weight as
+       "Nothing has bypassed Cloudflare", so the good and bad states looked
+       alike. Mirrors .is-on's structure exactly (border, background, dot,
+       title, sub) in the danger red already used by the auto-revert notice.
+
+       DELIBERATELY NOT .is-on. The markup comment below records why amber was
+       rejected for this row: ENFORCING is the desired state, so amber warned
+       about the thing you had just fixed. This class is the opposite case — it
+       is applied only when traffic HAS bypassed Cloudflare, which is never
+       desired, so an alarm is the correct reading.
+
+       THE ALL-CLEAR STAYS QUIET, on purpose. If both states shout, neither
+       signals; the green dot already confirms the good state at a glance.
+
+       Colour only. No padding, font-size or width changes — .maint-toggle is
+       flex with space-between and flex-wrap, and anything that widens this
+       block pushes the button onto its own line. That bug has been fixed twice
+       already; see the two markup comments below. */
+    .maint-toggle.has-bypass {
+        border-color: #b42318;
+        background: #FCEBEB;
+    }
+    .maint-toggle.has-bypass .maint-dot {
+        background: #b42318;
+    }
+    .maint-toggle.has-bypass .maint-toggle-title {
+        color: #7A1810;
+    }
+    .maint-toggle.has-bypass .maint-toggle-sub,
+    .maint-toggle.has-bypass .origin-gate-detail > summary {
+        color: #912018;
+    }
     /* Caps the origin gate's expanded detail. .maint-toggle-status is flex, so
        an unconstrained child sizes to max-content and pushes the button onto its
        own line — which is exactly what happened when this content lived inline. */
@@ -371,8 +404,10 @@
          row amber, which on those two correctly flags an unusual state that
          wants attention. Enforcing is the DESIRED state for this gate, so amber
          would read as a warning about the very thing you just fixed. The row
-         stays neutral; only the button changes. -->
-    <div class="maint-toggle">
+         stays neutral; only the button changes. .has-bypass below is a
+         different question — not "is the gate on" but "has anything got past
+         it" — and that one does want the row to shout. -->
+    <div class="maint-toggle{% if origin_gate.stats.count %} has-bypass{% endif %}">
         <div class="maint-toggle-status">
             <span class="maint-dot"></span>
             <div>
