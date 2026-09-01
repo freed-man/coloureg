@@ -1380,12 +1380,31 @@ class PaintLookup(models.Model):
             # connection pooler — exactly what Neon's -pooler endpoint is. It
             # would buy ~13% and 1.5MB in exchange for a failure mode that
             # depends on which Neon endpoint DATABASE_URL happens to point at.
+            # paint89: try BOTH spellings of grey/gray.
+            #
+            # Done HERE, at query time, and deliberately NOT in normalize_name:
+            # that function must stay in step with the rules paintscraper used to
+            # build normalized_names, and folding the spellings there would make
+            # every query stop matching the 1,032 rows stored as 'gray'. Widening
+            # the query instead leaves the stored index untouched.
+            #
+            # Vauxhall Vivaro KKJ is the case: pl24 and Ezyvin both said
+            # 'Titanium Grey', vauxhall/KKJ is stored only as 'gris titane', and
+            # opel/KKJ is stored as 'titanium GRAY' — so the English query
+            # matched nothing anywhere, in any marque. 440 gray-spelled names
+            # have no grey-spelled twin within their own make.
+            name_variants = {name_norm}
+            if 'gray' in name_norm:
+                name_variants.add(name_norm.replace('gray', 'grey'))
+            if 'grey' in name_norm:
+                name_variants.add(name_norm.replace('grey', 'gray'))
+
             rows = [
                 cls._MatchRow(*t)
                 for t in cls.objects.filter(manufacturer=mfr_norm).values_list(
                     *cls._MATCH_FIELDS
                 )
-                if name_norm in (t[cls._MATCH_NAMES_IDX] or [])
+                if not name_variants.isdisjoint(t[cls._MATCH_NAMES_IDX] or [])
             ]
             if not rows:
                 return None, None, None
@@ -1447,6 +1466,39 @@ class PaintLookup(models.Model):
                     ]
                     if primary_model_rows:
                         resolved = cls._collapse_to_single_code(primary_model_rows, name_norm)
+                        if resolved is not None:
+                            return resolved
+
+            # paint89: last resort — drop Ford touch-up PART NUMBERS.
+            #
+            # 'State Blue' on a 1998 Fiesta matched four rows: KHAH (Luganoblau,
+            # transit), KHYCWWA (State Blue Mica, fiesta), XSC2772 and
+            # XSC2772CM. Narrowing on the model still left two, because XSC2772CM
+            # also lists fiesta. XSC is a Ford ACCESSORY paint part number, not a
+            # factory colour code — 695 of 4,081 Ford rows and 704 in the entire
+            # table, so this is a Ford-shaped artefact of the merge rather than a
+            # general code convention.
+            #
+            # A PREFERENCE, never an exclusion: it runs only when non-XSC rows
+            # also exist, so a colour whose only code is an XSC number is still
+            # served. And it runs only here, after every other rule has already
+            # declined, so it can turn a decline into an answer and never change
+            # one that already resolved.
+            non_part_rows = [r for r in rows if not str(r.code).upper().startswith('XSC')]
+            if non_part_rows and len(non_part_rows) < len(rows):
+                resolved = cls._collapse_to_single_code(non_part_rows, name_norm)
+                if resolved is not None:
+                    return resolved
+                if model:
+                    model_non_part = [
+                        r for r in non_part_rows
+                        if cls._model_matches(model, r.models_list, anywhere=False)
+                    ] or [
+                        r for r in non_part_rows
+                        if cls._model_matches(model, r.models_list, anywhere=True)
+                    ]
+                    if model_non_part and len(model_non_part) < len(non_part_rows):
+                        resolved = cls._collapse_to_single_code(model_non_part, name_norm)
                         if resolved is not None:
                             return resolved
 

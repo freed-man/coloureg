@@ -426,7 +426,23 @@
                         IPs trusted as before.
                     {% endif %}
                     {% if origin_gate.secret_configured and not origin_gate.stats.count %}
-                        Nothing has bypassed Cloudflare.
+{% comment %}
+                        paint90: a COUNT, in the same slot and the same shape as
+                        the breach line below, so the eye lands on a number in
+                        both states instead of reading prose in one and a
+                        disclosure summary in the other.
+
+                        THE WINDOW IS DERIVED, NOT INVENTED. The stats key
+                        carries a 14-day TTL refreshed on every write, so an
+                        absent key means nothing arrived in 14 days. A bare "0"
+                        would imply "never", which the counter cannot support —
+                        it is also cleared by hand from the shell.
+
+                        {% comment %}, not a multi-line {# #}: Django renders
+                        the latter as visible text. The battery has a check for
+                        exactly this and it fired on the first attempt.
+                    {% endcomment %}
+                        <strong>0</strong> bypassed Cloudflare in the last 14 days.
                     {% endif %}
                 </div>
 
@@ -454,7 +470,7 @@
                      instead of pushing the button onto its own line. -->
                 <details class="origin-gate-detail">
                     <summary style="cursor:pointer;">
-                        <strong>{{ origin_gate.stats.count }} bypassed Cloudflare</strong>
+                        <strong>{{ origin_gate.stats.count }}</strong> bypassed Cloudflare
                     </summary>
                     <div class="maint-toggle-sub" style="margin-top:6px;">
                         Since {{ origin_gate.stats.since|slice:":16" }}.
