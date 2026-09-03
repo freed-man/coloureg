@@ -101,7 +101,7 @@
         line-height: 1;
         margin: 0 0 12px;
         color: #1a1a1a;
-        /* Disable slashed-zero glyph (the dot inside 0) */
+        {% comment %}/* Disable slashed-zero glyph (the dot inside 0) */{% endcomment %}
         font-feature-settings: "zero" 0;
         font-variant-numeric: normal;
     }
@@ -174,8 +174,8 @@
         }
     }
 
-    /* ---- Paint-recovery pending state ---- */
-    /* The signature 16-dot tumbling paint sphere, matched to the homepage loader. */
+    {% comment %}/* ---- Paint-recovery pending state ---- */{% endcomment %}
+    {% comment %}/* The signature 16-dot tumbling paint sphere, matched to the homepage loader. */{% endcomment %}
     .lookup-spinner {
         position: relative;
         width: 140px;
@@ -214,14 +214,14 @@
         from { transform: rotateY(0deg)   rotateX(0deg); }
         to   { transform: rotateY(360deg) rotateX(720deg); }
     }
-    /* THE BAR (paint74). Two changes.
+    {% comment %}/* THE BAR (paint74). Two changes.
        COLOUR: the site's own brand spectrum rather than flat blue, fixed to the
        track width so it REVEALS left to right — red early, violet only near the
        end — which reads as distance travelled rather than as a logo.
        MOTION: it creeps continuously instead of jumping between stages. A
        stepped bar sat still for the eight seconds between stages, and a still
        bar reads as hung. It eases toward 96% and never arrives on its own —
-       only a real answer completes it. */
+       only a real answer completes it. */{% endcomment %}
     .pending-bar-fill {
         background: linear-gradient(90deg, #e74c3c, #f39c12, #f1c40f, #2ecc71, #3498db, #9b59b6);
         background-size: 240px 100%;
@@ -236,11 +236,11 @@
         color: #333;
         text-align: center;
         margin: 0;
-        /* paint37: 340px wrapped the heading. "Found your Mercedes-Benz
+        {% comment %}/* paint37: 340px wrapped the heading. "Found your Mercedes-Benz
            manufacturer build sheet" is ~416px at this size, and the longest
            realistic make (Mercedes-Benz) sets the floor. 560px holds every make
            on one line with room to spare; the viewport clamp keeps it inside a
-           phone, where wrapping is correct anyway. */
+           phone, where wrapping is correct anyway. */{% endcomment %}
         max-width: min(560px, calc(100vw - 40px));
         line-height: 1.5;
         transition: opacity 0.3s ease;
@@ -464,12 +464,12 @@
                                while waiting; the "please stay on this page" half now
                                rides on the stage line itself, which is the part that
                                actually needs saying.{% endcomment %}
-                            <!-- width:100% is load-bearing (paint75). The parent is
+                            {% comment %}<!-- width:100% is load-bearing (paint75). The parent is
                                  align-items:center, so a child with only max-width
                                  shrinks to fit its content — and this track's only
                                  content is a percentage-width fill, which has nothing
                                  to resolve against. The track collapsed to zero and
-                                 the bar was invisible. -->
+                                 the bar was invisible. -->{% endcomment %}
                             <div style="margin: 14px auto 0; width: 100%; max-width: 240px; height: 4px; background: #eee; border-radius: 2px; overflow: hidden;">
                                 <div id="pending-bar" class="pending-bar-fill" style="height: 100%; width: 4%; border-radius: 2px;"></div>
                             </div>

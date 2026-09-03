@@ -108,9 +108,9 @@
         text-align: center;
     }
     .search-input::placeholder {
-        /* paint24: #222 -> #000. At 400 weight over a translucent white field
+        {% comment %}/* paint24: #222 -> #000. At 400 weight over a translucent white field
            the old value read as washed out; italic and size are unchanged, so
-           the typewriter measurer below still matches the rendered font. */
+           the typewriter measurer below still matches the rendered font. */{% endcomment %}
         color: #000;
         font-weight: 400;
         font-size: 22px;
@@ -129,7 +129,7 @@
         transition: background 1s ease-in-out;
     }
 
-    /* Cloudflare Turnstile holder (paint17 layout fix).
+    {% comment %}/* Cloudflare Turnstile holder (paint17 layout fix).
        data-appearance="interaction-only" means the widget renders NOTHING in
        the normal case, which is exactly why this stayed hidden for so long: it
        only becomes visible for visitors Cloudflare wants to challenge — a fresh
@@ -145,18 +145,18 @@
        state once solved.
 
        It now lives below the box instead of competing inside it. Nothing above
-       clips, so it can take its natural width and simply centre itself. */
+       clips, so it can take its natural width and simply centre itself. */{% endcomment %}
     .turnstile-holder {
         display: flex;
         justify-content: center;
         margin-top: 12px;
     }
-    /* Shown only when someone submits before the box has been ticked. */
-    /* paint33: matched to the spinner caption — same mono face, same caret, same
+    {% comment %}/* Shown only when someone submits before the box has been ticked. */{% endcomment %}
+    {% comment %}/* paint33: matched to the spinner caption — same mono face, same caret, same
        colour. This and .lookup-message are the same kind of thing (the system
        reporting what it is doing) and were being said in two different voices.
        No breakout needed: the text is short enough to sit inside the 300px
-       container, so ordinary centring works. */
+       container, so ordinary centring works. */{% endcomment %}
     .turnstile-note {
         margin: 10px 0 0;
         font-family: 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
@@ -174,10 +174,10 @@
         .turnstile-note { font-size: 14px; }
     }
 
-    /* Maintenance / lookups-paused state (shown when maintenance_mode is on).
+    {% comment %}/* Maintenance / lookups-paused state (shown when maintenance_mode is on).
        The normal .search-container caps width at 300px (right for the field).
        In maintenance mode we lift that cap on the CONTAINER so the notice can
-       size to its widest sentence, while the FIELD stays pinned at 300px. */
+       size to its widest sentence, while the FIELD stays pinned at 300px. */{% endcomment %}
     .search-container--maint {
         max-width: none;
         padding: 0 16px;
@@ -189,7 +189,7 @@
         flex-direction: column;
         align-items: center;
     }
-    /* The locked field keeps the real search-field width (300px, centred) */
+    {% comment %}/* The locked field keeps the real search-field width (300px, centred) */{% endcomment %}
     .maintenance-state .search-form.is-locked {
         width: 100%;
         max-width: 300px;
@@ -239,21 +239,21 @@
         color: #854F0B;
         line-height: 1.5;
     }
-    /* Big screen: each sentence on its own line; the notice sizes to its WIDEST
+    {% comment %}/* Big screen: each sentence on its own line; the notice sizes to its WIDEST
        sentence (max-content) so nothing wraps mid-sentence and nothing overflows.
        Narrow screen: cap back to the field width and collapse into one wrapping
-       paragraph. */
+       paragraph. */{% endcomment %}
     .maint-notice-body .nb-line { display: block; white-space: nowrap; }
-    /* Keep each sentence on its own line down to small phones. Only on genuinely
+    {% comment %}/* Keep each sentence on its own line down to small phones. Only on genuinely
        narrow screens (≤360px, e.g. 320px devices) does the longest sentence stop
-       fitting — there we collapse to one wrapping paragraph to avoid overflow. */
+       fitting — there we collapse to one wrapping paragraph to avoid overflow. */{% endcomment %}
     @media (max-width: 360px) {
         .search-container--maint { max-width: 300px; }
         .maint-notice { width: auto; max-width: 100%; }
         .maint-notice-body .nb-line { display: inline; white-space: normal; }
     }
 
-    /* Tablet and below */
+    {% comment %}/* Tablet and below */{% endcomment %}
     @media (max-width: 768px) {
         .main-title {
             font-size: 2.2rem;
@@ -282,7 +282,7 @@
         }
     }
 
-    /* Mobile */
+    {% comment %}/* Mobile */{% endcomment %}
     @media (max-width: 480px) {
         .main-title {
             font-size: 1.7rem;
@@ -308,7 +308,7 @@
         }
     }
 
-    /* Tiny phones */
+    {% comment %}/* Tiny phones */{% endcomment %}
     @media (max-width: 360px) {
         .main-title {
             font-size: 1.4rem;
@@ -319,7 +319,7 @@
         }
     }
 
-    /* Loading state shown after form submit */
+    {% comment %}/* Loading state shown after form submit */{% endcomment %}
     .lookup-loader {
         display: none;
         flex-direction: column;
@@ -343,16 +343,16 @@
         40%, 100% { opacity: 1; }
     }
 
-    /* paint74: .lookup-spinner and its 16 paint-shop dots have MOVED to the
+    {% comment %}/* paint74: .lookup-spinner and its 16 paint-shop dots have MOVED to the
        results page. On a 190ms index page the globe was a flash nobody sees;
        the results page holds the 10-26s paint wait, which is where it earns
-       its keep. */
+       its keep. */{% endcomment %}
 
-    /* paint24: mono status line instead of the Playfair italic. The caption is
+    {% comment %}/* paint24: mono status line instead of the Playfair italic. The caption is
        reporting machine progress, so it reads better as a readout than as
        editorial prose — and at 15px it sits under the sphere rather than
        competing with it. The caret is black, matching the text, so it reads as
-       punctuation rather than as a terminal affectation. */
+       punctuation rather than as a terminal affectation. */{% endcomment %}
     .lookup-message {
         font-family: 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
         font-size: 15px;
@@ -370,24 +370,24 @@
         color: #000;
     }
 
-    /* Patience note. Space is RESERVED from the start (opacity, not display)
+    {% comment %}/* Patience note. Space is RESERVED from the start (opacity, not display)
        so the sphere does not jump when it appears — the note fades in where it
        already was. Nobody pays for that reservation visually: the lookups it
-       would affect finish in under a fifth of a second. */
-    /* paint74: .lookup-patience removed — the box moved to the results page
-       as the stage lines, which carry "Please stay on this page" inline. */
+       would affect finish in under a fifth of a second. */{% endcomment %}
+    {% comment %}/* paint74: .lookup-patience removed — the box moved to the results page
+       as the stage lines, which carry "Please stay on this page" inline. */{% endcomment %}
 
-    /* paint28: sized in CSS rather than inline so it can respond to viewport.
+    {% comment %}/* paint28: sized in CSS rather than inline so it can respond to viewport.
        The narrow 420px box wrapped this message onto four lines on a desktop
-       with room to spare. */
-    /* paint29: these sit INSIDE .search-container, which is capped at 300px for
+       with room to spare. */{% endcomment %}
+    {% comment %}/* paint29: these sit INSIDE .search-container, which is capped at 300px for
        the input field. Raising their own max-width alone did nothing — the
        parent won. They break out of it with a negative margin equal to the
        overflow, which keeps them centred on the field above.
 
        Kept to the viewport on small screens (calc against 100vw) so the
-       breakout can never cause a horizontal scrollbar on a phone. */
-    /* paint32: the breakout belongs on the LOADER, not on its children.
+       breakout can never cause a horizontal scrollbar on a phone. */{% endcomment %}
+    {% comment %}/* paint32: the breakout belongs on the LOADER, not on its children.
        .lookup-loader is display:flex; flex-direction:column; align-items:center,
        so the caption and patience note are centred BY IT. They were being given
        their own breakout as well, and the two mechanisms fought: the children
@@ -395,7 +395,7 @@
        why everything under the sphere sat left of centre.
        Widen the loader once, and its own centring places every child correctly.
        .unsupported-note keeps a breakout because it is a plain block outside the
-       loader, where margin:auto cannot centre something wider than its parent. */
+       loader, where margin:auto cannot centre something wider than its parent. */{% endcomment %}
     .lookup-loader {
         width: min(560px, calc(100vw - 32px));
         max-width: min(560px, calc(100vw - 32px));
@@ -403,13 +403,13 @@
         transform: translateX(-50%);
     }
     .unsupported-note {
-        /* paint35: sized to its CONTENT, not to a fixed 560px. max-content is
+        {% comment %}/* paint35: sized to its CONTENT, not to a fixed 560px. max-content is
            the width of the longest line with no wrapping, so the box hugs the
            text instead of leaving a slab of empty yellow to the right.
            max-content specifically, NOT auto or fit-content: those two size
            against the space AVAILABLE, which margin-left:50% has already halved
            — that is what collapsed this box to 134px in paint34. max-content
-           ignores available space entirely, so the breakout cannot shrink it. */
+           ignores available space entirely, so the breakout cannot shrink it. */{% endcomment %}
         width: max-content;
         max-width: min(560px, calc(100vw - 32px));
         margin-left: 50%;
@@ -419,45 +419,45 @@
         margin-top: 14px;
         font-size: 14px;
         line-height: 1.6;
-        /* Centred within the box now the box hugs the text — left-aligned text
-           in a shrink-to-fit box just looks like a narrower left-aligned box. */
+        {% comment %}/* Centred within the box now the box hugs the text — left-aligned text
+           in a shrink-to-fit box just looks like a narrower left-aligned box. */{% endcomment %}
         text-align: center;
     }
-    /* Flex children now: centred and bounded by the loader above. The rule used
+    {% comment %}/* Flex children now: centred and bounded by the loader above. The rule used
        to cover .lookup-patience too; that element moved to the results page in
-       paint74. */
+       paint74. */{% endcomment %}
     .lookup-message {
         max-width: 100%;
     }
 
     @media (min-width: 768px) {
         .unsupported-note { font-size: 15px; padding: 14px 18px; }
-        /* 17px mono: "Manufacturer servers are slow today, hang tight..." is the
+        {% comment %}/* 17px mono: "Manufacturer servers are slow today, hang tight..." is the
            longest message at ~52 characters. At ~10.2px per character that needs
-           ~530px to hold one line, hence 560. */
+           ~530px to hold one line, hence 560. */{% endcomment %}
         .lookup-message { font-size: 17px; white-space: nowrap; }
-        /* paint31: enlarged. At 12.5px this was the smallest thing on a page
+        {% comment %}/* paint31: enlarged. At 12.5px this was the smallest thing on a page
            whose whole job at that moment is to stop someone closing the tab.
            paint71: 14 -> 15px, and see the mobile rules below — the same
-           argument applied more strongly there and had been missed. */
+           argument applied more strongly there and had been missed. */{% endcomment %}
     }
-    /* Below 768px there is no room for one line, so allow wrapping again. */
+    {% comment %}/* Below 768px there is no room for one line, so allow wrapping again. */{% endcomment %}
     @media (max-width: 767px) {
         .lookup-message { white-space: normal; }
-        /* paint71: 12.5 -> 15px. NOT smaller than desktop: a phone is where
+        {% comment %}/* paint71: 12.5 -> 15px. NOT smaller than desktop: a phone is where
            someone is most likely to switch apps mid-lookup, so this is the
            screen where the warning matters most, and it was the one where it
-           was smallest. */
+           was smallest. */{% endcomment %}
     }
-    /* .stuck is still toggled by the JS at the 10s stage, but both stages now
+    {% comment %}/* .stuck is still toggled by the JS at the 10s stage, but both stages now
        share one identical style (mono 15px #000). The class is kept as a hook
-       in case a future stage wants distinct styling. */
+       in case a future stage wants distinct styling. */{% endcomment %}
     @media (max-width: 480px) {
         .lookup-message { font-size: 13.5px; }
-        /* paint71: 10.5 -> 14px. It was 10.5px here — below the browser default
+        {% comment %}/* paint71: 10.5 -> 14px. It was 10.5px here — below the browser default
            of 16 by a third, on the smallest screens, for the one message that
            has to be read. Shrinking it to fit the box was the wrong trade:
-           the text may now wrap to three lines and that is fine. */
+           the text may now wrap to three lines and that is fine. */{% endcomment %}
     }
 </style>
 {% endblock %}
@@ -465,7 +465,7 @@
 {% block content %}
 <div id="particles-js"></div>
 
-<!-- SEO content (hidden but indexable) -->
+{% comment %}<!-- SEO content (hidden but indexable) -->{% endcomment %}
 <h1 class="sr-only">UK Car Paint Code Lookup by Registration</h1>
 <p class="sr-only">
     coloureg is a UK paint code finder. Enter your number plate and we
@@ -590,7 +590,7 @@
                     {% comment %} paint23: shown when the make is one we cannot resolve. No
                        lookup is submitted, so nothing is spent and the answer is
                        immediate instead of a minute of spinner.{% endcomment %}
-                    <!-- The unsupported-make notice was removed here: the lookup now
+                    {% comment %}<!-- The unsupported-make notice was removed here: the lookup now
                          proceeds and the results page explains it (see
                          views.make_not_automated).
 
@@ -602,7 +602,7 @@
                          balanced, which is why it passed review. With
                          #lookup-loader absent, getElementById returned null and
                          loader.classList.add('active') threw, killing every
-                         staged caption and leaving the bare page on submit. -->
+                         staged caption and leaving the bare page on submit. -->{% endcomment %}
 
                     {% comment %} paint74: the globe, the staged messages and the patience
                          note have MOVED to the results page.
@@ -634,15 +634,15 @@
 {% block extra_js %}
 {% if turnstile_site_key %}
 <script>
-    /* Defined BEFORE Cloudflare's script tag below, so the functions named in
+    {% comment %}/* Defined BEFORE Cloudflare's script tag below, so the functions named in
        data-callback / data-expired-callback / data-error-callback already exist
-       by the time the async script renders the widget. */
+       by the time the async script renders the widget. */{% endcomment %}
     window.__turnstileWaiting = false;
 
-    /* Fired when the token is issued — either silently for a trusted visitor,
+    {% comment %}/* Fired when the token is issued — either silently for a trusted visitor,
        or the moment an untrusted one ticks the box. If a submit was held back
        waiting for exactly this, resume it now so the tick is the only extra
-       step the visitor ever has to take. */
+       step the visitor ever has to take. */{% endcomment %}
     window.onTurnstileSolved = function () {
         var note = document.getElementById('turnstile-note');
         if (note) note.style.display = 'none';
@@ -654,9 +654,9 @@
         }
     };
 
-    /* Tokens last about five minutes. If one expires on an idle page, clear it
+    {% comment %}/* Tokens last about five minutes. If one expires on an idle page, clear it
        so the next submit is held for a fresh tick rather than sent stale and
-       bounced by the server. */
+       bounced by the server. */{% endcomment %}
     window.onTurnstileExpired = function () {
         window.__turnstileWaiting = false;
         if (window.turnstile) { try { window.turnstile.reset(); } catch (e) {} }
@@ -815,7 +815,7 @@
                 cache: 'no-store',
                 keepalive: true
             }).catch(function() {});
-        } catch (e) { /* no-op */ }
+        } catch (e) { {% comment %}/* no-op */{% endcomment %} }
     }
     regInput.addEventListener('focus', warmDb, { once: true });
 

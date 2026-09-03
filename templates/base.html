@@ -5,7 +5,7 @@
 
 <head>
     {% if GA_MEASUREMENT_ID and not GA_DEBUG and not request.path|slice:":7" == "/admin/" and not request.path|slice:":13" == "/admin-stats/" %}
-    <!-- Google tag (gtag.js) — only loads in production, with an ID set, on non-admin pages -->
+    {% comment %}<!-- Google tag (gtag.js) — only loads in production, with an ID set, on non-admin pages -->{% endcomment %}
     <script async src="https://www.googletagmanager.com/gtag/js?id={{ GA_MEASUREMENT_ID }}"></script>
     <script>
         window.dataLayer = window.dataLayer || [];
@@ -25,13 +25,13 @@
 
     <link rel="canonical" href="https://coloureg.com{{ request.path }}">
 
-    <!-- Preconnect to third-party origins for faster first paint -->
+    {% comment %}<!-- Preconnect to third-party origins for faster first paint -->{% endcomment %}
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
     <link rel="preconnect" href="https://cdnjs.cloudflare.com" crossorigin>
 
-    <!-- Open Graph / Facebook -->
+    {% comment %}<!-- Open Graph / Facebook -->{% endcomment %}
     <meta property="og:type" content="website">
     <meta property="og:url" content="https://coloureg.com{{ request.path }}">
     <meta property="og:title" content="{% block og_title %}UK Car Paint Code Lookup by Registration | coloureg{% endblock %}">
@@ -39,14 +39,14 @@
     <meta property="og:image" content="https://coloureg.com/static/images/about.png">
     <meta property="og:site_name" content="coloureg">
 
-    <!-- Twitter -->
+    {% comment %}<!-- Twitter -->{% endcomment %}
     <meta name="twitter:card" content="summary_large_image">
     <meta name="twitter:url" content="https://coloureg.com{{ request.path }}">
     <meta name="twitter:title" content="{% block twitter_title %}UK Car Paint Code Lookup by Registration | coloureg{% endblock %}">
     <meta name="twitter:description" content="{% block twitter_description %}Find your car's factory paint code by registration — instant, no signup.{% endblock %}">
     <meta name="twitter:image" content="https://coloureg.com/static/images/about.png">
 
-    <!-- Structured data for Google -->
+    {% comment %}<!-- Structured data for Google -->{% endcomment %}
     <script type="application/ld+json">
     {
       "@context": "https://schema.org",
@@ -144,7 +144,7 @@
         </div>
     </nav>
 
-    <!-- Slide-in menu panel -->
+    {% comment %}<!-- Slide-in menu panel -->{% endcomment %}
     <div class="offcanvas offcanvas-end menu-panel" tabindex="-1" id="mainMenu"
          aria-labelledby="mainMenuLabel">
         <div class="menu-close-wrap">

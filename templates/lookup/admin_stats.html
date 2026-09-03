@@ -11,7 +11,7 @@
         font-family: 'IBM Plex Sans', sans-serif;
         padding: 20px 0 40px;
     }
-    /* Maintenance toggle banner */
+    {% comment %}/* Maintenance toggle banner */{% endcomment %}
     .maint-toggle {
         display: flex;
         align-items: center;
@@ -24,7 +24,7 @@
         border-radius: 10px;
         background: #fafafa;
     }
-    /* When the banner wraps (narrow screens), centre the status + button */
+    {% comment %}/* When the banner wraps (narrow screens), centre the status + button */{% endcomment %}
     @media (max-width: 600px) {
         .maint-toggle {
             justify-content: center;
@@ -33,11 +33,11 @@
         .maint-toggle-status {
             justify-content: center;
         }
-        /* paint40: the blocklists card shares .maint-toggle for its grey
+        {% comment %}/* paint40: the blocklists card shares .maint-toggle for its grey
            "editable control" styling, but it is a FORM, not a status banner.
            The centring above is right for a dot-plus-button row and wrong for
            three stacked textareas: it centred the field labels and the footnote
-           over left-aligned inputs. Opt this one card back out. */
+           over left-aligned inputs. Opt this one card back out. */{% endcomment %}
         .blocklist-card,
         .blocklist-card .maint-toggle-title {
             text-align: left;
@@ -48,7 +48,7 @@
         border-color: #EF9F27;
         background: #FAEEDA;
     }
-    /* paint88: a bypass is the one thing on this row worth seeing from across
+    {% comment %}/* paint88: a bypass is the one thing on this row worth seeing from across
        the screen, and it read as ordinary grey body text — the same weight as
        "Nothing has bypassed Cloudflare", so the good and bad states looked
        alike. Mirrors .is-on's structure exactly (border, background, dot,
@@ -66,7 +66,7 @@
        Colour only. No padding, font-size or width changes — .maint-toggle is
        flex with space-between and flex-wrap, and anything that widens this
        block pushes the button onto its own line. That bug has been fixed twice
-       already; see the two markup comments below. */
+       already; see the two markup comments below. */{% endcomment %}
     .maint-toggle.has-bypass {
         border-color: #b42318;
         background: #FCEBEB;
@@ -81,13 +81,13 @@
     .maint-toggle.has-bypass .origin-gate-detail > summary {
         color: #912018;
     }
-    /* Caps the origin gate's expanded detail. .maint-toggle-status is flex, so
+    {% comment %}/* Caps the origin gate's expanded detail. .maint-toggle-status is flex, so
        an unconstrained child sizes to max-content and pushes the button onto its
-       own line — which is exactly what happened when this content lived inline. */
+       own line — which is exactly what happened when this content lived inline. */{% endcomment %}
     .origin-gate-detail { max-width: 60ch; }
-    /* The <summary> sits OUTSIDE .maint-toggle-sub, so it inherited the base
+    {% comment %}/* The <summary> sits OUTSIDE .maint-toggle-sub, so it inherited the base
        body size and rendered LARGER than the row's own title — the one thing a
-       disclosure label must never do. Match .maint-toggle-sub exactly. */
+       disclosure label must never do. Match .maint-toggle-sub exactly. */{% endcomment %}
     .origin-gate-detail > summary {
         font-size: 13px;
         color: #666;
@@ -173,11 +173,11 @@
         margin: 0 0 16px;
         color: #1a1a1a;
     }
-    /* paint41: row markers. The envelope means the RESULT was emailed to the
+    {% comment %}/* paint41: row markers. The envelope means the RESULT was emailed to the
        customer, from either route — the automatic "email me this code" or a
        manual reply. Both set email_sent, so one marker covers both. The dot
        means the lookup used a trade access key and skipped the hourly limit;
-       hovering names who. */
+       hovering names who. */{% endcomment %}
     .email-marker { color: #0F9D58; cursor: default; }
     .access-marker { color: #6f42c1; cursor: default; font-size: 11px; }
     .stats-table {
@@ -185,10 +185,10 @@
         border-collapse: collapse;
         font-size: 14px;
     }
-    /* Wrap any wide table so it scrolls sideways on a narrow viewport instead of
+    {% comment %}/* Wrap any wide table so it scrolls sideways on a narrow viewport instead of
        overflowing/crushing. Mainly matters when "Desktop site" is forced on a
        phone (the recent-lookups table is too wide to fit) and on narrow desktop
-       windows. The normal mobile view still swaps to stacked cards below 768px. */
+       windows. The normal mobile view still swaps to stacked cards below 768px. */{% endcomment %}
     .table-scroll {
         overflow-x: auto;
         -webkit-overflow-scrolling: touch;
@@ -203,7 +203,7 @@
         letter-spacing: 0.5px;
         border-bottom: 1px solid #eee;
     }
-    /* Last column doesn't need right-padding (no neighbour to separate from). */
+    {% comment %}/* Last column doesn't need right-padding (no neighbour to separate from). */{% endcomment %}
     .stats-table th:last-child,
     .stats-table td:last-child {
         padding-right: 0;
@@ -272,7 +272,7 @@
         font-weight: 700;
         padding-top: 8px;
     }
-    /* Lookup-outcomes panel: proportion bar + funnel tree + rate strip */
+    {% comment %}/* Lookup-outcomes panel: proportion bar + funnel tree + rate strip */{% endcomment %}
     .oc-bar {
         display: flex;
         height: 14px;
@@ -366,7 +366,7 @@
         <a href="/admin/" class="btn btn-outline-dark btn-sm">Django Admin</a>
     </div>
 
-    <!-- Maintenance toggle: pauses all lookups site-wide (no VDG spend) -->
+    {% comment %}<!-- Maintenance toggle: pauses all lookups site-wide (no VDG spend) -->{% endcomment %}
     <div class="maint-toggle {% if maintenance_mode %}is-on{% endif %}">
         <div class="maint-toggle-status">
             <span class="maint-dot"></span>
@@ -388,8 +388,8 @@
         </form>
     </div>
 
-    <!-- ================= Origin gate (F2) ============================== -->
-    <!-- Railway's edge is directly reachable and routes by Host, so Cloudflare
+    {% comment %}<!-- ================= Origin gate (F2) ============================== -->{% endcomment %}
+    {% comment %}<!-- Railway's edge is directly reachable and routes by Host, so Cloudflare
          can be bypassed. A Cloudflare Transform Rule sets a secret header on
          everything that passes through it.
 
@@ -399,14 +399,14 @@
          row: the button wrapped and sat left while every neighbouring row had
          its button right. The toggle row is therefore kept as terse as
          Maintenance and Paid lookups (one line, dot, button), and the evidence
-         moved into a .panel below where longer content belongs. -->
-    <!-- NO is-on HERE, unlike Maintenance and Paid lookups. That class paints the
+         moved into a .panel below where longer content belongs. -->{% endcomment %}
+    {% comment %}<!-- NO is-on HERE, unlike Maintenance and Paid lookups. That class paints the
          row amber, which on those two correctly flags an unusual state that
          wants attention. Enforcing is the DESIRED state for this gate, so amber
          would read as a warning about the very thing you just fixed. The row
          stays neutral; only the button changes. .has-bypass below is a
          different question — not "is the gate on" but "has anything got past
-         it" — and that one does want the row to shout. -->
+         it" — and that one does want the row to shout. -->{% endcomment %}
     <div class="maint-toggle{% if origin_gate.stats.count %} has-bypass{% endif %}">
         <div class="maint-toggle-status">
             <span class="maint-dot"></span>
@@ -463,11 +463,11 @@
                 {% endif %}
 
                 {% if origin_gate.stats.count %}
-                <!-- COLLAPSED BY DEFAULT. Native <details>, no JS. The summary
+                {% comment %}<!-- COLLAPSED BY DEFAULT. Native <details>, no JS. The summary
                      stays one short line so .maint-toggle's flex-wrap keeps the
                      button on the right; expanding adds HEIGHT, not width, and
                      .origin-gate-detail caps the width so long path lists wrap
-                     instead of pushing the button onto its own line. -->
+                     instead of pushing the button onto its own line. -->{% endcomment %}
                 <details class="origin-gate-detail">
                     <summary style="cursor:pointer;">
                         <strong>{{ origin_gate.stats.count }}</strong> bypassed Cloudflare
@@ -497,9 +497,9 @@
         </form>
     </div>
 
-    <!-- ================= Protection panel (paint15) ==================== -->
-    <!-- Payments master switch (F). Requires Stripe env keys too — the view
-         checks both, so flipping this without keys leaves lookups free. -->
+    {% comment %}<!-- ================= Protection panel (paint15) ==================== -->{% endcomment %}
+    {% comment %}<!-- Payments master switch (F). Requires Stripe env keys too — the view
+         checks both, so flipping this without keys leaves lookups free. -->{% endcomment %}
     <div class="maint-toggle {% if payments_enabled %}is-on{% endif %}" style="margin-top: 12px;">
         <div class="maint-toggle-status">
             <span class="maint-dot"></span>
@@ -531,9 +531,9 @@
         </form>
     </div>
 
-    <!-- Daily VDG budget: hard spend ceiling per London day. When today's
+    {% comment %}<!-- Daily VDG budget: hard spend ceiling per London day. When today's
          refund-net spend reaches it, lookups auto-pause until midnight and one
-         alert email is sent. 0 disables. -->
+         alert email is sent. 0 disables. -->{% endcomment %}
     <div class="maint-toggle {% if site_config.budget_tripped %}is-on{% endif %}" style="margin-top: 12px;">
         <div class="maint-toggle-status">
             <span class="maint-dot"></span>
@@ -573,7 +573,7 @@
        sitting alone under a table of white read-only rows made that grey look
        like a mistake rather than a signal. It now sits with its three siblings
        (maintenance, paid lookups, budget), where the pattern explains itself. {% endcomment %}
-    <!-- Access control (paint42): three lists that REFUSE and one that GRANTS.
+    {% comment %}<!-- Access control (paint42): three lists that REFUSE and one that GRANTS.
          "Blocklists" stopped describing the panel once access keys were added;
          the POST action is still save_blocklists, deliberately unchanged.
          Refuse specific regs / IPs before any spend. Reg is the
@@ -581,7 +581,7 @@
          attacker walks around it. One entry per line (or comma-separated).
          User-agent blocking was removed: trivially evaded, and an over-broad
          fragment would silently block real browsers. That job belongs at
-         Cloudflare, at the edge. -->
+         Cloudflare, at the edge. -->{% endcomment %}
     <div class="maint-toggle blocklist-card" style="margin-top: 12px; align-items: flex-start;">
         <form method="post" action="{% url 'admin_stats' %}" style="margin:0; width:100%;">
             {% csrf_token %}
@@ -632,9 +632,9 @@
         </form>
     </div>
 
-    <!-- ================ end protection panel (paint15) ================== -->
+    {% comment %}<!-- ================ end protection panel (paint15) ================== -->{% endcomment %}
 
-    <!-- Top metrics: row 1 = volume -->
+    {% comment %}<!-- Top metrics: row 1 = volume -->{% endcomment %}
     <div class="stats-grid">
         <div class="stat-card">
             <p class="stat-label">Today</p>
@@ -667,7 +667,7 @@
         {% endif %}
     </div>
 
-    <!-- Top metrics: row 2 = quality + balance -->
+    {% comment %}<!-- Top metrics: row 2 = quality + balance -->{% endcomment %}
     <div class="stats-grid">
         <div class="stat-card">
             <p class="stat-label">Success rate today</p>
@@ -777,10 +777,10 @@
             {% endif %}
     </div>
 
-    <!-- Lookup outcomes: a funnel from every logged lookup down to the two
+    {% comment %}<!-- Lookup outcomes: a funnel from every logged lookup down to the two
          definitive buckets that form the success rate. Colours match the bar:
          green counts as a success, red counts as a failure, grey is excluded
-         from the rate (no vehicle, or the search never ran to completion). -->
+         from the rate (no vehicle, or the search never ran to completion). -->{% endcomment %}
     <div class="panel" id="outcomes">
         <h3>Lookup outcomes</h3>
 
@@ -847,10 +847,10 @@
         </div>
     </div>
 
-    <!-- Daily chart: volume split by outcome (paint16).
+    {% comment %}<!-- Daily chart: volume split by outcome (paint16).
          Stacked rather than a plain count so one glance answers both "how busy"
          and "how well is it working". A shrinking green band is the early
-         warning that something in the pipeline has broken. -->
+         warning that something in the pipeline has broken. -->{% endcomment %}
     <div class="panel">
         <h3>Lookups per day, by outcome (last 30 days)</h3>
         <div class="chart-wrapper">
@@ -858,10 +858,10 @@
         </div>
     </div>
 
-    <!-- Resolution source over time (paint16).
+    {% comment %}<!-- Resolution source over time (paint16).
          Which layer actually produced each code. When a rescue layer stops
          working its band vanishes while the total stays flat — the signal that
-         was missing when the partslink24 name path went quiet for three weeks. -->
+         was missing when the partslink24 name path went quiet for three weeks. -->{% endcomment %}
     <div class="panel">
         <h3>Where the codes came from (last 30 days)</h3>
         <div class="chart-wrapper">
@@ -872,9 +872,9 @@
         </p>
     </div>
 
-    <!-- Side-by-side panels -->
+    {% comment %}<!-- Side-by-side panels -->{% endcomment %}
     <div class="panel-grid">
-        <!-- Top makes -->
+        {% comment %}<!-- Top makes -->{% endcomment %}
         <div class="panel">
             <h3>Top searched makes</h3>
             <div class="table-scroll">
@@ -899,7 +899,7 @@
             </div>
         </div>
 
-        <!-- Top failed makes -->
+        {% comment %}<!-- Top failed makes -->{% endcomment %}
         <div class="panel">
             <h3>Top makes with no paint code</h3>
             <div class="table-scroll">
@@ -926,7 +926,7 @@
     </div>
 
     <div class="panel-grid">
-        <!-- Top regs -->
+        {% comment %}<!-- Top regs -->{% endcomment %}
         <div class="panel">
             <h3>Top searched registrations</h3>
             <div class="table-scroll">
@@ -951,7 +951,7 @@
             </div>
         </div>
 
-        <!-- Device breakdown -->
+        {% comment %}<!-- Device breakdown -->{% endcomment %}
         {% comment %}
            The panel is a flex column so the chart can grow into whatever height
            the taller neighbouring panel sets, keeping the doughnut vertically
@@ -969,8 +969,8 @@
         </div>
     </div>
 
-    <!-- Cost tracker -->
-        <!-- Recent manual lookup queue -->
+    {% comment %}<!-- Cost tracker -->{% endcomment %}
+        {% comment %}<!-- Recent manual lookup queue -->{% endcomment %}
     <style>
         .mlq-card {
             background: #fafafa;
@@ -1121,35 +1121,35 @@
             border-width: 0;
         }
 
-        /* paint16: note marker + expandable detail row */
+        {% comment %}/* paint16: note marker + expandable detail row */{% endcomment %}
         .note-marker { color: #003399; font-size: 12px; margin-left: 4px; }
         tr.has-note:hover { background: #f6f8fb; }
 
-        /* Outcome badges in the recent-lookups table */
+        {% comment %}/* Outcome badges in the recent-lookups table */{% endcomment %}
         .outcome-tick { color: #2e7d32; font-weight: 600; font-size: 16px; }
         .outcome-partial { color: #2e7d32; font-weight: 600; font-size: 17px; }
         .db-badge { display: inline-block; font-size: 10px; font-weight: 600; color: #185FA5; background: #E6F1FB; border: 0.5px solid #85B7EB; border-radius: 4px; padding: 1px 5px; vertical-align: middle; letter-spacing: 0.5px; }
         .outcome-cross { color: #c62828; font-weight: 600; font-size: 16px; }
-        /* Unsupported make. A FOURTH outcome, not a shade of failure: we did
+        {% comment %}/* Unsupported make. A FOURTH outcome, not a shade of failure: we did
            not search and fail, we chose not to search. Grey rather than red or
            green says "no verdict", and a word rather than a glyph keeps it out
            of the tick/cross/half-circle family it does not belong to. Styled to
-           match .db-badge so it reads as the same kind of annotation. */
-        /* Unsupported make: a FOURTH outcome, not a shade of failure. We did
+           match .db-badge so it reads as the same kind of annotation. */{% endcomment %}
+        {% comment %}/* Unsupported make: a FOURTH outcome, not a shade of failure. We did
            not search and fail, we chose not to search — so it gets its own mark
            rather than a red cross. Grey says "no verdict", and the hollow circle
            completes the set: filled tick, half circle, cross, empty. Sized to
-           match .outcome-cross so the column stays optically even. */
+           match .outcome-cross so the column stays optically even. */{% endcomment %}
         .outcome-none { display: inline-block; width: 12px; height: 12px; border-radius: 50%; border: 3px solid #6e6e6e; vertical-align: middle; }
 
-        /* Recent paint code lookups: paint code + wrap-friendly description.
+        {% comment %}/* Recent paint code lookups: paint code + wrap-friendly description.
            Sized and styled to match the surrounding row text (14px, dark, sans)
            so the columns don't look like a second-class citizen alongside
-           Date / Vehicle / etc. */
+           Date / Vehicle / etc. */{% endcomment %}
         .recent-paint-code {
             font-size: 14px;
             color: #1a1a1a;
-            /* paint87: was `nowrap`, so a code could never split mid-code —
+            {% comment %}/* paint87: was `nowrap`, so a code could never split mid-code —
                'LY9' above 'B' reads as two codes. Correct for every provider
                answer: the longest of 696 distinct delivered codes is 16 chars.
                A MANUAL entry on 30 Aug 2026 put 47 chars and three codes in one
@@ -1161,23 +1161,23 @@
                narrow enough column can split 'BU-2957C' after 'BU-'. Two of the
                696 delivered codes contain a hyphen. If hyphenated codes stop
                being rare, this trade stops being right — the fix then is to
-               wrap each code in its own nowrap span via a template filter. */
+               wrap each code in its own nowrap span via a template filter. */{% endcomment %}
             white-space: normal;
-            /* Paint codes are always upper-case in practice; force the display
-               so legacy rows stored in mixed case still render correctly. */
+            {% comment %}/* Paint codes are always upper-case in practice; force the display
+               so legacy rows stored in mixed case still render correctly. */{% endcomment %}
             text-transform: uppercase;
         }
         .recent-paint-desc {
             color: #1a1a1a;
             font-size: 14px;
-            /* Wrap rather than truncate — descriptions can be long but staff want to read them */
+            {% comment %}/* Wrap rather than truncate — descriptions can be long but staff want to read them */{% endcomment %}
             word-break: break-word;
             max-width: 220px;
         }
         .recent-empty { color: #ccc; }
 
-        /* Provider/source badges — all one colour (green) for a consistent
-           look; the badge label itself says which source it was. */
+        {% comment %}/* Provider/source badges — all one colour (green) for a consistent
+           look; the badge label itself says which source it was. */{% endcomment %}
         .provider-badge {
             display: inline-block;
             padding: 2px 8px;
@@ -1191,8 +1191,8 @@
             color: #2e7d32;
         }
 
-        /* Responsive: below 768px, swap the table for stacked cards.
-           Hide the table, show the card list. The two structures are siblings in markup. */
+        {% comment %}/* Responsive: below 768px, swap the table for stacked cards.
+           Hide the table, show the card list. The two structures are siblings in markup. */{% endcomment %}
         .recent-cards { display: none; }
         @media (max-width: 768px) {
             .recent-table { display: none; }
@@ -1220,12 +1220,12 @@
             .recent-card-paint { font-size: 13px; margin-top: 6px; }
             .recent-card-paint .recent-paint-code { display: inline-block; margin-right: 8px; }
 
-            /* Manual lookup queue — tighten the meta grid (default minmax(180px,1fr)
+            {% comment %}/* Manual lookup queue — tighten the meta grid (default minmax(180px,1fr)
                wastes space at narrow widths) and stack the form into clean rows.
                Goal at mobile widths:
                  row 1: paint_code input (full width)
                  row 2: description input (full width)
-                 row 3: Send + ×  (side by side, Send fills space) */
+                 row 3: Send + ×  (side by side, Send fills space) */{% endcomment %}
             .mlq-card {
                 padding: 14px;
             }
@@ -1233,14 +1233,14 @@
                 grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
                 gap: 10px 16px;
             }
-            /* Force each input onto its own line by giving it full basis.
-               Form is already flex with flex-wrap:wrap, so the next item drops down. */
+            {% comment %}/* Force each input onto its own line by giving it full basis.
+               Form is already flex with flex-wrap:wrap, so the next item drops down. */{% endcomment %}
             .mlq-form input[type="text"] {
                 flex: 1 1 100%;
                 min-width: 0;
                 max-width: none;
             }
-            /* Buttons share the final row. Send fills available space, dismiss stays compact. */
+            {% comment %}/* Buttons share the final row. Send fills available space, dismiss stays compact. */{% endcomment %}
             .mlq-form button.send-btn {
                 flex: 1 1 auto;
             }
@@ -1249,14 +1249,14 @@
             }
         }
 
-        /* Even narrower: phone widths. Collapse meta to single column. */
+        {% comment %}/* Even narrower: phone widths. Collapse meta to single column. */{% endcomment %}
         @media (max-width: 480px) {
             .mlq-meta {
                 grid-template-columns: 1fr;
             }
         }
 
-        /* Compose email section at the bottom of admin-stats */
+        {% comment %}/* Compose email section at the bottom of admin-stats */{% endcomment %}
         .compose-form { display: flex; flex-direction: column; gap: 12px; margin-top: 8px; }
         .compose-form label {
             font-size: 12px;
@@ -1311,7 +1311,7 @@
         .compose-form button:hover:not(:disabled) {
             background: #002277;
         }
-        /* Inline status panel for AJAX compose submits */
+        {% comment %}/* Inline status panel for AJAX compose submits */{% endcomment %}
         .compose-status {
             margin-top: 4px;
             padding: 0;
@@ -1403,11 +1403,11 @@
         </div>
     </div>
 
-    <!-- Recent paint code lookups (all searches, success + failure) -->
+    {% comment %}<!-- Recent paint code lookups (all searches, success + failure) -->{% endcomment %}
     <div class="panel">
         <h3>Recent paint code lookups</h3>
 
-        <!-- Desktop/tablet table (>768px). CSS hides this below 768px. -->
+        {% comment %}<!-- Desktop/tablet table (>768px). CSS hides this below 768px. -->{% endcomment %}
         <div class="table-scroll">
         <table class="stats-table recent-table">
             <thead>
@@ -1520,7 +1520,7 @@
         </table>
         </div>
 
-        <!-- Mobile cards (<=768px). CSS shows this only on narrow viewports. -->
+        {% comment %}<!-- Mobile cards (<=768px). CSS shows this only on narrow viewports. -->{% endcomment %}
         <div class="recent-cards">
             {% for s in recent_all_lookups %}
             <div class="recent-card">
@@ -1573,7 +1573,7 @@
     </div>
 
 
-    <!-- Compose email — staff-only one-off branded emails -->
+    {% comment %}<!-- Compose email — staff-only one-off branded emails -->{% endcomment %}
     <div class="panel" id="compose">
         <h3>Compose email</h3>
         <p style="color: #666; font-size: 13px; margin-top: -8px; margin-bottom: 16px;">
@@ -1601,7 +1601,7 @@
                 <span class="compose-hint">Images up to 10&nbsp;MB. A copy is BCC'd to hello@coloureg.com.</span>
             </div>
             <button type="submit" id="compose-send-btn">Send email</button>
-            <!-- Inline status — populated by JS after fetch. Stays empty when idle. -->
+            {% comment %}<!-- Inline status — populated by JS after fetch. Stays empty when idle. -->{% endcomment %}
             <div id="compose-status" class="compose-status" role="status" aria-live="polite"></div>
         </form>
     </div>
@@ -1861,7 +1861,7 @@
     });
     {% endif %}
 
-    /* ============== Manual lookup queue: send / dismiss with animation ============== */
+    {% comment %}/* ============== Manual lookup queue: send / dismiss with animation ============== */{% endcomment %}
     (function() {
         var list = document.getElementById('mlq-list');
         if (!list) return;
