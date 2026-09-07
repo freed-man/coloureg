@@ -1739,6 +1739,103 @@ class PaintLookup(models.Model):
 # =============================================================================
 
 
+class OperatorPaintCode(models.Model):
+    """Paint codes Roland researched by hand, kept OUTSIDE paint_lookup.json.
+
+    paint92. A manual lookup was previously written to its Search row and
+    nowhere else. The same make and colour arriving next week resolved nothing,
+    even though the answer had already been found once and by the most reliable
+    method there is — a human reading a build sheet or a dealer microfiche.
+    Nineteen manual codes were produced in three weeks and none was reusable.
+
+    SEPARATE TABLE, ON PURPOSE. These cannot live in PaintLookup: the loader
+    runs `load_paint_lookup --replace`, which truncates that table on every
+    dataset refresh, and would silently destroy hand-researched work that
+    exists nowhere else. paintscraper owns PaintLookup; the operator owns this.
+
+    CONSULTED ONLY AFTER THE CATALOGUE MISSES. 120,594 merged rows have broader
+    coverage than a handful of manual entries, and reading this first would let
+    one hand-typed row outvote them. Running it as a fallback makes the whole
+    feature additive by construction: it can turn a decline into an answer and
+    can never change an answer the catalogue already gave.
+    """
+
+    manufacturer = models.CharField(max_length=100, db_index=True)  # normalised
+    code = models.CharField(max_length=60, db_index=True)
+    colour_name = models.CharField(max_length=200, blank=True)
+    # Stored normalised at write time so the name->code direction is a plain
+    # indexed equality test, exactly as PaintLookup.normalized_names is.
+    normalized_name = models.CharField(max_length=200, blank=True, db_index=True)
+    model_text = models.CharField(max_length=200, blank=True)
+    source_registration = models.CharField(max_length=20, blank=True)
+    source_search_id = models.IntegerField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        indexes = [
+            models.Index(fields=['manufacturer', 'code']),
+            models.Index(fields=['manufacturer', 'normalized_name']),
+        ]
+
+    def __str__(self):
+        return f'{self.manufacturer} {self.code} {self.colour_name}'.strip()
+
+    @classmethod
+    def record(cls, make, code, colour_name, model=None, registration='', search_id=None):
+        """Remember one hand-researched code. Idempotent on (make, code).
+
+        Returns the row, or None when there is nothing worth keeping — an entry
+        with no code is the operator saying "no code exists", which is a fact
+        about that VEHICLE, not a reusable fact about that colour.
+        """
+        code = (code or '').strip().upper()
+        if not code or not make:
+            return None
+        mfr = PaintLookup.normalize_manufacturer(make)
+        name = (colour_name or '').strip()
+        row, _created = cls.objects.update_or_create(
+            manufacturer=mfr, code=code,
+            defaults={
+                'colour_name': name,
+                'normalized_name': PaintLookup.normalize_name(name) if name else '',
+                'model_text': (model or '').strip(),
+                'source_registration': (registration or '').strip().upper(),
+                'source_search_id': search_id,
+            },
+        )
+        return row
+
+    @classmethod
+    def name_for_code(cls, make, code):
+        """Operator colour name for a code, or None."""
+        if not make or not code:
+            return None
+        row = cls.objects.filter(
+            manufacturer=PaintLookup.normalize_manufacturer(make),
+            code=str(code).strip().upper(),
+        ).exclude(colour_name='').first()
+        return row.colour_name if row else None
+
+    @classmethod
+    def code_for_name(cls, make, colour_name):
+        """Operator code for a colour name, or None.
+
+        DECLINES ON AMBIGUITY, like PaintLookup.code_from_name. Two hand-typed
+        rows sharing a name is exactly the case where guessing is worst: both
+        were entered deliberately, so neither is a typo to be discarded.
+        """
+        if not make or not colour_name:
+            return None
+        norm = PaintLookup.normalize_name(colour_name)
+        if not norm:
+            return None
+        codes = list(cls.objects.filter(
+            manufacturer=PaintLookup.normalize_manufacturer(make),
+            normalized_name=norm,
+        ).values_list('code', flat=True)[:3])
+        return codes[0] if len(codes) == 1 else None
+
+
 class VrmCache(models.Model):
     """Cached successful lookup result, keyed by registration (A).
 

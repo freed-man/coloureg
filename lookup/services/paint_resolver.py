@@ -63,7 +63,7 @@ def _enrich_from_lookup(result, make, model=None, vdg_colour=None):
         return result
     try:
         # Import here to avoid a circular import at module load.
-        from lookup.models import PaintLookup
+        from lookup.models import PaintLookup, OperatorPaintCode
 
         code = (result.get('paint_code') or '').strip()
         # A provider can return a real code that no retailer sells (paint85).
@@ -100,6 +100,11 @@ def _enrich_from_lookup(result, make, model=None, vdg_colour=None):
                 # no 'colour' key, and pl24 is where combination codes come from.
                 vdg_colour=vdg_colour or result.get('colour') or '',
             )
+            # paint92: the operator's own table, consulted ONLY on a catalogue
+            # miss. Additive by construction — it can fill a blank, never
+            # overwrite an answer 120,594 merged rows already produced.
+            if not name:
+                name = OperatorPaintCode.name_for_code(make, code)
             if name:
                 result['paint_description'] = name
                 # the NAME was supplied by our database, not the provider
@@ -112,6 +117,11 @@ def _enrich_from_lookup(result, make, model=None, vdg_colour=None):
             found_code, hex_val, _canon_name = PaintLookup.code_from_name(
                 manufacturer=make, colour_name=desc, model=model,
             )
+            # paint92: same fallback, other direction. This is the one that
+            # pays — a hand-researched code exists precisely BECAUSE the
+            # catalogue could not resolve that name the first time.
+            if not found_code:
+                found_code = OperatorPaintCode.code_for_name(make, desc)
             if found_code:
                 result['paint_code'] = found_code
                 # the CODE was supplied by our database, not the provider

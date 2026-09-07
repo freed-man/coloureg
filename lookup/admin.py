@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import Search
+from .models import Search, OperatorPaintCode
 
 
 @admin.register(Search)
@@ -167,3 +167,14 @@ class SearchAdmin(admin.ModelAdmin):
     )
     date_hierarchy = 'timestamp'
     ordering = ('-timestamp',)
+
+@admin.register(OperatorPaintCode)
+class OperatorPaintCodeAdmin(admin.ModelAdmin):
+    """paint92. Hand-researched codes, editable because they are hand-entered:
+    a typo here silently answers every future lookup for that colour."""
+
+    list_display = ('manufacturer', 'code', 'colour_name', 'model_text',
+                    'source_registration', 'created_at')
+    list_filter = ('manufacturer',)
+    search_fields = ('manufacturer', 'code', 'colour_name', 'source_registration')
+    ordering = ('-created_at',)

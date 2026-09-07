@@ -28,7 +28,7 @@ from django.utils import timezone
 from django.views.decorators.http import require_POST, require_GET
 from django.views.decorators.csrf import csrf_exempt
 from django_ratelimit.core import is_ratelimited
-from .models import Search, PaintLookup, SiteConfig, VrmCache
+from .models import Search, PaintLookup, SiteConfig, VrmCache, OperatorPaintCode
 from .services.vdg import (
     vehicle_lookup,
     smart_title,
@@ -3390,6 +3390,26 @@ def submit_manual_lookup(request):
     # Title-case the description so '  glacier white-metallic ' becomes
     # 'Glacier White-Metallic' before saving and sending.
     paint_description_clean = smart_title(paint_description) if paint_description else ''
+
+    # paint92: remember a hand-researched code so the NEXT car with the same
+    # make and colour resolves automatically. Written before the email so a
+    # send failure cannot lose the research; update_or_create makes a retry
+    # after that failure a no-op rather than a duplicate.
+    #
+    # Deliberately outside the `if no_code` branch below: a no-code outcome is
+    # a fact about that VEHICLE ("nothing published"), not a reusable fact
+    # about a colour, and record() drops it.
+    if not no_code:
+        try:
+            OperatorPaintCode.record(
+                make=search.make, code=paint_code,
+                colour_name=paint_description_clean, model=search.model,
+                registration=search.registration, search_id=search.id,
+            )
+        except Exception:  # noqa: BLE001
+            # Never let remembering break fulfilling. The customer's email is
+            # the job; this is a side effect that improves the next lookup.
+            logger.exception('operator paint code not recorded')
 
     # Look up swatch (hex) and canonical code so the email matches the website UI
     paint_hex, _paint_name, canonical_code = PaintLookup.lookup_with_canonical(
