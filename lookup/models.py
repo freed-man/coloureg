@@ -2118,6 +2118,35 @@ class SiteConfig(models.Model):
         cat = (category or '').strip().upper()
         return cat.startswith('L') and (len(cat) == 1 or cat[1].isdigit())
 
+    @staticmethod
+    def is_wheelplan_unsupported(wheelplan):
+        """True for DVLA's '2 WHEEL' — a motorcycle, stated as a fact not a class.
+
+        paint93. is_category_unsupported above says ABSENCE MEANS NOTHING, and
+        it is right to: a blank category is not evidence of anything. But blank
+        is common — 124 of 2,070 real lookups, 6% — and bikes kept walking
+        through it. R852XRA (1998 Suzuki, 2 Sep) and ERZ223 (2002 Yamaha,
+        7 Sep) both ran the full pipeline as if they were cars because VDG
+        returned no ModelClassification for either.
+
+        So this is a SECOND POSITIVE SIGNAL rather than a looser reading of the
+        first. DVLA's Vehicle Enquiry Service returns `wheelplan` on the call
+        get_dvla_data already makes on every lookup — it costs nothing extra,
+        and it is populated where VDG's category is not. DVLA's own Kawasaki
+        example omits typeApproval entirely and still says '2 WHEEL'.
+
+        GATING BY WHEELPLAN, NOT BY MAKE. Measured over 71 lookups on
+        bike-capable marques: 9 came back L3 and were gated correctly, and of
+        the 13 with a blank category FOUR resolved to a real paint code —
+        FG20NMJ is a Honda Jazz, a car. A make list containing Yamaha or Suzuki
+        would have refused those four and every Suzuki Swift after them.
+
+        '3 WHEEL' IS DELIBERATELY NOT GATED. It covers both a Piaggio MP3 and a
+        Reliant Robin, and refusing a Robin owner to catch a scooter is the
+        wrong trade on a value nobody has counted.
+        """
+        return (wheelplan or '').strip().upper() == '2 WHEEL'
+
     def is_make_unsupported(self, make):
         if not make:
             return False

@@ -1006,6 +1006,9 @@ def index(request):
         # EU type-approval category (M1/N1/N2/N3). Only VDG provides it; default
         # empty so the DVLA fallback branch (which doesn't set it) is safe.
         category = ''
+        # paint93: DVLA's wheelplan, carried on the VES response get_dvla_data
+        # already fetches. Blank until DVLA answers; a blank never gates.
+        wheelplan = ''
 
         # Use VDG vehicle data if it returned successfully, else fall back to DVLA+MOT
         if vdg_data and vdg_data.get('vehicle_returned'):
@@ -1018,6 +1021,35 @@ def index(request):
             transmission = vdg_data.get('transmission', '')
             engine_description = vdg_data.get('engine_description', '')
             category = vdg_data.get('category', '')
+
+            # paint93: VDG answered, so the DVLA block below never runs — DVLA
+            # is a FALLBACK for when VDG fails, not an every-lookup call. That
+            # is why the class gate has been blind: R852XRA (1998 Suzuki) and
+            # ERZ223 (2002 Yamaha) both had VDG identify the make and return NO
+            # ModelClassification, and nothing else was ever asked.
+            #
+            # So ask, but only when there is a hole to fill. 124 of 2,070 real
+            # lookups carry no category — 6% — and on the other 94% this costs
+            # nothing because it does not fire. It is also on the request path,
+            # which is why it is conditional rather than unconditional.
+            #
+            # NEVER OVERWRITES. VDG's ModelClassification is the richer source;
+            # this only fills a blank, and a DVLA failure leaves the blank alone
+            # exactly as today.
+            # AND the make list has not already gated it. A Mitsubishi is
+            # refused on its marque whatever DVLA says about wheels, so asking
+            # buys nothing and adds latency to a page that is already decided.
+            if not category and not config.is_make_unsupported(make):
+                _cls = _timed_call('dvla_class', registration,
+                                   lambda: get_dvla_data(registration))
+                # isinstance, not truthiness. get_dvla_data returns
+                # response.json() straight from an external API, so a list or a
+                # string is a real possibility and .get() would raise on the
+                # request path. It also means a bare MagicMock in a test walks
+                # past instead of writing a mock object into search.category.
+                if isinstance(_cls, dict):
+                    wheelplan = str(_cls.get('wheelplan') or '').strip()
+                    category = str(_cls.get('typeApproval') or '').strip()
         else:
             # --- FALLBACK: DVLA + MOT ---
             #
@@ -1125,6 +1157,12 @@ def index(request):
                     year = dvla.get('yearOfManufacture')
                 colour = (dvla.get('colour', '') or '').title() or colour
                 fuel_type = normalize_fuel_type(dvla.get('fuelType', '')) or fuel_type
+                # paint93: two fields already in this response and previously
+                # discarded. typeApproval FILLS a blank category (never
+                # overwrites VDG's, which is the richer source); wheelplan is a
+                # separate signal that stands on its own when both are blank.
+                wheelplan = (dvla.get('wheelplan', '') or '').strip()
+                category = category or (dvla.get('typeApproval', '') or '').strip()
 
             mot = _timed_call('mot', registration,
                               lambda: get_mot_data(registration))
@@ -1207,7 +1245,8 @@ def index(request):
         # BMW bike without touching BMW cars — which no name rule can do.
         make_not_automated = bool(make) and not paint_code \
             and (config.is_make_unsupported(make)
-                 or SiteConfig.is_category_unsupported(category))
+                 or SiteConfig.is_category_unsupported(category)
+                 or SiteConfig.is_wheelplan_unsupported(wheelplan))
         if make_not_automated:
             search.error_message = 'make_not_automated'
 
