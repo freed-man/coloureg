@@ -749,6 +749,38 @@ def index(request):
         # repeat is free to us and still chargeable to the customer.
         cached_payload = get_cached_vrm_payload(registration)
         if cached_payload:
+            # paint94: DECIDE THE GATE HERE, do not replay the stored verdict.
+            #
+            # The caching rule a few hundred lines below already claims this is
+            # what happens — "is_make_unsupported() is consulted live when a
+            # cached row is served, so removing a make immediately resumes
+            # normal lookups rather than serving a stale verdict". It was not
+            # true: the branch read cached_payload['make_not_automated'], a bool
+            # frozen at first lookup. Removing a make from the list changed
+            # nothing until the entry expired, and a gate added AFTER an entry
+            # was cached never applied to it at all.
+            #
+            # That is how ERZ223 slipped through. It was first looked up on
+            # 7 Sep, before the wheelplan gate existed, and cached with the
+            # verdict False. Every repeat replayed that False, so the bike ran
+            # the full pipeline again — two VDG paint calls and a One Auto call
+            # — on a page that should have stopped at the gate.
+            #
+            # Mirrors the live gate exactly, including `bool(make) and not
+            # paint_code`: a code already in hand beats the policy, same as
+            # there. An entry cached before paint94 has no 'wheelplan' key, so
+            # that clause reads '' and gates nothing, while the make and
+            # category clauses still re-evaluate — old entries get strictly
+            # better, never worse.
+            _cached_gated = (
+                bool(cached_payload.get('make', ''))
+                and not (cached_payload.get('paint_code') or '')
+                and (config.is_make_unsupported(cached_payload.get('make', ''))
+                     or SiteConfig.is_category_unsupported(
+                         cached_payload.get('category') or '')
+                     or SiteConfig.is_wheelplan_unsupported(
+                         cached_payload.get('wheelplan') or ''))
+            )
             cache_search = Search(
                 registration=registration,
                 ip_address=get_client_ip(request),
@@ -777,8 +809,7 @@ def index(request):
                 # fall into `incomplete` — the bucket that means "the user left
                 # before recovery ran" — quietly corrupting the one statistic
                 # this marker exists to keep honest.
-                error_message=('make_not_automated'
-                               if cached_payload.get('make_not_automated') else ''),
+                error_message=('make_not_automated' if _cached_gated else ''),
                 # THE ACCESS LABEL WAS MISSING HERE. The normal path stamps it
                 # from _access_label(); this branch never did, so a visitor
                 # holding an unlimited-access key lost the marker the moment
@@ -803,7 +834,25 @@ def index(request):
             # Never poll from a cached serve: either the code is already here,
             # or the make is one we do not automate and recovery would be the
             # 60s of spend this whole path exists to avoid.
-            payload['paint_pending'] = False
+            # paint94: NOT unconditionally False any more.
+            #
+            # Only two kinds of row are cached — a complete success, and a row
+            # the gate stopped — and neither needs recovery, which is why this
+            # was flat False. But the gate is now decided live above, so a third
+            # kind exists: an entry cached as gated whose verdict has since
+            # changed (a make removed from the list). That row has no paint code
+            # and no longer has a reason not to look for one, so recovery must
+            # run for it.
+            #
+            # Serving it from cache and letting recovery run, rather than
+            # falling through to a fresh lookup: falling through pushes the
+            # request down to the per-registration window, which can REFUSE it —
+            # turning away a paid, zero-cost cached repeat, the exact drift the
+            # placement invariant in the battery guards against. Everything
+            # recovery needs (make, vin, category) is already on the cached row.
+            payload['paint_pending'] = (
+                not _cached_gated and not (cached_payload.get('paint_code') or '')
+            )
             request.session['vehicle_data'] = payload
             return redirect('results')
 
@@ -1294,6 +1343,12 @@ def index(request):
             # Drives the results-page message and the admin badge. Distinct from
             # a miss: we did not search and fail, we chose not to search.
             'make_not_automated': make_not_automated,
+            # paint94: the DVLA wheelplan, so a cache-served repeat can decide
+            # the CLASS gate for itself. Without it the cached branch had no way
+            # to know a bike was a bike and replayed a verdict reached before
+            # the wheelplan gate existed — ERZ223 was cached on 7 Sep with
+            # make_not_automated False and kept serving that False afterwards.
+            'wheelplan': wheelplan,
         }
 
         # --- Unsupported make: stop here, deliberately ----------------------
