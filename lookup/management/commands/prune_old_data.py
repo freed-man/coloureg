@@ -40,10 +40,31 @@ class Command(BaseCommand):
             action='store_true',
             help='Show how many records would be scrubbed without making changes.',
         )
+        # SELECTABLE TARGETS. The three jobs here have nothing in common but
+        # the schedule: scrubbing personal fields off year-old Search rows is a
+        # retention obligation, deleting stale VrmCache rows is housekeeping,
+        # and clearing expired sessions is both — those rows hold the full
+        # unmasked VIN. Being able to run one without the others matters when
+        # you want to clear 692 sessions today and think about the cache later.
+        #
+        # Naming each flag POSITIVELY (--sessions) rather than as an exclusion
+        # (--no-cache) means the command says what it will do, not what it will
+        # skip. With none given it still does all three, so the cron entry and
+        # anything already scripted are unaffected.
+        parser.add_argument('--searches', action='store_true',
+                            help='Scrub personal fields from old Search rows.')
+        parser.add_argument('--cache', action='store_true',
+                            help='Delete stale VrmCache entries.')
+        parser.add_argument('--sessions', action='store_true',
+                            help='Delete expired sessions (these hold full VINs).')
 
     def handle(self, *args, **options):
         cutoff = timezone.now() - timedelta(days=self.RETENTION_DAYS)
         dry_run = options['dry_run']
+        # No target flags at all means ALL of them — the historical behaviour,
+        # so an existing cron entry keeps working unchanged.
+        _picked = (options['searches'], options['cache'], options['sessions'])
+        do_searches, do_cache, do_sessions = _picked if any(_picked) else (True, True, True)
 
         # Find rows older than cutoff that still have at least one personal
         # field populated. Using positive Q-disjunction makes intent clear:
@@ -80,7 +101,7 @@ class Command(BaseCommand):
         # old VINs sat untouched. It would not have run until May 2027.
         stale_cutoff = timezone.now() - timedelta(days=VRM_CACHE_TTL_DAYS)
         stale = VrmCache.objects.filter(updated_at__lt=stale_cutoff)
-        stale_count = stale.count()
+        stale_count = stale.count() if do_cache else 0
 
         # --- Expired sessions (paint19) --------------------------------------
         # django_session rows hold the whole vehicle_data payload, which
@@ -97,9 +118,9 @@ class Command(BaseCommand):
         # save), not the 365-day Search window: an expired session is dead
         # weight the moment it lapses and there is no reason to keep it.
         expired_sessions = Session.objects.filter(expire_date__lt=timezone.now())
-        expired_session_count = expired_sessions.count()
+        expired_session_count = expired_sessions.count() if do_sessions else 0
 
-        count = candidates.count()
+        count = candidates.count() if do_searches else 0
         oldest = candidates.order_by('timestamp').values_list('timestamp', flat=True).first()
         newest = candidates.order_by('-timestamp').values_list('timestamp', flat=True).first()
 
@@ -113,6 +134,9 @@ class Command(BaseCommand):
         self.stdout.write(f'  VrmCache cutoff:        {stale_cutoff.isoformat()}')
         self.stdout.write(f'  Stale cache entries:    {stale_count}')
         self.stdout.write(f'  Expired sessions:       {expired_session_count}')
+        _sel = ', '.join(n for n, on in (('searches', do_searches), ('cache', do_cache),
+                                         ('sessions', do_sessions)) if on)
+        self.stdout.write(f'  Running:                {_sel}')
         self.stdout.write(f'  Mode:                   {"DRY RUN (no changes)" if dry_run else "LIVE (will modify)"}')
         self.stdout.write('')
 
@@ -134,7 +158,7 @@ class Command(BaseCommand):
         # truncation override does not apply — safe here because every value
         # written is empty or None.
         updated = 0
-        if count:
+        if do_searches and count:
             updated = candidates.update(
                 ip_address=None,
                 user_agent='',
@@ -145,11 +169,11 @@ class Command(BaseCommand):
             )
 
         # Independent of the Search scrub above — see the note at the cutoff.
-        if stale_count:
+        if do_cache and stale_count:
             stale.delete()
 
         # Independent of both cutoffs above — see the note at expired_sessions.
-        if expired_session_count:
+        if do_sessions and expired_session_count:
             expired_sessions.delete()
 
         self.stdout.write(self.style.SUCCESS(

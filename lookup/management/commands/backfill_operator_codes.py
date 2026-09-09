@@ -36,9 +36,16 @@ class Command(BaseCommand):
         parser.add_argument(
             '--dry-run', action='store_true',
             help='Report what would be imported without writing anything.')
+        parser.add_argument(
+            '--update', action='store_true',
+            help='Also overwrite rows that already exist. Off by default so a '
+                 're-run cannot undo a hand correction.')
 
     def handle(self, *args, **options):
         dry = options['dry_run']
+        update = options['update']
+        existing = set(
+            OperatorPaintCode.objects.values_list('manufacturer', 'code'))
 
         rows = (Search.objects
                 .filter(Q(provider=Search.PROVIDER_MANUAL)
@@ -52,7 +59,7 @@ class Command(BaseCommand):
                 .values('id', 'registration', 'make', 'model',
                         'paint_code', 'paint_description'))
 
-        seen, skipped, conflicts, imported = {}, [], [], 0
+        seen, skipped, conflicts, kept, imported = {}, [], [], [], 0
         for r in rows:
             code = (r['paint_code'] or '').strip()
             if _NON_ANSWER.match(code):
@@ -65,6 +72,9 @@ class Command(BaseCommand):
                 if PaintLookup.normalize_name(prev) != PaintLookup.normalize_name(name):
                     conflicts.append((key, prev, name))
             seen[key] = name or prev or ''
+            if key in existing and not update:
+                kept.append(key)
+                continue
             if not dry:
                 OperatorPaintCode.record(
                     make=r['make'], code=code, colour_name=name,
@@ -78,13 +88,18 @@ class Command(BaseCommand):
         w(f'  manual rows with a code : {len(rows)}')
         w(f'  distinct (make, code)   : {len(seen)}')
         w(f'  skipped as non-answers  : {len(skipped)}  {skipped or ""}')
-        w(f'  name disagreements      : {len(conflicts)}')
+        w(f'  already present, left alone: {len(kept)}'
+          + ('' if update else '   (--update to overwrite)'))
+        w(f'  name disagreements      : {len(conflicts)}   (from SEARCH history, '
+          f'not the table)')
         for key, old, new in conflicts:
             w(f'      {key[0]}/{key[1]:<12}{old!r} -> {new!r}')
         w('')
         if dry:
+            _new = len(seen) - len(set(kept))
             w(self.style.WARNING(
-                f'Dry run. {len(seen)} pairs WOULD be imported. '
+                f'Dry run. {_new} pairs WOULD be written '
+                f'({len(set(kept))} already present and untouched). '
                 'Re-run without --dry-run to write them.'))
             return
         w(self.style.SUCCESS(f'Imported. Table now holds '
