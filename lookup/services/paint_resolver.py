@@ -184,7 +184,7 @@ PL24_BACKSTOP_S = float(os.environ.get('PL24_BACKSTOP_S', '10'))
 #: that arrive anyway (~£125/month at 5 credits each), one at 25s pre-empts
 #: 3.9% (~£15/month). Ezyvin adds ~2.2s on a hit, so 25s still resolves well
 #: inside the 60s race deadline.
-EZYVIN_BACKSTOP_S = float(os.environ.get('EZYVIN_BACKSTOP_S', '25'))
+EZYVIN_BACKSTOP_S = float(os.environ.get('EZYVIN_BACKSTOP_S', '20'))
 
 # SECOND-CHANCE STAGE (paint73). When a paid leg finishes with nothing, ask it
 # once more — but only briefly.
@@ -863,6 +863,27 @@ def resolve_paint(registration, vin, make, category=None, telemetry=None, model=
             )
             return f_pl24
 
+        # paint96: STARTED IMMEDIATELY, alongside VDG.
+        #
+        # paint68 held it back as reinforcement — summoned by a paid leg
+        # dropping out, or a 10s backstop — because it is the one source we do
+        # not own: a partslink24 subscription whose session can be locked out,
+        # as it was on 13 Aug when amended T&Cs blocked the login and four
+        # lookups failed until a human logged in by hand. Holding it back kept
+        # it on roughly 73% of lookups instead of all of them.
+        #
+        # That is now traded the other way. pl24 wins 52% of non-VAG
+        # deliveries and is FREE, so every second it spends waiting for VDG to
+        # fail is a second the customer waits for nothing. Starting it at zero
+        # also pulls the reserve's both-empty trigger forward by about VDG's
+        # median 4.5s, which is worth more than any backstop tuning.
+        #
+        # THE COST IS LOAD: ~37% more calls on the supplier we control least.
+        # If partslink24 ever rate-limits or locks out, this is the change that
+        # caused it. Reverting is one line — delete this call and the drop-out
+        # triggers below come back to life on their own.
+        _start_pl24('immediate')
+
         # THIRD LEG (paint95) — EZYVIN, AND IT IS NOT IN THE RACE.
         #
         # One Auto used to sit here, started unconditionally alongside VDG. It
@@ -904,12 +925,7 @@ def resolve_paint(registration, vin, make, category=None, telemetry=None, model=
         ezyvin_backstop_at = time.monotonic() + EZYVIN_BACKSTOP_S
         ezyvin_name_only_result = None
         deadline = time.monotonic() + PL24_TIMEOUT
-        pending = {f_vdg}
-        # BACKSTOP. The drop-out trigger fires on failure, but two legs can
-        # simply be SLOW rather than failed — a cold VDG at 26s with One Auto
-        # still polling would leave pl24 idle throughout. Bring it in anyway
-        # once the paid legs have had a fair run.
-        pl24_backstop_at = time.monotonic() + PL24_BACKSTOP_S
+        pending = {f_vdg, f_pl24}
         pl24_code_result = None      # pl24 returned a real CODE (short-circuits)
         pl24_name_only_result = None  # pl24 returned a name but NO code (fallback)
 
@@ -924,11 +940,6 @@ def resolve_paint(registration, vin, make, category=None, telemetry=None, model=
             remaining = deadline - time.monotonic()
             if remaining <= 0:
                 break  # deadline hit — stop waiting, abandon stragglers
-            # Wake up for the backstop even if nothing has completed, so a pair
-            # of slow-but-alive paid legs cannot leave pl24 unstarted.
-            if f_pl24 is None:
-                remaining = min(remaining,
-                                max(0.05, pl24_backstop_at - time.monotonic()))
             # And for Ezyvin's, so a pair of slow-but-alive legs cannot leave
             # the reserve unstarted either.
             if f_ezyvin is None:
@@ -942,9 +953,6 @@ def resolve_paint(registration, vin, make, category=None, telemetry=None, model=
                 # Nothing completed in this slice. If that was the backstop
                 # waking us, bring pl24 in and keep waiting; otherwise the real
                 # deadline has passed.
-                if f_pl24 is None and time.monotonic() >= pl24_backstop_at:
-                    pending = pending | {_start_pl24('backstop')}
-                    continue
                 if f_ezyvin is None and time.monotonic() >= ezyvin_backstop_at:
                     started = _start_ezyvin('backstop')
                     if started is not None:
@@ -961,9 +969,6 @@ def resolve_paint(registration, vin, make, category=None, telemetry=None, model=
                     _t['vdg_retry_returned'] = True
                     race_over.set()   # a usable code exists from here on
                     return _enrich_from_lookup(vdg_result, make, model, vdg_colour=vdg_colour)
-                # VDG has DROPPED OUT — it finished with nothing. Bring pl24 in.
-                if f_pl24 is None:
-                    pending = pending | {_start_pl24('vdg_empty')}
 
             # VDG didn't (yet) yield paint. Inspect pl24 if it completed in this
             # batch. A real CODE wins immediately (subject only to a VDG code,
