@@ -216,6 +216,31 @@ class Search(models.Model):
         max_digits=6, decimal_places=2, null=True, blank=True,
     )
     oneauto_outcome = models.CharField(max_length=40, blank=True, default='')
+    # paint99: the SAME FOR THE RESERVE, and this was missed when paint95
+    # shipped it. resolve_paint populated ezyvin_credits, ezyvin_outcome and
+    # ezyvin_started_because in its telemetry dict, _apply_recovery_telemetry
+    # had no branch for them, and there were no columns — so every one of them
+    # was computed and discarded. The leg's entire spend was invisible, which
+    # is precisely the gap paint15 closed for the VDG retry and paint76 for One
+    # Auto. Twice is a pattern: a new paid leg needs its columns in the same
+    # change that adds the leg.
+    #
+    # CREDITS, NOT POUNDS. Ezyvin bills in credits and the rate is an operator
+    # setting, so storing a converted figure would freeze today's rate into
+    # history. An IntegerField because the observed values are 0 and 5.
+    ezyvin_credits = models.IntegerField(null=True, blank=True)
+    # 'code' | 'name_only' | 'not_found' (a FREE 404) | 'empty_charged' (a 200
+    # with no colour — charged, and the number worth watching) | 'timeout' |
+    # 'no_token' | 'skipped_race_over' | 'transport_error' | 'http_<n>'.
+    #
+    # not_found and empty_charged must stay distinguishable: one costs nothing
+    # and the other costs 5 credits, and lumping them together would make the
+    # reserve look more expensive or more wasteful than it is.
+    ezyvin_outcome = models.CharField(max_length=40, blank=True, default='')
+    # 'both_empty' (the designed trigger) or 'backstop' (a leg hung). The RATIO
+    # is the diagnostic: if backstop is more than a rarity, EZYVIN_BACKSTOP_S is
+    # too early and the real question is which leg is hanging.
+    ezyvin_started_because = models.CharField(max_length=24, blank=True, default='')
     # WHY pl24 was brought into the race, or blank if it never was (paint68).
     # pl24 is now held back as reinforcement rather than started on every
     # lookup, so "did it run" is no longer implied by "a lookup happened" — and
@@ -250,6 +275,11 @@ class Search(models.Model):
         Returns None only when NOTHING recorded a cost — which is different from
         zero, and the dashboard shows the two differently.
         """
+        # paint99: ezyvin_credits is DELIBERATELY not summed here. It is a
+        # credit count, not pounds, and the conversion rate is an operator
+        # setting — adding 5 to £0.06 would produce £5.06. The dashboard prices
+        # credits separately, where the rate can change without rewriting
+        # history.
         parts = [c for c in (self.vdg_transaction_cost, self.oneauto_cost)
                  if c is not None]
         return sum(parts) if parts else None

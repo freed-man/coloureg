@@ -2242,6 +2242,21 @@ def _apply_recovery_telemetry(search, telemetry):
     if telemetry.get('oneauto_outcome'):
         search.oneauto_outcome = telemetry['oneauto_outcome'][:40]
         fields.append('oneauto_outcome')
+    # paint99: the reserve's telemetry, previously computed and thrown away.
+    #
+    # `is not None` for credits, not truthiness: 0 IS the answer on a free 404,
+    # and it is the outcome that makes this leg affordable on marques with no
+    # coverage. A falsy test would record only the calls that cost money and
+    # hide every one that did not.
+    if telemetry.get('ezyvin_credits') is not None:
+        search.ezyvin_credits = telemetry['ezyvin_credits']
+        fields.append('ezyvin_credits')
+    if telemetry.get('ezyvin_outcome'):
+        search.ezyvin_outcome = telemetry['ezyvin_outcome'][:40]
+        fields.append('ezyvin_outcome')
+    if telemetry.get('ezyvin_started_because'):
+        search.ezyvin_started_because = telemetry['ezyvin_started_because'][:24]
+        fields.append('ezyvin_started_because')
     if telemetry.get('pl24_started_because'):
         search.pl24_started_because = telemetry['pl24_started_because'][:24]
         fields.append('pl24_started_because')

@@ -87,6 +87,12 @@ class SearchAdmin(admin.ModelAdmin):
         'oneauto_outcome',
         'oneauto_code',
         'oneauto_name',
+        # paint99. Written by the pipeline, so readonly like every other cost
+        # and diagnostic field — editing one would corrupt the record of what
+        # the reserve actually did.
+        'ezyvin_credits',
+        'ezyvin_outcome',
+        'ezyvin_started_because',
         'pl24_outcome',
         'pl24_name',
         'pl24_started_because',
@@ -142,10 +148,20 @@ class SearchAdmin(admin.ModelAdmin):
         # they were all expanded. 'collapse' gives a Show/Hide toggle, so the
         # row view stays readable and the newest diagnostics are one click away
         # rather than invisible.
-        ('One Auto', {
+        # paint99: renamed from 'One Auto'. It holds both paid non-VDG legs now —
+        # One Auto's historical columns and the reserve's live ones — and a
+        # group labelled for a leg that no longer runs would read as though
+        # Ezyvin's spend belonged to it.
+        ('Paid legs — One Auto (retired) · Ezyvin (reserve)', {
             'classes': ('collapse',),
             'fields': ('oneauto_code', 'oneauto_name', 'oneauto_outcome',
-                       'oneauto_cost'),
+                       'oneauto_cost',
+                       # paint99: the reserve, in the same group. Both lists
+                       # have to know about a column — readonly_fields alone
+                       # does not render it, and fieldsets alone would make it
+                       # editable.
+                       'ezyvin_credits', 'ezyvin_outcome',
+                       'ezyvin_started_because'),
         }),
         ('partslink24 detail', {
             'classes': ('collapse',),
