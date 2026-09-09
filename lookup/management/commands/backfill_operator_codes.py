@@ -59,7 +59,7 @@ class Command(BaseCommand):
                 .values('id', 'registration', 'make', 'model',
                         'paint_code', 'paint_description'))
 
-        seen, skipped, conflicts, kept, imported = {}, [], [], [], 0
+        seen, skipped, names, kept, imported = {}, [], {}, [], 0
         for r in rows:
             code = (r['paint_code'] or '').strip()
             if _NON_ANSWER.match(code):
@@ -67,11 +67,16 @@ class Command(BaseCommand):
                 continue
             key = (PaintLookup.normalize_manufacturer(r['make']), code.upper())
             name = (r['paint_description'] or '').strip()
-            prev = seen.get(key)
-            if prev is not None and name:
-                if PaintLookup.normalize_name(prev) != PaintLookup.normalize_name(name):
-                    conflicts.append((key, prev, name))
-            seen[key] = name or prev or ''
+            # ONE ENTRY PER CODE, holding every distinct name the history used.
+            # Reporting each TRANSITION instead printed bmw/B39 twice — once for
+            # Mineralgrau->Mineral Grey and again for the flip back — which reads
+            # as two problems when it is one code recorded three times.
+            if name:
+                names.setdefault(key, [])
+                if not any(PaintLookup.normalize_name(n) == PaintLookup.normalize_name(name)
+                           for n in names[key]):
+                    names[key].append(name)
+            seen[key] = name or seen.get(key) or ''
             if key in existing and not update:
                 kept.append(key)
                 continue
@@ -88,12 +93,29 @@ class Command(BaseCommand):
         w(f'  manual rows with a code : {len(rows)}')
         w(f'  distinct (make, code)   : {len(seen)}')
         w(f'  skipped as non-answers  : {len(skipped)}  {skipped or ""}')
-        w(f'  already present, left alone: {len(kept)}'
+        # DISTINCT pairs, not rows. 134 rows over 123 codes read as though more
+        # was skipped than exists.
+        w(f'  already present, skipped: {len(set(kept))}'
           + ('' if update else '   (--update to overwrite)'))
-        w(f'  name disagreements      : {len(conflicts)}   (from SEARCH history, '
-          f'not the table)')
-        for key, old, new in conflicts:
-            w(f'      {key[0]}/{key[1]:<12}{old!r} -> {new!r}')
+
+        # SAY WHAT THE TABLE HOLDS NOW. The history is immutable, so a code
+        # recorded under two names reports forever — and after the operator has
+        # corrected it, an unchanging list of "disagreements" is a report you
+        # stop reading. Showing the current value turns each line into a
+        # question that can be answered rather than a permanent complaint.
+        multi = {k: v for k, v in names.items() if len(v) > 1}
+        w(f'  codes named >1 way      : {len(multi)}   (in SEARCH history — '
+          f'immutable, so these always list)')
+        for key in sorted(multi):
+            row = OperatorPaintCode.objects.filter(
+                manufacturer=key[0], code=key[1]).first()
+            w(f'      {key[0]}/{key[1]}')
+            w(f'          history : {" | ".join(multi[key])}')
+            if row is None:
+                w('          table   : not imported')
+            else:
+                mark = 'flagged' if row.needs_review else 'not flagged'
+                w(f'          table   : {row.colour_name!r}  ({mark})')
         w('')
         if dry:
             _new = len(seen) - len(set(kept))
