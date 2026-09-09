@@ -178,13 +178,27 @@ PL24_TIMEOUT = float(os.environ.get('PL24_CLIENT_TIMEOUT_S', '60'))
 # coverage run had vehicles still returning 202 at 21-31s. The backstop exists
 # precisely because a leg can be slow rather than failed.
 PL24_BACKSTOP_S = float(os.environ.get('PL24_BACKSTOP_S', '10'))
-#: paint95. How long the reserve waits before firing on its own. LATE on
-#: purpose: this is a safety net for a HUNG leg, not a competitor. Measured
-#: against 24 days of deliveries — a backstop at 15s pre-empts 32% of answers
-#: that arrive anyway (~£125/month at 5 credits each), one at 25s pre-empts
-#: 3.9% (~£15/month). Ezyvin adds ~2.2s on a hit, so 25s still resolves well
-#: inside the 60s race deadline.
-EZYVIN_BACKSTOP_S = float(os.environ.get('EZYVIN_BACKSTOP_S', '20'))
+#: paint95/97. How long the reserve waits before firing on its own.
+#:
+#: A SAFETY NET FOR A HUNG LEG, NOT A COMPETITOR. The backstop can only ever
+#: pre-empt a FREE answer: it fires while a leg is still running, and a running
+#: leg usually still answers, from VDG or pl24, at no cost. Pulling it earlier
+#: therefore does not make failures faster — it makes successes more expensive.
+#:
+#: Measured against 24 days of deliveries, BEFORE paint96 started pl24 at zero:
+#: 15s sat in front of 32% of them, 20s in front of 10%, 25s in front of 3.9%.
+#: Starting pl24 immediately pulls that distribution left by roughly VDG's
+#: median 4.5s, so each threshold now sits earlier in the curve than those
+#: percentages suggest.
+#:
+#: 15s is an operator choice, not a measured optimum — it buys a few seconds
+#: for customers whose leg has genuinely hung, and pays for it on the ones
+#: whose leg was merely slow. THE NUMBER TO WATCH IS ezyvin_started_because:
+#: if 'backstop' is a rarity against 'both_empty', this is doing its job. If it
+#: is a meaningful share, that is not an argument for going earlier still — it
+#: means legs are hanging, and the fix is finding out why rather than paying to
+#: route around it.
+EZYVIN_BACKSTOP_S = float(os.environ.get('EZYVIN_BACKSTOP_S', '15'))
 
 # SECOND-CHANCE STAGE (paint73). When a paid leg finishes with nothing, ask it
 # once more — but only briefly.
