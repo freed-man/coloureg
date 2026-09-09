@@ -268,6 +268,11 @@ def _extract_transaction_cost(data):
     up front (e.g. £0.45), then, when a sub-document returns nothing, credits a
     RefundAmount back on the SAME transaction (e.g. £0.33 refunded when
     PaintCodeList is empty, leaving £0.12 actually billed for the vehicle data).
+    Those figures are a BUNDLE-era illustration of the mechanism, kept because
+    they show gross and refund on one transaction. Since paint66 split the
+    packages the live numbers are ~£0.06 vehicle and ~£0.27 paint — and the
+    refund still turns on the document being EMPTY, not on the answer being
+    useful: a PaintCodeList holding a colour name with no code is billed.
     The previous version returned TransactionCost alone and claimed it was
     "already net of any refund" — it is not. Summing the gross figure overstated
     spend on every paint-less lookup by the refunded amount, and any downstream

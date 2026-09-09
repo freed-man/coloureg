@@ -378,13 +378,32 @@ def _vdg_retry(registration, telemetry=None, search_id=None, race_over=None):
     """Second VDG bundle call. Returns a paint dict if paint came back, else
     None. Never raises — VDG errors degrade to None (no recovery).
 
-    COST (paint15): VDG bills this call whether or not it returns paint — a
-    paint-less call is partially refunded and nets ~£0.12, a hit costs the full
-    ~£0.45. That spend used to vanish entirely: this function only surfaced a
-    value on a hit, so the retry's cost never reached the Search row. Since ~58%
-    of lookups trigger a retry, every downstream total undercounted badly — and
-    the daily budget breaker (which sums vdg_transaction_cost) would have seen
-    only ~60% of real spend, letting a £30 budget run to ~£50.
+    COST. Measured 8 Sep across 473 paint-less lookups since paint66 split the
+    packages. A refund is CONDITIONAL, and the condition is what the paint
+    document contained rather than whether we could use it:
+
+        genuinely empty PaintCodeList -> refunded, ~£0.06 (vehicle only)   73%
+        a colour NAME but no code     -> charged in full, ~£0.33           26%
+
+    The discriminator is stark: of the 343 refunded, ZERO carried a colour name
+    from VDG; of the 125 charged, 117 did. VDG refunds an empty document, not a
+    disappointing one — a list with a name in it is not empty, so we got data,
+    it just was not a code.
+
+    This replaces the paint15 note, which read "VDG bills this call whether or
+    not it returns paint — a paint-less call is partially refunded and nets
+    ~£0.12, a hit costs the full ~£0.45". Those were BUNDLE-era figures, true
+    until 15 Aug and wrong every day since, and they overstate the retry's cost
+    by roughly 4x. They were quoted as current on 8 Sep and produced a wrong
+    answer about the pipeline; the numbers above carry their measurement date
+    for that reason.
+
+    WHY THE SPEND IS RECORDED AT ALL (paint15, still true). It used to vanish:
+    this function only surfaced a value on a hit, so the retry's cost never
+    reached the Search row. Since ~58% of lookups trigger a retry, every
+    downstream total undercounted — and the daily budget breaker, which sums
+    vdg_transaction_cost, would have seen only ~60% of real spend, letting a
+    £30 budget run to ~£50.
 
     So we now stash the NET cost and the latest balance into the telemetry dict
     on EVERY outcome — hit, miss, or error — and the caller adds them to the row.

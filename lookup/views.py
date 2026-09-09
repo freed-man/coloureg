@@ -2250,10 +2250,19 @@ def _apply_recovery_telemetry(search, telemetry):
         search.recovery_duration_ms = int(dur)
 
     # --- Retry spend (paint15) ------------------------------------------------
-    # The recovery makes a SECOND VDG call, which VDG bills whether or not it
-    # returns paint (~£0.45 on a hit, ~£0.12 refund-net on a miss). Add it to the
-    # row so vdg_transaction_cost is the TOTAL real spend for this lookup, not
-    # just the first call. This is what makes the daily budget breaker accurate:
+    # The recovery makes a SECOND VDG call, and whether VDG bills it depends on
+    # what came back. Measured 8 Sep over 473 paint-less lookups since the
+    # paint66 package split: ~£0.33 on a hit; on a miss, refunded to ~£0.06
+    # when the PaintCodeList is genuinely EMPTY (73%), charged in full when it
+    # holds a colour NAME but no code (26%). VDG refunds an empty document, not
+    # a disappointing one.
+    #
+    # The figures previously here — ~£0.45 on a hit, ~£0.12 refund-net on a
+    # miss — were BUNDLE-era, true until 15 Aug and wrong since. See the COST
+    # note on _vdg_retry.
+    #
+    # Add it to the row either way, so vdg_transaction_cost is the TOTAL real
+    # spend for this lookup rather than just the first call. This is what makes the daily budget breaker accurate:
     # ~58% of lookups retry, so without this it would see roughly 60% of true
     # spend and a £30 budget would silently run to ~£50.
     # Safe from double-counting: the caller claims the recovery atomically
