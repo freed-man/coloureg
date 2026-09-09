@@ -1814,6 +1814,24 @@ class OperatorPaintCode(models.Model):
     source_registration = models.CharField(max_length=20, blank=True)
     source_search_id = models.IntegerField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
+    # paint100. The row is unique on (manufacturer, code), so a second
+    # fulfilment of the same code used to overwrite the first SILENTLY. Two
+    # different things look identical from here:
+    #
+    #   a better name for one colour — a typo fixed, a fuller description;
+    #   a code a manufacturer REUSED across years or models for two colours.
+    #
+    # The first wants overwriting; the second must not be, because the newer
+    # name would then answer every future lookup for the older colour. The
+    # catalogue shows the hazard is real — Alfa 414 carries both 'Rosso Alfa'
+    # and 'Azzurro Nuvola Pearl' on one code.
+    #
+    # This cannot be decided automatically, so it is SURFACED instead: keep the
+    # newer name, remember the older one, and flag the row. Measured over 134
+    # historical manual entries it would raise 5, all of them one colour spelled
+    # two ways — a rate low enough that a flag is worth reading.
+    previous_name = models.CharField(max_length=200, blank=True, default='')
+    needs_review = models.BooleanField(default=False, db_index=True)
 
     class Meta:
         indexes = [
@@ -1837,14 +1855,30 @@ class OperatorPaintCode(models.Model):
             return None
         mfr = PaintLookup.normalize_manufacturer(make)
         name = (colour_name or '').strip()
+        norm = PaintLookup.normalize_name(name) if name else ''
+        # COMPARE BEFORE WRITING. Normalised, so 'Ink Blue Metallic' and
+        # 'Ink Blue (Metallic)' are not treated as a disagreement — the flag is
+        # for a different COLOUR, not a different rendering of one.
+        existing = cls.objects.filter(manufacturer=mfr, code=code).first()
+        conflict = bool(existing and existing.normalized_name and norm
+                        and existing.normalized_name != norm)
+        if conflict:
+            logger.warning(
+                'operator paint code %s/%s recorded as %r, previously %r — '
+                'flagged for review', mfr, code, name, existing.colour_name)
         row, _created = cls.objects.update_or_create(
             manufacturer=mfr, code=code,
             defaults={
                 'colour_name': name,
-                'normalized_name': PaintLookup.normalize_name(name) if name else '',
+                'normalized_name': norm,
                 'model_text': (model or '').strip(),
                 'source_registration': (registration or '').strip().upper(),
                 'source_search_id': search_id,
+                # Only ever SET by a conflict, never cleared by one. Clearing it
+                # on a later matching entry would hide a disagreement the moment
+                # the same name was entered a third time.
+                **({'previous_name': existing.colour_name, 'needs_review': True}
+                   if conflict else {}),
             },
         )
         return row

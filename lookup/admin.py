@@ -189,8 +189,11 @@ class OperatorPaintCodeAdmin(admin.ModelAdmin):
     """paint92. Hand-researched codes, editable because they are hand-entered:
     a typo here silently answers every future lookup for that colour."""
 
-    list_display = ('manufacturer', 'code', 'colour_name', 'model_text',
-                    'source_registration', 'created_at')
-    list_filter = ('manufacturer',)
+    # paint100: needs_review FIRST in the filter, because a flagged row is the
+    # only thing here that wants acting on — the rest is a reference table.
+    list_display = ('manufacturer', 'code', 'colour_name', 'needs_review',
+                    'previous_name', 'model_text', 'source_registration',
+                    'created_at')
+    list_filter = ('needs_review', 'manufacturer')
     search_fields = ('manufacturer', 'code', 'colour_name', 'source_registration')
     ordering = ('-created_at',)
