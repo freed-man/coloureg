@@ -2303,6 +2303,11 @@ def _record_paint_hit(search_id, paint_code, paint_description, source, telemetr
         search.provider = Search.PROVIDER_VDG_RETRY
     elif source == 'oneauto':
         search.provider = Search.PROVIDER_ONEAUTO
+    elif source == 'ezyvin':
+        # paint98: without this a reserve win stored provider 'none' on a row
+        # that plainly held a code — the leg would have been invisible in every
+        # per-source total from the day it shipped.
+        search.provider = Search.PROVIDER_EZYVIN
     search.enriched_from = enriched_from or ''
     fields = ['paint_code', 'paint_description', 'success', 'provider', 'enriched_from']
     fields += _apply_recovery_telemetry(search, telemetry)
@@ -3048,12 +3053,22 @@ def admin_stats(request):
             abandoned=Count('id', filter=Q(paint_code='', no_code_available=False,
                                            recovery_attempted=False)
                             & ~Q(make='') & ~Q(error_message='make_not_automated')),
-            s_vdg=Count('id', filter=Q(paint_code__gt='', provider=Search.PROVIDER_VDG)),
-            # One Auto races VDG on every lookup and is billed for it, but had
-            # no series here: the one provider you pay for whose contribution
-            # the chart could not show.
-            s_oneauto=Count('id', filter=Q(paint_code__gt='',
-                                           provider=Search.PROVIDER_ONEAUTO)),
+            # paint98: the pre-15 Aug VDG series is GONE. PROVIDER_VDG stopped
+            # being reachable when paint66 split the packages on 15 Aug — the
+            # last row is 15 Aug 14:40 — so from 14 Sep it sits permanently at
+            # zero inside a 30-day window. A series that can only ever read
+            # nothing is not history, it is a bar nobody can interpret next to
+            # one that is doing the work.
+            #
+            # The VALUE stays in PROVIDER_CHOICES so the 416 historical rows
+            # still render a label in the Source column. Only the chart drops
+            # it, because the chart is a 30-day view and those rows have left.
+            #
+            # Ezyvin replaces One Auto here, for the reason paint76 added One
+            # Auto: it is the leg you pay for, and without a series the
+            # question of whether it earns its credits has no picture.
+            s_ezyvin=Count('id', filter=Q(paint_code__gt='',
+                                          provider=Search.PROVIDER_EZYVIN)),
             # SPLIT BY WHICH VDG CALL WON, matching what the Source column
             # shows per row. A lookup makes one paint call, and a second only
             # when the first came back empty — so "VDG" and "VDG (2nd)" are
@@ -3081,8 +3096,8 @@ def admin_stats(request):
     chart_labels = []
     chart_delivered, chart_failed, chart_nocode = [], [], []
     chart_bad_plate, chart_not_automated, chart_abandoned = [], [], []
-    src_vdg, src_oneauto, src_retry, src_pl24, src_manual, src_cache = [], [], [], [], [], []
-    src_retry2 = []
+    src_ezyvin, src_retry, src_retry2 = [], [], []
+    src_pl24, src_manual, src_cache = [], [], []
     # LOCAL dates, not UTC. TruncDate above buckets by the CURRENT timezone
     # (Europe/London), so `now.date()` — which is UTC — disagrees with it
     # whenever London is ahead: between 23:00 and midnight UTC through BST, a
@@ -3100,8 +3115,7 @@ def admin_stats(request):
         chart_bad_plate.append(row.get('bad_plate', 0))
         chart_not_automated.append(row.get('not_automated', 0))
         chart_abandoned.append(row.get('abandoned', 0))
-        src_vdg.append(row.get('s_vdg', 0))
-        src_oneauto.append(row.get('s_oneauto', 0))
+        src_ezyvin.append(row.get('s_ezyvin', 0))
         src_retry.append(row.get('s_retry', 0))
         src_retry2.append(row.get('s_retry2', 0))
         src_pl24.append(row.get('s_pl24', 0))
@@ -3264,8 +3278,7 @@ def admin_stats(request):
             'bad_plate': chart_bad_plate,
             'not_automated': chart_not_automated,
             'abandoned': chart_abandoned,
-            'src_vdg': src_vdg,
-            'src_oneauto': src_oneauto,
+            'src_ezyvin': src_ezyvin,
             'src_retry': src_retry,
             'src_retry2': src_retry2,
             'src_pl24': src_pl24,

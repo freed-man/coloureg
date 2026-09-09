@@ -17,6 +17,7 @@ class Search(models.Model):
     PROVIDER_VDG_RETRY = 'vdg_retry'
     PROVIDER_PARTSLINK24 = 'partslink24'
     PROVIDER_ONEAUTO = 'oneauto'
+    PROVIDER_EZYVIN = 'ezyvin'
     PROVIDER_MANUAL = 'manual'
     PROVIDER_CACHE = 'cache'
     PROVIDER_NONE = 'none'
@@ -60,6 +61,19 @@ class Search(models.Model):
         # VDG. The supplier's own name has the space; the badge does not have
         # the room, and consistency across that column matters more here.
         (PROVIDER_ONEAUTO, 'OneAuto'),
+        # paint98. Ezyvin replaced One Auto as the third leg in paint95, and
+        # this was missed: resolve_paint returned source 'ezyvin', nothing
+        # mapped it, and a reserve win would have stored the default 'none'
+        # while the row plainly held a code. The one question this leg exists
+        # to answer — is the reserve earning its credits — would have had no
+        # data behind it, which is exactly what paint76 added PROVIDER_ONEAUTO
+        # to fix.
+        #
+        # ONEAUTO IS KEPT, not renamed. 27 historical rows won by it are real
+        # and renaming the value would rewrite them as something they were not,
+        # the same reason PROVIDER_VDG kept its value when it stopped being how
+        # VDG wins. One word for the badge, like OneAuto and PARTSLINK24.
+        (PROVIDER_EZYVIN, 'Ezyvin'),
         (PROVIDER_MANUAL, 'Manual'),
         (PROVIDER_CACHE, 'Cache'),
         (PROVIDER_NONE, 'None'),

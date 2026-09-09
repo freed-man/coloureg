@@ -1787,11 +1787,22 @@
                 Source column. Here the two series only need to say which
                 era they belong to.
                 {% endcomment %}
-                { label: 'VDG (pre-15 Aug)', data: CHART.src_vdg,  backgroundColor: '#003399' },
+                {% comment %} paint98: STACKED IN PIPELINE ORDER, so the bar reads
+                the way a lookup runs — VDG first, its second chance, then pl24,
+                and Ezyvin last because it only fires once the other two have
+                finished with nothing. A reader can see where in the sequence
+                the answers are coming from without knowing the code.
+
+                'VDG (pre-15 Aug)' is gone. PROVIDER_VDG became unreachable when
+                paint66 split the packages; its last row is 15 Aug 14:40, so from
+                14 Sep it can only read zero inside a 30-day window. The value
+                survives in PROVIDER_CHOICES for the 416 historical rows in the
+                Source column — it is only this 30-day view it has left.
+                {% endcomment %}
                 { label: 'VDG',          data: CHART.src_retry,  backgroundColor: '#4a7bd4' },
                 { label: 'VDG (2nd)',    data: CHART.src_retry2, backgroundColor: '#8fb3e8' },
-                { label: 'One Auto',    data: CHART.src_oneauto, backgroundColor: '#00857a' },
                 { label: 'PL24',        data: CHART.src_pl24,    backgroundColor: '#7fb069' },
+                { label: 'Ezyvin',      data: CHART.src_ezyvin,  backgroundColor: '#00857a' },
                 { label: 'Manual',      data: CHART.src_manual,  backgroundColor: '#b8860b' },
                 { label: 'Cache',       data: CHART.src_cache,   backgroundColor: '#999' }
             ]
