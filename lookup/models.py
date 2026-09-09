@@ -1839,6 +1839,29 @@ class OperatorPaintCode(models.Model):
             models.Index(fields=['manufacturer', 'normalized_name']),
         ]
 
+    def save(self, *args, **kwargs):
+        """Keep normalized_name derived, always.
+
+        paint101. It IS derived from colour_name — record() computes it on
+        every write — but the admin exposed both as free text with no link
+        between them. Correcting a colour name by hand therefore left the
+        normalised copy behind, and the two directions disagreed silently:
+        code->name served the new name while name->code went on matching the
+        old one, with nothing to show for it.
+
+        Found immediately, on the first two rows the backfill flagged for
+        review — so the very edit the flag exists to prompt was the edit that
+        broke the row.
+
+        Normalising here rather than in the admin form covers every write path:
+        record(), a shell edit, a data migration, a future importer.
+        """
+        self.colour_name = (self.colour_name or '').strip()
+        self.code = (self.code or '').strip().upper()
+        self.normalized_name = (PaintLookup.normalize_name(self.colour_name)
+                                if self.colour_name else '')
+        super().save(*args, **kwargs)
+
     def __str__(self):
         return f'{self.manufacturer} {self.code} {self.colour_name}'.strip()
 

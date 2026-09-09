@@ -195,5 +195,10 @@ class OperatorPaintCodeAdmin(admin.ModelAdmin):
                     'previous_name', 'model_text', 'source_registration',
                     'created_at')
     list_filter = ('needs_review', 'manufacturer')
+    # paint101: DERIVED, so not editable. It is recomputed from colour_name on
+    # every save; leaving it as a text box invited exactly the drift that
+    # override exists to prevent, and a stale value breaks the name->code
+    # direction while the row still looks correct.
+    readonly_fields = ('normalized_name', 'created_at')
     search_fields = ('manufacturer', 'code', 'colour_name', 'source_registration')
     ordering = ('-created_at',)
