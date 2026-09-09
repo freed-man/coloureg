@@ -40,6 +40,13 @@ import requests
 from .http import get_session
 
 from .vdg import paint_lookup, VdgError, _log_reg
+# paint95: One Auto is NO LONGER SUBMITTED as a race leg, but the import and
+# _oneauto_leg below are deliberately kept. Re-enabling it is then one
+# ex.submit line rather than a rebuild, and its battery coverage — the coverage
+# skip list, the second chance, the billing sink — stays live rather than
+# rotting. The decision to drop it rests on 24 days of data; that is enough to
+# act on and not enough to burn the bridge.
+from . import ezyvin
 from . import oneauto
 
 
@@ -171,6 +178,13 @@ PL24_TIMEOUT = float(os.environ.get('PL24_CLIENT_TIMEOUT_S', '60'))
 # coverage run had vehicles still returning 202 at 21-31s. The backstop exists
 # precisely because a leg can be slow rather than failed.
 PL24_BACKSTOP_S = float(os.environ.get('PL24_BACKSTOP_S', '10'))
+#: paint95. How long the reserve waits before firing on its own. LATE on
+#: purpose: this is a safety net for a HUNG leg, not a competitor. Measured
+#: against 24 days of deliveries — a backstop at 15s pre-empts 32% of answers
+#: that arrive anyway (~£125/month at 5 credits each), one at 25s pre-empts
+#: 3.9% (~£15/month). Ezyvin adds ~2.2s on a hit, so 25s still resolves well
+#: inside the 60s race deadline.
+EZYVIN_BACKSTOP_S = float(os.environ.get('EZYVIN_BACKSTOP_S', '25'))
 
 # SECOND-CHANCE STAGE (paint73). When a paid leg finishes with nothing, ask it
 # once more — but only briefly.
@@ -761,8 +775,13 @@ def resolve_paint(registration, vin, make, category=None, telemetry=None, model=
     abandoned pl24 thread's HTTP request has its own timeout and ends on its own.
     """
     # THREE workers for three legs (paint83). It was 2 when the pool held only
-    # the VDG retry and pl24; One Auto made a third, and a third leg in a
+    # the VDG retry and pl24; a third leg made it three, and a third leg in a
     # two-worker pool does not run — it QUEUES.
+    #
+    # paint95 replaced One Auto with Ezyvin as that third leg, so the COUNT is
+    # unchanged and the RELATIONSHIP is what matters: max_workers >= the number
+    # of ex.submit sites below. Asserting the literal 3 would pass while a
+    # fourth leg reintroduced the starvation this fixed.
     #
     # LF73YMU showed exactly that: One Auto polled to its 30s budget while pl24,
     # submitted by the backstop at 10s, sat waiting for a free worker. It only
@@ -783,11 +802,21 @@ def resolve_paint(registration, vin, make, category=None, telemetry=None, model=
     _t['pl24_started_because'] = ''
     _t['pl24_returned'] = False
     _t['pl24_name_only'] = False
+    # paint95: Ezyvin replaces One Auto here. The oneauto_* keys are still
+    # written, as False/None/'' — the Search columns and every admin chart read
+    # them, and dropping them mid-flight would blank historical comparisons
+    # rather than showing the leg stopping.
     _t['oneauto_attempted'] = False
     _t['oneauto_returned'] = False
     _t['oneauto_name_only'] = False
     _t['oneauto_cost'] = None
     _t['oneauto_outcome'] = ''
+    _t['ezyvin_attempted'] = False
+    _t['ezyvin_returned'] = False
+    _t['ezyvin_name_only'] = False
+    _t['ezyvin_credits'] = None
+    _t['ezyvin_outcome'] = ''
+    _t['ezyvin_started_because'] = ''
     # RACE FLAG. Set the moment a usable code is found, so a second chance that
     # fires afterwards can record that it did. Measurement only right now — it
     # cancels nothing, because nothing here CAN be cancelled: an HTTP call
@@ -834,32 +863,48 @@ def resolve_paint(registration, vin, make, category=None, telemetry=None, model=
             )
             return f_pl24
 
-        # THIRD LEG (paint67). Called for EVERY make that gets this far.
+        # THIRD LEG (paint95) — EZYVIN, AND IT IS NOT IN THE RACE.
         #
-        # There is deliberately no second skip list here. Makes we cannot do at
-        # all live in SiteConfig.unsupported_makes, which is admin-editable and
-        # is the FIRST guard in the chain — a lookup for one of those never
-        # reaches this pool, so filtering again would be dead code that needs a
-        # deploy to change.
+        # One Auto used to sit here, started unconditionally alongside VDG. It
+        # is gone. Measured over 24 days: it won 27 of 621 deliveries, 16 of
+        # those were answers another leg also produced, and on 208 VAG lookups
+        # it was the only source ZERO times. £115.20 spent, £102.30 of it on
+        # calls whose answers were discarded.
         #
-        # Nor is there a coverage filter. A 206 is free and this leg runs
-        # concurrently with the other two, so calling a make One Auto cannot do
-        # costs nothing — while NOT calling it hides a sellable code and freezes
-        # our picture of a supplier whose coverage demonstrably moves (Tesla was
-        # added to their Build Decode product mid-evaluation).
+        # Ezyvin is the replacement and it is HELD BACK, for a different reason
+        # than pl24 is. pl24 can start on a single drop-out because it is free.
+        # Ezyvin charges 5 credits for any 200 — including one carrying no
+        # colour — and in 44% of deliveries one leg comes back empty while the
+        # other still delivers. Starting it on one drop-out would spend roughly
+        # £188/month on answers that were already arriving.
         #
-        # It earns its place because it is BOUNDED — ~6s whether it answers or
-        # not — while the VDG leg above is now the FIRST paint call rather than
-        # a warm retry, so it is cold: 10-26s typically, and up to a 60s gateway
-        # 502 on BMW. One Auto answered 5 of 5 BMWs.
-        _t['oneauto_attempted'] = True
-        _oa_sink = {}
-        f_oneauto = ex.submit(
-            _oneauto_leg, vin, make, model, year, search_id, _oa_sink, race_over,
-        )
-
+        # So the trigger is BOTH legs finished with no code. Measured on 18
+        # recorded failures — the population that actually reaches here — it
+        # answered 15, returned a free 404 on 3, and was charged-and-empty on
+        # none: 75 credits, £8.25, for lookups the pipeline currently loses
+        # outright.
+        f_ezyvin = None
+        def _start_ezyvin(reason):
+            """Bring Ezyvin in. Idempotent."""
+            nonlocal f_ezyvin
+            if f_ezyvin is not None or not vin:
+                return None
+            _t['ezyvin_attempted'] = True
+            _t['ezyvin_started_because'] = reason
+            f_ezyvin = ex.submit(ezyvin.lookup, vin, _ez_sink, race_over)
+            return f_ezyvin
+        _ez_sink = {}
+        # A LATE BACKSTOP, deliberately. Its job is to catch a HUNG leg, not to
+        # race: a leg that is merely slow will usually still answer, and buying
+        # its answer from Ezyvin instead is money for nothing. Measured against
+        # 24 days of deliveries, a backstop at 15s pre-empts 32% of them
+        # (~£125/month) while one at 25s pre-empts 4% (~£15/month). Ezyvin adds
+        # ~2.2s on a hit, so a 25s backstop still answers inside the 60s
+        # deadline with room to spare.
+        ezyvin_backstop_at = time.monotonic() + EZYVIN_BACKSTOP_S
+        ezyvin_name_only_result = None
         deadline = time.monotonic() + PL24_TIMEOUT
-        pending = {f_vdg, f_oneauto}
+        pending = {f_vdg}
         # BACKSTOP. The drop-out trigger fires on failure, but two legs can
         # simply be SLOW rather than failed — a cold VDG at 26s with One Auto
         # still polling would leave pl24 idle throughout. Bring it in anyway
@@ -874,7 +919,6 @@ def resolve_paint(registration, vin, make, category=None, telemetry=None, model=
             except Exception:  # noqa: BLE001  (any worker failure -> no paint)
                 return None
 
-        oneauto_name_only_result = None  # One Auto gave a NAME but no code
 
         while pending:
             remaining = deadline - time.monotonic()
@@ -885,6 +929,11 @@ def resolve_paint(registration, vin, make, category=None, telemetry=None, model=
             if f_pl24 is None:
                 remaining = min(remaining,
                                 max(0.05, pl24_backstop_at - time.monotonic()))
+            # And for Ezyvin's, so a pair of slow-but-alive legs cannot leave
+            # the reserve unstarted either.
+            if f_ezyvin is None:
+                remaining = min(remaining,
+                                max(0.05, ezyvin_backstop_at - time.monotonic()))
             done, pending = concurrent.futures.wait(
                 pending, timeout=remaining,
                 return_when=concurrent.futures.FIRST_COMPLETED,
@@ -896,6 +945,11 @@ def resolve_paint(registration, vin, make, category=None, telemetry=None, model=
                 if f_pl24 is None and time.monotonic() >= pl24_backstop_at:
                     pending = pending | {_start_pl24('backstop')}
                     continue
+                if f_ezyvin is None and time.monotonic() >= ezyvin_backstop_at:
+                    started = _start_ezyvin('backstop')
+                    if started is not None:
+                        pending = pending | {started}
+                        continue
                 break
 
             # Enforce the VDG-over-pl24 preference within this batch: if the VDG
@@ -910,38 +964,6 @@ def resolve_paint(registration, vin, make, category=None, telemetry=None, model=
                 # VDG has DROPPED OUT — it finished with nothing. Bring pl24 in.
                 if f_pl24 is None:
                     pending = pending | {_start_pl24('vdg_empty')}
-
-            # Then One Auto, ahead of pl24. Ordering rationale: both cost money
-            # only when they answer, but One Auto returns a code AND a colour
-            # name together ('MINERALGRAU METALLIC (B39)') where pl24 often
-            # returns one or the other — and 18 of 27 observed disagreements
-            # between sources were completeness rather than conflict.
-            if f_oneauto in done:
-                _t['oneauto_cost'] = _oa_sink.get('cost')
-                _t['oneauto_outcome'] = _oa_sink.get('outcome', '')
-                oa = _result_or_none(f_oneauto)
-                if oa is not None and oa.get('code'):
-                    _t['oneauto_returned'] = True
-                    race_over.set()   # a usable code exists from here on
-                    return _enrich_from_lookup(
-                        {'paint_code': oa['code'],
-                         'paint_description': oa['description'],
-                         'all_paint_codes': oa['all_codes'],
-                         'source': 'oneauto'},
-                        make, model, vdg_colour=vdg_colour,
-                    )
-                # No CODE from One Auto. Either a colour NAME with no code
-                # (Stellantis and Ford do this — 'BANQUISE WHITE PAINT',
-                # 'Race Red') or nothing at all. Both are a drop-out, so pl24
-                # joins; but a name is kept as a fallback because it is real
-                # manufacturer data and _enrich_from_lookup may still resolve it
-                # to a code through our own table.
-                if oa is not None and oa.get('description'):
-                    _t['oneauto_name_only'] = True
-                    oneauto_name_only_result = oa
-                if f_pl24 is None:
-                    pending = pending | {_start_pl24(
-                        'oneauto_name_only' if oa is not None else 'oneauto_empty')}
 
             # VDG didn't (yet) yield paint. Inspect pl24 if it completed in this
             # batch. A real CODE wins immediately (subject only to a VDG code,
@@ -965,6 +987,41 @@ def resolve_paint(registration, vin, make, category=None, telemetry=None, model=
             if pl24_code_result is not None:
                 race_over.set()   # a usable code exists from here on
                 return _enrich_from_lookup(pl24_code_result, make, model, vdg_colour=vdg_colour)
+            # THE RESERVE. Started only once BOTH paid-and-free legs have
+            # finished with nothing, so by the time it is inspected there is
+            # nothing left to beat it — but it is read last regardless, because
+            # a leg that costs credits should never pre-empt one that does not.
+            if f_ezyvin is not None and f_ezyvin in done:
+                _t['ezyvin_credits'] = _ez_sink.get('credits')
+                _t['ezyvin_outcome'] = _ez_sink.get('outcome', '')
+                ez = _result_or_none(f_ezyvin)
+                if ez is not None and ez.get('code'):
+                    _t['ezyvin_returned'] = True
+                    race_over.set()
+                    return _enrich_from_lookup(
+                        {'paint_code': ez['code'],
+                         'paint_description': ez['description'],
+                         'all_paint_codes': [],
+                         'source': 'ezyvin'},
+                        make, model, vdg_colour=vdg_colour,
+                    )
+                # A NAME with no code is still real manufacturer data, and four
+                # Mazdas measured on 8 Sep came back exactly that way —
+                # 'MARINER BLUE', 'DEEP CRYSTAL BLUE MICA'. Held as a fallback
+                # so _enrich_from_lookup can try to resolve it through our own
+                # table, same as pl24's.
+                if ez is not None and ez.get('description'):
+                    _t['ezyvin_name_only'] = True
+                    ezyvin_name_only_result = ez
+            # BOTH LEGS DONE, NEITHER HAD A CODE — the trigger. Checked here
+            # rather than on a single drop-out because Ezyvin is charged on any
+            # 200: firing when one leg is empty while the other still delivers
+            # would spend on 44% of deliveries that never needed it.
+            if (f_ezyvin is None and f_pl24 is not None
+                    and f_vdg not in pending and f_pl24 not in pending):
+                started = _start_ezyvin('both_empty')
+                if started is not None:
+                    pending = pending | {started}
 
         # No real code from any path. Fall back to a colour NAME if one was
         # offered — a partial answer, but real manufacturer data and often
@@ -982,13 +1039,13 @@ def resolve_paint(registration, vin, make, category=None, telemetry=None, model=
         # often than it resolves — deliberately, because a wrong code is worse
         # than none when the customer is about to buy paint.
         fallback = pl24_name_only_result
-        if fallback is None and oneauto_name_only_result is not None:
-            oa = oneauto_name_only_result
+        if fallback is None and ezyvin_name_only_result is not None:
+            ez = ezyvin_name_only_result
             fallback = {
                 'paint_code': '',
-                'paint_description': oa.get('description', ''),
-                'all_paint_codes': oa.get('all_codes', []),
-                'source': 'oneauto',
+                'paint_description': ez.get('description', ''),
+                'all_paint_codes': [],
+                'source': 'ezyvin',
                 'name_only': True,
             }
         return _enrich_from_lookup(fallback, make, model, vdg_colour=vdg_colour)
