@@ -754,7 +754,7 @@
             <p class="stat-label">Ezyvin balance</p>
             {% if ezyvin_credits_left is not None %}
             <p class="stat-value balance-highlight">{{ ezyvin_credits_left }} credits</p>
-            <p class="stat-subvalue">£{{ ezyvin_left_gbp|floatformat:2 }} · from {{ ezyvin_balance_at|date:"M j H:i" }}</p>
+            <p class="stat-subvalue">£{{ ezyvin_left_gbp|floatformat:2 }} · {% if ezyvin_balance_exact %}{{ ezyvin_used_total }} used to date{% else %}est. from {{ ezyvin_balance_at|date:"M j H:i" }}{% endif %}</p>
             {% else %}
             <p class="stat-value" style="color: #999;">—</p>
             <p class="stat-subvalue">set it in the settings panel above</p>

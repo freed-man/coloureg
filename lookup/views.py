@@ -3290,7 +3290,21 @@ def admin_stats(request):
     _ez_rate = float(getattr(dj_settings, 'EZYVIN_CREDIT_GBP', 0) or 0)
     ezyvin_cost_sum = round(_ez_credits * _ez_rate, 2)
     _ez_cfg = SiteConfig.get()
-    _ez_left = _ez_cfg.ezyvin_credits_left()
+    # paint110: THEIR lifetime consumption, cached briefly. This is a live HTTP
+    # call on a page render, so it is cached and it fails soft — a dashboard
+    # figure must never 500 the page or make it wait on someone else's API.
+    # 5 minutes is short enough that a top-up shows up quickly and long enough
+    # that a refresh does not hammer them.
+    _ez_used = caches['local'].get('ezyvin_used')
+    if _ez_used is None:
+        from lookup.services import ezyvin as _ez_mod
+        _ez_used = _ez_mod.credits_used()
+        if _ez_used is not None:
+            caches['local'].set('ezyvin_used', _ez_used, 300)
+    _ez_left = _ez_cfg.ezyvin_credits_left(used_now=_ez_used)
+    # Whether the figure is theirs or our fallback, because the two mean
+    # different things: ours cannot see web use, so it reads high.
+    _ez_exact = _ez_used is not None and _ez_cfg.ezyvin_usage_at_balance is not None
     # ALL THREE, so the headline is what the pipeline has actually spent. One
     # Auto stays in the total because its historical spend was real, even
     # though it no longer runs.
@@ -3389,6 +3403,8 @@ def admin_stats(request):
         'ezyvin_balance_at': _ez_cfg.ezyvin_balance_at,
         'ezyvin_left_gbp': (round(_ez_left * _ez_rate, 2)
                             if _ez_left is not None else None),
+        'ezyvin_balance_exact': _ez_exact,
+        'ezyvin_used_total': _ez_used,
         'ezyvin_credits_sum': _ez_credits,
         'ezyvin_billed_count': top_metrics['ezyvin_billed_count'] or 0,
         'ezyvin_free_count': top_metrics['ezyvin_free_count'] or 0,

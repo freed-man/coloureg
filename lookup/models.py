@@ -2076,6 +2076,16 @@ class SiteConfig(models.Model):
     # eaten by the whole history of spend.
     ezyvin_credit_balance = models.IntegerField(null=True, blank=True)
     ezyvin_balance_at = models.DateTimeField(null=True, blank=True)
+    # paint110: THEIR lifetime consumption at the moment the balance was
+    # entered, so the card can subtract (their total now - this) instead of our
+    # own recorded spend.
+    #
+    # Ours is wrong in the direction that matters. It sees only what the
+    # pipeline spent — not the diagnostic tool, and not webCredits at all,
+    # which is the operator using ezyvin.com directly. Measured 10 Sep: 85 web
+    # and 301 api credits against a handful the pipeline had recorded, so a
+    # balance built on our rows alone reads HIGH and runs out without warning.
+    ezyvin_usage_at_balance = models.IntegerField(null=True, blank=True)
 
     daily_budget_gbp = models.DecimalField(
         max_digits=8, decimal_places=2, default=Decimal('50.00'),
@@ -2146,14 +2156,26 @@ class SiteConfig(models.Model):
         verbose_name = 'Site configuration'
         verbose_name_plural = 'Site configuration'
 
-    def ezyvin_credits_left(self):
-        """Entered balance minus credits recorded since it was entered.
+    def ezyvin_credits_left(self, used_now=None):
+        """Entered balance minus what has been consumed since it was entered.
 
-        None when no balance has ever been entered — an unknown balance must
-        read as unknown, not as zero. Zero is a real and alarming state.
+        `used_now` is Ezyvin's OWN lifetime consumption, from
+        ezyvin.credits_used(). Pass it and the sum is exact: it counts the
+        pipeline, the diagnostic tool and web use alike, because it is their
+        number rather than a reconstruction of ours.
+
+        Falls back to summing our own ezyvin_credits when the call fails or no
+        anchor was captured. That fallback UNDERSTATES spend — it cannot see
+        webCredits — so the balance reads high, which is the wrong direction to
+        be wrong in. It is a stopgap for a failed request, not a design.
+
+        None when no balance has ever been entered: unknown must read as
+        unknown, not as zero. Zero is a real and alarming state.
         """
         if self.ezyvin_credit_balance is None:
             return None
+        if used_now is not None and self.ezyvin_usage_at_balance is not None:
+            return self.ezyvin_credit_balance - (used_now - self.ezyvin_usage_at_balance)
         spent = 0
         if self.ezyvin_balance_at:
             spent = (Search.objects
@@ -2382,10 +2404,17 @@ class SiteConfig(models.Model):
         # balance would persist while the timestamp it is measured from
         # silently did not, and the card would subtract from the wrong moment.
         # The paint78 rule again: every assignment has to reach the save list.
+        if stamped:
+            # paint110: capture THEIR lifetime consumption at this instant, so
+            # the card can measure from it. Best-effort — a failed call leaves
+            # it None and ezyvin_credits_left falls back to our own rows.
+            from lookup.services import ezyvin as _ez
+            self.ezyvin_usage_at_balance = _ez.credits_used()
         if stamped and kwargs.get('update_fields') is not None:
             kwargs['update_fields'] = list(
                 set(kwargs['update_fields']) | {'ezyvin_credit_balance',
-                                                'ezyvin_balance_at'})
+                                                'ezyvin_balance_at',
+                                                'ezyvin_usage_at_balance'})
         super().save(*args, **kwargs)
         try:
             caches['local'].set(self._CACHE_KEY, self, self._CACHE_TTL)

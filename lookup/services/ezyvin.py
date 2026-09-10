@@ -194,6 +194,61 @@ def extract(body):
     return '', name
 
 
+def credits_used():
+    """Lifetime credits consumed, per Ezyvin. None if the call fails.
+
+    paint110. /api/v1/me/usage returns one entry PER MONTH:
+
+        [{"period": "2026-08", "requestCount": 103,
+          "creditUsage": {"apiCredits": 56, "webCredits": 60,
+                          "totalCredits": 116, "updated": "..."}}, ...]
+
+    Summed across periods this is everything the account has ever spent —
+    THEIR figure, not ours, and that is the point. A balance computed from
+    coloureg's own ezyvin_credits sees only what the pipeline spent: it misses
+    the diagnostic tool, and it misses webCredits entirely, which is the
+    operator using ezyvin.com directly. Measured 10 Sep: 85 webCredits and 301
+    apiCredits against a handful the pipeline had recorded, so a balance based
+    on our rows alone would have read hundreds of credits too high.
+
+    /me/info carries no credit data — user and token only — so this is the only
+    endpoint that knows.
+    """
+    if not TOKEN:
+        return None
+    try:
+        resp = get_session().get(
+            f'{BASE_URL}/api/v1/me/usage',
+            headers={'Authorization': f'Bearer {TOKEN}',
+                     'User-Agent': USER_AGENT, 'Accept': 'application/json'},
+            timeout=10)
+        if resp.status_code != 200:
+            return None
+        body = resp.json()
+    except Exception:  # noqa: BLE001 — a dashboard figure must never 500 a page
+        return None
+
+    if isinstance(body, dict):          # tolerate a single-period object
+        body = [body]
+    if not isinstance(body, list):
+        return None
+
+    total, seen = 0, False
+    for period in body:
+        if not isinstance(period, dict):
+            continue
+        usage = period.get('creditUsage')
+        usage = usage if isinstance(usage, dict) else period
+        value = usage.get('totalCredits')
+        # totalCredits, not apiCredits: web use spends from the same balance,
+        # and a balance that ignores it is wrong in the direction that matters —
+        # it reads high, so it runs out without warning.
+        if isinstance(value, (int, float)):
+            total += int(value)
+            seen = True
+    return total if seen else None
+
+
 def _poll(job_id, headers, deadline):
     """Wait for an async job. Returns the job dict, or None on timeout."""
     while time.monotonic() < deadline:
