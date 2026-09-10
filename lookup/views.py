@@ -2794,6 +2794,41 @@ def admin_stats(request):
     # Also clears the tripped flag so a raised budget takes effect immediately
     # (otherwise today's earlier trip would keep the alert suppressed even
     # though lookups have resumed).
+    # paint109: the Ezyvin credit balance, typed in from their dashboard.
+    #
+    # There is nothing to fetch — /me/usage reports consumption and /me/info
+    # carries no credit data — so a balance can only come from the operator.
+    # save() stamps the moment it changes, and the card subtracts what we have
+    # recorded since, so it stays roughly live between top-ups.
+    if request.method == 'POST' and request.POST.get('action') == 'save_ezyvin_balance':
+        cfg = SiteConfig.get()
+        raw = (request.POST.get('ezyvin_credit_balance') or '').strip()
+        # BLANK CLEARS IT, and the card falls back to "—". An unknown balance
+        # must read as unknown; zero is a real and alarming state.
+        if not raw:
+            cfg.ezyvin_credit_balance = None
+            cfg.save(update_fields=['ezyvin_credit_balance', 'updated_at'])
+            messages.success(request, 'Ezyvin balance cleared.')
+            return redirect('admin_stats')
+        try:
+            credits = int(raw)
+            if credits < 0:
+                raise ValueError
+        except ValueError:
+            messages.error(request, 'Balance must be a whole number of credits.')
+            return redirect('admin_stats')
+        # Same reasoning as the budget cap: the field is an integer column and
+        # a figure this large is a mistyped digit, not an intention. A heavy
+        # month is a few hundred credits against a balance in the thousands.
+        if credits > 1000000:
+            messages.error(request, 'That looks like a typo — enter the credit '
+                                    'count from your Ezyvin dashboard.')
+            return redirect('admin_stats')
+        cfg.ezyvin_credit_balance = credits
+        cfg.save(update_fields=['ezyvin_credit_balance', 'updated_at'])
+        messages.success(request, f'Ezyvin balance set to {credits:,} credits.')
+        return redirect('admin_stats')
+
     if request.method == 'POST' and request.POST.get('action') == 'save_budget':
         cfg = SiteConfig.get()
         raw = (request.POST.get('daily_budget_gbp') or '').strip()
@@ -3254,6 +3289,8 @@ def admin_stats(request):
     _ez_credits = int(top_metrics['ezyvin_credits_sum'] or 0)
     _ez_rate = float(getattr(dj_settings, 'EZYVIN_CREDIT_GBP', 0) or 0)
     ezyvin_cost_sum = round(_ez_credits * _ez_rate, 2)
+    _ez_cfg = SiteConfig.get()
+    _ez_left = _ez_cfg.ezyvin_credits_left()
     # ALL THREE, so the headline is what the pipeline has actually spent. One
     # Auto stays in the total because its historical spend was real, even
     # though it no longer runs.
@@ -3344,6 +3381,14 @@ def admin_stats(request):
         'oneauto_cost_sum': round(oneauto_cost_sum, 2),
         'oneauto_cost_count': top_metrics['oneauto_cost_count'] or 0,
         'ezyvin_cost_sum': ezyvin_cost_sum,
+        # paint109: what is LEFT, not what is gone. VDG returns its balance on
+        # every call so that card is free and always current; Ezyvin publishes
+        # none — /me/usage is consumption and /me/info has no credit data — so
+        # this is the operator's own figure less what we have recorded since.
+        'ezyvin_credits_left': _ez_left,
+        'ezyvin_balance_at': _ez_cfg.ezyvin_balance_at,
+        'ezyvin_left_gbp': (round(_ez_left * _ez_rate, 2)
+                            if _ez_left is not None else None),
         'ezyvin_credits_sum': _ez_credits,
         'ezyvin_billed_count': top_metrics['ezyvin_billed_count'] or 0,
         'ezyvin_free_count': top_metrics['ezyvin_free_count'] or 0,

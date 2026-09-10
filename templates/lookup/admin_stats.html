@@ -551,7 +551,7 @@
                        answers whether the second paid leg is earning its 30p. One Auto
                        has no balance endpoint (checked all 148 paths), so its figure is
                        our own tally rather than theirs.{% endcomment %}
-                    <br><span style="opacity: 0.75;">VDG £{{ spend_by_provider.vdg|floatformat:2 }} · Ezyvin £{{ spend_by_provider.ezyvin|floatformat:2 }}{% if spend_by_provider.ezyvin_credits %} ({{ spend_by_provider.ezyvin_credits }} cr){% endif %}</span>
+                    <br><span style="opacity: 0.75;">VDG £{{ spend_by_provider.vdg|floatformat:2 }} · Ezyvin £{{ spend_by_provider.ezyvin|floatformat:2 }}{% if spend_by_provider.ezyvin_credits %} ({{ spend_by_provider.ezyvin_credits }} credits){% endif %}</span>
                 </div>
             </div>
         </div>
@@ -563,6 +563,23 @@
                 <input type="number" step="0.01" min="0" class="form-control"
                        name="daily_budget_gbp"
                        value="{{ site_config.daily_budget_gbp|floatformat:2 }}">
+            </div>
+            <button type="submit" class="btn btn-sm btn-success">Save</button>
+        </form>
+        {% comment %} paint109: the Ezyvin balance, typed in from their dashboard.
+           There is nothing to fetch — /me/usage reports consumption and
+           /me/info carries no credit data — so it can only come from here.
+           Leaving it blank clears it and the card reads "—", because an
+           unknown balance must not look like zero. {% endcomment %}
+        <form method="POST" class="d-flex align-items-center gap-2 mt-2">
+            {% csrf_token %}
+            <input type="hidden" name="action" value="save_ezyvin_balance">
+            <label class="form-label mb-0" style="font-size: 13px; color: #666;">Ezyvin</label>
+            <div class="input-group input-group-sm" style="width: 160px;">
+                <input type="number" step="1" min="0" class="form-control"
+                       name="ezyvin_credit_balance" placeholder="2624"
+                       value="{{ site_config.ezyvin_credit_balance|default_if_none:'' }}">
+                <span class="input-group-text">credits</span>
             </div>
             <button type="submit" class="btn btn-sm btn-success">Save</button>
         </form>
@@ -718,14 +735,29 @@
            The free count is not decoration: a 404 costs nothing, and 3 of the
            18 failures tested on 9 Sep came back that way. Hiding them makes
            the leg look far more expensive per answer than it is. {% endcomment %}
+        {% comment %} paint109: a BALANCE, like VDG's, not a spend figure.
+
+           VDG returns its balance on every call, so that card is free and
+           always current. Ezyvin publishes none: /me/usage reports credits
+           CONSUMED and /me/info carries no credit data at all. So the operator
+           types in what their dashboard says and we subtract what we have
+           recorded since — which is why the balance is stamped on entry.
+
+           CREDITS lead, spelled out. That is the unit Ezyvin bills in and what
+           their dashboard shows; the pound figure is our own conversion at
+           EZYVIN_CREDIT_GBP and moves with the euro, so leading with pounds
+           would imply a precision the rate does not have.
+
+           An unentered balance reads "—", never 0. Zero is a real and alarming
+           state and must not be what "unknown" looks like. {% endcomment %}
         <div class="stat-card balance">
-            <p class="stat-label">Ezyvin spend</p>
-            {% if ezyvin_credits_sum %}
-            <p class="stat-value balance-highlight">{{ ezyvin_credits_sum }} cr</p>
-            <p class="stat-subvalue">£{{ ezyvin_cost_sum|floatformat:2 }} · {{ ezyvin_billed_count }} billed{% if ezyvin_free_count %}, {{ ezyvin_free_count }} free{% endif %}</p>
+            <p class="stat-label">Ezyvin balance</p>
+            {% if ezyvin_credits_left is not None %}
+            <p class="stat-value balance-highlight">{{ ezyvin_credits_left }} credits</p>
+            <p class="stat-subvalue">£{{ ezyvin_left_gbp|floatformat:2 }} · from {{ ezyvin_balance_at|date:"M j H:i" }}</p>
             {% else %}
-            <p class="stat-value" style="color: #999;">0 cr</p>
-            <p class="stat-subvalue">no billed calls yet</p>
+            <p class="stat-value" style="color: #999;">—</p>
+            <p class="stat-subvalue">enter the balance below to track it</p>
             {% endif %}
         </div>
     </div>

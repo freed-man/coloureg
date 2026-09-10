@@ -4,6 +4,7 @@ import unicodedata
 from collections import namedtuple
 from decimal import Decimal
 
+from django.utils import timezone
 from django.conf import settings
 
 from django.core.cache import caches
@@ -2055,6 +2056,20 @@ class SiteConfig(models.Model):
     # lookups for the rest of the day — a bounded worst case even if an abuser
     # gets past every other layer, or a bug loops. 0 disables the breaker.
     # Editable amount box in /admin-stats/.
+    # paint109. Ezyvin's credit balance, entered by hand.
+    #
+    # VDG returns its balance on every call, so that card is free and always
+    # current. Ezyvin publishes NO balance: /me/usage reports credits CONSUMED
+    # and /me/info carries no credit data at all. So the only honest way to
+    # show one is for the operator to type in what the dashboard says, and for
+    # us to subtract what we have spent since.
+    #
+    # `_at` is stamped automatically whenever the number changes, and is what
+    # the subtraction counts from. Without it a top-up would be immediately
+    # eaten by the whole history of spend.
+    ezyvin_credit_balance = models.IntegerField(null=True, blank=True)
+    ezyvin_balance_at = models.DateTimeField(null=True, blank=True)
+
     daily_budget_gbp = models.DecimalField(
         max_digits=8, decimal_places=2, default=Decimal('50.00'),
         help_text='Max VDG spend per day (London time). 0 = no limit.'
@@ -2123,6 +2138,21 @@ class SiteConfig(models.Model):
     class Meta:
         verbose_name = 'Site configuration'
         verbose_name_plural = 'Site configuration'
+
+    def ezyvin_credits_left(self):
+        """Entered balance minus credits recorded since it was entered.
+
+        None when no balance has ever been entered — an unknown balance must
+        read as unknown, not as zero. Zero is a real and alarming state.
+        """
+        if self.ezyvin_credit_balance is None:
+            return None
+        spent = 0
+        if self.ezyvin_balance_at:
+            spent = (Search.objects
+                     .filter(timestamp__gte=self.ezyvin_balance_at)
+                     .aggregate(n=models.Sum('ezyvin_credits'))['n'] or 0)
+        return self.ezyvin_credit_balance - int(spent)
 
     def __str__(self):
         return f"SiteConfig(maintenance_mode={self.maintenance_mode})"
@@ -2312,7 +2342,43 @@ class SiteConfig(models.Model):
 
     def save(self, *args, **kwargs):
         """Persist, then refresh the get() cache so mutations are visible
-        immediately on this worker (and within _CACHE_TTL elsewhere)."""
+        immediately on this worker (and within _CACHE_TTL elsewhere).
+
+        paint109 also stamps ezyvin_balance_at whenever the credit balance
+        changes. The card shows `balance - credits spent since the stamp`, so
+        the stamp is what makes a top-up mean anything: without it, entering a
+        fresh 2,624 would have every credit ever spent subtracted from it and
+        read far too low.
+
+        Compared against the value in the DATABASE rather than a flag, so it is
+        correct however the change arrives — the settings form, the Django
+        admin, a shell, a data migration.
+
+        NOTE this class already had a save(); a second one defined above it
+        would be silently shadowed, which is exactly what happened on the first
+        attempt at this. Python keeps the last definition and gives no warning.
+        """
+        stamped = False
+        if self.pk:
+            prior = (SiteConfig.objects
+                     .filter(pk=self.pk)
+                     .values_list('ezyvin_credit_balance', flat=True)
+                     .first())
+            if prior != self.ezyvin_credit_balance:
+                self.ezyvin_balance_at = timezone.now()
+                stamped = True
+        elif self.ezyvin_credit_balance is not None:
+            self.ezyvin_balance_at = timezone.now()
+            stamped = True
+        # A CALLER PASSING update_fields WOULD DROP THE STAMP. save_budget does
+        # exactly that, and Django writes only the named columns — so the
+        # balance would persist while the timestamp it is measured from
+        # silently did not, and the card would subtract from the wrong moment.
+        # The paint78 rule again: every assignment has to reach the save list.
+        if stamped and kwargs.get('update_fields') is not None:
+            kwargs['update_fields'] = list(
+                set(kwargs['update_fields']) | {'ezyvin_credit_balance',
+                                                'ezyvin_balance_at'})
         super().save(*args, **kwargs)
         try:
             caches['local'].set(self._CACHE_KEY, self, self._CACHE_TTL)
