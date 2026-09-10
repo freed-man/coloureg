@@ -577,7 +577,14 @@
             <label class="form-label mb-0" style="font-size: 13px; color: #666;">Ezyvin</label>
             <div class="input-group input-group-sm" style="width: 160px;">
                 <input type="number" step="1" min="0" class="form-control"
-                       name="ezyvin_credit_balance" placeholder="2624"
+                       {% comment %} paint111: NO placeholder. It was "2624" — a real
+                          balance, which made an empty field look like a set one and
+                          a set field look like a placeholder. A "0" would be worse
+                          still: zero is a real and alarming state, and the empty
+                          state must never look like it. The label says Ezyvin and
+                          the suffix says credits, so the field needs no hint.
+                          {% endcomment %}
+                       name="ezyvin_credit_balance"
                        value="{{ site_config.ezyvin_credit_balance|default_if_none:'' }}">
                 <span class="input-group-text">credits</span>
             </div>
