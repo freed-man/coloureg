@@ -436,7 +436,26 @@ def send_user_no_code_available(to_email, registration, vehicle_title, colour, m
     }, context='no_code_available')
 
 
-def send_admin_failure_notification(registration, vehicle_title, vin_full, colour, user_email, customer_message='', extra_attachments=None):
+def _found_name_block(found_name):
+    """The colour name a provider returned when it could not give a code.
+
+    paint106. Shown to BOTH sides. To the customer it is the difference between
+    "we found nothing" and "we know the colour, we're after the code" — and it
+    lets them tell us straight away if it is wrong. To the operator it is a
+    head start: 'Agate Black Metallic' narrows a Ford lookup enormously, and it
+    was previously visible only by opening the admin row.
+    """
+    if not (found_name or '').strip():
+        return ''
+    return f"""
+                <div style="background: #f0f4ff; border-left: 3px solid #003399; padding: 14px 18px; border-radius: 4px; margin-bottom: 24px;">
+                    <div style="color: #666; font-size: 12px; text-transform: uppercase; letter-spacing: 0.4px; margin-bottom: 4px;">Colour name found</div>
+                    <div style="color: #1a1a1a; font-size: 15px; font-weight: 600;">{_esc(found_name)}</div>
+                    <div style="color: #4a4a4a; font-size: 13px; margin-top: 6px;">We have the manufacturer's name for this colour but not its code yet.</div>
+                </div>"""
+
+
+def send_admin_failure_notification(registration, vehicle_title, vin_full, colour, user_email, customer_message='', extra_attachments=None, found_name=''):
     """Email admin when paint code wasn't found and user requested manual lookup.
 
     `customer_message` is optional free text the customer added to the request
@@ -447,6 +466,7 @@ def send_admin_failure_notification(registration, vehicle_title, vin_full, colou
     nothing is stored server-side.
     """
 
+    found_block = _found_name_block(found_name)
     message_block = ''
     if customer_message and customer_message.strip():
         message_block = f"""
@@ -487,6 +507,7 @@ def send_admin_failure_notification(registration, vehicle_title, vin_full, colou
                     </tr>
                 </table>
 
+                {found_block}
                 {message_block}
                 <p style="margin: 0; color: #999; font-size: 12px;">
                     Reply to this email to respond directly to the user.
@@ -508,8 +529,17 @@ def send_admin_failure_notification(registration, vehicle_title, vin_full, colou
 
 
 def send_user_pending_notification(to_email, registration, vehicle_title, vin_masked,
-                                   colour, make=''):
-    """Email user confirming we'll do manual lookup."""
+                                   colour, make='', found_name=''):
+    """Email user confirming we'll do manual lookup.
+
+    paint106: `found_name` is the manufacturer's colour NAME where a provider
+    returned one but no code — 'Ink Blue (Metallic)', 'Agate Black Metallic'.
+    Roughly 1 in 12 manual requests arrive in that state, and the customer used
+    to get a mail identical to one where NOTHING was found. That is worse than
+    unhelpful: they already know the colour, so a mail that mentions none of it
+    reads as though we found nothing at all, and the one fact we did establish
+    is thrown away.
+    """
 
     html = f"""
     <div style="background: #f8f9fa; padding: 40px 20px; font-family: 'IBM Plex Sans', Arial, Helvetica, sans-serif;">
@@ -520,6 +550,7 @@ def send_user_pending_notification(to_email, registration, vehicle_title, vin_ma
                 <p style="margin: 0 0 24px; color: #4a4a4a; font-size: 15px; line-height: 1.6;">
                     The {_esc(make) or 'manufacturer'} build sheet was ambiguous. We'll retrieve the paint code manually and email it to you, free, usually within 1 hour.
                 </p>
+                {_found_name_block(found_name)}
                 <table style="width: 100%; border-collapse: collapse; margin-bottom: 24px;">
                     <tr style="border-bottom: 1px solid #eee;">
                         <td style="padding: 10px 16px 10px 0; color: #666; font-size: 13px; width: 100px;">Vehicle</td>

@@ -4,6 +4,8 @@ import unicodedata
 from collections import namedtuple
 from decimal import Decimal
 
+from django.conf import settings
+
 from django.core.cache import caches
 from django.db import models
 
@@ -275,13 +277,28 @@ class Search(models.Model):
         Returns None only when NOTHING recorded a cost — which is different from
         zero, and the dashboard shows the two differently.
         """
-        # paint99: ezyvin_credits is DELIBERATELY not summed here. It is a
-        # credit count, not pounds, and the conversion rate is an operator
-        # setting — adding 5 to £0.06 would produce £5.06. The dashboard prices
-        # credits separately, where the rate can change without rewriting
-        # history.
+        # paint106: the reserve's credits are now PRICED here, at read time.
+        #
+        # paint99 left them out because a credit is not a pound and the rate is
+        # an operator setting — storing a converted figure would freeze today's
+        # rate into history. That was right about the STORE and wrong about the
+        # DISPLAY: a lookup Ezyvin answered showed £0.06, the VDG vehicle call
+        # alone, so the leg looked free and every per-lookup total understated
+        # what the pipeline actually spent.
+        #
+        # Converting HERE keeps both properties: ezyvin_credits stays a count,
+        # and changing EZYVIN_CREDIT_GBP reprices all of history at once rather
+        # than only what is recorded after the change.
+        #
+        # VDG IS NEVER LOST. It is the first term and is included whether or
+        # not the reserve ran — the whole point of summing is that a lookup
+        # which cost £0.06 at VDG and 5 credits at Ezyvin reads as both.
         parts = [c for c in (self.vdg_transaction_cost, self.oneauto_cost)
                  if c is not None]
+        if self.ezyvin_credits:
+            rate = getattr(settings, 'EZYVIN_CREDIT_GBP', None)
+            if rate:
+                parts.append(Decimal(str(rate)) * Decimal(self.ezyvin_credits))
         return sum(parts) if parts else None
 
     # Which access key (if any) exempted this lookup from the hourly limit

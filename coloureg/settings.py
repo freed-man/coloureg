@@ -367,6 +367,14 @@ STRIPE_WEBHOOK_SECRET = os.environ.get('STRIPE_WEBHOOK_SECRET', '')
 # lookup flow"; that was stale and is corrected here and in payments.py.
 LOOKUP_PRICE_PENCE = int(os.environ.get('LOOKUP_PRICE_PENCE', '200'))
 
+# paint106. What one Ezyvin credit costs, in pounds. Search.total_cost applies
+# it at READ time, so ezyvin_credits stays a count and changing this reprices
+# all of history rather than only what is recorded afterwards.
+#
+# Unset it (or set 0) and a lookup the reserve answered reports only the VDG
+# call — which is what it did before this existed, and made the leg look free.
+EZYVIN_CREDIT_GBP = os.environ.get('EZYVIN_CREDIT_GBP', '0.11')
+
 CACHES = {
     # DEFAULT stays the database cache. django-ratelimit reads/writes here, and
     # the rate limit MUST be shared across all gunicorn workers — the database is

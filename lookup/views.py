@@ -2531,6 +2531,10 @@ def submit_email(request):
             user_email=email,
             customer_message=customer_message,
             extra_attachments=[photo] if photo else None,
+            # paint106: the colour name a provider DID return. Without it both
+            # mails read as though nothing was found, and the one fact we
+            # established is discarded at the moment it is most useful.
+            found_name=search.paint_description or '',
         )
         user_sent = send_user_pending_notification(
             to_email=email,
@@ -2542,6 +2546,7 @@ def submit_email(request):
             # than blaming "the manufacturer's servers", which was usually
             # untrue — most misses are a coverage gap, not an outage.
             make=search.make or '',
+            found_name=search.paint_description or '',
         )
         if admin_sent and user_sent:
             # The riskiest of the three: this runs after BOTH sends above, so
