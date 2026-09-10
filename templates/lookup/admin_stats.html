@@ -1092,6 +1092,13 @@
             font-size: 14px;
             min-height: 62px;
             resize: vertical;
+            {% comment %} paint107: no inner scrollbar. The JS below grows the
+               field to fit its content, so there is nothing to scroll — which
+               is the point, because `resize: vertical` does nothing on touch
+               and an inner scroll competes with the page scroll. Once it
+               overfilled on a phone the rest of the note was unreachable.
+               {% endcomment %}
+            overflow-y: hidden;
         }
         .mlq-form .note-body textarea::placeholder { color: #aaa; font-size: 13px; }
         .mlq-empty {
@@ -1123,6 +1130,23 @@
 
         {% comment %}/* paint16: note marker + expandable detail row */{% endcomment %}
         .note-marker { color: #003399; font-size: 12px; margin-left: 4px; }
+        {% comment %} paint107. The note opened OFF-SCREEN on mobile.
+
+           The detail is a td colspan=10 inside .table-scroll (overflow-x:
+           auto), so it spans the full TABLE width — far wider than a phone.
+           Tapping a row toggled it correctly, but the text began at the
+           table's left edge, and to reach most rows you have to scroll right
+           first. The note was rendering into space you were not looking at.
+
+           Sticky-left pins the cell to the viewport's left edge whatever the
+           horizontal scroll position, and the width cap stops it inheriting
+           the table's width and pushing the text off again. {% endcomment %}
+        .note-detail > td {
+            position: sticky;
+            left: 0;
+            max-width: 100vw;
+            box-sizing: border-box;
+        }
         tr.has-note:hover { background: #f6f8fb; }
 
         {% comment %}/* Outcome badges in the recent-lookups table */{% endcomment %}
@@ -1712,6 +1736,22 @@
         integrity="sha384-e6nUZLBkQ86NJ6TVVKAeSaK8jWa3NhkYWZFomE39AvDbQWeie9PlQqM3pmYW5d1g"
         crossorigin="anonymous"></script>
 <script>
+    // paint107: grow a note field to fit its content, instead of scrolling it.
+    //
+    // `resize: vertical` is ignored on touch — there is no handle to drag — so
+    // a note longer than the box became unreachable on a phone: the inner
+    // scroll competes with the page scroll and usually loses.
+    function fitNote(t) {
+        if (!t) return;
+        t.style.height = 'auto';
+        // A hidden field reports scrollHeight 0, so sizing it while collapsed
+        // would collapse it to nothing. Leave it and size on reveal instead.
+        if (t.scrollHeight) t.style.height = t.scrollHeight + 'px';
+    }
+    document.addEventListener('input', function (e) {
+        if (e.target && e.target.tagName === 'TEXTAREA') fitNote(e.target);
+    });
+
     // paint16: click a row with a note marker to reveal its detail row.
     document.addEventListener('click', function (e) {
         var row = e.target.closest ? e.target.closest('tr.has-note') : null;
@@ -1992,6 +2032,11 @@
             if (body.hidden) {
                 body.hidden = false;
                 toggle.textContent = '− Remove note';
+                // paint107: size it now it is visible. A hidden textarea
+                // reports scrollHeight 0, so the input handler cannot size it
+                // until reveal — without this a pre-filled note opens
+                // collapsed to one line on a phone.
+                fitNote(ta);
                 ta.focus();
             } else {
                 ta.value = '';

@@ -367,13 +367,18 @@ STRIPE_WEBHOOK_SECRET = os.environ.get('STRIPE_WEBHOOK_SECRET', '')
 # lookup flow"; that was stale and is corrected here and in payments.py.
 LOOKUP_PRICE_PENCE = int(os.environ.get('LOOKUP_PRICE_PENCE', '200'))
 
-# paint106. What one Ezyvin credit costs, in pounds. Search.total_cost applies
+# paint107. What one Ezyvin credit costs, in pounds. Search.total_cost applies
 # it at READ time, so ezyvin_credits stays a count and changing this reprices
 # all of history rather than only what is recorded afterwards.
 #
+# 0.09 measured 10 Sep: Ezyvin bills EUR 0.10 per credit, so a 5-credit build
+# sheet is about £0.45. THE UNDERLYING PRICE IS IN EUROS, so this figure drifts
+# with the exchange rate — it is an env var precisely so it can be corrected
+# without a deploy, and one correction reprices every historical row at once.
+#
 # Unset it (or set 0) and a lookup the reserve answered reports only the VDG
 # call — which is what it did before this existed, and made the leg look free.
-EZYVIN_CREDIT_GBP = os.environ.get('EZYVIN_CREDIT_GBP', '0.11')
+EZYVIN_CREDIT_GBP = os.environ.get('EZYVIN_CREDIT_GBP', '0.09')
 
 CACHES = {
     # DEFAULT stays the database cache. django-ratelimit reads/writes here, and
