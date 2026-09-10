@@ -35,6 +35,7 @@ from decimal import Decimal
 
 import logging
 
+from django.conf import settings
 from django.db.models import F, Sum
 from django.utils import timezone
 from .http import get_session
@@ -83,15 +84,24 @@ def london_day_start(now=None):
 def spend_today(now=None):
     """Sum of ALL provider spend since London midnight, as a Decimal.
 
-    VDG (`vdg_transaction_cost`, net of refunds) plus One Auto
-    (`oneauto_cost`). Both, because the breaker exists to stop a runaway day and
-    a runaway day does not care which supplier caused it — £30 of One Auto with
-    VDG at zero is exactly as bad. Kept in separate COLUMNS so the dashboard can
-    still show which provider spent what.
+    VDG (`vdg_transaction_cost`, net of refunds), One Auto (`oneauto_cost`,
+    historical) and EZYVIN (`ezyvin_credits`, priced at EZYVIN_CREDIT_GBP).
 
-    Rows without a cost (DVLA-fallback lookups that never called a paid
-    provider, a One Auto 206, or pre-field legacy rows) contribute nothing.
-    Returns Decimal('0.00') when there has been no spend.
+    All of them, because the breaker exists to stop a runaway day and a runaway
+    day does not care which supplier caused it — £30 of one with the others at
+    zero is exactly as bad. Kept in separate COLUMNS so the dashboard can still
+    show which provider spent what.
+
+    paint108: EZYVIN WAS MISSING, and this is what budget_exceeded reads. The
+    reserve shipped in paint95 spending real money that the breaker could not
+    see, so a £30 budget would have kept authorising lookups well past £30.
+    That is the paint15 failure a third time — the VDG retry's cost vanishing,
+    then One Auto's, now this. A leg that spends money must reach THIS function
+    in the same change that adds the leg.
+
+    Rows without a cost — a DVLA-fallback lookup that called no paid provider,
+    an Ezyvin 404, a pre-field legacy row — contribute nothing. Returns
+    Decimal('0.00') when there has been no spend.
     """
     # Imported here to avoid a circular import at module load (models imports
     # nothing from services, but services importing models at top level plus
@@ -102,15 +112,37 @@ def spend_today(now=None):
     agg = (
         Search.objects
         .filter(timestamp__gte=start)
-        .aggregate(vdg=Sum('vdg_transaction_cost'), oneauto=Sum('oneauto_cost'))
+        .aggregate(vdg=Sum('vdg_transaction_cost'),
+                   oneauto=Sum('oneauto_cost'),
+                   credits=Sum('ezyvin_credits'))
     )
-    return (agg['vdg'] or Decimal('0.00')) + (agg['oneauto'] or Decimal('0.00'))
+    total = (agg['vdg'] or Decimal('0.00')) + (agg['oneauto'] or Decimal('0.00'))
+    credits = int(agg['credits'] or 0)
+    rate = getattr(settings, 'EZYVIN_CREDIT_GBP', None)
+    if rate and credits:
+        total += Decimal(str(rate)) * credits
+    return total
 
 
 def spend_today_by_provider(now=None):
-    """Same window, split by provider — for the admin panel.
+    """Same window, split by provider — for the admin panel AND the breaker.
 
-    Returns {'vdg': Decimal, 'oneauto': Decimal, 'total': Decimal}.
+    Returns {'vdg', 'ezyvin', 'ezyvin_credits', 'total'}.
+
+    paint108: EZYVIN WAS MISSING ENTIRELY, and this feeds budget_exceeded — so
+    the daily breaker could not see the reserve's spend at all. That is the
+    paint15 failure again, where the VDG retry's cost never reached the row and
+    a £30 budget would silently run to about £50. A leg that spends money has
+    to appear here in the same change that adds the leg.
+
+    ONE AUTO IS GONE from the split. It left the race in paint95 and its column
+    is frozen history now; a panel line reading "One Auto £0.00" every day is a
+    leg the reader has to keep deciding to ignore. Its historical spend is
+    still in the all-time totals — this is TODAY's split, and today it spends
+    nothing.
+
+    Credits convert at READ time, as in Search.total_cost, so the stored value
+    stays a count and one rate change reprices every window at once.
     """
     from lookup.models import Search
 
@@ -118,11 +150,14 @@ def spend_today_by_provider(now=None):
     agg = (
         Search.objects
         .filter(timestamp__gte=start)
-        .aggregate(vdg=Sum('vdg_transaction_cost'), oneauto=Sum('oneauto_cost'))
+        .aggregate(vdg=Sum('vdg_transaction_cost'), credits=Sum('ezyvin_credits'))
     )
     vdg = agg['vdg'] or Decimal('0.00')
-    oneauto = agg['oneauto'] or Decimal('0.00')
-    return {'vdg': vdg, 'oneauto': oneauto, 'total': vdg + oneauto}
+    credits = int(agg['credits'] or 0)
+    rate = getattr(settings, 'EZYVIN_CREDIT_GBP', None)
+    ezyvin = (Decimal(str(rate)) * credits) if (rate and credits) else Decimal('0.00')
+    return {'vdg': vdg, 'ezyvin': ezyvin, 'ezyvin_credits': credits,
+            'total': vdg + ezyvin}
 
 
 def budget_exceeded(config, now=None):

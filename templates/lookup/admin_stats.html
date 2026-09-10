@@ -551,7 +551,7 @@
                        answers whether the second paid leg is earning its 30p. One Auto
                        has no balance endpoint (checked all 148 paths), so its figure is
                        our own tally rather than theirs.{% endcomment %}
-                    <br><span style="opacity: 0.75;">VDG £{{ spend_by_provider.vdg|floatformat:2 }} · One Auto £{{ spend_by_provider.oneauto|floatformat:2 }}</span>
+                    <br><span style="opacity: 0.75;">VDG £{{ spend_by_provider.vdg|floatformat:2 }} · Ezyvin £{{ spend_by_provider.ezyvin|floatformat:2 }}{% if spend_by_provider.ezyvin_credits %} ({{ spend_by_provider.ezyvin_credits }} cr){% endif %}</span>
                 </div>
             </div>
         </div>
@@ -705,13 +705,26 @@
            endpoint anywhere in their 148-path spec, so a figure labelled
            "balance" here would be an invention. What we can know is what we
            have been charged, because we record it per call.{% endcomment %}
+        {% comment %} paint108: the RESERVE, not One Auto. One Auto left the race in
+           paint95 and its column is frozen history — a card reading "One Auto
+           £0.00" every day is a leg the reader has to keep deciding to ignore.
+           Its historical spend is still in the all-time breakdown below.
+
+           Shown in CREDITS FIRST because that is what Ezyvin bills in and what
+           their dashboard shows; the pound figure is our own conversion at
+           EZYVIN_CREDIT_GBP and moves with the euro. Leading with pounds would
+           imply a precision the exchange rate does not have.
+
+           The free count is not decoration: a 404 costs nothing, and 3 of the
+           18 failures tested on 9 Sep came back that way. Hiding them makes
+           the leg look far more expensive per answer than it is. {% endcomment %}
         <div class="stat-card balance">
-            <p class="stat-label">One Auto spend</p>
-            {% if oneauto_cost_count %}
-            <p class="stat-value balance-highlight">£{{ oneauto_cost_sum|floatformat:2 }}</p>
-            <p class="stat-subvalue">{{ oneauto_cost_count }} billed call{{ oneauto_cost_count|pluralize }} — they publish no balance</p>
+            <p class="stat-label">Ezyvin spend</p>
+            {% if ezyvin_credits_sum %}
+            <p class="stat-value balance-highlight">{{ ezyvin_credits_sum }} cr</p>
+            <p class="stat-subvalue">£{{ ezyvin_cost_sum|floatformat:2 }} · {{ ezyvin_billed_count }} billed{% if ezyvin_free_count %}, {{ ezyvin_free_count }} free{% endif %}</p>
             {% else %}
-            <p class="stat-value" style="color: #999;">£0.00</p>
+            <p class="stat-value" style="color: #999;">0 cr</p>
             <p class="stat-subvalue">no billed calls yet</p>
             {% endif %}
         </div>
@@ -741,13 +754,28 @@
                 <span class="cost-amount">£{{ real_cost_sum|floatformat:2 }}</span>
             </div>
 
+            {% comment %} One Auto stays HERE, in the all-time breakdown, even though it
+               no longer runs — the money was really spent and removing it would
+               make historical totals stop adding up. It is the daily card above
+               that had to lose it, because a permanent zero there is noise.
+               {% endcomment %}
             {% if oneauto_cost_count %}
             <div class="cost-row">
                 <div>
-                    <span class="cost-label">One Auto — billed spend</span>
-                    <span class="cost-detail">({{ oneauto_cost_count }} billed call{{ oneauto_cost_count|pluralize }} — a 206 &ldquo;no data&rdquo; is free and is not counted)</span>
+                    <span class="cost-label">One Auto — billed spend (retired {{ oneauto_retired_on|default:"Sept 2026" }})</span>
+                    <span class="cost-detail">({{ oneauto_cost_count }} billed call{{ oneauto_cost_count|pluralize }} — a 206 &ldquo;no data&rdquo; was free and is not counted)</span>
                 </div>
                 <span class="cost-amount">£{{ oneauto_cost_sum|floatformat:2 }}</span>
+            </div>
+            {% endif %}
+
+            {% if ezyvin_credits_sum %}
+            <div class="cost-row">
+                <div>
+                    <span class="cost-label">Ezyvin — billed spend</span>
+                    <span class="cost-detail">({{ ezyvin_credits_sum }} credit{{ ezyvin_credits_sum|pluralize }} across {{ ezyvin_billed_count }} call{{ ezyvin_billed_count|pluralize }}{% if ezyvin_free_count %}; {{ ezyvin_free_count }} further call{{ ezyvin_free_count|pluralize }} returned 404 and cost nothing{% endif %})</span>
+                </div>
+                <span class="cost-amount">£{{ ezyvin_cost_sum|floatformat:2 }}</span>
             </div>
             {% endif %}
 

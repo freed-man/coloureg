@@ -2992,6 +2992,18 @@ def admin_stats(request):
         # the useful question is which provider the money went to.
         oneauto_cost_sum=Sum('oneauto_cost'),
         oneauto_cost_count=Count('id', filter=Q(oneauto_cost__isnull=False)),
+        # paint108: the reserve, which replaced One Auto in paint95. Counted in
+        # CREDITS — the unit it is billed in — and priced below at read time so
+        # the stored value stays a count and one rate change reprices history.
+        #
+        # billed filters on credits > 0, NOT on isnull. A free 404 records a
+        # real zero, and counting it as a billed call makes the leg look far
+        # more expensive per answer than it is: 3 of the 18 failures tested on
+        # 9 Sep came back 404 and cost nothing. The two counts are reported
+        # separately for the same reason.
+        ezyvin_credits_sum=Sum('ezyvin_credits'),
+        ezyvin_billed_count=Count('id', filter=Q(ezyvin_credits__gt=0)),
+        ezyvin_free_count=Count('id', filter=Q(ezyvin_credits=0)),
         # Average lookup duration (filtered nulls handled by Avg)
         avg_duration_ms=Avg('lookup_duration_ms'),
     )
@@ -3238,7 +3250,14 @@ def admin_stats(request):
     # EVERY paid provider, not just VDG (paint77). Showing a One Auto line above
     # a total that excluded it would be worse than not showing the line at all.
     oneauto_cost_sum = float(top_metrics['oneauto_cost_sum'] or 0)
-    estimated_cost = round(real_cost_sum + oneauto_cost_sum, 2)
+    # paint108: priced here, not stored. Same rule as Search.total_cost.
+    _ez_credits = int(top_metrics['ezyvin_credits_sum'] or 0)
+    _ez_rate = float(getattr(dj_settings, 'EZYVIN_CREDIT_GBP', 0) or 0)
+    ezyvin_cost_sum = round(_ez_credits * _ez_rate, 2)
+    # ALL THREE, so the headline is what the pipeline has actually spent. One
+    # Auto stays in the total because its historical spend was real, even
+    # though it no longer runs.
+    estimated_cost = round(real_cost_sum + oneauto_cost_sum + ezyvin_cost_sum, 2)
 
     # Kept for the admin template's existing labels.
     vdg_vehicle_calls = top_metrics['vdg_vehicle_returned_count']
@@ -3324,6 +3343,10 @@ def admin_stats(request):
         'real_cost_count': real_cost_count,
         'oneauto_cost_sum': round(oneauto_cost_sum, 2),
         'oneauto_cost_count': top_metrics['oneauto_cost_count'] or 0,
+        'ezyvin_cost_sum': ezyvin_cost_sum,
+        'ezyvin_credits_sum': _ez_credits,
+        'ezyvin_billed_count': top_metrics['ezyvin_billed_count'] or 0,
+        'ezyvin_free_count': top_metrics['ezyvin_free_count'] or 0,
         # NOTE for the balance card: One Auto expose NO balance endpoint —
         # checked across all 148 paths of their spec — so there is no equivalent
         # of vdg_balance. 'oneauto_cost_sum' above is total SPEND, which is a
