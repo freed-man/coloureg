@@ -2059,10 +2059,17 @@ class SiteConfig(models.Model):
     # paint109. Ezyvin's credit balance, entered by hand.
     #
     # VDG returns its balance on every call, so that card is free and always
-    # current. Ezyvin publishes NO balance: /me/usage reports credits CONSUMED
-    # and /me/info carries no credit data at all. So the only honest way to
-    # show one is for the operator to type in what the dashboard says, and for
-    # us to subtract what we have spent since.
+    # current. Ezyvin's /me/usage reports credits CONSUMED, not remaining.
+    #
+    # WHETHER IT PUBLISHES A BALANCE ELSEWHERE IS UNVERIFIED. The claim that
+    # /me/info carries none came from a docstring in the local diagnostic tool,
+    # repeated here as fact without anyone calling it. A credit-based API that
+    # never reports remaining credit would be unusual, so treat this as a
+    # fallback rather than a finding: if such an endpoint turns up, this field
+    # becomes the manual override and the card can refresh itself like VDG's.
+    #
+    # Until then the honest option is the operator's own figure, less what we
+    # have recorded since they entered it.
     #
     # `_at` is stamped automatically whenever the number changes, and is what
     # the subtraction counts from. Without it a top-up would be immediately

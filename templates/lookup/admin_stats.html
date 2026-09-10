@@ -757,7 +757,7 @@
             <p class="stat-subvalue">£{{ ezyvin_left_gbp|floatformat:2 }} · from {{ ezyvin_balance_at|date:"M j H:i" }}</p>
             {% else %}
             <p class="stat-value" style="color: #999;">—</p>
-            <p class="stat-subvalue">enter the balance below to track it</p>
+            <p class="stat-subvalue">set it in the settings panel above</p>
             {% endif %}
         </div>
     </div>
@@ -786,6 +786,16 @@
                 <span class="cost-amount">£{{ real_cost_sum|floatformat:2 }}</span>
             </div>
 
+            {% if ezyvin_credits_sum %}
+            <div class="cost-row">
+                <div>
+                    <span class="cost-label">Ezyvin — billed spend</span>
+                    <span class="cost-detail">({{ ezyvin_credits_sum }} credit{{ ezyvin_credits_sum|pluralize }} across {{ ezyvin_billed_count }} call{{ ezyvin_billed_count|pluralize }}{% if ezyvin_free_count %}; {{ ezyvin_free_count }} further call{{ ezyvin_free_count|pluralize }} returned 404 and cost nothing{% endif %})</span>
+                </div>
+                <span class="cost-amount">£{{ ezyvin_cost_sum|floatformat:2 }}</span>
+            </div>
+            {% endif %}
+
             {% comment %} One Auto stays HERE, in the all-time breakdown, even though it
                no longer runs — the money was really spent and removing it would
                make historical totals stop adding up. It is the daily card above
@@ -798,16 +808,6 @@
                     <span class="cost-detail">({{ oneauto_cost_count }} billed call{{ oneauto_cost_count|pluralize }} — a 206 &ldquo;no data&rdquo; was free and is not counted)</span>
                 </div>
                 <span class="cost-amount">£{{ oneauto_cost_sum|floatformat:2 }}</span>
-            </div>
-            {% endif %}
-
-            {% if ezyvin_credits_sum %}
-            <div class="cost-row">
-                <div>
-                    <span class="cost-label">Ezyvin — billed spend</span>
-                    <span class="cost-detail">({{ ezyvin_credits_sum }} credit{{ ezyvin_credits_sum|pluralize }} across {{ ezyvin_billed_count }} call{{ ezyvin_billed_count|pluralize }}{% if ezyvin_free_count %}; {{ ezyvin_free_count }} further call{{ ezyvin_free_count|pluralize }} returned 404 and cost nothing{% endif %})</span>
-                </div>
-                <span class="cost-amount">£{{ ezyvin_cost_sum|floatformat:2 }}</span>
             </div>
             {% endif %}
 
