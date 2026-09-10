@@ -73,6 +73,35 @@ _RE_LABEL = re.compile(
 _NULLISH = {'', '-', '--', 'n/a', 'na', 'null', 'none'}
 
 
+def _is_code(candidate):
+    """False when the brackets hold a FINISH rather than a code.
+
+    paint104. The bracket rule assumed anything parenthesised was a code, and
+    on 10 Sep it served a customer paint code "METALLIC" for a Ford S-Max —
+    Ezyvin returned "INK BLUE (METALLIC)" and the rule took the finish. A wrong
+    code is worse than none: the customer buys paint with it.
+
+    Not a rare shape. 54 rows of history carry a finish in brackets — 'Panther
+    Black (Metallic)', 'Shadow Black (Mica)', 'Chili Red (Metallic)' — and every
+    one would have produced a bogus code on reaching this leg. BG14KVP in June
+    already held code 'METALLIC' from a different path, so the shape had bitten
+    once before this leg existed.
+
+    REUSES normalize_name's VOCABULARY instead of inventing a second list. That
+    function already strips finish words to build match keys, so a candidate
+    made only of them normalises to empty: METALLIC, Met, Pearl, Pearlescent,
+    Solid, Matt, Mica, Uni, Satin, Nacre, Gloss all do. Every real code
+    measured survives: 1T, PN4JF, KTA, TEKNG, 279, C3Y, AA4, 026U, Z2Z2/H5X.
+    One vocabulary in one place, which cannot drift out of step with the
+    matcher it has to agree with.
+
+    Note what code_from_name does with the same shape: treats it as a suffix to
+    STRIP, never as a code. That asymmetry is the bug in one sentence.
+    """
+    from lookup.models import PaintLookup      # local: avoids a circular import
+    return bool(PaintLookup.normalize_name(candidate or ''))
+
+
 def _clean_code(code):
     """Trim a code to what a paint counter would recognise.
 
@@ -149,7 +178,7 @@ def extract(body):
 
     name = _RE_LABEL.sub('', ext).strip()
     match = _RE_PAREN.search(name)
-    if match:
+    if match and _is_code(match.group(1)):
         code = _clean_code(match.group(1))
         # The name is the string minus its code, so the customer is shown a
         # colour rather than a colour with a code jammed on the end.

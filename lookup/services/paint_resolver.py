@@ -178,27 +178,32 @@ PL24_TIMEOUT = float(os.environ.get('PL24_CLIENT_TIMEOUT_S', '60'))
 # coverage run had vehicles still returning 202 at 21-31s. The backstop exists
 # precisely because a leg can be slow rather than failed.
 PL24_BACKSTOP_S = float(os.environ.get('PL24_BACKSTOP_S', '10'))
-#: paint95/97. How long the reserve waits before firing on its own.
+#: paint105. How long the reserve waits before firing on its own.
 #:
-#: A SAFETY NET FOR A HUNG LEG, NOT A COMPETITOR. The backstop can only ever
-#: pre-empt a FREE answer: it fires while a leg is still running, and a running
-#: leg usually still answers, from VDG or pl24, at no cost. Pulling it earlier
-#: therefore does not make failures faster — it makes successes more expensive.
+#: A SAFETY NET FOR A HUNG LEG, NOT A COMPETITOR. It can only ever pre-empt a
+#: FREE answer: it fires while a leg is still running, and a running leg usually
+#: still answers, from VDG or pl24, at no cost. Every second earlier costs money
+#: and buys time only for a leg that has genuinely stopped.
 #:
-#: Measured against 24 days of deliveries, BEFORE paint96 started pl24 at zero:
-#: 15s sat in front of 32% of them, 20s in front of 10%, 25s in front of 3.9%.
-#: Starting pl24 immediately pulls that distribution left by roughly VDG's
-#: median 4.5s, so each threshold now sits earlier in the curve than those
-#: percentages suggest.
+#: Shipped at 15s and moved to 20s on 10 Sep, on the first evidence from the
+#: pipeline as it now runs rather than as it used to:
 #:
-#: 15s is an operator choice, not a measured optimum — it buys a few seconds
-#: for customers whose leg has genuinely hung, and pays for it on the ones
-#: whose leg was merely slow. THE NUMBER TO WATCH IS ezyvin_started_because:
-#: if 'backstop' is a rarity against 'both_empty', this is doing its job. If it
-#: is a meaningful share, that is not an argument for going earlier still — it
-#: means legs are hanging, and the fix is finding out why rather than paying to
-#: route around it.
-EZYVIN_BACKSTOP_S = float(os.environ.get('EZYVIN_BACKSTOP_S', '15'))
+#:   SO71HKE completed in 16.7s. The backstop fired at 15, pl24 answered
+#:   shortly after with the same C3Y, and 5 credits bought 1.7 seconds. At 20s
+#:   that call never happens. It was the first backstop firing in production
+#:   and it was pure waste.
+#:
+#: The distribution moved too, because paint96 starts pl24 at zero instead of
+#: summoning it when VDG drops out. Deliveries since: p50 9.8s (was 11.8s), and
+#: NOTHING past 20s against 10.3% before. So 20s now sits above the whole
+#: observed tail while 15s sits inside it.
+#:
+#: Six deliveries is a thin sample and a slow day will produce a 25s outlier —
+#: which is fine, because that is the case this exists for. THE NUMBER TO WATCH
+#: is ezyvin_started_because: if 'backstop' is more than a rarity against
+#: 'both_empty', the answer is not to move this again, it is to find out which
+#: leg is hanging.
+EZYVIN_BACKSTOP_S = float(os.environ.get('EZYVIN_BACKSTOP_S', '20'))
 
 # SECOND-CHANCE STAGE (paint73). When a paid leg finishes with nothing, ask it
 # once more — but only briefly.
