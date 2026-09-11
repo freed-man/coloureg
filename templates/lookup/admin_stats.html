@@ -707,15 +707,33 @@
             <p class="stat-subvalue">code delivered but Stripe capture failed — chase these</p>
         </div>
         {% endif %}
+        {% comment %} paint129: a pencil here too, for the one window where VDG's own
+           figure is stale — between a top-up and the next lookup, which on a
+           quiet evening is hours of the card showing money already added.
+
+           DIFFERENT MECHANISM FROM EZYVIN'S, though it looks the same. Ezyvin
+           publishes no balance, so what you type there IS the balance. VDG
+           returns one on every call, so what you type here is a temporary
+           override: whichever reading is NEWER wins, and the next real call
+           supersedes it on its own. Nothing to clear, and it cannot drift.
+           {% endcomment %}
         <div class="stat-card balance">
-            <p class="stat-label">VDG balance</p>
+            <p class="stat-label">VDG balance<button type="button" class="bal-edit" id="vdg-bal-edit" title="Set after a top-up; the next lookup replaces it">&#9998;</button></p>
             {% if vdg_balance is not None %}
             <p class="stat-value balance-highlight">£{{ vdg_balance|floatformat:2 }}</p>
-            <p class="stat-subvalue">as of {{ vdg_balance_at|date:"M j H:i" }}</p>
+            <p class="stat-subvalue">{% if vdg_balance_manual %}entered {{ vdg_balance_at|date:"M j H:i" }} · next lookup updates it{% else %}as of {{ vdg_balance_at|date:"M j H:i" }}{% endif %}</p>
             {% else %}
             <p class="stat-value" style="color: #999;">—</p>
             <p class="stat-subvalue">updates after each search</p>
             {% endif %}
+            <form method="POST" class="bal-form" id="vdg-bal-form" hidden>
+                {% csrf_token %}
+                <input type="hidden" name="action" value="save_vdg_balance">
+                <input type="number" step="0.01" min="0" name="vdg_balance_manual"
+                       value="{{ site_config.vdg_balance_manual|default_if_none:'' }}"
+                       aria-label="VDG balance">
+                <button type="submit">Save</button>
+            </form>
         </div>
         {% comment %} paint77: SPEND, not balance. One Auto expose no balance
            endpoint anywhere in their 148-path spec, so a figure labelled
@@ -1950,18 +1968,21 @@
     // paint128: reveal the balance editor. Focused and selected on open, so a
     // top-up is pencil, type, enter — the field arrives pre-filled, so the
     // common case is replacing a number rather than composing one.
-    var balEdit = document.getElementById('bal-edit');
-    if (balEdit) {
-        balEdit.addEventListener('click', function () {
-            var f = document.getElementById('bal-form');
-            if (!f) return;
-            f.hidden = !f.hidden;
-            if (!f.hidden) {
-                var n = f.querySelector('input[type="number"]');
-                if (n) { n.focus(); n.select(); }
-            }
+    // paint129: one handler for both pencils. Two near-identical blocks would
+    // drift the moment either card changed.
+    [['bal-edit', 'bal-form'], ['vdg-bal-edit', 'vdg-bal-form']].forEach(
+        function (pair) {
+            var btn = document.getElementById(pair[0]);
+            var f = document.getElementById(pair[1]);
+            if (!btn || !f) return;
+            btn.addEventListener('click', function () {
+                f.hidden = !f.hidden;
+                if (!f.hidden) {
+                    var n = f.querySelector('input[type="number"]');
+                    if (n) { n.focus(); n.select(); }
+                }
+            });
         });
-    }
 
     // paint107: grow a note field to fit its content, instead of scrolling it.
     //

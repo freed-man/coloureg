@@ -2796,6 +2796,36 @@ def admin_stats(request):
     # Also clears the tripped flag so a raised budget takes effect immediately
     # (otherwise today's earlier trip would keep the alert suppressed even
     # though lookups have resumed).
+    # paint129: a manual VDG balance, to cover the window between a top-up and
+    # the next lookup. Superseded automatically by the next real API reading —
+    # see the "newer wins" comparison in the context above.
+    if request.method == 'POST' and request.POST.get('action') == 'save_vdg_balance':
+        cfg = SiteConfig.get()
+        raw = (request.POST.get('vdg_balance_manual') or '').strip()
+        _back = '/admin-stats/'
+        if not raw:
+            cfg.vdg_balance_manual = None
+            cfg.save(update_fields=['vdg_balance_manual', 'updated_at'])
+            messages.success(request, 'VDG balance override cleared.')
+            return redirect(_back)
+        try:
+            amount = Decimal(raw)
+            if amount < 0:
+                raise ValueError
+        except (InvalidOperation, ValueError):
+            messages.error(request, 'Balance must be a number.')
+            return redirect(_back)
+        # Same reasoning as the daily cap: a figure this large is a mistyped
+        # digit, not an intention.
+        if amount > Decimal('100000'):
+            messages.error(request, 'That looks like a typo.')
+            return redirect(_back)
+        cfg.vdg_balance_manual = amount
+        cfg.save(update_fields=['vdg_balance_manual', 'updated_at'])
+        messages.success(request, f'VDG balance set to £{amount:.2f}. The next '
+                                  f'lookup will replace it with VDG\'s own figure.')
+        return redirect(_back)
+
     # paint109: the Ezyvin credit balance, typed in from their dashboard.
     #
     # There is nothing to fetch — /me/usage reports consumption and /me/info
@@ -3395,6 +3425,21 @@ def admin_stats(request):
     )
     vdg_balance = latest_with_balance.vdg_balance_after_call if latest_with_balance else None
     vdg_balance_at = latest_with_balance.timestamp if latest_with_balance else None
+    # paint129: NEWER WINS. VDG's balance arrives on every API call, so it is
+    # only ever stale between a top-up and the next lookup — hours, on a quiet
+    # evening, of the card showing money already added. A manual entry covers
+    # that window and the next real call supersedes it automatically, so there
+    # is nothing to clear and it cannot drift.
+    _cfg129 = SiteConfig.get()
+    if _cfg129.vdg_balance_manual is not None and (
+            vdg_balance_at is None
+            or (_cfg129.vdg_balance_manual_at
+                and _cfg129.vdg_balance_manual_at > vdg_balance_at)):
+        vdg_balance = _cfg129.vdg_balance_manual
+        vdg_balance_at = _cfg129.vdg_balance_manual_at
+        vdg_balance_manual = True
+    else:
+        vdg_balance_manual = False
 
     _cache_hits = VrmCache.objects.aggregate(h=Sum('hit_count'))['h'] or 0
     _avg_real_cost = float(real_cost_sum / real_cost_count) if real_cost_count else 0.0
@@ -3498,6 +3543,7 @@ def admin_stats(request):
         # balance we cannot know.
         'vdg_balance': vdg_balance,
         'vdg_balance_at': vdg_balance_at,
+        'vdg_balance_manual': vdg_balance_manual,
         'provider_breakdown': provider_breakdown,
         # --- paint16 metrics ---
         # paint58: the 'No code exists' stat card was removed from the dashboard,

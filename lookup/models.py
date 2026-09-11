@@ -2171,6 +2171,21 @@ class SiteConfig(models.Model):
     # `_at` is stamped automatically whenever the number changes, and is what
     # the subtraction counts from. Without it a top-up would be immediately
     # eaten by the whole history of spend.
+    # paint129: a TEMPORARY override for the VDG balance.
+    #
+    # Unlike Ezyvin's, VDG's balance is not typed in — it arrives on every API
+    # call and is read from the most recent Search row. It is only ever stale
+    # in one window: between a top-up and the next lookup, which on a quiet
+    # evening can be hours of the card showing money you have already added.
+    #
+    # So this is an override with an expiry built in: whichever of the two is
+    # NEWER wins, so a top-up shows at once and the next real call supersedes
+    # it automatically. Nothing to clear, and it cannot drift — the API always
+    # gets the last word.
+    vdg_balance_manual = models.DecimalField(max_digits=10, decimal_places=2,
+                                             null=True, blank=True)
+    vdg_balance_manual_at = models.DateTimeField(null=True, blank=True)
+
     ezyvin_credit_balance = models.IntegerField(null=True, blank=True)
     ezyvin_balance_at = models.DateTimeField(null=True, blank=True)
     # paint110: THEIR lifetime consumption at the moment the balance was
@@ -2484,6 +2499,22 @@ class SiteConfig(models.Model):
         would be silently shadowed, which is exactly what happened on the first
         attempt at this. Python keeps the last definition and gives no warning.
         """
+        # paint129: the same stamp-on-change treatment for the VDG override, so
+        # "newer wins" has a time to compare against.
+        if self.pk:
+            _prior_vdg = (SiteConfig.objects
+                          .filter(pk=self.pk)
+                          .values_list('vdg_balance_manual', flat=True)
+                          .first())
+            if _prior_vdg != self.vdg_balance_manual:
+                self.vdg_balance_manual_at = timezone.now()
+                if kwargs.get('update_fields') is not None:
+                    kwargs['update_fields'] = list(
+                        set(kwargs['update_fields']) | {'vdg_balance_manual',
+                                                        'vdg_balance_manual_at'})
+        elif self.vdg_balance_manual is not None:
+            self.vdg_balance_manual_at = timezone.now()
+
         stamped = False
         if self.pk:
             prior = (SiteConfig.objects
