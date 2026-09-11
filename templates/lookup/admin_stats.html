@@ -1489,8 +1489,8 @@
                compare two fields. {% endcomment %}
             <div class="mlq-meta">
                 <div><div class="lbl">Date</div><div class="val">{{ r.created_at|date:"M j Y, H:i" }}</div></div>
-                <div><div class="lbl">Reg</div><div class="val">{{ r.registration|default:"—" }}</div></div>
                 <div><div class="lbl">Vehicle</div><div class="val">{{ r.search.vehicle_title|default:"—" }}</div></div>
+                <div><div class="lbl">Reg</div><div class="val">{{ r.registration|default:"—" }}</div></div>
                 <div><div class="lbl">VIN</div><div class="val">{{ r.search.vin|default:"—" }}</div></div>
                 <div><div class="lbl">DVLA colour</div><div class="val">{{ r.search.colour|default:"—" }}</div></div>
                 <div><div class="lbl">Code sent</div><div class="val">{{ r.code|default:"—" }}</div></div>
@@ -1515,27 +1515,29 @@
 
                Both buttons are neutral. Colouring one green presumes the
                report was right, and roughly nine in ten will not be. {% endcomment %}
-            <form method="POST" class="mt-2">
+            {% comment %} paint120: the same mlq-form row the queue uses — one line,
+               fields then buttons, send-btn styling on both. Two panels side by
+               side with different form furniture read as two different tools.
+
+               The NAME field flexes and the code field does not: a paint code
+               is a handful of characters, a name can be "Grigio Underground
+               (Vr-695/A)" and was being truncated to half of itself in a fixed
+               240px. Whatever width is left goes to the field that needs it.
+
+               Labelled PAINT CODE and PAINT NAME rather than "correct" —
+               pre-filled with what was sent, so most of the time you are
+               confirming rather than correcting. {% endcomment %}
+            <form method="POST" class="mlq-form mt-2">
                 {% csrf_token %}
                 <input type="hidden" name="report_id" value="{{ r.id }}">
-                <div class="d-flex align-items-end gap-2 flex-wrap">
-                    <div>
-                        <div class="lbl">Correct code</div>
-                        <input type="text" class="form-control form-control-sm"
-                               style="max-width:150px;" name="fixed_code"
-                               value="{{ r.code }}">
-                    </div>
-                    <div>
-                        <div class="lbl">Correct name</div>
-                        <input type="text" class="form-control form-control-sm"
-                               style="max-width:240px;" name="fixed_name"
-                               value="{{ r.colour_name }}">
-                    </div>
-                    <button type="submit" name="action" value="report_actioned"
-                            class="btn btn-sm btn-outline-dark">Save correction</button>
-                    <button type="submit" name="action" value="report_ignored"
-                            class="btn btn-sm btn-outline-dark">Code is fine</button>
-                </div>
+                <input type="text" name="fixed_code" value="{{ r.code }}"
+                       placeholder="PAINT CODE" style="flex: 0 0 150px;">
+                <input type="text" name="fixed_name" value="{{ r.colour_name }}"
+                       placeholder="PAINT NAME" style="flex: 1 1 260px;">
+                <button type="submit" name="action" value="report_actioned"
+                        class="send-btn">Save</button>
+                <button type="submit" name="action" value="report_ignored"
+                        class="send-btn">Code is fine</button>
             </form>
         </div>
         {% endfor %}
@@ -1548,7 +1550,7 @@
             <div class="mlq-card" data-search-id="{{ s.id }}" data-reg="{{ s.registration }}">
                 <div class="mlq-meta">
                     <div>
-                        <div class="lbl">When</div>
+                        <div class="lbl">Date</div>
                         <div class="val">{{ s.timestamp|date:"M j Y, H:i" }}</div>
                     </div>
                     <div>
