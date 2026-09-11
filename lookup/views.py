@@ -2803,10 +2803,14 @@ def admin_stats(request):
         cfg = SiteConfig.get()
         raw = (request.POST.get('vdg_balance_manual') or '').strip()
         _back = '/admin-stats/'
+        # paint130: BLANK IS A NO-OP, not a wipe.
+        #
+        # The field is empty by default now, so "Save" with nothing typed is
+        # the shape of an accidental press — and wiping a balance on an
+        # accidental press is the worst available outcome. There is no need for
+        # a clear: an override expires on its own at the next real API reading.
         if not raw:
-            cfg.vdg_balance_manual = None
-            cfg.save(update_fields=['vdg_balance_manual', 'updated_at'])
-            messages.success(request, 'VDG balance override cleared.')
+            messages.info(request, 'Nothing entered, so the balance is unchanged.')
             return redirect(_back)
         try:
             amount = Decimal(raw)
@@ -2893,12 +2897,16 @@ def admin_stats(request):
     if request.method == 'POST' and request.POST.get('action') == 'save_ezyvin_balance':
         cfg = SiteConfig.get()
         raw = (request.POST.get('ezyvin_credit_balance') or '').strip()
-        # BLANK CLEARS IT, and the card falls back to "—". An unknown balance
-        # must read as unknown; zero is a real and alarming state.
+        # paint130: BLANK IS A NO-OP, not a wipe.
+        #
+        # It used to clear the balance, which made sense while the field
+        # arrived pre-filled — you had to delete the number to mean it. Now the
+        # field is empty by default, so a blank submit is the shape of an
+        # accidental press, and clearing a balance by accident is the worst
+        # available outcome. Clearing is still possible from the Django admin
+        # if it is ever genuinely wanted.
         if not raw:
-            cfg.ezyvin_credit_balance = None
-            cfg.save(update_fields=['ezyvin_credit_balance', 'updated_at'])
-            messages.success(request, 'Ezyvin balance cleared.')
+            messages.info(request, 'Nothing entered, so the balance is unchanged.')
             return redirect('admin_stats')
         try:
             credits = int(raw)

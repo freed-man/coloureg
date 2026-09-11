@@ -231,17 +231,29 @@
         color: #999; cursor: pointer; font-size: 13px; line-height: 1;
     }
     .bal-edit:hover { color: #003399; }
-    .bal-form { display: flex; gap: 6px; margin-top: 8px; }
+    {% comment %} paint130: WRAPS. On one line the input plus Save overflowed the
+       card and clipped the button to "Sav" — the cards are ~200px and a stat
+       card is not a form row. Input on its own line, buttons beneath.
+       {% endcomment %}
+    .bal-form { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
     .bal-form input {
-        flex: 0 0 5.5rem; padding: 4px 8px;
+        flex: 1 1 100%; min-width: 0; padding: 4px 8px;
         border: 1px solid #ccc; border-radius: 4px;
         font-family: inherit; font-size: 14px;
     }
+    {% comment %} No spinners: type="text" with inputmode="numeric" gets the numeric
+       keypad on a phone without the up/down arrows, which in a 200px card ate
+       width the number needed and invited clicking rather than typing.
+       {% endcomment %}
     .bal-form button {
-        padding: 4px 12px; border: 0; border-radius: 4px;
+        flex: 0 0 auto; padding: 4px 12px; border: 0; border-radius: 4px;
         background: #003399; color: #fff; font-size: 13px; cursor: pointer;
     }
     .bal-form button:hover { background: #002277; }
+    .bal-form button.bal-cancel {
+        background: transparent; color: #666; border: 1px solid #ddd;
+    }
+    .bal-form button.bal-cancel:hover { background: #f5f5f5; color: #1a1a1a; }
     .balance-highlight {
         color: #003399;
     }
@@ -729,10 +741,15 @@
             <form method="POST" class="bal-form" id="vdg-bal-form" hidden>
                 {% csrf_token %}
                 <input type="hidden" name="action" value="save_vdg_balance">
-                <input type="number" step="0.01" min="0" name="vdg_balance_manual"
-                       value="{{ site_config.vdg_balance_manual|default_if_none:'' }}"
-                       aria-label="VDG balance">
+                {% comment %} EMPTY, not pre-filled. A field arriving with the current
+                   figure in it reads as though that IS the new value, and the
+                   whole reason to open this is that the number has changed.
+                   Submitting it blank is a no-op rather than a wipe — see the
+                   handler. {% endcomment %}
+                <input type="text" inputmode="numeric" name="vdg_balance_manual"
+                       autocomplete="off" aria-label="VDG balance">
                 <button type="submit">Save</button>
+                <button type="button" class="bal-cancel">Cancel</button>
             </form>
         </div>
         {% comment %} paint77: SPEND, not balance. One Auto expose no balance
@@ -793,10 +810,15 @@
             <form method="POST" class="bal-form" id="bal-form" hidden>
                 {% csrf_token %}
                 <input type="hidden" name="action" value="save_ezyvin_balance">
-                <input type="number" step="1" min="0" name="ezyvin_credit_balance"
-                       value="{{ site_config.ezyvin_credit_balance|default_if_none:'' }}"
-                       aria-label="Ezyvin credit balance">
+                {% comment %} EMPTY, not pre-filled. A field arriving with the current
+                   figure in it reads as though that IS the new value, and the
+                   whole reason to open this is that the number has changed.
+                   Submitting it blank is a no-op rather than a wipe — see the
+                   handler. {% endcomment %}
+                <input type="text" inputmode="numeric" name="ezyvin_credit_balance"
+                       autocomplete="off" aria-label="Ezyvin credit balance">
                 <button type="submit">Save</button>
+                <button type="button" class="bal-cancel">Cancel</button>
             </form>
         </div>
     </div>
@@ -1978,10 +2000,21 @@
             btn.addEventListener('click', function () {
                 f.hidden = !f.hidden;
                 if (!f.hidden) {
-                    var n = f.querySelector('input[type="number"]');
-                    if (n) { n.focus(); n.select(); }
+                    var n = f.querySelector('input[name]');
+                    if (n) n.focus();
                 }
             });
+            // paint130: Cancel closes without submitting, and clears whatever
+            // was typed — reopening should be a fresh start, not a half-typed
+            // number from five minutes ago.
+            var cancel = f.querySelector('.bal-cancel');
+            if (cancel) {
+                cancel.addEventListener('click', function () {
+                    var n = f.querySelector('input[type="text"]');
+                    if (n) n.value = '';
+                    f.hidden = true;
+                });
+            }
         });
 
     // paint107: grow a note field to fit its content, instead of scrolling it.
