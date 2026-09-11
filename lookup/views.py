@@ -2812,18 +2812,44 @@ def admin_stats(request):
         except (PaintCodeReport.DoesNotExist, ValueError, TypeError):
             messages.error(request, 'That report no longer exists.')
             return redirect('admin_stats')
+        actioned = request.POST.get('action') == 'report_actioned'
         # IGNORED, never deleted. A dismissed report still records that someone
         # disagreed, and nine dismissals against one code is itself a signal
-        # however unconvincing each was alone — which is exactly what the
-        # per-code count is for.
-        rep.status = (PaintCodeReport.STATUS_ACTIONED
-                      if request.POST.get('action') == 'report_actioned'
+        # however unconvincing each was alone — which is what the per-code
+        # count is for.
+        rep.status = (PaintCodeReport.STATUS_ACTIONED if actioned
                       else PaintCodeReport.STATUS_IGNORED)
-        rep.operator_note = (request.POST.get('operator_note') or '').strip()[:2000]
         rep.resolved_at = timezone.now()
-        rep.save(update_fields=['status', 'operator_note', 'resolved_at'])
-        messages.success(request, f'Report for {rep.registration} marked '
-                                  f'{rep.get_status_display().lower()}.')
+        fields = ['status', 'resolved_at']
+
+        # paint116: A CORRECTION, not a note to self. Saving one writes the
+        # right answer to OperatorPaintCode — the same table manual fulfilments
+        # feed — so the NEXT lookup of that make and colour gets it. A note
+        # would have recorded that you knew; this records what you knew.
+        code = (request.POST.get('fixed_code') or '').strip()
+        name = (request.POST.get('fixed_name') or '').strip()
+        corrected = False
+        if actioned and code and rep.search and rep.search.make:
+            # Only when something actually CHANGED. Pressing save with the
+            # fields untouched means "I checked it and it was right", which is
+            # the other button's job, not a reason to write a row asserting the
+            # code we already doubted.
+            if code.upper() != (rep.code or '').upper() or name != (rep.colour_name or ''):
+                OperatorPaintCode.record(
+                    make=rep.search.make, code=code, colour_name=name,
+                    model=rep.search.model or '', registration=rep.registration,
+                    search_id=rep.search_id)
+                rep.operator_note = f'corrected to {code} {name}'.strip()
+                fields.append('operator_note')
+                corrected = True
+
+        rep.save(update_fields=fields)
+        if corrected:
+            messages.success(request, f'{rep.registration}: recorded {code} '
+                                      f'{name}'.strip() + '. Future lookups will use it.')
+        else:
+            messages.success(request, f'Report for {rep.registration} marked '
+                                      f'{rep.get_status_display().lower()}.')
         return redirect('admin_stats')
 
     if request.method == 'POST' and request.POST.get('action') == 'save_ezyvin_balance':

@@ -455,76 +455,91 @@ def _found_name_block(found_name):
                 </div>"""
 
 
+def _ordinal(n):
+    """1st, 2nd, 3rd, 4th... — including the 11th-13th exceptions."""
+    n = int(n)
+    if 10 <= n % 100 <= 20:
+        suffix = 'th'
+    else:
+        suffix = {1: 'st', 2: 'nd', 3: 'rd'}.get(n % 10, 'th')
+    return f'{n}{suffix}'
+
+
 def send_admin_paint_report(report, total_for_code=1, vehicle_title='',
                             vin_full='', dvla_colour=''):
     """Tell the operator a customer says a delivered code is wrong.
 
-    paint114. THE COUNT LEADS, because it is the only part that carries
+    paint116. THE COUNT LEADS, because it is the only part that carries
     information. One report is a shrug — wrong panel, wrong part, bad mood.
     Three against the same (make, code) is a catalogue error, and there is no
     other way to find one: every other signal in the system measures whether a
     provider answered, not whether the answer was right.
 
-    The count is computed at SEND time from every report ever filed against
-    that code, so it rises on its own — the second report on a code says 2, the
-    third says 3, with nothing to maintain.
+    Counted at SEND time across every report ever filed against that code, so
+    it rises on its own: 1st, 2nd, 3rd, with nothing to maintain.
 
-    Same vehicle table as the other operator emails: Vehicle, Registration,
-    VIN, Colour. A mail that arranges the same facts differently from its
-    neighbours costs a moment of reading every single time.
+    Same brand header, vehicle table and footer as every other operator email.
+    The header is an INLINE ATTACHMENT (cid:logo), so it needs _brand_header()
+    in the HTML *and* _attachments() in the payload — the first version of this
+    mail had neither and arrived unbranded.
 
     The reason the customer picked is NOT shown. The control offers one button
-    and no form, so it is always "something else" and a row that never varies
-    is furniture. That they reported it at all is the signal.
+    and no form, so it is always "something else", and a row that never varies
+    is furniture.
     """
     repeat = total_for_code > 1
-    banner = (f'Report {total_for_code} against {report.manufacturer}/{report.code}'
-              if repeat else
-              f'First report against {report.manufacturer}/{report.code}')
+    banner = f'{_ordinal(total_for_code)} report against {report.manufacturer}/{report.code}'
     subject = (f'[{total_for_code}x] {report.manufacturer}/{report.code} reported'
                if repeat else
                f'Paint code reported: {report.registration}')
-    html = f"""<!DOCTYPE html>
-<html><body style="margin:0;padding:24px;background:#f5f5f5;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
-    <div style="max-width:560px;margin:0 auto;background:#ffffff;border-radius:8px;padding:32px;">
-        <div style="background:{'#fdeaea' if repeat else '#f0f4ff'};border-left:3px solid {'#c0392b' if repeat else '#003399'};padding:14px 18px;border-radius:4px;margin-bottom:24px;">
-            <div style="font-size:15px;font-weight:600;color:#1a1a1a;">{_esc(banner)}</div>
+    html = f"""
+    <div style="background: #f5f5f5; padding: 40px 20px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;">
+        <div style="max-width: 560px; margin: 0 auto; background: #ffffff; border-radius: 8px; overflow: hidden;">
+            {_brand_header()}
+            <div style="padding: 32px;">
+                <div style="background: {'#fdeaea' if repeat else '#f0f4ff'}; border-left: 3px solid {'#c0392b' if repeat else '#003399'}; padding: 14px 18px; border-radius: 4px; margin-bottom: 24px;">
+                    <div style="font-size: 15px; font-weight: 600; color: #1a1a1a;">{_esc(banner)}</div>
+                </div>
+                <table style="width: 100%; border-collapse: collapse; margin-bottom: 24px;">
+                    <tr style="border-bottom: 1px solid #eee;">
+                        <td style="padding: 10px 16px 10px 0; color: #666; font-size: 13px; width: 64px;">Vehicle</td>
+                        <td style="padding: 10px 0; color: #1a1a1a; font-size: 14px;">{_esc(vehicle_title) or '&mdash;'}</td>
+                    </tr>
+                    <tr style="border-bottom: 1px solid #eee;">
+                        <td style="padding: 10px 16px 10px 0; color: #666; font-size: 13px;">Registration</td>
+                        <td style="padding: 10px 0; color: #1a1a1a; font-size: 14px;">{_esc(report.registration)}</td>
+                    </tr>
+                    <tr style="border-bottom: 1px solid #eee;">
+                        <td style="padding: 10px 16px 10px 0; color: #666; font-size: 13px;">VIN</td>
+                        <td style="padding: 10px 0; color: #1a1a1a; font-size: 14px; font-family: 'IBM Plex Sans', Arial, Helvetica, sans-serif; overflow-wrap: break-word;">{_esc(vin_full) or '&mdash;'}</td>
+                    </tr>
+                    <tr style="border-bottom: 1px solid #eee;">
+                        <td style="padding: 10px 16px 10px 0; color: #666; font-size: 13px;">Colour</td>
+                        <td style="padding: 10px 0; color: #1a1a1a; font-size: 14px;">{_esc(dvla_colour) or '&mdash;'}</td>
+                    </tr>
+                    <tr style="border-bottom: 1px solid #eee;">
+                        <td style="padding: 10px 16px 10px 0; color: #666; font-size: 13px;">Code sent</td>
+                        <td style="padding: 10px 0; color: #1a1a1a; font-size: 14px;">{_esc(report.code)}</td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 10px 16px 10px 0; color: #666; font-size: 13px;">Name sent</td>
+                        <td style="padding: 10px 0; color: #1a1a1a; font-size: 14px;">{_esc(report.colour_name) or '&mdash;'}</td>
+                    </tr>
+                </table>
+                {f'<div style="background:#fafafa;border-radius:4px;padding:16px;"><div style="color:#666;font-size:12px;text-transform:uppercase;letter-spacing:0.4px;margin-bottom:6px;">Their note</div><div style="color:#1a1a1a;font-size:14px;white-space:pre-wrap;">{_esc(report.note)}</div></div>' if report.note else ''}
+            </div>
         </div>
-        <table style="width: 100%; border-collapse: collapse; margin-bottom: 24px;">
-            <tr style="border-bottom: 1px solid #eee;">
-                <td style="padding: 10px 16px 10px 0; color: #666; font-size: 13px; width: 64px;">Vehicle</td>
-                <td style="padding: 10px 0; color: #1a1a1a; font-size: 14px;">{_esc(vehicle_title) or '&mdash;'}</td>
-            </tr>
-            <tr style="border-bottom: 1px solid #eee;">
-                <td style="padding: 10px 16px 10px 0; color: #666; font-size: 13px;">Registration</td>
-                <td style="padding: 10px 0; color: #1a1a1a; font-size: 14px;">{_esc(report.registration)}</td>
-            </tr>
-            <tr style="border-bottom: 1px solid #eee;">
-                <td style="padding: 10px 16px 10px 0; color: #666; font-size: 13px;">VIN</td>
-                <td style="padding: 10px 0; color: #1a1a1a; font-size: 14px; font-family: 'IBM Plex Sans', Arial, Helvetica, sans-serif; overflow-wrap: break-word;">{_esc(vin_full) or '&mdash;'}</td>
-            </tr>
-            <tr style="border-bottom: 1px solid #eee;">
-                <td style="padding: 10px 16px 10px 0; color: #666; font-size: 13px;">Colour</td>
-                <td style="padding: 10px 0; color: #1a1a1a; font-size: 14px;">{_esc(dvla_colour) or '&mdash;'}</td>
-            </tr>
-            <tr style="border-bottom: 1px solid #eee;">
-                <td style="padding: 10px 16px 10px 0; color: #666; font-size: 13px;">Code sent</td>
-                <td style="padding: 10px 0; color: #1a1a1a; font-size: 14px; font-weight: 600;">{_esc(report.code)}</td>
-            </tr>
-            <tr>
-                <td style="padding: 10px 16px 10px 0; color: #666; font-size: 13px;">Name sent</td>
-                <td style="padding: 10px 0; color: #1a1a1a; font-size: 14px;">{_esc(report.colour_name) or '&mdash;'}</td>
-            </tr>
-        </table>
-        {f'<div style="background:#fafafa;border-radius:4px;padding:16px;margin-bottom:24px;"><div style="color:#666;font-size:12px;text-transform:uppercase;letter-spacing:0.4px;margin-bottom:6px;">Their note</div><div style="color:#1a1a1a;font-size:14px;white-space:pre-wrap;">{_esc(report.note)}</div></div>' if report.note else ''}
-        <p style="margin:0;color:#999;font-size:12px;">Django admin &rsaquo; Lookup &rsaquo; Reported paint codes.</p>
+        {FOOTER}
     </div>
-</body></html>"""
+    """
     return _safe_send({
         "from": settings.DEFAULT_FROM_EMAIL,
         "to": settings.ADMIN_EMAIL,
         "subject": subject,
         "html": html,
+        # cid:logo in _brand_header() resolves to this. Without it the header
+        # renders a broken image.
+        "attachments": _attachments(),
     }, context='paint_report')
 
 

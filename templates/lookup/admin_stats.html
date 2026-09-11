@@ -1458,15 +1458,19 @@
         </p>
         {% for r in paint_reports %}
         <div class="mlq-card">
+            {% comment %} Identity first, then what we told them. Code and name sit
+               together at the end because they are the pair under dispute —
+               splitting them across the row made you read the whole card to
+               compare two fields. {% endcomment %}
             <div class="mlq-meta">
-                <div><div class="lbl">When</div><div class="val">{{ r.created_at|date:"M j Y, H:i" }}</div></div>
+                <div><div class="lbl">Date</div><div class="val">{{ r.created_at|date:"M j Y, H:i" }}</div></div>
                 <div><div class="lbl">Reg</div><div class="val">{{ r.registration|default:"—" }}</div></div>
                 <div><div class="lbl">Vehicle</div><div class="val">{{ r.search.vehicle_title|default:"—" }}</div></div>
                 <div><div class="lbl">VIN</div><div class="val">{{ r.search.vin|default:"—" }}</div></div>
-                <div><div class="lbl">Code sent</div><div class="val"><strong>{{ r.code|default:"—" }}</strong></div></div>
-                <div><div class="lbl">Name sent</div><div class="val">{{ r.colour_name|default:"—" }}</div></div>
                 <div><div class="lbl">DVLA colour</div><div class="val">{{ r.search.colour|default:"—" }}</div></div>
-                {% comment %} The count is the whole reason this table exists. One
+                <div><div class="lbl">Code sent</div><div class="val">{{ r.code|default:"—" }}</div></div>
+                <div><div class="lbl">Name sent</div><div class="val">{{ r.colour_name|default:"—" }}</div></div>
+                {% comment %} The count is the whole reason this section exists. One
                    report is a shrug; three against one code is a catalogue
                    error, and nothing else in the system can find one. {% endcomment %}
                 <div><div class="lbl">Reports for this code</div>
@@ -1478,15 +1482,35 @@
                 <div style="font-size:14px;color:#1a1a1a;white-space:pre-wrap;">{{ r.note }}</div>
             </div>
             {% endif %}
-            <form method="POST" class="d-flex align-items-center gap-2 flex-wrap mt-2">
+            {% comment %} THE CORRECTION IS THE POINT, not a note to self. Filling
+               these in writes the right answer to OperatorPaintCode, so the
+               next lookup of that make and colour gets it — the same table the
+               manual fulfilments feed. A note would have recorded that you
+               knew; this records what you knew.
+
+               Both buttons are neutral. Colouring one green presumes the
+               report was right, and roughly nine in ten will not be. {% endcomment %}
+            <form method="POST" class="mt-2">
                 {% csrf_token %}
                 <input type="hidden" name="report_id" value="{{ r.id }}">
-                <input type="text" class="form-control form-control-sm" style="max-width:280px;"
-                       name="operator_note" placeholder="Note to self (optional)">
-                <button type="submit" name="action" value="report_actioned"
-                        class="btn btn-sm btn-success">Code was wrong — fixed</button>
-                <button type="submit" name="action" value="report_ignored"
-                        class="btn btn-sm btn-outline-secondary">Code was fine</button>
+                <div class="d-flex align-items-end gap-2 flex-wrap">
+                    <div>
+                        <div class="lbl">Correct code</div>
+                        <input type="text" class="form-control form-control-sm"
+                               style="max-width:150px;" name="fixed_code"
+                               value="{{ r.code }}">
+                    </div>
+                    <div>
+                        <div class="lbl">Correct name</div>
+                        <input type="text" class="form-control form-control-sm"
+                               style="max-width:240px;" name="fixed_name"
+                               value="{{ r.colour_name }}">
+                    </div>
+                    <button type="submit" name="action" value="report_actioned"
+                            class="btn btn-sm btn-outline-dark">Save correction</button>
+                    <button type="submit" name="action" value="report_ignored"
+                            class="btn btn-sm btn-outline-dark">Code is fine</button>
+                </div>
             </form>
         </div>
         {% endfor %}
