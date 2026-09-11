@@ -950,7 +950,31 @@ def resolve_paint(registration, vin, make, category=None, telemetry=None, model=
                 return None
             _t['ezyvin_attempted'] = True
             _t['ezyvin_started_because'] = reason
-            f_ezyvin = ex.submit(ezyvin.lookup, vin, _ez_sink, race_over)
+            # paint112: BUDGET = WHATEVER THE RACE HAS LEFT, not a fixed 20s.
+            #
+            # Ezyvin bills on SUBMISSION — the job runs on their side whether
+            # or not we wait — so abandoning it early is pure loss: full price,
+            # no code, and the customer gets the manual-lookup offer for a car
+            # we already paid to identify.
+            #
+            # Y288SCT, a 2001 Fiat Punto on 10 Sep, is exactly that. The job
+            # finished and returned a code when run by hand; the pipeline gave
+            # up at 20s with roughly 20s of race deadline still unused, and was
+            # charged 5 credits for nothing.
+            #
+            # The reserve starts LAST, so whatever remains is its natural
+            # budget — there is nothing waiting behind it to protect. The floor
+            # keeps a near-expired race from submitting a job it cannot
+            # possibly hear back from, which would be the same waste again.
+            _ez_budget = deadline - time.monotonic() - 0.5
+            if _ez_budget < 3.0:
+                _t['ezyvin_started_because'] = ''
+                _t['ezyvin_attempted'] = False
+                _t['ezyvin_outcome'] = 'skipped_no_time'
+                f_ezyvin = None
+                return None
+            f_ezyvin = ex.submit(ezyvin.lookup, vin, _ez_sink, race_over,
+                                 _ez_budget)
             return f_ezyvin
         _ez_sink = {}
         # A LATE BACKSTOP, deliberately. Its job is to catch a HUNG leg, not to
