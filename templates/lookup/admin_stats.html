@@ -1983,9 +1983,39 @@
 </script>
 
 {{ chart_json|json_script:"chart-data" }}
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"
-        integrity="sha384-e6nUZLBkQ86NJ6TVVKAeSaK8jWa3NhkYWZFomE39AvDbQWeie9PlQqM3pmYW5d1g"
+{% comment %} paint134: the UNMINIFIED build, and not for size reasons.
+
+   chart.js@4.4.0 ships NO minified file — the package contains chart.umd.js
+   and nothing else. jsdelivr SYNTHESISES chart.umd.min.js on request, so an
+   SRI hash on that URL is pinned to jsdelivr's minifier output rather than to
+   Chart.js. If they ever change or update that minifier the hash stops
+   matching, the browser refuses the script, and this page renders empty chart
+   boxes with nothing to say why.
+
+   chart.umd.js is the file the maintainers actually publish, so its hash can
+   be verified against the npm tarball — and it was, byte for byte, to produce
+   the one below. 200 KB against roughly 70, on an admin page one person opens
+   a few times a day. Determinism is worth 130 KB here.
+
+   Both Bootstrap hashes were verified the same way and were already correct.
+   {% endcomment %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.js"
+        integrity="sha384-FcQlsUOd0TJjROrBxhJdUhXTUgNJQxTMcxZe6nHbaEfFL1zjQ+bq/uRoBQxb0KMo"
         crossorigin="anonymous"></script>
+<script>
+    // paint134: say so if Chart.js did not load, rather than showing empty
+    // boxes. SRI failing is the likeliest cause and it fails SILENTLY — the
+    // browser refuses the script and reports nothing to the page, so without
+    // this the dashboard looks broken with no clue why.
+    if (typeof Chart === 'undefined') {
+        document.querySelectorAll('.chart-wrapper').forEach(function (el) {
+            el.innerHTML = '<p style="color:#666;font-size:13px;padding:24px 0;">' +
+                'Charts unavailable \u2014 Chart.js did not load. If this persists, ' +
+                'the CDN file may have changed and its integrity hash needs updating.' +
+                '</p>';
+        });
+    }
+</script>
 <script>
     // paint128: reveal the balance editor. Focused and selected on open, so a
     // top-up is pencil, type, enter — the field arrives pre-filled, so the
