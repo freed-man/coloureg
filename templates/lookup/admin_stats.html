@@ -1093,18 +1093,19 @@
             font-family: 'IBM Plex Sans', sans-serif;
             font-size: 14px;
         }
-        {% comment %} paint122: sized to its own placeholder and no wider.
+        {% comment %} paint123: sized in CH, not pixels.
 
-           200px cut "paint code (leave blank if none exists)" at "leave blank
-           if" — an instruction that never finishes, and the parenthetical is
-           the important half: it is how a "manufacturer published no code"
-           fulfilment gets recorded. 320px then overshot: a paint code is rarely
-           more than eight characters, so the rest was empty box taking width
-           from the colour-name field beside it, which genuinely needs it.
+           The placeholder is "paint code (leave blank if none exists)" — 39
+           characters. Guessed in pixels it went 200 (cut at "leave blank if"),
+           then 320 (overshot, stealing width from the colour-name field beside
+           it), then 260 (short again). Three guesses, three wrong, because the
+           width of 39 characters is not something to estimate.
 
-           260px fits the placeholder with a little room and no more. {% endcomment %}
+           1ch is the width of a "0" in the current font, so 41ch plus padding
+           is the placeholder with a little room — and it follows the text if
+           the wording ever changes, which a pixel value cannot. {% endcomment %}
         .mlq-form input[name="paint_code"] {
-            max-width: 260px;
+            max-width: calc(41ch + 24px);
         }
         .mlq-form input::placeholder {
             text-transform: uppercase;
