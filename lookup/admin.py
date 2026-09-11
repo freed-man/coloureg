@@ -56,6 +56,9 @@ class SearchAdmin(admin.ModelAdmin):
         'provider',
         'success',
         'error_message',
+        # paint132: which of the three gates refused this lookup. Written by
+        # the pipeline, so readonly like every other diagnostic.
+        'gate_reason',
         'lookup_duration_ms',
         'vdg_vehicle_returned',
         'vdg_paint_returned',
@@ -115,7 +118,8 @@ class SearchAdmin(admin.ModelAdmin):
             'fields': ('paint_code', 'paint_description')
         }),
         ('Outcome', {
-            'fields': ('provider', 'success', 'error_message', 'lookup_duration_ms')
+            'fields': ('provider', 'success', 'error_message', 'gate_reason',
+                       'lookup_duration_ms')
         }),
         ('Cost Tracking', {
             'fields': (

@@ -130,6 +130,29 @@ class Search(models.Model):
     #                          (if False, the paint portion is refunded by VDG)
     vdg_vehicle_returned = models.BooleanField(default=False)
     vdg_paint_returned = models.BooleanField(default=False)
+    # paint132: WHICH gate refused this lookup.
+    #
+    # error_message='make_not_automated' covers three different refusals — the
+    # make is on SiteConfig.unsupported_makes, VDG's vehicle class is one we do
+    # not do, or DVLA's wheelplan says two wheels. Seeing the marker told you a
+    # lookup was gated and nothing about why, so there was no way to answer
+    # whether the wheelplan gate added in paint93 was firing at all.
+    #
+    # ADDITIVE ON PURPOSE. The marker keeps its exact meaning and every one of
+    # its nineteen call sites, including the customer-facing branch in
+    # results.html and fifteen battery checks. This only records the reason
+    # alongside it, so nothing existing has to change to stay correct.
+    GATE_MAKE = 'make'
+    GATE_CLASS = 'class'
+    GATE_WHEELPLAN = 'wheelplan'
+    GATE_REASON_CHOICES = [
+        (GATE_MAKE, 'Make on the unsupported list'),
+        (GATE_CLASS, 'Vehicle class unsupported'),
+        (GATE_WHEELPLAN, 'DVLA wheelplan says two wheels'),
+    ]
+
+    gate_reason = models.CharField(max_length=12, blank=True, default='',
+                                   db_index=True)
     vdg_balance_after_call = models.DecimalField(
         max_digits=10, decimal_places=2, null=True, blank=True
     )

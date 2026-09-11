@@ -1300,6 +1300,15 @@ def index(request):
                  or SiteConfig.is_wheelplan_unsupported(wheelplan))
         if make_not_automated:
             search.error_message = 'make_not_automated'
+            # paint132: record WHICH gate fired. Checked in the same order the
+            # condition evaluates, so the reason matches the one that actually
+            # short-circuited rather than whichever also happens to be true.
+            if config.is_make_unsupported(make):
+                search.gate_reason = Search.GATE_MAKE
+            elif SiteConfig.is_category_unsupported(category):
+                search.gate_reason = Search.GATE_CLASS
+            else:
+                search.gate_reason = Search.GATE_WHEELPLAN
 
         search.save()
 
@@ -3113,7 +3122,17 @@ def admin_stats(request):
         emails_sent_count=Count('id', filter=Q(email_sent=True)),
         # VDG cost flags (per-document returned counts)
         vdg_vehicle_returned_count=Count('id', filter=Q(vdg_vehicle_returned=True)),
-        vdg_paint_returned_count=Count('id', filter=Q(vdg_paint_returned=True)),
+        # paint132: BOTH paint flags. vdg_paint_returned is set from the
+        # VEHICLE call's payload, and since paint66 split the packages on
+        # 15 Aug that payload never carries paint — 6 True of 823 lookups
+        # against vdg_retry_returned's 235. Counting it alone made
+        # paint_refunds_count below read as "every lookup was refunded".
+        #
+        # A paint call returned paint if EITHER the first call or the second
+        # chance did, so count the union. The dead flag is kept in the sum
+        # rather than dropped, because pre-15-Aug rows are where it is real.
+        vdg_paint_returned_count=Count('id', filter=Q(vdg_paint_returned=True)
+                                       | Q(vdg_retry_returned=True)),
         # Real billed spend: sum of the actual TransactionCost VDG charged, plus a
         # count of how many rows carry it (rows from before this field existed are
         # null and fall back to the per-document estimate below).
@@ -3423,7 +3442,11 @@ def admin_stats(request):
     vdg_vehicle_calls = top_metrics['vdg_vehicle_returned_count']
     vdg_paint_calls = top_metrics['total']
     paint_calls_returned = top_metrics['vdg_paint_returned_count']
-    paint_refunds_count = vdg_paint_calls - paint_calls_returned
+    # Floored at zero. vdg_paint_calls is the row TOTAL, which includes rows
+    # that never made a paint call at all — a gated make, a bad plate, a cache
+    # hit — so the subtraction can go negative and a negative refund count is
+    # not a number anyone can act on.
+    paint_refunds_count = max(0, vdg_paint_calls - paint_calls_returned)
 
     # Latest VDG balance (captured opportunistically from any API call)
     latest_with_balance = (
