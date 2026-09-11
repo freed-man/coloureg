@@ -1885,17 +1885,35 @@ class PaintCodeReport(models.Model):
 
     @classmethod
     def count_for_code(cls, manufacturer, code):
-        """How many times this exact code has been reported, ignored included.
+        """How many DIFFERENT people have reported this exact code.
 
-        Ignored ones count deliberately. The operator dismissing a report is a
+        paint131: distinct reporters, not raw rows. The whole value of this
+        number is that several people independently disagreeing means the
+        CATALOGUE is wrong rather than one customer being confused — and raw
+        rows cannot carry that, because one person can make several.
+
+        Measured on the live safeguards: a restored tab cannot double-report
+        (the one-per-Search check holds), but RE-SEARCHING the same car makes a
+        new Search row and so allows another report. The ceiling is therefore
+        the per-IP limit, five per window — and five rows from one annoyed
+        person read exactly like five people agreeing, which is the one
+        conclusion this number exists to support.
+
+        Grouped by IP, falling back to session then row id, so a reporter with
+        no usable IP (paint19 stores an unvalidated one as NULL) still counts
+        once rather than being merged with every other NULL.
+
+        IGNORED REPORTS STILL COUNT. The operator dismissing a report is a
         judgement about that person, not evidence the code is right, and nine
-        dismissals in a row is itself a signal.
+        dismissals from nine people is itself a signal.
         """
         if not code:
             return 0
-        return cls.objects.filter(
+        rows = cls.objects.filter(
             manufacturer=(manufacturer or '').strip().lower(),
-            code__iexact=(code or '').strip()).count()
+            code__iexact=(code or '').strip()
+        ).values_list('ip_address', 'session_key', 'id')
+        return len({(ip or sess or f'row:{pk}') for ip, sess, pk in rows})
 
 
 class OperatorPaintCode(models.Model):
