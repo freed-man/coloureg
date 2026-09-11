@@ -1093,13 +1093,18 @@
             font-family: 'IBM Plex Sans', sans-serif;
             font-size: 14px;
         }
-        {% comment %} paint121: 200px could not show its own placeholder — "paint code
-           (leave blank if none exists)" was cut at "leave blank if", which
-           reads as an instruction that never finishes. The parenthetical is
-           the important half: it is how you record that a manufacturer
-           published no code at all. {% endcomment %}
+        {% comment %} paint122: sized to its own placeholder and no wider.
+
+           200px cut "paint code (leave blank if none exists)" at "leave blank
+           if" — an instruction that never finishes, and the parenthetical is
+           the important half: it is how a "manufacturer published no code"
+           fulfilment gets recorded. 320px then overshot: a paint code is rarely
+           more than eight characters, so the rest was empty box taking width
+           from the colour-name field beside it, which genuinely needs it.
+
+           260px fits the placeholder with a little room and no more. {% endcomment %}
         .mlq-form input[name="paint_code"] {
-            max-width: 320px;
+            max-width: 260px;
         }
         .mlq-form input::placeholder {
             text-transform: uppercase;
@@ -1388,7 +1393,12 @@
            stack. Monospace earns its place where column alignment matters; an
            email body is not that. {% endcomment %}
         .compose-form textarea {
-            min-height: 180px;
+            {% comment %} paint122: the placeholder is a worked example — a greeting,
+               a bolded code, a link, a sign-off — and at 180px its last line
+               was cut mid-word. A half-shown example teaches the wrong format:
+               the sign-off is the part that shows this is a whole message
+               rather than a fragment. {% endcomment %}
+            min-height: 240px;
             resize: vertical;
             line-height: 1.6;
         }
