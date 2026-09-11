@@ -1101,11 +1101,14 @@
            it), then 260 (short again). Three guesses, three wrong, because the
            width of 39 characters is not something to estimate.
 
-           1ch is the width of a "0" in the current font, so 41ch plus padding
-           is the placeholder with a little room — and it follows the text if
-           the wording ever changes, which a pixel value cannot. {% endcomment %}
+           1ch is the width of a "0" in the current font — a DIGIT, which is
+           wider than the average lowercase letter, so 39ch of prose measures
+           narrower than 39ch of zeros. 38ch plus padding therefore still shows
+           the placeholder while giving the rest of the row back to the
+           colour-name field, which needs it more. It also follows the text if
+           the wording changes, which a pixel value cannot. {% endcomment %}
         .mlq-form input[name="paint_code"] {
-            max-width: calc(41ch + 24px);
+            max-width: calc(38ch + 24px);
         }
         .mlq-form input::placeholder {
             text-transform: uppercase;
