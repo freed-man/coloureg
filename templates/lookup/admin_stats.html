@@ -1450,7 +1450,9 @@
        manual request is work you expected, a report is a code you may have
        already sent to someone else. {% endcomment %}
     {% if paint_reports %}
-    <div class="panel">
+    {% comment %} paint117: the id the POST redirects back to, so resolving one
+       report returns you here instead of the top of the page. {% endcomment %}
+    <div class="panel" id="reported-lookups">
         <h3>Reported lookups (<span>{{ paint_report_count }}</span>)</h3>
         <p style="color:#666;font-size:13px;margin:-4px 0 16px;">
             Customers saying a code or colour we sent looks wrong.

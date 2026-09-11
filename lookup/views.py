@@ -2807,11 +2807,19 @@ def admin_stats(request):
     # you have fixed it, or it was fine.
     if request.method == 'POST' and request.POST.get('action') in (
             'report_actioned', 'report_ignored'):
+        # paint117: BACK TO THE SECTION, not the top of the page.
+        #
+        # The manual queue never has this problem because it posts with fetch
+        # and never reloads. This is a plain form, so resolving one report
+        # bounced you to the top of a long dashboard and you had to scroll back
+        # for the next — which is most of the work when several arrive at once.
+        # The reports panel carries a matching id.
+        _back = '/admin-stats/#reported-lookups'
         try:
             rep = PaintCodeReport.objects.get(id=request.POST.get('report_id'))
         except (PaintCodeReport.DoesNotExist, ValueError, TypeError):
             messages.error(request, 'That report no longer exists.')
-            return redirect('admin_stats')
+            return redirect(_back)
         actioned = request.POST.get('action') == 'report_actioned'
         # IGNORED, never deleted. A dismissed report still records that someone
         # disagreed, and nine dismissals against one code is itself a signal
@@ -2850,7 +2858,7 @@ def admin_stats(request):
         else:
             messages.success(request, f'Report for {rep.registration} marked '
                                       f'{rep.get_status_display().lower()}.')
-        return redirect('admin_stats')
+        return redirect(_back)
 
     if request.method == 'POST' and request.POST.get('action') == 'save_ezyvin_balance':
         cfg = SiteConfig.get()
