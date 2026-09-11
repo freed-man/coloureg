@@ -50,7 +50,8 @@ from . import ezyvin
 from . import oneauto
 
 
-def _enrich_from_lookup(result, make, model=None, vdg_colour=None):
+def _enrich_from_lookup(result, make, model=None, vdg_colour=None,
+                        telemetry=None):
     """Fill gaps in a provider result from the PaintLookup table, BEHIND the
     live race (we only fill what VDG/pl24 didn't return).
 
@@ -121,9 +122,31 @@ def _enrich_from_lookup(result, make, model=None, vdg_colour=None):
 
         elif desc and not code:
             # name -> code (conservative: unique match only)
+            # paint133: clear the stash FIRST. It is a class attribute, so a
+            # decline recorded on an earlier lookup would otherwise be read as
+            # belonging to this one — and a diagnostic that attributes a finding
+            # to the wrong registration is worse than no diagnostic.
+            PaintLookup._last_ambiguity = None
             found_code, hex_val, _canon_name = PaintLookup.code_from_name(
                 manufacturer=make, colour_name=desc, model=model,
             )
+            # ONLY WHEN THE LOOKUP ACTUALLY DECLINED.
+            #
+            # _collapse_to_single_code runs more than once per resolution — the
+            # decorated name is tried before the stripped one — so an early
+            # decline leaves the stash set even when a later attempt wins. Ford
+            # 'Ink Blue (Metallic)' resolves cleanly to 3CYCWWA and was being
+            # recorded as a 2-code ambiguity, which is exactly the kind of
+            # false positive that would make the whole measurement worthless.
+            _amb = PaintLookup._last_ambiguity
+            if _amb and len(_amb) > 1 and not found_code and telemetry is not None:
+                # Into TELEMETRY, not the result dict. _apply_recovery_telemetry
+                # is handed telemetry only, so anything written to `result` here
+                # never reaches the Search row — it would look recorded and
+                # persist nothing.
+                telemetry['name_match_count'] = len(_amb)
+                telemetry['name_match_codes'] = ', '.join(_amb)[:200]
+            PaintLookup._last_ambiguity = None
             # paint92: same fallback, other direction. This is the one that
             # pays — a hand-researched code exists precisely BECAUSE the
             # catalogue could not resolve that name the first time.
@@ -1030,7 +1053,8 @@ def resolve_paint(registration, vin, make, category=None, telemetry=None, model=
                 if vdg_result is not None:
                     _t['vdg_retry_returned'] = True
                     race_over.set()   # a usable code exists from here on
-                    return _enrich_from_lookup(vdg_result, make, model, vdg_colour=vdg_colour)
+                    return _enrich_from_lookup(vdg_result, make, model,
+                                               vdg_colour=vdg_colour, telemetry=_t)
 
             # VDG didn't (yet) yield paint. Inspect pl24 if it completed in this
             # batch. A real CODE wins immediately (subject only to a VDG code,
@@ -1053,7 +1077,8 @@ def resolve_paint(registration, vin, make, category=None, telemetry=None, model=
             # nothing remains and we fall through to the name-only fallback.
             if pl24_code_result is not None:
                 race_over.set()   # a usable code exists from here on
-                return _enrich_from_lookup(pl24_code_result, make, model, vdg_colour=vdg_colour)
+                return _enrich_from_lookup(pl24_code_result, make, model,
+                                           vdg_colour=vdg_colour, telemetry=_t)
             # THE RESERVE. Started only once BOTH paid-and-free legs have
             # finished with nothing, so by the time it is inspected there is
             # nothing left to beat it — but it is read last regardless, because
@@ -1070,7 +1095,7 @@ def resolve_paint(registration, vin, make, category=None, telemetry=None, model=
                          'paint_description': ez['description'],
                          'all_paint_codes': [],
                          'source': 'ezyvin'},
-                        make, model, vdg_colour=vdg_colour,
+                        make, model, vdg_colour=vdg_colour, telemetry=_t,
                     )
                 # A NAME with no code is still real manufacturer data, and four
                 # Mazdas measured on 8 Sep came back exactly that way —
@@ -1115,7 +1140,8 @@ def resolve_paint(registration, vin, make, category=None, telemetry=None, model=
                 'source': 'ezyvin',
                 'name_only': True,
             }
-        return _enrich_from_lookup(fallback, make, model, vdg_colour=vdg_colour)
+        return _enrich_from_lookup(fallback, make, model, vdg_colour=vdg_colour,
+                                   telemetry=_t)
     finally:
         # Do NOT block on stragglers. wait=False means we don't join running
         # threads; cancel_futures cancels any not-yet-started work. A pl24 thread

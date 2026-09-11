@@ -151,6 +151,28 @@ class Search(models.Model):
         (GATE_WHEELPLAN, 'DVLA wheelplan says two wheels'),
     ]
 
+    # paint133: how many catalogue codes a colour NAME matched when we had to
+    # resolve one, and which they were.
+    #
+    # A name matching several codes is DECLINED — correctly, since three codes
+    # for one name cannot be told from three genuinely different colours, and a
+    # wrong code is worse than none because the customer buys paint. But that
+    # decline set no error_message and no flag: code_from_name just returned
+    # (None, None, None) and the lookup failed like any other, so the export
+    # records ZERO ambiguity declines and there is no way to know how often it
+    # fires or which names cause it.
+    #
+    # Jaguar "Indus Silver Metallic" is the shape of it: six catalogue rows —
+    # 1AC, 2130, MEN and three composites glued from those same three codes.
+    # Really three codes, possibly one colour, presented as six.
+    #
+    # RECORDED BEFORE ANYTHING IS FIXED, deliberately. Collapsing composite
+    # rows rewrites a 120,594-row catalogue, and merging two rows that are not
+    # the same colour produces a confidently wrong code. This says whether that
+    # risk is worth taking at all, and on which names, before it is taken.
+    name_match_count = models.PositiveSmallIntegerField(null=True, blank=True)
+    name_match_codes = models.CharField(max_length=200, blank=True, default='')
+
     gate_reason = models.CharField(max_length=12, blank=True, default='',
                                    db_index=True)
     vdg_balance_after_call = models.DecimalField(
@@ -1616,6 +1638,12 @@ class PaintLookup(models.Model):
                 return candidate
         return row.name
 
+    # paint133: set by _collapse_to_single_code on a decline, read and cleared
+    # by whoever called code_from_name. A class attribute rather than a widened
+    # return value because that signature is relied on in several places and
+    # changing it would touch every caller for the sake of a diagnostic.
+    _last_ambiguity = None
+
     @staticmethod
     def _collapse_to_single_code(rows, name_norm=None):
         """Try to reduce a set of matching rows to one code via (in order):
@@ -1657,6 +1685,12 @@ class PaintLookup(models.Model):
                 exact = next((r for r in rows if r.hex), rows[0])
             return shortest, (exact.hex or None), PaintLookup._display_name(exact, name_norm)
 
+        # paint133: the codes would not collapse, so this declines. Record what
+        # it saw on the way out. A pure helper cannot write to a Search row, so
+        # it stashes the finding on the class for the caller to read — set on
+        # every decline and cleared by the caller, so a stale value from an
+        # earlier lookup can never be attributed to this one.
+        PaintLookup._last_ambiguity = sorted(codes)
         return None
 
     #: A combination row's name is two OTHER codes joined, e.g. Suzuki C06 is

@@ -59,6 +59,10 @@ class SearchAdmin(admin.ModelAdmin):
         # paint132: which of the three gates refused this lookup. Written by
         # the pipeline, so readonly like every other diagnostic.
         'gate_reason',
+        # paint133: how many catalogue codes the colour NAME matched, and which.
+        # Only set when the match was DECLINED for ambiguity.
+        'name_match_count',
+        'name_match_codes',
         'lookup_duration_ms',
         'vdg_vehicle_returned',
         'vdg_paint_returned',
@@ -119,6 +123,7 @@ class SearchAdmin(admin.ModelAdmin):
         }),
         ('Outcome', {
             'fields': ('provider', 'success', 'error_message', 'gate_reason',
+                       'name_match_count', 'name_match_codes',
                        'lookup_duration_ms')
         }),
         ('Cost Tracking', {

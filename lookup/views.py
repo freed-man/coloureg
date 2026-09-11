@@ -2232,6 +2232,13 @@ def _apply_recovery_telemetry(search, telemetry):
     search.pl24_attempted = bool(telemetry.get('pl24_attempted'))
     search.pl24_returned = bool(telemetry.get('pl24_returned'))
     search.recovery_name_only = bool(telemetry.get('pl24_name_only'))
+    # paint133: a colour NAME that matched several catalogue codes, so the
+    # match was declined. No error_message is set for this — the lookup simply
+    # fails — so without these two columns the export records zero ambiguity
+    # declines and there is no way to tell how often it happens.
+    if telemetry.get('name_match_count'):
+        search.name_match_count = telemetry['name_match_count']
+        search.name_match_codes = telemetry.get('name_match_codes', '')
     # One Auto (paint67). The COST is recorded whatever the outcome, because an
     # unrecorded charge is invisible to the daily budget breaker — and One Auto
     # bills on a 200 even when the colour comes back null.
@@ -2243,6 +2250,16 @@ def _apply_recovery_telemetry(search, telemetry):
     # correctly, because the name never reached the save list.
     fields = ['recovery_attempted', 'vdg_retry_returned', 'pl24_attempted',
               'pl24_returned', 'recovery_name_only', 'recovery_duration_ms']
+    # paint133, and the paint78 rule above: set on the object AND named here,
+    # or update_fields drops it silently — which is exactly how
+    # pl24_started_because came out blank on five production wins.
+    if telemetry.get('name_match_count'):
+        # fields.append, not `fields +=`. The paint78 guard in the battery reads
+        # the literal list and append() calls only, so a `+=` would have been
+        # invisible to the one check that exists to catch exactly this — and it
+        # did fail on the first attempt, correctly.
+        fields.append('name_match_count')
+        fields.append('name_match_codes')
 
     # One Auto (paint67). The COST is recorded whatever the outcome, because an
     # unrecorded charge is invisible to the daily budget breaker — and One Auto
