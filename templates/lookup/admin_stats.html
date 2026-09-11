@@ -1449,15 +1449,33 @@
        Sits ABOVE the manual queue because it is rarer and more urgent: a
        manual request is work you expected, a report is a code you may have
        already sent to someone else. {% endcomment %}
-    {% if paint_reports %}
-    {% comment %} paint117: the id the POST redirects back to, so resolving one
-       report returns you here instead of the top of the page. {% endcomment %}
+    {% comment %} paint118: ALWAYS RENDERED, with an all-clear when empty.
+
+       paint115 hid this panel when there was nothing outstanding, on the
+       reasoning that a permanently empty section is noise. The consequence
+       only showed in use: resolving the LAST report removed the panel, so the
+       anchor the redirect points at no longer existed and the browser dropped
+       you at the top of the page — exactly the thing paint117 set out to fix,
+       reappearing at the one moment you had finished the work.
+
+       The origin gate above already does it this way: it states an all-clear
+       rather than disappearing. Same treatment here. An empty section that
+       says "nothing outstanding" is worth the two lines it costs, because an
+       absent one cannot be anchored to and cannot be distinguished from a
+       broken one. {% endcomment %}
     <div class="panel" id="reported-lookups">
         <h3>Reported lookups (<span>{{ paint_report_count }}</span>)</h3>
+        {% if paint_reports %}
         <p style="color:#666;font-size:13px;margin:-4px 0 16px;">
             Customers saying a code or colour we sent looks wrong.
             Repeats against the same code are the ones worth chasing.
         </p>
+        {% else %}
+        <p style="color:#666;font-size:13px;margin:-4px 0 0;">
+            Nothing outstanding. Customers can flag a code from the results
+            page, and anything they report lands here.
+        </p>
+        {% endif %}
         {% for r in paint_reports %}
         <div class="mlq-card">
             {% comment %} Identity first, then what we told them. Code and name sit
@@ -1517,7 +1535,6 @@
         </div>
         {% endfor %}
     </div>
-    {% endif %}
 
     <div class="panel">
         <h3>Manual lookup queue (<span id="mlq-count">{{ recent_failures|length }}</span>)</h3>
