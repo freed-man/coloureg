@@ -455,6 +455,46 @@ def _found_name_block(found_name):
                 </div>"""
 
 
+def send_admin_paint_report(report, total_for_code=1):
+    """Tell the operator a customer says a delivered code is wrong.
+
+    paint113. THE COUNT LEADS, because that is the part that means anything.
+    One report is a shrug — wrong panel, wrong part, bad mood. Three against
+    the same (make, code) is a catalogue error, and there is no other way to
+    find one: every other signal in the system measures whether a provider
+    answered, not whether the answer was right.
+    """
+    repeat = total_for_code > 1
+    banner = (f'{total_for_code} reports against this code'
+              if repeat else 'First report for this code')
+    subject = (f'[{total_for_code}x] {report.manufacturer}/{report.code} reported'
+               if repeat else
+               f'Paint code reported: {report.registration}')
+    body = f"""<!DOCTYPE html>
+<html><body style="margin:0;padding:24px;background:#f5f5f5;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;">
+    <div style="max-width:560px;margin:0 auto;background:#fff;border-radius:8px;padding:32px;">
+        <div style="background:{'#fdeaea' if repeat else '#f0f4ff'};border-left:3px solid {'#c0392b' if repeat else '#003399'};padding:14px 18px;border-radius:4px;margin-bottom:24px;">
+            <div style="font-size:15px;font-weight:600;color:#1a1a1a;">{_esc(banner)}</div>
+        </div>
+        <table style="width:100%;border-collapse:collapse;margin-bottom:24px;">
+            <tr><td style="padding:8px 16px 8px 0;color:#666;font-size:13px;width:96px;">Registration</td><td style="padding:8px 0;font-size:14px;color:#1a1a1a;font-weight:600;">{_esc(report.registration)}</td></tr>
+            <tr><td style="padding:8px 16px 8px 0;color:#666;font-size:13px;">Code served</td><td style="padding:8px 0;font-size:14px;color:#1a1a1a;font-weight:600;">{_esc(report.code)}</td></tr>
+            <tr><td style="padding:8px 16px 8px 0;color:#666;font-size:13px;">Colour</td><td style="padding:8px 0;font-size:14px;color:#1a1a1a;">{_esc(report.colour_name) or '&mdash;'}</td></tr>
+            <tr><td style="padding:8px 16px 8px 0;color:#666;font-size:13px;">Make</td><td style="padding:8px 0;font-size:14px;color:#1a1a1a;">{_esc(report.manufacturer)}</td></tr>
+            <tr><td style="padding:8px 16px 8px 0;color:#666;font-size:13px;">They said</td><td style="padding:8px 0;font-size:14px;color:#1a1a1a;">{_esc(report.get_reason_display())}</td></tr>
+        </table>
+        {f'<div style="background:#fafafa;border-radius:4px;padding:16px;margin-bottom:24px;"><div style="color:#666;font-size:12px;text-transform:uppercase;letter-spacing:0.4px;margin-bottom:6px;">Their note</div><div style="color:#1a1a1a;font-size:14px;white-space:pre-wrap;">{_esc(report.note)}</div></div>' if report.note else ''}
+        <p style="color:#666;font-size:13px;margin:0;">Review it in the admin dashboard, under Reported lookups.</p>
+    </div>
+</body></html>"""
+    return _safe_send({
+        "from": settings.DEFAULT_FROM_EMAIL,
+        "to": settings.ADMIN_EMAIL,
+        "subject": subject,
+        "html": body,
+    }, context='paint_report')
+
+
 def send_admin_failure_notification(registration, vehicle_title, vin_full, colour, user_email, customer_message='', extra_attachments=None, found_name=''):
     """Email admin when paint code wasn't found and user requested manual lookup.
 

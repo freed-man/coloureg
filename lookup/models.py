@@ -1801,6 +1801,98 @@ class PaintLookup(models.Model):
 # =============================================================================
 
 
+class PaintCodeReport(models.Model):
+    """A customer telling us a delivered code or colour name is wrong.
+
+    paint113. Everything else in this system measures whether a provider
+    ANSWERED. Nothing measured whether the answer was RIGHT — and today alone
+    found a Ford served paint code "METALLIC", an Audi whose catalogue row says
+    Dark Grey Matt when the car is Phantom Black, and a BMW bike code that is
+    white in our table and red in reality. Those surfaced because the operator
+    happened to look. This is the customer looking.
+
+    THE SINGLE REPORT IS NEARLY WORTHLESS; THE COUNT IS NOT. One person saying
+    "that's wrong" may be holding the wrong part, reading a different panel, or
+    simply annoyed. Three people against the SAME (manufacturer, code) is a
+    catalogue error, and there is no other way to find one — which is why the
+    make and code are copied onto the row rather than only reached through the
+    Search FK. A code can then be counted across reports even after the Search
+    row is scrubbed by the retention job.
+    """
+
+    REASON_WRONG_COLOUR = 'wrong_colour'
+    REASON_WRONG_CODE = 'wrong_code'
+    REASON_OTHER = 'other'
+    REASON_CHOICES = [
+        (REASON_WRONG_COLOUR, "The colour name looks wrong"),
+        (REASON_WRONG_CODE, "The paint code looks wrong"),
+        (REASON_OTHER, 'Something else'),
+    ]
+
+    STATUS_NEW = 'new'
+    STATUS_ACTIONED = 'actioned'
+    STATUS_IGNORED = 'ignored'
+    STATUS_CHOICES = [
+        (STATUS_NEW, 'New'),
+        (STATUS_ACTIONED, 'Actioned'),
+        # IGNORED, not deleted. A dismissed report still says someone disagreed,
+        # and a code with nine ignored reports is worth a second look however
+        # unconvincing each one was.
+        (STATUS_IGNORED, 'Ignored'),
+    ]
+
+    search = models.ForeignKey('Search', on_delete=models.SET_NULL,
+                               null=True, blank=True,
+                               related_name='paint_reports')
+    # Copied, not derived. The Search row can be scrubbed by prune_old_data at
+    # 365 days while the report still needs to count against its code.
+    registration = models.CharField(max_length=20, blank=True, default='')
+    manufacturer = models.CharField(max_length=100, blank=True, default='',
+                                    db_index=True)
+    code = models.CharField(max_length=100, blank=True, default='', db_index=True)
+    colour_name = models.CharField(max_length=200, blank=True, default='')
+
+    reason = models.CharField(max_length=20, choices=REASON_CHOICES,
+                              default=REASON_OTHER)
+    note = models.TextField(blank=True, default='')
+
+    # For spotting one person reporting forty lookups. Nullable because paint19
+    # stores an unvalidated IP as NULL rather than inventing one.
+    ip_address = models.GenericIPAddressField(null=True, blank=True)
+    session_key = models.CharField(max_length=64, blank=True, default='')
+
+    status = models.CharField(max_length=12, choices=STATUS_CHOICES,
+                              default=STATUS_NEW, db_index=True)
+    operator_note = models.TextField(blank=True, default='')
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+    resolved_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ['-created_at']
+        indexes = [
+            # The question this table exists to answer: how many people have
+            # reported THIS code.
+            models.Index(fields=['manufacturer', 'code']),
+        ]
+
+    def __str__(self):
+        return f'{self.registration} {self.manufacturer}/{self.code} ({self.status})'
+
+    @classmethod
+    def count_for_code(cls, manufacturer, code):
+        """How many times this exact code has been reported, ignored included.
+
+        Ignored ones count deliberately. The operator dismissing a report is a
+        judgement about that person, not evidence the code is right, and nine
+        dismissals in a row is itself a signal.
+        """
+        if not code:
+            return 0
+        return cls.objects.filter(
+            manufacturer=(manufacturer or '').strip().lower(),
+            code__iexact=(code or '').strip()).count()
+
+
 class OperatorPaintCode(models.Model):
     """Paint codes Roland researched by hand, kept OUTSIDE paint_lookup.json.
 

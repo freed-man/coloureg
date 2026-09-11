@@ -631,6 +631,9 @@
 <script>
 (function () {
     var STATUS_URL = "{% url 'lookup_status' search_id %}";
+    var REPORT_URL = "{% url 'report_paint_code' %}";
+    var SEARCH_ID = "{{ search_id }}";
+    var CSRF_TOKEN = "{{ csrf_token }}";
     var MAKE = "{{ make|escapejs }}" || "your vehicle";
 
     // A bit above the backend's ~65s recovery ceiling, so a slow-but-successful
@@ -746,7 +749,7 @@
                 data.paint_code, data.paint_hex, data.canonical_code, data.paint_description
             );
         }
-        card.innerHTML = '<div id="paint-found-state">' + html + '</div>';
+        card.innerHTML = '<div id="paint-found-state">' + html + reportControl() + '</div>';
 
         // Reveal the disclaimer (it was rendered hidden during the pending state).
         var disc = el('paint-disclaimer');
@@ -754,6 +757,50 @@
 
         revealEmail(true);
     }
+
+    // paint113: a quiet way for a customer to say "this code is wrong".
+    //
+    // DELIBERATELY UNDERSTATED — a small grey link below the code, after
+    // everything the customer actually came for. A prominent "report a
+    // problem" button invites doubt in the great majority of cases where the
+    // answer is right; this is for the person who already knows something is
+    // off, not an invitation to wonder.
+    //
+    // One press, one confirmation, no form. Asking for a reason before
+    // accepting the report would cost more reports than the reasons are worth,
+    // and the reason is the least valuable part: the COUNT against a code is
+    // what identifies a catalogue error.
+    function reportControl() {
+        return '<div class="text-center mt-4" id="report-wrap">' +
+               '<button type="button" id="report-btn" class="btn btn-link btn-sm p-0" ' +
+               'style="font-size: 13px; color: #888; text-decoration: underline;">' +
+               'Is this wrong? Let us know</button></div>';
+    }
+
+    document.addEventListener('click', function (ev) {
+        var btn = ev.target && ev.target.closest ? ev.target.closest('#report-btn') : null;
+        if (!btn) return;
+        btn.disabled = true;
+        var wrap = document.getElementById('report-wrap');
+        var body = new URLSearchParams({search_id: SEARCH_ID, reason: 'other', note: ''});
+        fetch(REPORT_URL, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/x-www-form-urlencoded',
+                      'X-CSRFToken': CSRF_TOKEN},
+            body: body.toString()
+        }).catch(function () { /* swallowed on purpose — see below */ })
+          .then(function () {
+            // THE SAME MESSAGE WHATEVER HAPPENED, including a duplicate, a
+            // rate-limit refusal or a network failure. Telling someone their
+            // press did nothing invites another press; an error on a courtesy
+            // button reads as the site being broken, and the report itself is
+            // worth far less than the customer's confidence in the answer.
+            if (wrap) {
+                wrap.innerHTML = '<div style="font-size: 13px; color: #666;">' +
+                    'Thanks \u2014 we\u2019ll take a look at this one.</div>';
+            }
+        });
+    });
 
     // Render the "servers timed out / manual lookup" state into the paint card.
     function showMissed() {

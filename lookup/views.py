@@ -28,7 +28,8 @@ from django.utils import timezone
 from django.views.decorators.http import require_POST, require_GET
 from django.views.decorators.csrf import csrf_exempt
 from django_ratelimit.core import is_ratelimited
-from .models import Search, PaintLookup, SiteConfig, VrmCache, OperatorPaintCode
+from .models import (Search, PaintLookup, SiteConfig, VrmCache,
+                     OperatorPaintCode, PaintCodeReport)
 from .services.vdg import (
     vehicle_lookup,
     smart_title,
@@ -77,6 +78,7 @@ from .services.email import (
     send_custom_message,
     send_admin_budget_alert,
     send_user_no_code_available,
+    send_admin_paint_report,
 )
 
 logger = logging.getLogger(__name__)
@@ -3758,6 +3760,93 @@ def submit_manual_lookup(request):
         'registration': search.registration,
         'email': search.email,
     })
+
+
+@require_POST
+def report_paint_code(request):
+    """A customer flagging a delivered code or colour as wrong.
+
+    paint113. Four safeguards, each against a different failure — and none of
+    them a CAPTCHA, because a report is worth far less than a lookup and a
+    challenge on a "this is wrong" button would stop the honest reports while
+    barely inconveniencing anyone determined.
+
+    1. SESSION OWNERSHIP. The same guard submit_email uses: you can only report
+       the lookup you just did. That alone stops drive-by POSTing at arbitrary
+       search ids, which is the shape a bot would take.
+    2. ONE PER LOOKUP. A second report on the same search is a silent no-op, so
+       leaning on the button forty times produces one row and one email.
+    3. A PER-IP CEILING, shared with the existing sliding window. Someone
+       reporting twenty different lookups in an hour is not a customer.
+    4. THERE MUST BE A CODE TO REPORT. Reporting a lookup that returned nothing
+       is meaningless, and a row with no code cannot be counted against one.
+
+    Deliberately NOT rejected: a report with no note. Most people will not type
+    a reason, and demanding one would cost more reports than it saves.
+    """
+    search_id = request.POST.get('search_id')
+    reason = (request.POST.get('reason') or '').strip()
+    note = (request.POST.get('note') or '').strip()[:2000]
+
+    session_search_id = (request.session.get('vehicle_data') or {}).get('search_id')
+    if not search_id or str(session_search_id) != str(search_id):
+        return JsonResponse({'ok': False, 'error': 'session'}, status=400)
+
+    try:
+        search = Search.objects.get(id=search_id)
+    except Search.DoesNotExist:
+        return JsonResponse({'ok': False, 'error': 'not_found'}, status=404)
+
+    if not search.paint_code:
+        return JsonResponse({'ok': False, 'error': 'no_code'}, status=400)
+
+    # ALREADY REPORTED: answer as though it worked. Telling someone their
+    # second press did nothing invites a third; showing the same confirmation
+    # ends it.
+    if PaintCodeReport.objects.filter(search=search).exists():
+        return JsonResponse({'ok': True, 'duplicate': True})
+
+    ip = get_client_ip(request)
+    # 5 in the standard window. A customer reports the lookup in front of
+    # them, occasionally a second; twenty is someone testing the button.
+    if ip and sliding_rate_limited('report', ip, limit=5):
+        # Same answer again. A limiter that announces itself tells an abuser
+        # exactly what to wait out, and tells an honest customer they have done
+        # something wrong when they have not.
+        return JsonResponse({'ok': True, 'duplicate': True})
+
+    if reason not in dict(PaintCodeReport.REASON_CHOICES):
+        reason = PaintCodeReport.REASON_OTHER
+
+    if not request.session.session_key:
+        request.session.save()
+
+    report = PaintCodeReport.objects.create(
+        search=search,
+        registration=search.registration or '',
+        # Normalised the way the catalogue stores it, so count_for_code can
+        # group 'Land Rover' and 'land rover' together.
+        manufacturer=PaintLookup.normalize_manufacturer(search.make or ''),
+        code=search.paint_code or '',
+        colour_name=search.paint_description or '',
+        reason=reason,
+        note=note,
+        ip_address=ip or None,
+        session_key=request.session.session_key or '',
+    )
+
+    # The COUNT is the reason this exists, so it goes in the email — one report
+    # is a shrug, three against the same code is a catalogue error.
+    try:
+        send_admin_paint_report(
+            report=report,
+            total_for_code=PaintCodeReport.count_for_code(report.manufacturer,
+                                                          report.code),
+        )
+    except Exception:  # noqa: BLE001 — the report is saved; the mail is a courtesy
+        logger.exception('paint report email failed for %s', report.pk)
+
+    return JsonResponse({'ok': True})
 
 
 @staff_member_required

@@ -1,5 +1,7 @@
 from django.contrib import admin
-from .models import Search, OperatorPaintCode
+from django.utils import timezone
+
+from .models import Search, OperatorPaintCode, PaintCodeReport
 
 
 @admin.register(Search)
@@ -183,6 +185,48 @@ class SearchAdmin(admin.ModelAdmin):
     )
     date_hierarchy = 'timestamp'
     ordering = ('-timestamp',)
+
+@admin.register(PaintCodeReport)
+class PaintCodeReportAdmin(admin.ModelAdmin):
+    """Customer reports that a delivered code or colour is wrong.
+
+    paint113. `times_reported` is the column that matters — one report is a
+    shrug, three against the same (make, code) is a catalogue error and there is
+    no other way to find one.
+    """
+
+    list_display = ('created_at', 'registration', 'manufacturer', 'code',
+                    'colour_name', 'reason', 'times_reported', 'status')
+    list_filter = ('status', 'reason', 'manufacturer')
+    search_fields = ('registration', 'code', 'colour_name', 'note')
+    # Everything the customer sent is readonly: editing it would rewrite what
+    # they said. operator_note and status are the only editable fields, because
+    # they are the operator's own.
+    readonly_fields = ('search', 'registration', 'manufacturer', 'code',
+                       'colour_name', 'reason', 'note', 'ip_address',
+                       'session_key', 'created_at', 'times_reported')
+    actions = ['mark_actioned', 'mark_ignored']
+    ordering = ('-created_at',)
+
+    @admin.display(description='Reports for this code')
+    def times_reported(self, obj):
+        return PaintCodeReport.count_for_code(obj.manufacturer, obj.code)
+
+    @admin.action(description='Mark as actioned (the code was wrong)')
+    def mark_actioned(self, request, queryset):
+        n = queryset.update(status=PaintCodeReport.STATUS_ACTIONED,
+                            resolved_at=timezone.now())
+        self.message_user(request, f'{n} marked actioned.')
+
+    @admin.action(description='Mark as ignored (the code was fine)')
+    def mark_ignored(self, request, queryset):
+        # IGNORED, never deleted. A dismissed report still records that someone
+        # disagreed, and nine dismissals against one code is itself a signal
+        # however unconvincing each was on its own.
+        n = queryset.update(status=PaintCodeReport.STATUS_IGNORED,
+                            resolved_at=timezone.now())
+        self.message_user(request, f'{n} marked ignored.')
+
 
 @admin.register(OperatorPaintCode)
 class OperatorPaintCodeAdmin(admin.ModelAdmin):
