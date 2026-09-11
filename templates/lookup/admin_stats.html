@@ -1168,10 +1168,18 @@
             overflow-y: hidden;
         }
         .mlq-form .note-body textarea::placeholder { color: #aaa; font-size: 13px; }
+        {% comment %} paint119: ONE empty state, shared by the manual queue and the
+           reported-lookups panel. They sit next to each other and said the
+           same thing two different ways — one centred with 24px of padding
+           making a tall empty box, one a left-aligned sentence — so an empty
+           dashboard read as two unrelated widgets rather than two quiet
+           queues. Left-aligned and tight, because an empty section should take
+           the space it deserves, which is very little. {% endcomment %}
         .mlq-empty {
-            color: #999;
-            text-align: center;
-            padding: 24px 0;
+            color: #666;
+            font-size: 13px;
+            margin: -4px 0 0;
+            padding: 0;
         }
         .mlq-status {
             padding: 16px;
@@ -1471,10 +1479,7 @@
             Repeats against the same code are the ones worth chasing.
         </p>
         {% else %}
-        <p style="color:#666;font-size:13px;margin:-4px 0 0;">
-            Nothing outstanding. Customers can flag a code from the results
-            page, and anything they report lands here.
-        </p>
+        <p class="mlq-empty">No pending reports</p>
         {% endif %}
         {% for r in paint_reports %}
         <div class="mlq-card">
