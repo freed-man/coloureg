@@ -1093,8 +1093,13 @@
             font-family: 'IBM Plex Sans', sans-serif;
             font-size: 14px;
         }
+        {% comment %} paint121: 200px could not show its own placeholder — "paint code
+           (leave blank if none exists)" was cut at "leave blank if", which
+           reads as an instruction that never finishes. The parenthetical is
+           the important half: it is how you record that a manufacturer
+           published no code at all. {% endcomment %}
         .mlq-form input[name="paint_code"] {
-            max-width: 200px;
+            max-width: 320px;
         }
         .mlq-form input::placeholder {
             text-transform: uppercase;
@@ -1376,11 +1381,16 @@
             box-sizing: border-box;
             background: #fff;
         }
+        {% comment %} paint121: NOT monospace. The To and Subject fields inherit the
+           page font and the body did not, so composing a message meant typing
+           prose in Courier — harder to read, and nothing like what the
+           recipient will see, since the email template renders in a sans
+           stack. Monospace earns its place where column alignment matters; an
+           email body is not that. {% endcomment %}
         .compose-form textarea {
             min-height: 180px;
             resize: vertical;
-            font-family: 'IBM Plex Mono', 'Courier New', monospace;
-            line-height: 1.5;
+            line-height: 1.6;
         }
         .compose-form input:focus,
         .compose-form textarea:focus {
@@ -1473,12 +1483,7 @@
        broken one. {% endcomment %}
     <div class="panel" id="reported-lookups">
         <h3>Reported lookups (<span>{{ paint_report_count }}</span>)</h3>
-        {% if paint_reports %}
-        <p style="color:#666;font-size:13px;margin:-4px 0 16px;">
-            Customers saying a code or colour we sent looks wrong.
-            Repeats against the same code are the ones worth chasing.
-        </p>
-        {% else %}
+        {% if not paint_reports %}
         <p class="mlq-empty">No pending reports</p>
         {% endif %}
         {% for r in paint_reports %}
@@ -1566,7 +1571,7 @@
                         <div class="val">{{ s.vin|default:"—" }}</div>
                     </div>
                     <div>
-                        <div class="lbl">Colour</div>
+                        <div class="lbl">DVLA colour</div>
                         <div class="val">{{ s.colour|default:"—" }}</div>
                     </div>
                     <div>
