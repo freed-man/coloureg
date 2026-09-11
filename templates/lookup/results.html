@@ -771,7 +771,10 @@
     // and the reason is the least valuable part: the COUNT against a code is
     // what identifies a catalogue error.
     function reportControl() {
-        return '<div class="text-center mt-4" id="report-wrap">' +
+        // mt-4 sat the link hard against the card's lower border. mb-2 lifts it
+        // clear so it reads as a separate offer rather than a caption on the
+        // paint block above it.
+        return '<div class="text-center mt-4 mb-2" id="report-wrap">' +
                '<button type="button" id="report-btn" class="btn btn-link btn-sm p-0" ' +
                'style="font-size: 13px; color: #888; text-decoration: underline;">' +
                'Is this wrong? Let us know</button></div>';

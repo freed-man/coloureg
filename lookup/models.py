@@ -1868,6 +1868,11 @@ class PaintCodeReport(models.Model):
     resolved_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
+        # paint114: named for what it is in the sidebar. Django would derive
+        # "Paint code reports" from the class name, which is accurate and reads
+        # like a data table rather than a queue of things to act on.
+        verbose_name = 'Reported paint code'
+        verbose_name_plural = 'Reported paint codes'
         ordering = ['-created_at']
         indexes = [
             # The question this table exists to answer: how many people have

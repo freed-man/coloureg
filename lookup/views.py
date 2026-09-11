@@ -3840,8 +3840,16 @@ def report_paint_code(request):
     try:
         send_admin_paint_report(
             report=report,
+            # Computed at SEND time across every report ever filed against this
+            # code, so it rises on its own — nothing to maintain.
             total_for_code=PaintCodeReport.count_for_code(report.manufacturer,
                                                           report.code),
+            # paint114: the same vehicle facts the other operator emails carry,
+            # so a report reads like everything else in the inbox.
+            vehicle_title=build_vehicle_title(search.year, search.make,
+                                              search.model),
+            vin_full=search.vin or '',
+            dvla_colour=search.colour or '',
         )
     except Exception:  # noqa: BLE001 — the report is saved; the mail is a courtesy
         logger.exception('paint report email failed for %s', report.pk)
