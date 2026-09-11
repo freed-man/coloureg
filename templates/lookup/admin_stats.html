@@ -1103,7 +1103,7 @@
 
            1ch is the width of a "0" — a DIGIT, and digits are wider than most
            letters, so a field of Nch shows rather more than N characters of
-           prose. 34ch plus padding still clears the 39-character placeholder
+           prose. 30ch plus padding still clears the 39-character placeholder
            and hands the rest of the row to the colour-name field, which needs
            it more: a colour can be "Grigio Underground (Vr-695/A)" while a
            paint code is rarely eight characters.
@@ -1112,7 +1112,7 @@
            three times running. The unit is what matters here: it follows the
            text if the wording changes, which a pixel value cannot. {% endcomment %}
         .mlq-form input[name="paint_code"] {
-            max-width: calc(34ch + 24px);
+            max-width: calc(30ch + 24px);
         }
         .mlq-form input::placeholder {
             text-transform: uppercase;
