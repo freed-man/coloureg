@@ -226,6 +226,22 @@
         gap: 20px;
         margin-bottom: 24px;
     }
+    .bal-edit {
+        background: none; border: 0; padding: 0 0 0 6px;
+        color: #999; cursor: pointer; font-size: 13px; line-height: 1;
+    }
+    .bal-edit:hover { color: #003399; }
+    .bal-form { display: flex; gap: 6px; margin-top: 8px; }
+    .bal-form input {
+        flex: 0 0 5.5rem; padding: 4px 8px;
+        border: 1px solid #ccc; border-radius: 4px;
+        font-family: inherit; font-size: 14px;
+    }
+    .bal-form button {
+        padding: 4px 12px; border: 0; border-radius: 4px;
+        background: #003399; color: #fff; font-size: 13px; cursor: pointer;
+    }
+    .bal-form button:hover { background: #002277; }
     .balance-highlight {
         color: #003399;
     }
@@ -566,31 +582,7 @@
             </div>
             <button type="submit" class="btn btn-sm btn-success">Save</button>
         </form>
-        {% comment %} paint109: the Ezyvin balance, typed in from their dashboard.
-           There is nothing to fetch — /me/usage reports consumption and
-           /me/info carries no credit data — so it can only come from here.
-           Leaving it blank clears it and the card reads "—", because an
-           unknown balance must not look like zero. {% endcomment %}
-        <form method="POST" class="d-flex align-items-center gap-2 mt-2">
-            {% csrf_token %}
-            <input type="hidden" name="action" value="save_ezyvin_balance">
-            <label class="form-label mb-0" style="font-size: 13px; color: #666;">Ezyvin</label>
-            <div class="input-group input-group-sm" style="width: 160px;">
-                <input type="number" step="1" min="0" class="form-control"
-                       {% comment %} paint111: NO placeholder. It was "2624" — a real
-                          balance, which made an empty field look like a set one and
-                          a set field look like a placeholder. A "0" would be worse
-                          still: zero is a real and alarming state, and the empty
-                          state must never look like it. The label says Ezyvin and
-                          the suffix says credits, so the field needs no hint.
-                          {% endcomment %}
-                       name="ezyvin_credit_balance"
-                       value="{{ site_config.ezyvin_credit_balance|default_if_none:'' }}">
-                <span class="input-group-text">credits</span>
             </div>
-            <button type="submit" class="btn btn-sm btn-success">Save</button>
-        </form>
-    </div>
 
     {% comment %} paint39: moved up here from below the lookup table. It uses
        .maint-toggle, the grey card style that marks an EDITABLE control, and
@@ -757,15 +749,37 @@
 
            An unentered balance reads "—", never 0. Zero is a real and alarming
            state and must not be what "unknown" looks like. {% endcomment %}
+        {% comment %} paint128: EDITED HERE, not in the settings panel.
+
+           It lived beside the daily budget cap — two number inputs side by
+           side, one a £ ceiling that STOPS lookups and one a credit balance
+           that only displays. The operator had to ask which was which, which
+           is the labelling failing rather than the reader.
+
+           A balance is touched when you top up and at no other time, so it
+           does not earn permanent space next to a live control. The pencil
+           puts the edit where the number is and keeps it out of the way until
+           it is wanted. {% endcomment %}
         <div class="stat-card balance">
-            <p class="stat-label">Ezyvin balance</p>
+            <p class="stat-label">Ezyvin balance<button type="button" class="bal-edit" id="bal-edit" title="Update after a top-up">&#9998;</button></p>
             {% if ezyvin_credits_left is not None %}
             <p class="stat-value balance-highlight">{{ ezyvin_credits_left }} credits</p>
             <p class="stat-subvalue">£{{ ezyvin_left_gbp|floatformat:2 }} · {% if ezyvin_balance_exact %}{{ ezyvin_used_total }} used to date{% else %}est. from {{ ezyvin_balance_at|date:"M j H:i" }}{% endif %}</p>
             {% else %}
             <p class="stat-value" style="color: #999;">—</p>
-            <p class="stat-subvalue">set it in the settings panel above</p>
+            <p class="stat-subvalue">click the pencil to set it</p>
             {% endif %}
+            {% comment %} Hidden until the pencil is clicked. Blank still clears it and
+               the card falls back to "—": an unknown balance must never look
+               like zero, which is a real and alarming state. {% endcomment %}
+            <form method="POST" class="bal-form" id="bal-form" hidden>
+                {% csrf_token %}
+                <input type="hidden" name="action" value="save_ezyvin_balance">
+                <input type="number" step="1" min="0" name="ezyvin_credit_balance"
+                       value="{{ site_config.ezyvin_credit_balance|default_if_none:'' }}"
+                       aria-label="Ezyvin credit balance">
+                <button type="submit">Save</button>
+            </form>
         </div>
     </div>
 
@@ -1933,6 +1947,22 @@
         integrity="sha384-e6nUZLBkQ86NJ6TVVKAeSaK8jWa3NhkYWZFomE39AvDbQWeie9PlQqM3pmYW5d1g"
         crossorigin="anonymous"></script>
 <script>
+    // paint128: reveal the balance editor. Focused and selected on open, so a
+    // top-up is pencil, type, enter — the field arrives pre-filled, so the
+    // common case is replacing a number rather than composing one.
+    var balEdit = document.getElementById('bal-edit');
+    if (balEdit) {
+        balEdit.addEventListener('click', function () {
+            var f = document.getElementById('bal-form');
+            if (!f) return;
+            f.hidden = !f.hidden;
+            if (!f.hidden) {
+                var n = f.querySelector('input[type="number"]');
+                if (n) { n.focus(); n.select(); }
+            }
+        });
+    }
+
     // paint107: grow a note field to fit its content, instead of scrolling it.
     //
     // `resize: vertical` is ignored on touch — there is no handle to drag — so
