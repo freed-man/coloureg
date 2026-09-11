@@ -2802,6 +2802,30 @@ def admin_stats(request):
     # carries no credit data — so a balance can only come from the operator.
     # save() stamps the moment it changes, and the card subtracts what we have
     # recorded since, so it stays roughly live between top-ups.
+    # paint115: resolve a report from the dashboard. Two outcomes and no third,
+    # because there is nothing else to decide — either the code was wrong and
+    # you have fixed it, or it was fine.
+    if request.method == 'POST' and request.POST.get('action') in (
+            'report_actioned', 'report_ignored'):
+        try:
+            rep = PaintCodeReport.objects.get(id=request.POST.get('report_id'))
+        except (PaintCodeReport.DoesNotExist, ValueError, TypeError):
+            messages.error(request, 'That report no longer exists.')
+            return redirect('admin_stats')
+        # IGNORED, never deleted. A dismissed report still records that someone
+        # disagreed, and nine dismissals against one code is itself a signal
+        # however unconvincing each was alone — which is exactly what the
+        # per-code count is for.
+        rep.status = (PaintCodeReport.STATUS_ACTIONED
+                      if request.POST.get('action') == 'report_actioned'
+                      else PaintCodeReport.STATUS_IGNORED)
+        rep.operator_note = (request.POST.get('operator_note') or '').strip()[:2000]
+        rep.resolved_at = timezone.now()
+        rep.save(update_fields=['status', 'operator_note', 'resolved_at'])
+        messages.success(request, f'Report for {rep.registration} marked '
+                                  f'{rep.get_status_display().lower()}.')
+        return redirect('admin_stats')
+
     if request.method == 'POST' and request.POST.get('action') == 'save_ezyvin_balance':
         cfg = SiteConfig.get()
         raw = (request.POST.get('ezyvin_credit_balance') or '').strip()
@@ -3291,6 +3315,17 @@ def admin_stats(request):
     _ez_credits = int(top_metrics['ezyvin_credits_sum'] or 0)
     _ez_rate = float(getattr(dj_settings, 'EZYVIN_CREDIT_GBP', 0) or 0)
     ezyvin_cost_sum = round(_ez_credits * _ez_rate, 2)
+    # paint115: annotate each with its per-code total. Done here rather than in
+    # the template because a template cannot call a classmethod with arguments,
+    # and the count is the whole reason the section exists.
+    _paint_reports = list(PaintCodeReport.objects
+                          .filter(status=PaintCodeReport.STATUS_NEW)
+                          .select_related('search')
+                          .order_by('-created_at')[:40])
+    for _rep in _paint_reports:
+        _rep.code_report_count = PaintCodeReport.count_for_code(
+            _rep.manufacturer, _rep.code)
+
     _ez_cfg = SiteConfig.get()
     # paint110: THEIR lifetime consumption, cached briefly. This is a live HTTP
     # call on a page render, so it is cached and it fails soft — a dashboard
@@ -3405,6 +3440,18 @@ def admin_stats(request):
         'ezyvin_balance_at': _ez_cfg.ezyvin_balance_at,
         'ezyvin_left_gbp': (round(_ez_left * _ez_rate, 2)
                             if _ez_left is not None else None),
+        # paint115: the reported lookups, in THIS dashboard rather than the
+        # Django admin. paint113 registered a Django admin model and told the
+        # operator to look under "Reported paint codes" — but every other
+        # working surface is here: the manual queue, the notes, the settings.
+        # A queue nobody visits is a queue nobody empties.
+        #
+        # NEW ONLY, newest first. The point of the section is what still needs
+        # a decision; actioned and ignored rows are history and stay in the
+        # Django admin for anyone who wants them.
+        'paint_reports': _paint_reports,
+        'paint_report_count': PaintCodeReport.objects.filter(
+            status=PaintCodeReport.STATUS_NEW).count(),
         'ezyvin_balance_exact': _ez_exact,
         'ezyvin_used_total': _ez_used,
         'ezyvin_credits_sum': _ez_credits,

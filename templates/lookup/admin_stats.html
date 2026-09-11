@@ -1436,6 +1436,63 @@
             border-radius: 6px;
         }
     </style>
+    {% comment %} paint115: reported lookups, HERE rather than in the Django admin.
+
+       paint113 put this behind /admin/ and told the operator to look under
+       "Reported paint codes". Everything else they actually work in is on this
+       page — the manual queue, the notes, the settings — and a queue nobody
+       visits is a queue nobody empties.
+
+       NEW ONLY. The point of the section is what still needs a decision;
+       actioned and ignored rows are history and remain in the Django admin.
+
+       Sits ABOVE the manual queue because it is rarer and more urgent: a
+       manual request is work you expected, a report is a code you may have
+       already sent to someone else. {% endcomment %}
+    {% if paint_reports %}
+    <div class="panel">
+        <h3>Reported lookups (<span>{{ paint_report_count }}</span>)</h3>
+        <p style="color:#666;font-size:13px;margin:-4px 0 16px;">
+            Customers saying a code or colour we sent looks wrong.
+            Repeats against the same code are the ones worth chasing.
+        </p>
+        {% for r in paint_reports %}
+        <div class="mlq-card">
+            <div class="mlq-meta">
+                <div><div class="lbl">When</div><div class="val">{{ r.created_at|date:"M j Y, H:i" }}</div></div>
+                <div><div class="lbl">Reg</div><div class="val">{{ r.registration|default:"—" }}</div></div>
+                <div><div class="lbl">Vehicle</div><div class="val">{{ r.search.vehicle_title|default:"—" }}</div></div>
+                <div><div class="lbl">VIN</div><div class="val">{{ r.search.vin|default:"—" }}</div></div>
+                <div><div class="lbl">Code sent</div><div class="val"><strong>{{ r.code|default:"—" }}</strong></div></div>
+                <div><div class="lbl">Name sent</div><div class="val">{{ r.colour_name|default:"—" }}</div></div>
+                <div><div class="lbl">DVLA colour</div><div class="val">{{ r.search.colour|default:"—" }}</div></div>
+                {% comment %} The count is the whole reason this table exists. One
+                   report is a shrug; three against one code is a catalogue
+                   error, and nothing else in the system can find one. {% endcomment %}
+                <div><div class="lbl">Reports for this code</div>
+                     <div class="val">{% if r.code_report_count > 1 %}<strong style="color:#c0392b;">{{ r.code_report_count }}</strong>{% else %}{{ r.code_report_count }}{% endif %}</div></div>
+            </div>
+            {% if r.note %}
+            <div style="background:#fafafa;border-radius:4px;padding:12px 14px;margin:12px 0;">
+                <div class="lbl">Their note</div>
+                <div style="font-size:14px;color:#1a1a1a;white-space:pre-wrap;">{{ r.note }}</div>
+            </div>
+            {% endif %}
+            <form method="POST" class="d-flex align-items-center gap-2 flex-wrap mt-2">
+                {% csrf_token %}
+                <input type="hidden" name="report_id" value="{{ r.id }}">
+                <input type="text" class="form-control form-control-sm" style="max-width:280px;"
+                       name="operator_note" placeholder="Note to self (optional)">
+                <button type="submit" name="action" value="report_actioned"
+                        class="btn btn-sm btn-success">Code was wrong — fixed</button>
+                <button type="submit" name="action" value="report_ignored"
+                        class="btn btn-sm btn-outline-secondary">Code was fine</button>
+            </form>
+        </div>
+        {% endfor %}
+    </div>
+    {% endif %}
+
     <div class="panel">
         <h3>Manual lookup queue (<span id="mlq-count">{{ recent_failures|length }}</span>)</h3>
         <div id="mlq-list">
