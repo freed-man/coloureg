@@ -12,7 +12,31 @@
 # the container start command instead would re-run on every restart and can race
 # if scaled to >1 instance.
 
-# Match runtime.txt (python-3.12.7).
+# paint138: THIS IS A FLOATING TAG. Nothing pins the patch version.
+#
+# The comment here read "Match runtime.txt (python-3.12.7)". That file was real
+# — added 23 Apr 2026, saying python-3.12.7 — and was deleted on 9 Jun 2026.
+# The comment outlived it by three months, so it described a pin that no longer
+# existed, and Railway ignores runtime.txt anyway when a Dockerfile is present.
+#
+# Anyone reading it would believe production runs 3.12.7. It actually runs
+# whatever the newest 3.12.x was at the last build — 3.12.14 as of 12 Sep 2026.
+#
+# THE FLOAT IS DELIBERATE, on balance. It means Python security patches arrive
+# with the next rebuild and nobody has to remember them — which is the only
+# part of the interpreter version with a security dimension. The cost is that
+# an interpreter patch can change under a rebuild without a commit; acceptable
+# here because the battery runs against the image before anything ships, and
+# because a stuck interpreter is the worse failure for a one-person service.
+#
+# The MINOR is pinned, and that is the part that matters: 3.12 is in security
+# support until 31 October 2028. Do not float this to `python:3-slim` or
+# `python:3.12` without the `-slim` — the first would let a minor version
+# change silently, the second changes the image contents.
+#
+# If this is ever moved, the target is 3.14, not 3.13: 3.13's own bugfix window
+# closes 1 October 2026, so it would land on a line already going
+# security-only, for one extra year of runway.
 FROM python:3.12-slim
 
 # - PYTHONUNBUFFERED: logs stream to Railway live, unbuffered.
