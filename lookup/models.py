@@ -2277,16 +2277,29 @@ class SiteConfig(models.Model):
     # paint135: how many lookups from ONE IP in 24 hours triggers a warning
     # email. 0 turns it off.
     #
-    # 5 measured against four months of history: 28 alerts, about 7 a month, of
-    # which one was the thing worth seeing — three IPs working through Audis on
-    # 6-7 Sep, one marque, no key, paced to the hourly limit, gone since. The
-    # other 27 are ordinary heavy days.
+    # 10, measured against four months of history rather than chosen:
+    #
+    #   at 5 :  28 alerts, 7.0/month, caught 3 of the 3 harvesting IPs
+    #   at 10:   6 alerts, 1.5/month, caught 2 of the 3
+    #
+    # 10 wins because the job is to make the OPERATOR LOOK on the day, not to
+    # catch every IP automatically. One email naming 90.197.60.82 on 7 Sep
+    # would have done it — open the dashboard, see 19 Audis in a row, find the
+    # other two IPs in a minute. At 7 a month it becomes something you filter;
+    # at 1.5 it stays something you read, and an alert nobody reads is worth
+    # less than no alert at all.
+    #
+    # A TIERED VERSION WAS MEASURED AND DROPPED. Escalating at 15 and 30 fired
+    # twice in four months, one of those the operator's own testing, and told
+    # them nothing the first email had not.
     #
     # A WARNING, NEVER A BLOCK. Nothing here can tell a harvester from an Audi
     # bodyshop having a busy Tuesday, and the operator's own busiest days (19,
-    # 18 and 14 lookups) are larger than the harvesters' peak. The judgement
-    # has to be human; this just makes sure it gets made on the day.
-    ip_alert_threshold = models.PositiveSmallIntegerField(default=5)
+    # 18 and 14 lookups) are LARGER than the harvesters' peak. The judgement
+    # has to be human; this only makes sure it gets made while it matters.
+    #
+    # Editable in the admin, so dropping to 5 for a week costs nothing.
+    ip_alert_threshold = models.PositiveSmallIntegerField(default=10)
 
     daily_budget_gbp = models.DecimalField(
         max_digits=8, decimal_places=2, default=Decimal('50.00'),

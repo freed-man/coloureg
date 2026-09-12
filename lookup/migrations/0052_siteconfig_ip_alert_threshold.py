@@ -13,6 +13,6 @@ class Migration(migrations.Migration):
         migrations.AddField(
             model_name='siteconfig',
             name='ip_alert_threshold',
-            field=models.PositiveSmallIntegerField(default=5),
+            field=models.PositiveSmallIntegerField(default=10),
         ),
     ]
