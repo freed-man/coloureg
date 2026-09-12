@@ -122,11 +122,11 @@ def _enrich_from_lookup(result, make, model=None, vdg_colour=None,
 
         elif desc and not code:
             # name -> code (conservative: unique match only)
-            # paint133: clear the stash FIRST. It is a class attribute, so a
-            # decline recorded on an earlier lookup would otherwise be read as
-            # belonging to this one — and a diagnostic that attributes a finding
-            # to the wrong registration is worse than no diagnostic.
-            PaintLookup._last_ambiguity = None
+            # paint136: clear this THREAD's slot first, so a decline recorded
+            # on an earlier lookup on the same thread is not read as belonging
+            # to this one. Thread-local, so a CONCURRENT lookup in another
+            # thread can no longer leak into it — see models.py.
+            PaintLookup.take_last_ambiguity()
             found_code, hex_val, _canon_name = PaintLookup.code_from_name(
                 manufacturer=make, colour_name=desc, model=model,
             )
@@ -138,7 +138,9 @@ def _enrich_from_lookup(result, make, model=None, vdg_colour=None,
             # 'Ink Blue (Metallic)' resolves cleanly to 3CYCWWA and was being
             # recorded as a 2-code ambiguity, which is exactly the kind of
             # false positive that would make the whole measurement worthless.
-            _amb = PaintLookup._last_ambiguity
+            # Read-and-clear in one call, so the slot cannot be left set for
+            # the next lookup on this thread.
+            _amb = PaintLookup.take_last_ambiguity()
             if _amb and len(_amb) > 1 and not found_code and telemetry is not None:
                 # Into TELEMETRY, not the result dict. _apply_recovery_telemetry
                 # is handed telemetry only, so anything written to `result` here
@@ -146,7 +148,6 @@ def _enrich_from_lookup(result, make, model=None, vdg_colour=None,
                 # persist nothing.
                 telemetry['name_match_count'] = len(_amb)
                 telemetry['name_match_codes'] = ', '.join(_amb)[:200]
-            PaintLookup._last_ambiguity = None
             # paint92: same fallback, other direction. This is the one that
             # pays — a hand-researched code exists precisely BECAUSE the
             # catalogue could not resolve that name the first time.

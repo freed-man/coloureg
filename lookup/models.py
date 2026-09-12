@@ -2,6 +2,7 @@ import logging
 import re
 import unicodedata
 from collections import namedtuple
+import threading
 from decimal import Decimal
 
 from django.utils import timezone
@@ -1638,11 +1639,36 @@ class PaintLookup(models.Model):
                 return candidate
         return row.name
 
-    # paint133: set by _collapse_to_single_code on a decline, read and cleared
-    # by whoever called code_from_name. A class attribute rather than a widened
-    # return value because that signature is relied on in several places and
-    # changing it would touch every caller for the sake of a diagnostic.
-    _last_ambiguity = None
+    # paint136: THREAD-LOCAL, not a class attribute.
+    #
+    # paint133 put this on the class. Gunicorn runs gthread with 8 threads per
+    # worker, so up to 8 lookups share one process — and the window between the
+    # caller's pre-clear and its read spans a database call. Reproduced: a
+    # request for a colour that does not exist recorded another request's Jaguar
+    # codes, because the other request set the attribute in between.
+    #
+    # It only bit the case where a lookup declines WITHOUT reaching the collapse
+    # (an unmatched name), since anything that reaches it overwrites the value —
+    # which is why 40 concurrent attempts at the obvious case showed nothing.
+    #
+    # threading.local() gives each thread its own slot, so there is no window at
+    # all rather than a narrower one.
+    _ambiguity_state = threading.local()
+
+    @classmethod
+    def _set_last_ambiguity(cls, codes):
+        cls._ambiguity_state.value = codes
+
+    @classmethod
+    def take_last_ambiguity(cls):
+        """Return this thread's last ambiguity finding and clear it.
+
+        Read-and-clear in one call so a caller cannot forget the clear and
+        leave a finding for the next lookup on the same thread.
+        """
+        v = getattr(cls._ambiguity_state, 'value', None)
+        cls._ambiguity_state.value = None
+        return v
 
     @staticmethod
     def _collapse_to_single_code(rows, name_norm=None):
@@ -1690,7 +1716,7 @@ class PaintLookup(models.Model):
         # it stashes the finding on the class for the caller to read — set on
         # every decline and cleared by the caller, so a stale value from an
         # earlier lookup can never be attributed to this one.
-        PaintLookup._last_ambiguity = sorted(codes)
+        PaintLookup._set_last_ambiguity(sorted(codes))
         return None
 
     #: A combination row's name is two OTHER codes joined, e.g. Suzuki C06 is
