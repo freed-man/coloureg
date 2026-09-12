@@ -2274,6 +2274,20 @@ class SiteConfig(models.Model):
     # balance built on our rows alone reads HIGH and runs out without warning.
     ezyvin_usage_at_balance = models.IntegerField(null=True, blank=True)
 
+    # paint135: how many lookups from ONE IP in 24 hours triggers a warning
+    # email. 0 turns it off.
+    #
+    # 5 measured against four months of history: 28 alerts, about 7 a month, of
+    # which one was the thing worth seeing — three IPs working through Audis on
+    # 6-7 Sep, one marque, no key, paced to the hourly limit, gone since. The
+    # other 27 are ordinary heavy days.
+    #
+    # A WARNING, NEVER A BLOCK. Nothing here can tell a harvester from an Audi
+    # bodyshop having a busy Tuesday, and the operator's own busiest days (19,
+    # 18 and 14 lookups) are larger than the harvesters' peak. The judgement
+    # has to be human; this just makes sure it gets made on the day.
+    ip_alert_threshold = models.PositiveSmallIntegerField(default=5)
+
     daily_budget_gbp = models.DecimalField(
         max_digits=8, decimal_places=2, default=Decimal('50.00'),
         help_text='Max VDG spend per day (London time). 0 = no limit.'

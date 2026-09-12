@@ -57,6 +57,7 @@ from .services.protection import (
     record_miss,
     clear_miss,
     sliding_rate_limited,
+    should_alert_on_ip,
     credit_sliding_allowance,
     london_day_start,
 )
@@ -79,6 +80,7 @@ from .services.email import (
     send_admin_budget_alert,
     send_user_no_code_available,
     send_admin_paint_report,
+    send_admin_ip_alert,
 )
 
 logger = logging.getLogger(__name__)
@@ -1311,6 +1313,28 @@ def index(request):
                 search.gate_reason = Search.GATE_WHEELPLAN
 
         search.save()
+
+        # paint135: warn if one IP has crossed the 24-hour threshold.
+        #
+        # AFTER save(), so the count includes this lookup — checking before it
+        # would always report one fewer and cross the threshold a lookup late.
+        #
+        # Best-effort and swallowed: a warning email must never be able to break
+        # a customer's lookup. The whole point is that it is advisory.
+        try:
+            _alert, _n = should_alert_on_ip(client_ip, config)
+            if _alert:
+                send_admin_ip_alert(
+                    ip=client_ip, count=_n,
+                    threshold=config.ip_alert_threshold,
+                    rows=list(Search.objects
+                              .filter(ip_address=client_ip,
+                                      timestamp__gte=timezone.now() - timedelta(hours=24))
+                              .exclude(error_message='turnstile_blocked')
+                              .values('registration', 'make', 'user_agent')),
+                )
+        except Exception:  # noqa: BLE001
+            logger.exception('ip alert failed for %s', client_ip)
 
         # Gate BEFORE the session is written and the redirect happens (paint22).
         # results() reads this off the row, so it has to be decided here rather

@@ -81,6 +81,62 @@ def london_day_start(now=None):
     return local_midnight
 
 
+def ip_lookups_last_24h(ip, now=None):
+    """How many lookups this IP has made in the last 24 hours, and whether any
+    carried an access key.
+
+    Returns (count, keyed). Turnstile blocks are excluded: they made no provider
+    call and represent a browser that failed verification, not someone working
+    through a list.
+    """
+    from lookup.models import Search
+    if not ip:
+        return 0, False
+    since = (now or timezone.now()) - timedelta(hours=24)
+    rows = (Search.objects
+            .filter(ip_address=ip, timestamp__gte=since)
+            .exclude(error_message='turnstile_blocked')
+            .values_list('access_label', flat=True))
+    rows = list(rows)
+    return len(rows), any(bool(x) for x in rows)
+
+
+def should_alert_on_ip(ip, config, now=None):
+    """True if this IP has crossed the alert threshold and has not been
+    reported in the last 24 hours.
+
+    paint135. ONE EMAIL PER IP PER DAY. A busy afternoon crosses the threshold
+    on its fifth lookup and then on every one after it; without this the
+    operator gets fifteen identical emails and stops reading them, which is the
+    same as having no alert.
+
+    Keyed traffic never alerts — a trade contact or the operator's own testing
+    is exactly who this is not about.
+
+    Fails CLOSED on a cache error: a missing de-dup marker would mean a flood,
+    and a missed warning costs less than an unread inbox.
+    """
+    threshold = getattr(config, 'ip_alert_threshold', 0) or 0
+    if not threshold or not ip:
+        return False, 0
+    count, keyed = ip_lookups_last_24h(ip, now=now)
+    if keyed or count < threshold:
+        return False, count
+    # Imported here, like the other cache users in this module — the alias is
+    # 'default' (the database-backed rate_limit_cache table), not 'local':
+    # locmem is per-process, so on a multi-worker deploy each worker would send
+    # its own copy of the same warning.
+    from django.core.cache import caches
+    key = f'ipalert:{ip}'
+    try:
+        if caches['default'].get(key):
+            return False, count
+        caches['default'].set(key, 1, 86400)
+    except Exception:  # noqa: BLE001
+        return False, count
+    return True, count
+
+
 def spend_today(now=None):
     """Sum of ALL provider spend since London midnight, as a Decimal.
 

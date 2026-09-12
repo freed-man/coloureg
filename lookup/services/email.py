@@ -465,6 +465,79 @@ def _ordinal(n):
     return f'{n}{suffix}'
 
 
+def send_admin_ip_alert(ip, count, threshold, rows):
+    """Warn the operator that one IP has crossed the 24-hour lookup threshold.
+
+    paint135. A WARNING, NOT A BLOCK. Nothing in the data can tell a harvester
+    from an Audi bodyshop having a busy Tuesday — and the operator's own busiest
+    days (19, 18 and 14 lookups) are larger than the harvesters' peak. So this
+    reports and lets a person decide.
+
+    The MARQUE MIX is the most useful line, because that is what separated the
+    two cases historically: three IPs on 6-7 Sep ran 89% Audi over two days,
+    while ordinary heavy users sit between 20% and 60% of one marque.
+    """
+    makes = {}
+    for r in rows:
+        m = (r.get('make') or '').strip()
+        if m:
+            makes[m] = makes.get(m, 0) + 1
+    top = sorted(makes.items(), key=lambda kv: -kv[1])
+    mix = ', '.join(f'{m} {n}' for m, n in top[:5]) or '&mdash;'
+    share = (100 * top[0][1] / max(len(rows), 1)) if top else 0
+    regs = ', '.join(dict.fromkeys(
+        (r.get('registration') or '').strip() for r in rows if r.get('registration')))
+    uas = {(r.get('user_agent') or '')[:120] for r in rows if r.get('user_agent')}
+    html = f"""
+    <div style="background: #f5f5f5; padding: 40px 20px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;">
+        <div style="max-width: 560px; margin: 0 auto; background: #ffffff; border-radius: 8px; overflow: hidden;">
+            {_brand_header()}
+            <div style="padding: 32px;">
+                <div style="background: #fff8e6; border-left: 3px solid #d19a00; padding: 14px 18px; border-radius: 4px; margin-bottom: 24px;">
+                    <div style="font-size: 15px; font-weight: 600; color: #1a1a1a;">
+                        {count} lookups from one IP in 24 hours
+                    </div>
+                    <div style="color: #4a4a4a; font-size: 13px; margin-top: 4px;">
+                        Your alert threshold is {threshold}. This is a heads-up, not a block.
+                    </div>
+                </div>
+                <table style="width: 100%; border-collapse: collapse; margin-bottom: 24px;">
+                    <tr style="border-bottom: 1px solid #eee;">
+                        <td style="padding: 10px 16px 10px 0; color: #666; font-size: 13px; width: 78px;">IP</td>
+                        <td style="padding: 10px 0; color: #1a1a1a; font-size: 14px; font-weight: 600;">{_esc(ip)}</td>
+                    </tr>
+                    <tr style="border-bottom: 1px solid #eee;">
+                        <td style="padding: 10px 16px 10px 0; color: #666; font-size: 13px;">Makes</td>
+                        <td style="padding: 10px 0; color: #1a1a1a; font-size: 14px;">{_esc(mix)}{f' &middot; {share:.0f}% one marque' if top else ''}</td>
+                    </tr>
+                    <tr style="border-bottom: 1px solid #eee;">
+                        <td style="padding: 10px 16px 10px 0; color: #666; font-size: 13px;">Devices</td>
+                        <td style="padding: 10px 0; color: #1a1a1a; font-size: 14px;">{len(uas)}</td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 10px 16px 10px 0; color: #666; font-size: 13px; vertical-align: top;">Plates</td>
+                        <td style="padding: 10px 0; color: #4a4a4a; font-size: 13px; word-break: break-word;">{_esc(regs)}</td>
+                    </tr>
+                </table>
+                <p style="margin: 0; color: #666; font-size: 13px;">
+                    One marque dominating over a short burst is the pattern worth
+                    looking at. A mixed list over a long day is usually a bodyshop.
+                    To stop it, add the IP to the blocklist in the admin panel.
+                </p>
+            </div>
+        </div>
+        {FOOTER}
+    </div>
+    """
+    return _safe_send({
+        "from": settings.DEFAULT_FROM_EMAIL,
+        "to": settings.ADMIN_EMAIL,
+        "subject": f"{count} lookups in 24h from {ip}",
+        "html": html,
+        "attachments": _attachments(),
+    }, context='ip_alert')
+
+
 def send_admin_paint_report(report, total_for_code=1, vehicle_title='',
                             vin_full='', dvla_colour=''):
     """Tell the operator a customer says a delivered code is wrong.
