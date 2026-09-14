@@ -2387,8 +2387,18 @@ def _record_paint_hit(search_id, paint_code, paint_description, source, telemetr
     # understate mmw badly — measured live on WP09UOU, where mmw sent Z9Y and
     # the right answer was LZ9Y.
     if search.mmw_code and paint_code:
-        _got = paint_code.strip().upper()
-        _mmw = search.mmw_code.strip().upper()
+        # NORMALISE PUNCTUATION BEFORE COMPARING. mmw sends whatever the site
+        # holds and the catalogue punctuates differently, so a hyphen alone
+        # would read as disagreement — BJ18VLT sent B-570M, was delivered
+        # B570M, and recorded mmw_agreed False. That is the same code.
+        #
+        # Under-reporting here is worse than it sounds: it understates mmw
+        # exactly where the gate had to work hardest to find the right row,
+        # and mmw_agreed is the evidence the leg's placement rests on.
+        def _norm142(v):
+            return v.strip().upper().replace('-', '').replace(' ', '')
+        _got = _norm142(paint_code)
+        _mmw = _norm142(search.mmw_code)
         search.mmw_agreed = _got in (_mmw, f'L{_mmw}') or _mmw == f'L{_got}'
 
     if source == 'pl24':
@@ -2402,6 +2412,12 @@ def _record_paint_hit(search_id, paint_code, paint_description, source, telemetr
         # that plainly held a code — the leg would have been invisible in every
         # per-source total from the day it shipped.
         search.provider = Search.PROVIDER_EZYVIN
+    elif source == 'mmw':
+        # paint142, and paint98 repeated. A win recorded as 'none' is a leg
+        # that cannot be seen in any per-source total — BJ18VLT was delivered
+        # B570M by mmw and stored provider 'none', so the dashboard showed a
+        # code from nowhere.
+        search.provider = Search.PROVIDER_MMW
     search.enriched_from = enriched_from or ''
     fields = ['paint_code', 'paint_description', 'success', 'provider', 'enriched_from']
     # paint140, and the paint78 rule: mmw_agreed is ASSIGNED above, so it has
@@ -3326,6 +3342,13 @@ def admin_stats(request):
             # question of whether it earns its credits has no picture.
             s_ezyvin=Count('id', filter=Q(paint_code__gt='',
                                           provider=Search.PROVIDER_EZYVIN)),
+            # paint142. Without a series, an mmw win vanishes from the only
+            # picture of where codes come from — and mmw is the leg whose
+            # placement is explicitly provisional, so it is the one that most
+            # needs watching. It is also FREE, which makes its share the
+            # interesting number rather than an incidental one.
+            s_mmw=Count('id', filter=Q(paint_code__gt='',
+                                       provider=Search.PROVIDER_MMW)),
             # SPLIT BY WHICH VDG CALL WON, matching what the Source column
             # shows per row. A lookup makes one paint call, and a second only
             # when the first came back empty — so "VDG" and "VDG (2nd)" are
@@ -3354,6 +3377,7 @@ def admin_stats(request):
     chart_delivered, chart_failed, chart_nocode = [], [], []
     chart_bad_plate, chart_not_automated, chart_abandoned = [], [], []
     src_ezyvin, src_retry, src_retry2 = [], [], []
+    src_mmw = []
     src_pl24, src_manual, src_cache = [], [], []
     # LOCAL dates, not UTC. TruncDate above buckets by the CURRENT timezone
     # (Europe/London), so `now.date()` — which is UTC — disagrees with it
@@ -3373,6 +3397,7 @@ def admin_stats(request):
         chart_not_automated.append(row.get('not_automated', 0))
         chart_abandoned.append(row.get('abandoned', 0))
         src_ezyvin.append(row.get('s_ezyvin', 0))
+        src_mmw.append(row.get('s_mmw', 0))
         src_retry.append(row.get('s_retry', 0))
         src_retry2.append(row.get('s_retry2', 0))
         src_pl24.append(row.get('s_pl24', 0))
@@ -3589,6 +3614,7 @@ def admin_stats(request):
             'not_automated': chart_not_automated,
             'abandoned': chart_abandoned,
             'src_ezyvin': src_ezyvin,
+            'src_mmw': src_mmw,
             'src_retry': src_retry,
             'src_retry2': src_retry2,
             'src_pl24': src_pl24,

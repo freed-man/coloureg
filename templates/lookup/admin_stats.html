@@ -2154,6 +2154,12 @@
                 { label: 'VDG (2nd)',    data: CHART.src_retry2, backgroundColor: '#8fb3e8' },
                 { label: 'PL24',        data: CHART.src_pl24,    backgroundColor: '#7fb069' },
                 { label: 'Ezyvin',      data: CHART.src_ezyvin,  backgroundColor: '#00857a' },
+                {% comment %}paint142: mmw. Placed after Ezyvin to match the
+                pipeline's order of preference — VDG, pl24, Ezyvin, then mmw —
+                so the stack reads in the order the legs are actually tried.
+                Purple, because every other series is a paid or owned source
+                and this one is neither.{% endcomment %}
+                { label: 'mmw',         data: CHART.src_mmw,     backgroundColor: '#7e57c2' },
                 { label: 'Manual',      data: CHART.src_manual,  backgroundColor: '#b8860b' },
                 { label: 'Cache',       data: CHART.src_cache,   backgroundColor: '#999' }
             ]

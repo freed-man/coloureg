@@ -22,6 +22,11 @@ class Search(models.Model):
     PROVIDER_PARTSLINK24 = 'partslink24'
     PROVIDER_ONEAUTO = 'oneauto'
     PROVIDER_EZYVIN = 'ezyvin'
+    # paint142: mmw wins are a SOURCE, not an absence. Without this a lookup
+    # mmw answered stored provider 'none' on a row plainly holding a code —
+    # the same defect paint98 fixed for Ezyvin, repeated because paint140 added
+    # the leg and forgot the provider.
+    PROVIDER_MMW = 'mmw'
     PROVIDER_MANUAL = 'manual'
     PROVIDER_CACHE = 'cache'
     PROVIDER_NONE = 'none'
@@ -78,6 +83,9 @@ class Search(models.Model):
         # the same reason PROVIDER_VDG kept its value when it stopped being how
         # VDG wins. One word for the badge, like OneAuto and PARTSLINK24.
         (PROVIDER_EZYVIN, 'Ezyvin'),
+        # paint142. 'mmw' rather than the site's name: it is the tool that is
+        # ours, and the label a reader needs is which leg answered.
+        (PROVIDER_MMW, 'mmw'),
         (PROVIDER_MANUAL, 'Manual'),
         (PROVIDER_CACHE, 'Cache'),
         (PROVIDER_NONE, 'None'),
