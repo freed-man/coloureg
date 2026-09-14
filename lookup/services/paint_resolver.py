@@ -29,6 +29,7 @@ Design notes:
     caller always gets a clean result dict (or None).
 """
 
+import colorsys
 import concurrent.futures
 import logging
 import os
@@ -710,6 +711,65 @@ _COLOUR_FAMILY = {
 }
 
 
+def _hex_family(hex_value):
+    """The colour family a hex sits in, or None when it cannot be read.
+
+    paint143. The gate matched on COLOUR WORDS IN THE NAME, so a row whose name
+    does not happen to say its colour was refused however obviously right it
+    was. SG13VEW, 14 Sep: a Honda CR-V registered Red, mmw returned R-539P, the
+    catalogue holds R539P as 'Molten Lava Pearl' at #8E1F13. Plainly red, and
+    invisible — molten, lava and pearl are not colour words. That is 21,645
+    rows, 18% of the catalogue, carrying a hex and no colour word.
+
+    MEASURED, NOT GUESSED. Against 1,674 known-good delivered answers this
+    accepts 151 of the 183 the name cannot judge, and against deliberately
+    wrong codes it wrongly accepts 13.1% — slightly BETTER than the name gate's
+    15.5%, so reach improves without the gate getting looser.
+
+    AN EARLIER VERSION TREATED NEIGHBOURING FAMILIES AS COMPATIBLE and was
+    dropped: it raised true-accept to 95% and false-accept to 44.8%, three
+    times worse than the gate it was meant to help. A false reject costs an
+    opportunity; a false accept sends someone the wrong paint.
+
+    Neutrals are decided FIRST and generously, because that is where the
+    boundaries bite: a bluish silver must read grey, not blue.
+    """
+    raw = (hex_value or '').lstrip('#')
+    if len(raw) != 6:
+        return None
+    try:
+        r, g, b = (int(raw[i:i + 2], 16) / 255 for i in (0, 2, 4))
+    except ValueError:
+        return None
+    h, sat, val = colorsys.rgb_to_hsv(r, g, b)
+    h *= 360
+    if val < 0.10:
+        return 'black'
+    # 0.25, not 0.15. Metallic silvers carry a real blue cast — Meteor Silver
+    # #97B0BF is 0.21 saturated — and DVLA records those cars as Silver or
+    # Grey, so a lower threshold reads them blue and refuses a correct answer.
+    # Measured across 1,674 known-good answers the choice is a WASH (86.2/11.8
+    # against 86.1/12.1), so this is settled on being comprehensible rather
+    # than on a difference that is inside the noise.
+    if sat < 0.25:
+        return 'black' if val < 0.18 else ('white' if val > 0.82 else 'grey')
+    # Dark and washed out reads grey whatever the hue — 'Magnetic' #383838 is
+    # a grey to DVLA, not a black.
+    if sat < 0.30 and val < 0.45:
+        return 'grey'
+    if h < 18 or h >= 330:
+        return 'red'
+    if h < 42:
+        return 'brown' if val < 0.55 else 'orange'
+    if h < 70:
+        return 'yellow'
+    if h < 180:
+        return 'green'
+    if h < 260:
+        return 'blue'
+    return 'purple'
+
+
 def _colour_families(text):
     """Every colour family named in a string. Empty set when it names none."""
     words = re.sub(r'[^a-z]+', ' ', (text or '').lower()).split()
@@ -768,7 +828,23 @@ def mmw_code_validates(make, code, dvla_colour):
     _bare = code.replace('-', '').replace(' ', '')
     for candidate in (code, _bare, f'L{code}', f'L{_bare}'):
         row = PaintLookup.lookup(make, candidate)
-        if row and row.name and (_colour_families(row.name) & want):
+        if not row:
+            continue
+        # THE NAME FIRST, ALWAYS. A colour word the manufacturer wrote is
+        # better evidence than a hex we classified, so the hex never overrides
+        # it and never gets a vote when the name has one.
+        named = _colour_families(row.name) if row.name else set()
+        if named:
+            if named & want:
+                return candidate
+            # The name spoke and disagreed. Do NOT then ask the hex for a
+            # second opinion — that is how a gate turns into a search for any
+            # reason to say yes.
+            continue
+        # paint143: the name says nothing. Fall back to the hex, which is what
+        # made SG13VEW's 'Molten Lava Pearl' refusable despite being #8E1F13 on
+        # a car registered Red.
+        if _hex_family(row.hex) in want:
             return candidate
     return None
 
