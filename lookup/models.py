@@ -378,6 +378,31 @@ class Search(models.Model):
     def is_locked(self):
         """True while a chargeable result is being withheld pending payment."""
         return bool(self.paywalled) and not self.paid_unlocked
+    # paint140: mmw, the free reg-only leg. Columns go in the SAME change as
+    # the leg — that rule has been broken four times (paint15, 76, 99, 108) and
+    # each time a paid or load-bearing leg ran invisibly for weeks.
+    #
+    # WHY SO MANY COLUMNS FOR A LEG WHOSE ANSWER IS USED LAST. mmw is placed
+    # after Ezyvin on trust, not economics: it is free and Ezyvin costs 45p, so
+    # every lookup where mmw would have been right and Ezyvin was called is
+    # money spent to avoid a scraper. Promoting it is a decision worth making on
+    # evidence, and these columns ARE the evidence — without mmw_agreed there
+    # is no way to learn its accuracy on real traffic rather than a 30-vehicle
+    # sample.
+    mmw_attempted = models.BooleanField(default=False)
+    mmw_code = models.CharField(max_length=100, blank=True, default='')
+    #: mmw returns the DVLA-STYLE colour word (GREY, BLACK), not the
+    #: manufacturer's name. Confirmed live on 14 Sep across three vehicles.
+    #: Stored anyway: it is what the validation gate compares against.
+    mmw_colour = models.CharField(max_length=60, blank=True, default='')
+    mmw_outcome = models.CharField(max_length=40, blank=True, default='')
+    mmw_ms = models.PositiveIntegerField(null=True, blank=True)
+    #: True when mmw's code matched the code actually delivered, False when it
+    #: differed, NULL when there was nothing to compare. The whole point.
+    mmw_agreed = models.BooleanField(null=True, blank=True)
+    #: Set only when mmw's answer was the one used.
+    mmw_used = models.BooleanField(default=False)
+
     pl24_attempted = models.BooleanField(default=False)
     pl24_returned = models.BooleanField(default=False)
     recovery_name_only = models.BooleanField(default=False)

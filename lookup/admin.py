@@ -178,6 +178,15 @@ class SearchAdmin(admin.ModelAdmin):
             'classes': ('collapse',),
             'fields': ('pl24_name', 'pl24_outcome', 'pl24_started_because'),
         }),
+        # paint140. mmw is the free reg-only leg, served LAST — after VDG,
+        # pl24 and Ezyvin. mmw_agreed is the column that matters: it is how
+        # that ordering gets tested against real traffic rather than a
+        # 30-vehicle sample.
+        ('mmw detail', {
+            'classes': ('collapse',),
+            'fields': ('mmw_attempted', 'mmw_code', 'mmw_colour',
+                       'mmw_outcome', 'mmw_agreed', 'mmw_used', 'mmw_ms'),
+        }),
         ('VDG paint detail', {
             'classes': ('collapse',),
             'fields': ('vdg_paint_name', 'vdg_transaction_cost'),

@@ -32,6 +32,7 @@ Design notes:
 import concurrent.futures
 import logging
 import os
+import re
 import threading
 import time
 
@@ -175,6 +176,20 @@ PL24_BASE_URL = os.environ.get(
     'PL24_BASE_URL', 'http://pl24.railway.internal:8080'
 ).rstrip('/')
 PL24_API_KEY = os.environ.get('PL24_API_KEY', '')
+
+# paint140: the mmw service. Same shape as pl24 — private Railway hostname in
+# production, X-API-Key, /lookup-paint. Unset key means the service has no key
+# either, which is only true in local development.
+MMW_BASE_URL = os.environ.get(
+    'MMW_BASE_URL', 'http://mmw.railway.internal:8080'
+).rstrip('/')
+MMW_API_KEY = os.environ.get('MMW_API_KEY', '')
+
+#: mmw answers in about a second warm (measured 14 Sep: 1.5s cold opening the
+#: session, then 1.2s and 1.0s). This is a hang detector, not a patience
+#: setting — it starts at t=0 and nothing waits on it, so a generous value
+#: costs nothing and a tight one throws away answers.
+_MMW_HTTP_TIMEOUT = (5.0, 12.0)
 
 # How long resolve_paint waits for pl24 before giving up. Set just ABOVE pl24's
 # own internal ceiling (~60s worst case, when it walks the full fallback chain:
@@ -658,6 +673,184 @@ def _route_category(make, model, vin, category):
     return category
 
 
+#: paint140. Colour words to families, for the mmw validation gate.
+#:
+#: DELIBERATELY COARSE. It answers one question — is the catalogue's name for
+#: this code the same KIND of colour as the car's registered one — and a
+#: finer-grained map would reject honest answers over shade. Measured at a 1.4%
+#: false-reject rate across 1,547 known-good paid answers.
+#:
+#: Multilingual because the catalogue is: it holds Phantomschwarz beside
+#: Phantom Black and Ljusbla beside Light Blue, from three scraped sources.
+_COLOUR_FAMILY = {
+    'red': 'red', 'rosso': 'red', 'rouge': 'red', 'rot': 'red',
+    'infrared': 'red', 'rood': 'red', 'rojo': 'red',
+    'blue': 'blue', 'bleu': 'blue', 'blau': 'blue', 'blu': 'blue',
+    'azul': 'blue', 'bla': 'blue', 'turquoise': 'blue', 'teal': 'blue',
+    'green': 'green', 'vert': 'green', 'verde': 'green', 'grun': 'green',
+    'gruen': 'green', 'moss': 'green', 'olive': 'green',
+    'yellow': 'yellow', 'jaune': 'yellow', 'gelb': 'yellow',
+    'amarillo': 'yellow',
+    'black': 'black', 'noir': 'black', 'nero': 'black', 'schwarz': 'black',
+    'preto': 'black', 'negro': 'black', 'svart': 'black',
+    'white': 'white', 'blanc': 'white', 'bianco': 'white', 'weiss': 'white',
+    'weis': 'white', 'branco': 'white', 'blanco': 'white', 'vit': 'white',
+    # Silver and grey are ONE family. DVLA registers many metallic greys as
+    # Silver and the catalogue names them Grey, or the reverse; splitting them
+    # would reject correct answers on a naming convention.
+    'grey': 'grey', 'gray': 'grey', 'gris': 'grey', 'grigio': 'grey',
+    'grau': 'grey', 'silver': 'grey', 'silber': 'grey', 'cinza': 'grey',
+    'plata': 'grey', 'titanium': 'grey', 'graphite': 'grey', 'anthracite': 'grey',
+    'orange': 'orange', 'arancio': 'orange',
+    'purple': 'purple', 'violet': 'purple', 'viola': 'purple', 'lilac': 'purple',
+    'brown': 'brown', 'braun': 'brown', 'marron': 'brown', 'beige': 'brown',
+    'bronze': 'brown', 'sand': 'brown', 'tan': 'brown',
+    'gold': 'gold', 'or': 'gold',
+    'pink': 'pink', 'rose': 'pink',
+}
+
+
+def _colour_families(text):
+    """Every colour family named in a string. Empty set when it names none."""
+    words = re.sub(r'[^a-z]+', ' ', (text or '').lower()).split()
+    return {_COLOUR_FAMILY[w] for w in words if w in _COLOUR_FAMILY}
+
+
+def mmw_code_validates(make, code, dvla_colour):
+    """Should mmw's code be trusted enough to serve?
+
+    paint140. mmw scrapes a third-party site of unknown provenance, so its
+    answer is never served unverified. The check: does OUR catalogue's name for
+    that code describe the same KIND of colour the car is registered as.
+
+    `WP09UOU` on 14 Sep is why this exists. mmw returned Z9Y for an Audi A3
+    registered BLACK:
+
+        Z9Y   Dark Grey Matt        no hex, no models, 1 source
+        LZ9Y  Phantom Black Pearl   #0D0F13, 3 sources, 51 models
+
+    The bare code is a GREY on a BLACK car. The prefixed one is black. So the
+    registered colour picks the right row, and this returns the code that
+    actually matched rather than the one mmw sent.
+
+    NOTE mmw's own colour field is NOT used. It returns the DVLA-style word
+    (GREY, BLACK), confirmed live across three vehicles, so comparing it to the
+    registered colour would compare DVLA against DVLA and prove nothing.
+
+    Returns the code to use, or None. UNKNOWN IS NOT APPROVAL: a code absent
+    from the catalogue, or a colour naming no family, returns None — the whole
+    point is corroboration, and there is none.
+    """
+    from lookup.models import PaintLookup
+    if not code or not make:
+        return None
+    want = _colour_families(dvla_colour)
+    if not want:
+        return None
+
+    # Try the code as sent, then prefixed forms the catalogue uses. mmw returns
+    # the short form the SITE holds (A7N where the catalogue has LA7N), so
+    # refusing to look further would reject correct answers on notation.
+    for candidate in (code, f'L{code}'):
+        row = PaintLookup.lookup(make, candidate)
+        if row and row.name and (_colour_families(row.name) & want):
+            return candidate
+    return None
+
+
+def _mmw_settle(f_mmw, make, vdg_colour, telemetry, delivered_code=None):
+    """Read mmw's held answer. Records agreement; returns a usable code or None.
+
+    paint140. Called in BOTH places mmw matters:
+
+      * when a paid leg won, with `delivered_code` set — then this only records
+        whether mmw agreed, and returns nothing. That is how the ordering gets
+        tested without changing any customer's answer.
+      * at the end, with `delivered_code` None — then a validated code may be
+        returned and served.
+
+    NEVER BLOCKS. mmw started at t=0 and everything else has already finished
+    by the time this runs, so the future is done or it hung; either way waiting
+    on it would make a free leg cost time.
+    """
+    if f_mmw is None or not f_mmw.done():
+        return None
+    try:
+        row = f_mmw.result()
+    except Exception:  # noqa: BLE001 — a free leg cannot be allowed to raise
+        return None
+    if not row or not row.get('code'):
+        return None
+
+    validated = mmw_code_validates(make, row['code'], vdg_colour)
+
+    if delivered_code is not None:
+        # Compare against what the customer actually got. Compared on the
+        # VALIDATED form where there is one, because mmw sends the short code
+        # (A7N) and the pipeline may deliver the catalogue's (LA7N) — counting
+        # that as disagreement would understate mmw badly.
+        if telemetry is not None:
+            got = (delivered_code or '').strip().upper()
+            telemetry['mmw_agreed'] = got in {
+                (row['code'] or '').upper(), (validated or '').upper()}
+        return None
+
+    if validated and telemetry is not None:
+        telemetry['mmw_used'] = True
+    return validated
+
+
+def _mmw_lookup(registration, search_id=None):
+    """Call the mmw service. Returns its row dict, or None on any failure.
+
+    paint140. UNLIKE EVERY OTHER LEG, THIS NEEDS ONLY THE REGISTRATION. pl24
+    and Ezyvin both need the VIN, which arrives from the £0.06 VDG vehicle
+    call, so they cannot start until it returns. mmw can start at t=0.
+
+    Free, so there is no spend guard and no budget check: the only cost of
+    calling it is someone else's bandwidth, which the service paces.
+
+    Never raises. A leg that cannot make things worse must not be able to break
+    a lookup either.
+    """
+    if not registration:
+        return None
+    headers = {'X-API-Key': MMW_API_KEY} if MMW_API_KEY else {}
+    try:
+        resp = get_session().get(
+            f'{MMW_BASE_URL}/lookup-paint',
+            params={'reg': registration}, headers=headers,
+            timeout=_MMW_HTTP_TIMEOUT,
+        )
+    except requests.exceptions.RequestException:
+        return None
+    if resp.status_code != 200:
+        return None
+    try:
+        data = resp.json()
+    except ValueError:
+        return None
+
+    row = {
+        'code': (data.get('paint_code') or '').strip()[:100],
+        'colour': (data.get('paint_description') or '').strip()[:60],
+        'outcome': (data.get('outcome') or '').strip()[:40],
+        'ms': int((data.get('elapsed_s') or 0) * 1000),
+    }
+    # Recorded whether or not the answer is ever used — that is the entire
+    # reason the columns exist. A leg used last still teaches you its accuracy.
+    if search_id is not None and (row['code'] or row['outcome']):
+        _record_worker_result(
+            search_id,
+            mmw_attempted=True,
+            **({'mmw_code': row['code']} if row['code'] else {}),
+            **({'mmw_colour': row['colour']} if row['colour'] else {}),
+            **({'mmw_outcome': row['outcome']} if row['outcome'] else {}),
+            mmw_ms=row['ms'],
+        )
+    return row
+
+
 def _pl24_lookup(vin, make, category=None, search_id=None):
     """Call the pl24 service. Returns a paint dict if pl24 found a code, else
     None. Never raises — network/HTTP/timeout errors degrade to None."""
@@ -850,7 +1043,10 @@ def resolve_paint(registration, vin, make, category=None, telemetry=None, model=
     # started once One Auto released one, and the lookup took 36.7s to return a
     # code pl24 could have supplied in about one. The backstop had fired
     # correctly; there was simply nothing to run it on.
-    ex = concurrent.futures.ThreadPoolExecutor(max_workers=3)
+    # paint140: 4, not 3 — mmw is a fourth leg. The RELATIONSHIP is what
+    # matters (see above): max_workers >= the number of legs, or a leg silently
+    # queues behind another and its timing measurements become fiction.
+    ex = concurrent.futures.ThreadPoolExecutor(max_workers=4)
     _t = telemetry if telemetry is not None else {}
     _start = time.monotonic()
     # Recovery telemetry, finalised in the `finally` block so it is written no
@@ -890,6 +1086,27 @@ def resolve_paint(registration, vin, make, category=None, telemetry=None, model=
     # that happens.
     race_over = threading.Event()
     try:
+        # paint140: mmw starts HERE, at t=0, before anything waits on the VIN.
+        #
+        # It is the only leg that needs just the registration — pl24 and Ezyvin
+        # both need the VIN from the £0.06 vehicle call. It is free, so there
+        # is nothing to weigh against starting it early, and it answers in
+        # about a second.
+        #
+        # ITS ANSWER IS HELD, NOT RACED. Everything below can beat it: the
+        # order of preference is VDG, pl24, Ezyvin, then mmw. That is a trust
+        # ordering, not an economic one — mmw is free and Ezyvin costs 45p, so
+        # every lookup where mmw was right and Ezyvin was called is money spent
+        # to avoid a scraper. Whether that ordering is correct is exactly what
+        # mmw_agreed is recorded to find out.
+        # Set on the MAIN THREAD at submit time, exactly as pl24 does in
+        # _start_pl24. _mmw_lookup also records it via _record_worker_result,
+        # but that is a direct DB write from a worker thread — it never reaches
+        # this dict, so a caller reading telemetry would see the leg as never
+        # attempted. Two channels reporting the same fact must agree.
+        _t['mmw_attempted'] = True
+        f_mmw = ex.submit(_mmw_lookup, registration, search_id)
+
         f_vdg = ex.submit(_vdg_retry, registration, _t, search_id, race_over)
         # Category is routed (not raw): VW commercial lines misfiled as M1 by
         # VDG are sent to pl24 as N1 so the lookup hits the right catalogue
@@ -1131,6 +1348,20 @@ def resolve_paint(registration, vin, make, category=None, telemetry=None, model=
         # ('Race Red' matches 13, 'Black Pearl' 481), so it declines far more
         # often than it resolves — deliberately, because a wrong code is worse
         # than none when the customer is about to buy paint.
+        # paint140: mmw is the LAST code source, after VDG, pl24 and Ezyvin have
+        # all failed to produce one. Free, already answered, and only served if
+        # the catalogue corroborates it against the registered colour.
+        #
+        # Placed above the name-only fallback deliberately: a validated CODE is
+        # worth more to the customer than a colour name with no code, which is
+        # what that fallback delivers.
+        _mmw_code = _mmw_settle(f_mmw, make, vdg_colour, _t)
+        if _mmw_code:
+            return _enrich_from_lookup(
+                {'paint_code': _mmw_code, 'paint_description': '',
+                 'all_paint_codes': [], 'source': 'mmw'},
+                make, model, vdg_colour=vdg_colour, telemetry=_t)
+
         fallback = pl24_name_only_result
         if fallback is None and ezyvin_name_only_result is not None:
             ez = ezyvin_name_only_result

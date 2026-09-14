@@ -2260,6 +2260,9 @@ def _apply_recovery_telemetry(search, telemetry):
     # match was declined. No error_message is set for this — the lookup simply
     # fails — so without these two columns the export records zero ambiguity
     # declines and there is no way to tell how often it happens.
+    # paint140: set only when mmw's answer was the one served.
+    if telemetry.get('mmw_used'):
+        search.mmw_used = True
     if telemetry.get('name_match_count'):
         search.name_match_count = telemetry['name_match_count']
         search.name_match_codes = telemetry.get('name_match_codes', '')
@@ -2284,6 +2287,8 @@ def _apply_recovery_telemetry(search, telemetry):
         # did fail on the first attempt, correctly.
         fields.append('name_match_count')
         fields.append('name_match_codes')
+    if telemetry.get('mmw_used'):
+        fields.append('mmw_used')
 
     # One Auto (paint67). The COST is recorded whatever the outcome, because an
     # unrecorded charge is invisible to the daily budget breaker — and One Auto
@@ -2364,6 +2369,28 @@ def _record_paint_hit(search_id, paint_code, paint_description, source, telemetr
     search.paint_code = paint_code
     search.paint_description = paint_description
     search.success = bool(paint_code)
+
+    # paint140: did mmw agree with what the customer actually got?
+    #
+    # Computed HERE rather than in the race because both halves are already on
+    # this row: _mmw_lookup wrote mmw_code as soon as it answered, and
+    # paint_code is being set right now. Doing it in resolve_paint would have
+    # meant patching three separate win points.
+    #
+    # NULL when there was nothing to compare — no mmw answer, or no code
+    # delivered. An absent comparison is not a disagreement, and recording it
+    # as False would quietly slander the leg.
+    #
+    # Compared case-insensitively and against the prefixed form too, because
+    # mmw sends the SHORT code the site holds (A7N) while the pipeline may
+    # deliver the catalogue's (LA7N). Counting that as disagreement would
+    # understate mmw badly — measured live on WP09UOU, where mmw sent Z9Y and
+    # the right answer was LZ9Y.
+    if search.mmw_code and paint_code:
+        _got = paint_code.strip().upper()
+        _mmw = search.mmw_code.strip().upper()
+        search.mmw_agreed = _got in (_mmw, f'L{_mmw}') or _mmw == f'L{_got}'
+
     if source == 'pl24':
         search.provider = Search.PROVIDER_PARTSLINK24
     elif source == 'vdg_retry':
@@ -2377,6 +2404,11 @@ def _record_paint_hit(search_id, paint_code, paint_description, source, telemetr
         search.provider = Search.PROVIDER_EZYVIN
     search.enriched_from = enriched_from or ''
     fields = ['paint_code', 'paint_description', 'success', 'provider', 'enriched_from']
+    # paint140, and the paint78 rule: mmw_agreed is ASSIGNED above, so it has
+    # to be named here or update_fields drops it without a word. That failure
+    # has cost four legs their telemetry already.
+    if search.mmw_agreed is not None:
+        fields.append('mmw_agreed')
     fields += _apply_recovery_telemetry(search, telemetry)
     # We have a real code here (this is the paint-hit path), so this is a FULL
     # result, not name-only — even if pl24 originally returned a name that our
