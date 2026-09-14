@@ -41,6 +41,7 @@ from .services.vdg import (
 from .services.paint_resolver import (
     resolve_paint,
     _enrich_from_lookup,
+    is_placeholder_code,
     PL24_TIMEOUT,
     acquire_recovery_slot,
     release_recovery_slot,
@@ -2366,6 +2367,24 @@ def _record_paint_hit(search_id, paint_code, paint_description, source, telemetr
         search = Search.objects.get(id=search_id)
     except (Search.DoesNotExist, ValueError, TypeError):
         return
+    # paint146: a placeholder is not an answer. BO55LDP, a 2013 Audi A8
+    # registered GREY, was delivered code `XXX` described as `Blue` — via One
+    # Auto in September and again via pl24 tonight. `XXX` is the wildcard a
+    # source returns when it has nothing, and the catalogue carries a junk row
+    # for it. A customer taking `XXX` to a paint counter gets nothing; a failed
+    # lookup at least offers them a free manual one.
+    #
+    # ONLY PROVIDER ANSWERS. Manual fulfilments are the operator's judgement:
+    # `YD70XAA` is an AJS motorcycle entered as `N/A` with 'Metallic Blue',
+    # where no code exists and the colour does. That is a real answer.
+    #
+    # Measured over four months this blocks ONE of 1,943 delivered answers and
+    # loses none whose description matched the registered colour.
+    if source != 'manual' and is_placeholder_code(search.make, paint_code):
+        logger.info('placeholder code refused: %s %s from %s',
+                    search.make, paint_code, source)
+        paint_code = ''
+        paint_description = ''
     search.paint_code = paint_code
     search.paint_description = paint_description
     search.success = bool(paint_code)

@@ -711,6 +711,54 @@ _COLOUR_FAMILY = {
 }
 
 
+#: Codes that are a placeholder rather than an answer. Shape only — whether one
+#: is REJECTED depends on evidence, not on matching this (see is_placeholder_code).
+_PLACEHOLDER_CODE = re.compile(
+    r'^(X{2,}|N\.?/?A\.?|NONE|UNKNOWN|TBC|TBA|\?+|-+)$', re.I)
+
+
+def is_placeholder_code(make, code):
+    """True when a code is a scraper artefact rather than a paint code.
+
+    paint146. `BO55LDP`, a 2013 Audi A8 registered GREY, was delivered paint
+    code `XXX` with the description `Blue` — twice, once via One Auto in
+    September and again via pl24 tonight. `XXX` is a wildcard the source uses
+    where it has no answer, and the catalogue carries a junk row for it.
+
+    A code is worthless to a customer whatever its name: `XXX` sends them to a
+    paint counter with nothing, while a failed lookup at least offers them a
+    free manual one.
+
+    EVIDENCE, NOT A BLACKLIST. Shape alone would be wrong — three makes carry
+    `NA` with a hex and a model list:
+
+        fordamerica  NA  Dark Tourmaline Pearl   #003339  8 models
+        mazda        NA  Dark Tourmaline Mica    #003339  1 model
+        nissan       NA  Midnight Teal Metallic  #003339  1 model
+
+    All the same colour, on makes that genuinely shared platforms and paints.
+    `bedford XX` is Brilliant Ochre at #FCE903 with a model. So a placeholder is
+    only refused when its catalogue row has NO hex AND NO models — nothing to
+    suggest it is real. That keeps 7 of the 18 placeholder-shaped rows and
+    refuses 11.
+
+    Measured over four months: blocks 1 of 1,943 delivered answers, and loses
+    ZERO whose description matched the registered colour.
+
+    NOT APPLIED TO MANUAL FULFILMENTS — see the caller. `YD70XAA` is an AJS
+    motorcycle where the operator entered `N/A` with 'Metallic Blue': no code
+    exists for that bike, the colour does, and that is a real answer.
+    """
+    code = (code or '').strip()
+    if not code or not _PLACEHOLDER_CODE.match(code):
+        return False
+    from lookup.models import PaintLookup
+    row = PaintLookup.lookup(make, code)
+    if row and (row.hex or (row.models_list or [])):
+        return False
+    return True
+
+
 def _hex_family(hex_value):
     """The colour family a hex sits in, or None when it cannot be read.
 

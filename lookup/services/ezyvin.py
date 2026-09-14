@@ -102,6 +102,18 @@ def _is_code(candidate):
     return bool(PaintLookup.normalize_name(candidate or ''))
 
 
+def _title_if_shouting(s):
+    """Title-case a name only when it is ENTIRELY upper case.
+
+    paint145. The same rule as vdg.py's _clean_case, applied to Ezyvin's colour
+    name. Deliberately narrow: 'Enigmatic Black metallic' keeps its odd casing
+    rather than being normalised, because the only defect being fixed is
+    shouting.
+    """
+    s = (s or '').strip()
+    return s.title() if s and s.isupper() else s
+
+
 def _clean_code(code):
     """Trim a code to what a paint counter would recognise.
 
@@ -358,4 +370,23 @@ def lookup(vin, cost_sink=None, race_over=None, budget=None):
         return None
 
     sink['outcome'] = 'code' if code else 'name_only'
-    return {'code': code, 'description': name, 'source': 'ezyvin'}
+    # paint145: tidy the name HERE, on the way out — not inside extract().
+    #
+    # Ezyvin is the ONLY source that shouts: 5 of 23 colour names have come
+    # back entirely upper case ('AQUATIC BLUE MICA', 'VOCAL WHITE',
+    # 'BLACK/LT. DIESEL GRAY'), against 0 of 308 from pl24 and 0 of 419 from
+    # VDG. The customer reads this in their email.
+    #
+    # A FIRST ATTEMPT PUT THIS INSIDE extract() AND WAS REVERTED. That function
+    # has four checks asserting it returns the name verbatim — including
+    # paint104's, which guards the finish-descriptor fix by requiring
+    # 'INK BLUE (METALLIC)' to survive whole. Casing is a presentation concern
+    # and extraction is not the place for it.
+    #
+    # vdg.py solved the identical problem with the identical rule (_clean_case,
+    # line 391): title-case ONLY when the string is entirely upper, so a
+    # properly cased name keeps its own shape and an acronym inside a mixed
+    # name is not flattened. Matching is unaffected either way, because
+    # normalize_name lowercases before it compares.
+    return {'code': code, 'description': _title_if_shouting(name),
+            'source': 'ezyvin'}
