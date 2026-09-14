@@ -13,6 +13,6 @@ class Migration(migrations.Migration):
         migrations.AlterField(
             model_name='search',
             name='provider',
-            field=models.CharField(choices=[('vdg', 'VDG (pre-15 Aug)'), ('vdg_retry', 'VDG'), ('partslink24', 'Partslink24'), ('oneauto', 'OneAuto'), ('ezyvin', 'Ezyvin'), ('mmw', 'mmw'), ('manual', 'Manual'), ('cache', 'Cache'), ('none', 'None')], default='none', max_length=20),
+            field=models.CharField(choices=[('vdg', 'VDG (pre-15 Aug)'), ('vdg_retry', 'VDG'), ('partslink24', 'Partslink24'), ('oneauto', 'OneAuto'), ('ezyvin', 'Ezyvin'), ('mmw', 'MMW'), ('manual', 'Manual'), ('cache', 'Cache'), ('none', 'None')], default='none', max_length=20),
         ),
     ]

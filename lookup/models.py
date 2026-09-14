@@ -83,9 +83,15 @@ class Search(models.Model):
         # the same reason PROVIDER_VDG kept its value when it stopped being how
         # VDG wins. One word for the badge, like OneAuto and PARTSLINK24.
         (PROVIDER_EZYVIN, 'Ezyvin'),
-        # paint142. 'mmw' rather than the site's name: it is the tool that is
+        # paint142. 'MMW' rather than the site's name: it is the tool that is
         # ours, and the label a reader needs is which leg answered.
-        (PROVIDER_MMW, 'mmw'),
+        #
+        # UPPERCASE to match VDG and PL24, the other short-form sources. The
+        # row badge is uppercased by CSS either way, but Chart.js renders its
+        # own legend and inherits none of that — so the chart read 'mmw' beside
+        # 'VDG' and 'PL24' until this was fixed. The stored VALUE stays
+        # lowercase; only the label changes.
+        (PROVIDER_MMW, 'MMW'),
         (PROVIDER_MANUAL, 'Manual'),
         (PROVIDER_CACHE, 'Cache'),
         (PROVIDER_NONE, 'None'),
