@@ -958,11 +958,26 @@ def _pl24_lookup(vin, make, category=None, search_id=None):
         )
     except requests.exceptions.RequestException:
         return None
-    if resp.status_code != 200:
-        return None
+    # paint144: READ THE BODY BEFORE GIVING UP ON THE STATUS. pl24 puts `slot`
+    # on its 502 and 504 bodies too, and that is where it is most informative —
+    # a failure tells you nothing until you know WHICH session failed. Bailing
+    # on the status code alone threw exactly that away.
     try:
         data = resp.json()
     except ValueError:
+        data = {}
+    _slot = data.get('slot')
+    _via = (data.get('via') or '').strip()[:40]
+    # `is not None`, NOT truthiness: slot 0 is the first account, and `if
+    # _slot:` would silently drop every answer from it.
+    if search_id is not None and (_slot is not None or _via):
+        _record_worker_result(
+            search_id,
+            **({'pl24_slot': _slot} if isinstance(_slot, int)
+               and not isinstance(_slot, bool) else {}),
+            **({'pl24_via': _via} if _via else {}),
+        )
+    if resp.status_code != 200 or not data:
         return None
     code = (data.get('paint_code') or '').strip()
     desc = (data.get('paint_description') or '').strip()

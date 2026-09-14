@@ -73,6 +73,11 @@ class SearchAdmin(admin.ModelAdmin):
         'pl24_code',
         'pl24_attempted',
         'pl24_returned',
+        # paint144. WHICH session answered, and by which internal route. The
+        # slot is positional to PL24_ACCOUNTS ordering, so reordering that JSON
+        # remaps historical rows — pl24 prints the mapping at startup.
+        'pl24_slot',
+        'pl24_via',
         'recovery_name_only',
         'recovery_duration_ms',
         'vdg_second_chance',
@@ -182,6 +187,14 @@ class SearchAdmin(admin.ModelAdmin):
         # pl24 and Ezyvin. mmw_agreed is the column that matters: it is how
         # that ordering gets tested against real traffic rather than a
         # 30-vehicle sample.
+        # paint144. WHICH pl24 session answered, and by which internal route.
+        # The slot is POSITIONAL to PL24_ACCOUNTS ordering — reordering that
+        # JSON remaps every historical row, and pl24 prints the mapping at
+        # startup. Null means no session ever dequeued the job.
+        ('pl24 session', {
+            'classes': ('collapse',),
+            'fields': ('pl24_slot', 'pl24_via'),
+        }),
         ('mmw detail', {
             'classes': ('collapse',),
             'fields': ('mmw_attempted', 'mmw_code', 'mmw_colour',

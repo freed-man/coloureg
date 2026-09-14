@@ -417,6 +417,27 @@ class Search(models.Model):
     #: Set only when mmw's answer was the one used.
     mmw_used = models.BooleanField(default=False)
 
+    # paint144: WHICH pl24 SESSION ANSWERED, and by which internal route.
+    #
+    # pl24 runs one warm browser session per partslink24 account — POOL_SIZE ==
+    # len(ACCOUNTS) is enforced at startup and duplicate logins are rejected —
+    # so the slot index IS the account. Without it, one account getting
+    # rate-limited or having its session expire looks like pl24 getting worse in
+    # general, and there is no way to tell which.
+    #
+    # NULLABLE, AND NULL IS MEANINGFUL: pl24 stamps the slot at dequeue, so a
+    # job abandoned while still queued never gets one. Null means "no session
+    # ever picked this up", which is a different fact from "not recorded".
+    #
+    # POSITIONAL, NOT A STABLE IDENTIFIER. Slot 0 is the first entry in
+    # PL24_ACCOUNTS; reordering that JSON silently remaps every historical row.
+    # pl24 prints the mapping at startup — check it before comparing slot
+    # numbers across a config change.
+    pl24_slot = models.SmallIntegerField(null=True, blank=True)
+    #: pl24's own account of which internal route found the code. Returned
+    #: since the service was written and discarded until now.
+    pl24_via = models.CharField(max_length=40, blank=True, default='')
+
     pl24_attempted = models.BooleanField(default=False)
     pl24_returned = models.BooleanField(default=False)
     recovery_name_only = models.BooleanField(default=False)
