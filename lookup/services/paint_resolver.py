@@ -748,10 +748,25 @@ def mmw_code_validates(make, code, dvla_colour):
     if not want:
         return None
 
-    # Try the code as sent, then prefixed forms the catalogue uses. mmw returns
-    # the short form the SITE holds (A7N where the catalogue has LA7N), so
-    # refusing to look further would reject correct answers on notation.
-    for candidate in (code, f'L{code}'):
+    # Try the code as sent, then the notations the catalogue uses. mmw returns
+    # whatever the SITE holds, and that differs from the catalogue in at least
+    # two ways — refusing to look further rejects correct answers on
+    # punctuation.
+    #
+    #   PREFIX   mmw sends A7N;      the catalogue has LA7N
+    #   HYPHEN   mmw sends NH-731P;  the catalogue has NH731P
+    #
+    # The hyphen case cost a real answer on 14 Sep: SA10RXD, a Honda CR-V this
+    # pipeline had failed three times, came back NH-731P and was refused as
+    # unknown. NH731P is in the catalogue as Crystal Black Pearl (#030405) on a
+    # car registered BLACK — it would have validated. The catalogue is
+    # inconsistent about this by nature: 778 of 2,080 Honda codes carry a
+    # hyphen and the rest do not.
+    #
+    # Order matters: as-sent first, so an exact match is never passed over for
+    # a variant.
+    _bare = code.replace('-', '').replace(' ', '')
+    for candidate in (code, _bare, f'L{code}', f'L{_bare}'):
         row = PaintLookup.lookup(make, candidate)
         if row and row.name and (_colour_families(row.name) & want):
             return candidate
