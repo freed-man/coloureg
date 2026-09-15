@@ -619,6 +619,36 @@
 {% endif %}
 
 
+{% if search_id %}
+{# paint149: report what the customer actually waited. lookup_duration_ms is   #}
+{# server time and always will be — the redirect, this render and their own    #}
+{# network sit outside it. index.html stamps a timestamp at submit; this reads #}
+{# it once the answer is on screen.                                            #}
+{#                                                                             #}
+{# The value is UNTRUSTED by construction and the view treats it that way. It  #}
+{# is a metric, never an input to a decision.                                  #}
+<script>
+(function () {
+    var started;
+    try { started = sessionStorage.getItem('cregStart'); } catch (err) { return; }
+    if (!started) { return; }
+    // Clear FIRST, so a refresh cannot report the same wait twice or a stale
+    // one against the next lookup.
+    try { sessionStorage.removeItem('cregStart'); } catch (err) {}
+    var ms = Date.now() - parseInt(started, 10);
+    if (!(ms > 0 && ms < 300000)) { return; }
+    var body = new FormData();
+    body.append('ms', String(ms));
+    body.append('search_id', "{{ search_id }}");
+    body.append('csrfmiddlewaretoken', "{{ csrf_token }}");
+    // keepalive so it still sends if the customer navigates away immediately.
+    fetch("{% url 'lookup_timing' %}", {
+        method: 'POST', body: body, keepalive: true
+    }).catch(function () {});
+})();
+</script>
+{% endif %}
+
 {% if paint_pending and search_id %}
 {# Paint-recovery: the page rendered with the vehicle shown and a spinner in the #}
 {# paint card. Fire /lookup-status ONCE (it runs the parallel VDG-retry + pl24   #}

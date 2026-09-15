@@ -841,6 +841,12 @@
     });
 
     lookupForm.addEventListener('submit', function(e) {
+        // paint149: stamp the moment the customer commits, so the results page
+        // can report what they actually waited. sessionStorage because this is
+        // a full page navigation — an in-memory value would not survive it.
+        // Wrapped: private browsing can make sessionStorage throw, and a
+        // metric must never break a lookup.
+        try { sessionStorage.setItem('cregStart', String(Date.now())); } catch (err) {}
         if (regInput.value.trim() === '') {
             e.preventDefault();
             regInput.focus();

@@ -718,6 +718,22 @@
             <p class="stat-label">Avg server time</p>
             <p class="stat-value">{{ avg_duration_s }}s</p>
         </div>
+        {% comment %}paint149: what the CUSTOMER waited, stamped in their
+        browser — submit to answer-on-screen, so it includes the redirect, this
+        render and their own network, none of which the server can see.
+
+        It sits BESIDE the server figure rather than replacing it: the gap
+        between the two is the part that is not ours to fix, and reading them
+        together is what makes either useful.
+
+        Averaged over a DIFFERENT, smaller set — null on every row before this
+        shipped and on any browser that did not report — so the count is shown
+        rather than left to be assumed.{% endcomment %}
+        <div class="stat-card">
+            <p class="stat-label">Avg customer wait</p>
+            <p class="stat-value">{% if client_timed %}{{ avg_client_s }}s{% else %}&mdash;{% endif %}</p>
+            <p class="stat-subvalue">{{ client_timed }} measured</p>
+        </div>
         {% if capture_failures %}
         <div class="stat-card" style="border: 1px solid #C8102E;">
             <p class="stat-label" style="color: #C8102E;">Payments not taken</p>

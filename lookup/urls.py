@@ -12,6 +12,7 @@ urlpatterns = [
     path('disclaimer/', views.disclaimer, name='disclaimer'),
     path('help/', views.help_page, name='help'),
     path('submit-contact/', views.submit_contact, name='submit_contact'),
+    path('lookup-timing/', views.lookup_timing, name='lookup_timing'),
     path('warm/', views.warm, name='warm'),
     # RFC 9116 — must live at exactly this path to be discoverable.
     path('.well-known/security.txt', views.security_txt, name='security_txt'),

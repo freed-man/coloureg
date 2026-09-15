@@ -135,6 +135,18 @@ class Search(models.Model):
     success = models.BooleanField(default=False)
     error_message = models.TextField(blank=True, default='')
     lookup_duration_ms = models.IntegerField(null=True, blank=True)
+    # paint149: the CUSTOMER's wait, measured in their browser.
+    #
+    # lookup_duration_ms is server time and cannot be anything else — the
+    # redirect, the results render and the customer's own network are all
+    # outside it. This is stamped in the browser: a timestamp at form submit,
+    # read again when the answer is on screen.
+    #
+    # UNTRUSTED BY CONSTRUCTION — it is a number the client supplies, so it can
+    # be anything. It is a metric, never an input to a decision, and the view
+    # discards values outside a sane range. Null when the browser never
+    # reported, which includes every lookup before this shipped.
+    client_duration_ms = models.PositiveIntegerField(null=True, blank=True)
 
     # Cost tracking (VDG charges per call)
     # Per-document flags for the combined PaintCodeDetails call. Every search

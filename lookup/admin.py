@@ -195,6 +195,14 @@ class SearchAdmin(admin.ModelAdmin):
             'classes': ('collapse',),
             'fields': ('pl24_slot', 'pl24_via'),
         }),
+        # paint149: what the CUSTOMER waited, as their browser measured it.
+        # Null before this shipped and on any browser that did not report.
+        # paint149. `lookup_duration_ms` is NOT repeated here — it already sits
+        # in an earlier fieldset, and Django rejects a field listed twice.
+        ('customer wait', {
+            'classes': ('collapse',),
+            'fields': ('client_duration_ms',),
+        }),
         ('mmw detail', {
             'classes': ('collapse',),
             'fields': ('mmw_attempted', 'mmw_code', 'mmw_colour',

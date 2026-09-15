@@ -1622,6 +1622,45 @@ def security_txt(request):
     return HttpResponse(body, content_type='text/plain; charset=utf-8')
 
 
+@require_POST
+def lookup_timing(request):
+    """Record how long the customer actually waited, as their browser saw it.
+
+    paint149. The server can only time itself: the redirect, the results render
+    and the customer's network sit outside `lookup_duration_ms` and always will.
+    The browser stamps a timestamp at form submit and reports the elapsed time
+    once the answer is on screen.
+
+    NO AUTHENTICATION AND NO TRUST. Anyone can POST any number here, so the
+    value is a metric and never an input to a decision. Three guards:
+
+      * the search_id must be one this SESSION owns, so a caller cannot rewrite
+        someone else's row
+      * the value must be a plausible wait — under 5 minutes; anything longer is
+        a tab left open, not a lookup
+      * it is written ONCE, so a page left open and refreshed cannot inflate it
+
+    Always 204, whatever happens. A metric endpoint must tell a caller nothing
+    about whether their number was kept.
+    """
+    try:
+        ms = int(request.POST.get('ms', ''))
+        search_id = int(request.POST.get('search_id', ''))
+    except (TypeError, ValueError):
+        return HttpResponse(status=204)
+    # 0 is not plausible and 5 minutes is the outer edge of a real wait.
+    if not (0 < ms < 300_000):
+        return HttpResponse(status=204)
+    if request.session.get('search_id') != search_id:
+        return HttpResponse(status=204)
+    try:
+        Search.objects.filter(id=search_id, client_duration_ms__isnull=True).update(
+            client_duration_ms=ms)
+    except Exception:  # noqa: BLE001
+        logger.exception('client timing not recorded for %s', search_id)
+    return HttpResponse(status=204)
+
+
 @require_GET
 def warm(request):
     """Pre-warm the database connection so a lookup doesn't pay a cold start.
@@ -3277,6 +3316,12 @@ def admin_stats(request):
         ezyvin_free_count=Count('id', filter=Q(ezyvin_credits=0)),
         # Average lookup duration (filtered nulls handled by Avg)
         avg_duration_ms=Avg('lookup_duration_ms'),
+        # paint149: the CUSTOMER's wait, reported by their browser. Null on
+        # every row before this shipped and on any visitor whose browser did
+        # not report, so it averages over a different, smaller set than
+        # avg_duration_ms — which is why the card says so.
+        avg_client_ms=Avg('client_duration_ms'),
+        client_timed=Count('id', filter=Q(client_duration_ms__isnull=False)),
     )
     total_searches = top_metrics['total']
     today_searches = top_metrics['today']
@@ -3321,6 +3366,8 @@ def admin_stats(request):
     emails_sent = top_metrics['emails_sent_count']
     conversion_rate = (total_emails / total_searches * 100) if total_searches > 0 else 0
     avg_duration_s = round((top_metrics['avg_duration_ms'] or 0) / 1000, 2)
+    avg_client_s = round((top_metrics.get('avg_client_ms') or 0) / 1000, 2)
+    client_timed = top_metrics.get('client_timed') or 0
 
     # --- Daily chart data: ONE pass over the 30-day window --------------
     # Volume, outcome split and resolution source were originally three separate
@@ -3619,6 +3666,8 @@ def admin_stats(request):
         'incomplete_count': incomplete_count,
         'name_only_miss_count': name_only_miss_count,
         'avg_duration_s': avg_duration_s,
+        'avg_client_s': avg_client_s,
+        'client_timed': client_timed,
         'origin_gate': {
             'mode': origin_gate_mode(),
             'stored_mode': SiteConfig.get().origin_gate_mode,
