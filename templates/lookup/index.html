@@ -713,6 +713,10 @@
 </script>
 <script>
     var regInput = document.getElementById('reg-input');
+    // paint151: a fresh homepage means a fresh attempt. The stamp is only
+    // ever consumed by the results page; if the customer came back here
+    // instead, whatever is left is from an attempt they abandoned.
+    try { sessionStorage.removeItem('cregStart'); } catch (err) {}
     var lookupForm = document.getElementById('lookup-form');
 
     // In maintenance mode the search form isn't rendered — skip all of the
@@ -841,12 +845,22 @@
     });
 
     lookupForm.addEventListener('submit', function(e) {
-        // paint149: stamp the moment the customer commits, so the results page
-        // can report what they actually waited. sessionStorage because this is
-        // a full page navigation — an in-memory value would not survive it.
-        // Wrapped: private browsing can make sessionStorage throw, and a
-        // metric must never break a lookup.
-        try { sessionStorage.setItem('cregStart', String(Date.now())); } catch (err) {}
+        // paint151: stamp the FIRST commit and never overwrite it.
+        //
+        // paint149 stamped unconditionally and understated every wait that had
+        // to hold for Turnstile. If the token is not ready when the customer
+        // presses enter, this handler prevents the submit, and onTurnstileSolved
+        // re-fires it through requestSubmit() — re-entering here and replacing
+        // the timestamp with the later one. The Turnstile wait is the
+        // customer's wait, and it was being erased.
+        //
+        // Cleared on page load instead (see below), so an abandoned attempt
+        // cannot inflate the next one.
+        try {
+            if (!sessionStorage.getItem('cregStart')) {
+                sessionStorage.setItem('cregStart', String(Date.now()));
+            }
+        } catch (err) {}
         if (regInput.value.trim() === '') {
             e.preventDefault();
             regInput.focus();
