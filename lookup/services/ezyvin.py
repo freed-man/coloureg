@@ -362,10 +362,19 @@ def lookup(vin, cost_sink=None, race_over=None, budget=None):
     sink['credits'] = CREDITS_PER_HIT
     code, name = extract(body)
     if not code and not name:
-        # THE PAID MISS. A 200 with a build sheet carrying no exterior — seen
-        # once, on a Corsa EV. Distinct from a 404 and worth its own outcome,
-        # because the two must not be counted together when judging whether
-        # this source earns its place.
+        # THE PAID MISS. A 200 with a build sheet carrying no exterior colour.
+        # Distinct from a 404 and worth its own outcome, because the two must
+        # not be counted together when judging whether this source earns its
+        # place.
+        #
+        # Seen ONCE, on `DA25ALO`, a 2025 Vauxhall Grandland Ultimate, on
+        # 10 Sep — 5 credits for nothing. (This comment previously said "a
+        # Corsa EV". It was never a Corsa: no Corsa has ever reached Ezyvin.
+        # Written from memory, corrected 14 Sep against the data.)
+        #
+        # pl24 answered `paint_data_missing` for the same car, so both sources
+        # hold the vehicle and neither holds its colour — which points at a
+        # shared upstream gap rather than a coverage boundary.
         sink['outcome'] = 'empty_charged'
         return None
 
