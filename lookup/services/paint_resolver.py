@@ -115,6 +115,53 @@ def _enrich_from_lookup(result, make, model=None, vdg_colour=None,
             # overwrite an answer 120,594 merged rows already produced.
             if not name:
                 name = OperatorPaintCode.name_for_code(make, code)
+            if not name:
+                # paint156: LAST RESORT — trim one trailing LETTER off an
+                # alphanumeric base and try again.
+                #
+                # Three Mitsubishis in three days arrived with a code the
+                # catalogue holds one character shorter, and every one lost its
+                # name for it:
+                #
+                #   C06A -> C06  Quartz Brown Metallic   DVLA Brown
+                #   A67B -> A67  Dark Grey Pearl         DVLA Grey
+                #   A39A -> A39  Graphite Grey Pearl     DVLA Grey
+                #
+                # MEASURED, AND THE SHAPE IS THE GUARD. Trimming a trailing
+                # LETTER from a base that holds both letters and digits agrees
+                # on colour 167 times of 172 — 97%. Trimming a DIGIT from an
+                # all-numeric code agrees 18% of the time, because Mitsubishi
+                # and Volvo number colours sequentially and unrelated shades sit
+                # next to each other (6054 Regatta Blue beside 605 Gris
+                # Espumante). So digits are excluded outright.
+                #
+                # This was built into mmw's gate on 13 Sep and never into this
+                # path, so a pl24 answer got no trim at all.
+                _stem = code[:-1] if len(code) > 2 else ''
+                if (_stem and code[-1].isalpha()
+                        and any(ch.isdigit() for ch in _stem)
+                        and any(ch.isalpha() for ch in _stem)):
+                    _h2, _n2, _c2 = PaintLookup.lookup_with_canonical(
+                        manufacturer=make, paint_code=_stem,
+                        vdg_colour=vdg_colour or result.get('colour') or '',
+                    )
+                    # CORROBORATE IT. 97% is a good rate, not a certainty, and
+                    # the 3% would put a wrong NAME beside a correct code. The
+                    # registered colour is free and already to hand, so the trim
+                    # only stands if the trimmed row describes the same kind of
+                    # colour — the same test paint143 applies to mmw.
+                    #
+                    # Silent when the colour cannot decide: no registered
+                    # colour, or a name and hex that name no family. Unknown is
+                    # not approval, so the name stays blank rather than being
+                    # taken on the trim alone.
+                    if _n2:
+                        _want = _colour_families(
+                            vdg_colour or result.get('colour') or '')
+                        _got = _colour_families(_n2) or {
+                            _hex_family(_h2)} - {None}
+                        if _want and _got and (_want & _got):
+                            name, hex_val = _n2, hex_val or _h2
             if name:
                 result['paint_description'] = name
                 # the NAME was supplied by our database, not the provider

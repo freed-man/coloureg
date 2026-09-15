@@ -2502,7 +2502,54 @@ def _record_paint_hit(search_id, paint_code, paint_description, source, telemetr
             return v.strip().upper().replace('-', '').replace(' ', '')
         _got = _norm142(paint_code)
         _mmw = _norm142(search.mmw_code)
-        search.mmw_agreed = _got in (_mmw, f'L{_mmw}') or _mmw == f'L{_got}'
+
+        # paint156: THREE notations, not one. mmw returns what the SITE holds and
+        # the providers return what THEIR catalogues hold; the same paint arrives
+        # under different spellings, and every one counted as a disagreement
+        # understates mmw in the only evidence its placement rests on.
+        #
+        # Measured since paint142: of 54 comparable rows, 46 are the same code
+        # and 8 genuinely differ — mmw agrees 85% of the time. But 3 of the 10
+        # RECORDED disagreements were notation, so the figure was 30% wrong.
+        #
+        #   L      VAG          mmw A7N   -> catalogue LA7N   (paint142)
+        #   TE     Renault,     mmw KNA   -> pl24 TEKNA
+        #          Dacia        mmw NNP   -> pl24 TENNP
+        #   suffix Ford         mmw CTSC  -> pl24 CTSCWWA
+        #
+        # `TE` is verified, not guessed: of the 94 TE-prefixed catalogue codes
+        # whose bare form also exists, 69 name a colour on both sides and ALL 69
+        # agree on colour family. (Their HEXES disagree 71 times of 94 — that is
+        # two scraped sources, French names against German, describing one code.
+        # Family is the right test here, hex is not.)
+        #
+        # Deliberately NOT a general "one contains the other" rule: `PN4` inside
+        # `PN4DQ` is a different Ford paint, so an unbounded containment test
+        # would call real disagreements agreement. Each affix is listed because
+        # each was measured.
+        def _same_code156(a, b):
+            if a == b:
+                return True
+            for pre in ('L', 'TE'):
+                if a == pre + b or b == pre + a:
+                    return True
+            # A Ford answer carries a 3-LETTER paint-system suffix on a
+            # 4-CHARACTER base — CTSC -> CTSCWWA, both #916A50. 772 catalogue
+            # codes match that exact shape.
+            #
+            # THE SHAPE IS THE WHOLE GUARD. A looser "1 to 3 extra characters"
+            # rule called PN4 and PN4DQ the same paint, and they are not:
+            # PN4 is not in the catalogue at all, while PN4DQ is Magnetic
+            # (#383838, grey), PN4GZ is Pacific Gas & Electric Blue (#1D6AB0)
+            # and PN4HS is Mineralsilber. A 3-char base plus 2 is a DIFFERENT
+            # CODE, not a notation.
+            for x, y in ((a, b), (b, a)):
+                if (len(x) == 4 and len(y) == 7 and y.startswith(x)
+                        and y[4:].isalpha()):
+                    return True
+            return False
+
+        search.mmw_agreed = _same_code156(_got, _mmw)
 
     if source == 'pl24':
         search.provider = Search.PROVIDER_PARTSLINK24
