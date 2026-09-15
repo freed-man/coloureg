@@ -3533,9 +3533,24 @@ def admin_stats(request):
         recovery_vdg_retry_hits=Count('id', filter=Q(vdg_retry_returned=True)),
     )
 
-    # All recent lookups (success + failure) for the unified history table
+    # All recent lookups (success + failure) for the unified history table.
+    #
+    # paint153: `.exclude(make='')` alone was hiding more than it meant to. Its
+    # real job is keeping TURNSTILE BLOCKS out — 1,760 of them against 261
+    # genuine makeless attempts — and `make=''` was the handy way to express
+    # that rather than a decision about makeless lookups.
+    #
+    # The cost: a lookup where VDG ANSWERED with a vehicle but no make was
+    # invisible. `J105LTP` on 15 Sep is the only one in four months — a 1991
+    # grey import with an 11-character chassis number, `P25W0607988`. VDG gave a
+    # year, a colour and a VIN, charged £0.06, and the row could not be seen in
+    # the table headed "All recent lookups".
+    #
+    # Requiring BOTH to be empty hides exactly what the old filter hid — every
+    # block and every empty attempt has neither — while surfacing the one shape
+    # worth looking at: money spent on a vehicle that resolved to nothing.
     recent_all_lookups = (
-        Search.objects.exclude(make='')
+        Search.objects.exclude(make='', vin='')
         .order_by('-timestamp')[:50]
     )
 
