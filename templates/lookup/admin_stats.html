@@ -732,7 +732,10 @@
         <div class="stat-card">
             <p class="stat-label">Avg customer wait</p>
             <p class="stat-value">{% if client_timed %}{{ avg_client_s }}s{% else %}&mdash;{% endif %}</p>
-            <p class="stat-subvalue">{{ client_timed }} measured</p>
+            {% comment %}The count appears only once there IS one. "0 measured"
+            reads as a broken card rather than an empty one, and the sample size
+            only matters when there is a number beside it to qualify.{% endcomment %}
+            {% if client_timed %}<p class="stat-subvalue">{{ client_timed }} measured</p>{% endif %}
         </div>
         {% if capture_failures %}
         <div class="stat-card" style="border: 1px solid #C8102E;">

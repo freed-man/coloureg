@@ -1651,7 +1651,14 @@ def lookup_timing(request):
     # 0 is not plausible and 5 minutes is the outer edge of a real wait.
     if not (0 < ms < 300_000):
         return HttpResponse(status=204)
-    if request.session.get('search_id') != search_id:
+    # paint150: the session stores `vehicle_data`, a DICT, with the id inside
+    # it. There is no session['search_id'] and there never was, so this guard
+    # compared None to an int and rejected every report ever sent.
+    #
+    # It shipped green because the check SET session['search_id'] by hand — it
+    # tested this function's assumption rather than the app's behaviour. The
+    # correct idiom is used in three other places already (see submit_email).
+    if (request.session.get('vehicle_data') or {}).get('search_id') != search_id:
         return HttpResponse(status=204)
     try:
         Search.objects.filter(id=search_id, client_duration_ms__isnull=True).update(
