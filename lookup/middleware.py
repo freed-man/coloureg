@@ -39,6 +39,11 @@ class HealthCheckMiddleware:
 # ---------------------------------------------------------------------------
 
 import logging
+# paint155: `time` was used by _tick and never imported, so every call raised
+# NameError into a bare `except Exception: pass` and the breaker window was
+# never written. The safety mechanism that backs the origin gate off when
+# Cloudflare's headers stop arriving has therefore never recorded anything.
+import time
 
 from django.core.cache import caches
 from django.utils import timezone
@@ -232,7 +237,12 @@ class OriginGateObserverMiddleware:
                 w['missing'] += 1
             cache.set(_BREAKER_KEY, w, _BREAKER_WINDOW_S * 3)
         except Exception:
-            pass
+            # paint155: LOG IT. This swallowed a NameError on every request for
+            # as long as the breaker has existed, and nothing anywhere said so —
+            # a safety mechanism that cannot trip looks identical to one that
+            # never needed to. Still swallowed, because a broken counter must
+            # not break the site, but no longer silent.
+            logger.exception('origin gate breaker tick failed')
 
     def _evaluate(self, w):
         from lookup.views import origin_gate_mode

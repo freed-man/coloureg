@@ -313,7 +313,9 @@ def verify_turnstile(token, remote_ip=None, timeout=5):
     users unprotected for a few minutes than take the whole site down with it —
     the budget breaker still bounds the worst case underneath.
     """
-    import requests
+    # paint155: `import requests` was here and unused — this function moved to
+    # get_session() and the import was left behind. It ran on every POST and
+    # implied a direct dependency that is not there.
     from django.conf import settings
 
     if not turnstile_configured():

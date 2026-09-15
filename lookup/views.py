@@ -1104,7 +1104,26 @@ def index(request):
             # AND the make list has not already gated it. A Mitsubishi is
             # refused on its marque whatever DVLA says about wheels, so asking
             # buys nothing and adds latency to a page that is already decided.
-            if not category and not config.is_make_unsupported(make):
+            # paint154: ALSO ask when the MAKE is missing, not only the category.
+            #
+            # VDG can return a vehicle — year, colour, VIN — with no make at all.
+            # `J105LTP`, a 1991 Mitsubishi Delica import, is the only instance in
+            # four months and 2,333 branch-one lookups, so this is rare rather
+            # than routine. But the payload below ALREADY CONTAINS the make and
+            # this branch was discarding it, while the VDG-failed branch takes it
+            # via the same fix_make_case helper.
+            #
+            # A missing make is not cosmetic. `paint_pending` requires
+            # `bool(make)`, so without one the recovery never runs and mmw — the
+            # only leg needing nothing but a registration — never fires. The
+            # success rate also reads a blank make as "no vehicle identified",
+            # which is wrong when VDG plainly identified one.
+            #
+            # The Delica itself would not have resolved: mmw measures ZERO
+            # Mitsubishi coverage and `P25W0607988` is an 11-character chassis
+            # number, not a VIN pl24 would accept. A Ford or Vauxhall with a real
+            # 17-character VIN is the case this pays for — 9/10 and 8/10 on mmw.
+            if (not category or not make) and not config.is_make_unsupported(make):
                 _cls = _timed_call('dvla_class', registration,
                                    lambda: get_dvla_data(registration))
                 # isinstance, not truthiness. get_dvla_data returns
@@ -1115,6 +1134,14 @@ def index(request):
                 if isinstance(_cls, dict):
                     wheelplan = str(_cls.get('wheelplan') or '').strip()
                     category = str(_cls.get('typeApproval') or '').strip()
+                    # FILLS A BLANK, NEVER OVERWRITES. VDG's make is the richer
+                    # source wherever it has one; this is only for the case where
+                    # it has none. Same helper as the fallback branch, so 'BMW'
+                    # and 'Land Rover' come out right rather than title-cased
+                    # into 'Bmw'.
+                    if not make:
+                        make = fix_make_case(
+                            str(_cls.get('make') or '').strip().title())
         else:
             # --- FALLBACK: DVLA + MOT ---
             #
