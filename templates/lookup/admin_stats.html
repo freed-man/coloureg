@@ -709,7 +709,13 @@
            rate — the two together say whether the pipeline is working and how
            long it takes, which is the pair you read first.{% endcomment %}
         <div class="stat-card">
-            <p class="stat-label">Avg lookup time</p>
+            {% comment %}paint148: "Avg lookup time" read as the customer's wait
+            and measured only the pipeline — the clock started after Turnstile.
+            It now starts at the top of the POST, so it covers Turnstile plus
+            the pipeline. Still outside it: the redirect, the results render and
+            the customer's network. Hence "server time", which is what it
+            honestly is.{% endcomment %}
+            <p class="stat-label">Avg server time</p>
             <p class="stat-value">{{ avg_duration_s }}s</p>
         </div>
         {% if capture_failures %}

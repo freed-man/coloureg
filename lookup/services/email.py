@@ -484,7 +484,6 @@ def send_admin_ip_alert(ip, count, threshold, rows):
             makes[m] = makes.get(m, 0) + 1
     top = sorted(makes.items(), key=lambda kv: -kv[1])
     mix = ', '.join(f'{m} {n}' for m, n in top[:5]) or '&mdash;'
-    share = (100 * top[0][1] / max(len(rows), 1)) if top else 0
     regs = ', '.join(dict.fromkeys(
         (r.get('registration') or '').strip() for r in rows if r.get('registration')))
     uas = {(r.get('user_agent') or '')[:120] for r in rows if r.get('user_agent')}
@@ -495,10 +494,10 @@ def send_admin_ip_alert(ip, count, threshold, rows):
             <div style="padding: 32px;">
                 <div style="background: #fff8e6; border-left: 3px solid #d19a00; padding: 14px 18px; border-radius: 4px; margin-bottom: 24px;">
                     <div style="font-size: 15px; font-weight: 600; color: #1a1a1a;">
-                        {count} lookups from one IP in 24 hours
+                        Alert
                     </div>
                     <div style="color: #4a4a4a; font-size: 13px; margin-top: 4px;">
-                        Your alert threshold is {threshold}. This is a heads-up, not a block.
+                        {count} lookups from one IP in 24 hours
                     </div>
                 </div>
                 <table style="width: 100%; border-collapse: collapse; margin-bottom: 24px;">
@@ -508,7 +507,7 @@ def send_admin_ip_alert(ip, count, threshold, rows):
                     </tr>
                     <tr style="border-bottom: 1px solid #eee;">
                         <td style="padding: 10px 16px 10px 0; color: #666; font-size: 13px;">Makes</td>
-                        <td style="padding: 10px 0; color: #1a1a1a; font-size: 14px;">{_esc(mix)}{f' &middot; {share:.0f}% one marque' if top else ''}</td>
+                        <td style="padding: 10px 0; color: #1a1a1a; font-size: 14px;">{_esc(mix)}</td>
                     </tr>
                     <tr style="border-bottom: 1px solid #eee;">
                         <td style="padding: 10px 16px 10px 0; color: #666; font-size: 13px;">Devices</td>
@@ -520,8 +519,6 @@ def send_admin_ip_alert(ip, count, threshold, rows):
                     </tr>
                 </table>
                 <p style="margin: 0; color: #666; font-size: 13px;">
-                    One marque dominating over a short burst is the pattern worth
-                    looking at. A mixed list over a long day is usually a bodyshop.
                     To stop it, add the IP to the blocklist in the admin panel.
                 </p>
             </div>

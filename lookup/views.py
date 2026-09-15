@@ -646,6 +646,18 @@ def index(request):
         # results page showing their vehicle plus the manual-lookup offer — and
         # it covers the first-time case this never could.
 
+        # paint148: START THE CLOCK HERE, before Turnstile.
+        #
+        # This was set after Turnstile and after the rate-limit check, so it
+        # measured the PIPELINE and the dashboard called it "Avg lookup time" —
+        # which reads as the customer's wait and was not. Turnstile is a round
+        # trip to Cloudflare on every POST and sat outside the figure entirely.
+        #
+        # What is still outside it: the redirect, the results page render, and
+        # the customer's own network latency twice over. Those are not
+        # measurable from here, so the number is the SERVER-SIDE wait — closer
+        # to the truth than it was, and the label now says so.
+        start_time = time.time()
         # --- Turnstile verification (E) -------------------------------------
         # When configured (both keys in env), every lookup POST must carry a
         # valid token from the invisible widget in the form. Scripts that POST
@@ -710,7 +722,6 @@ def index(request):
                 'turnstile_site_key': dj_settings.TURNSTILE_SITE_KEY,
             })
 
-        start_time = time.time()
         registration = request.POST.get('registration', '').strip().upper()
         registration = registration.replace(' ', '')
 
