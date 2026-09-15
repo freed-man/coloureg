@@ -628,24 +628,45 @@
 {# The value is UNTRUSTED by construction and the view treats it that way. It  #}
 {# is a metric, never an input to a decision.                                  #}
 <script>
-(function () {
-    var started;
-    try { started = sessionStorage.getItem('cregStart'); } catch (err) { return; }
-    if (!started) { return; }
-    // Clear FIRST, so a refresh cannot report the same wait twice or a stale
-    // one against the next lookup.
-    try { sessionStorage.removeItem('cregStart'); } catch (err) {}
-    var ms = Date.now() - parseInt(started, 10);
-    if (!(ms > 0 && ms < 300000)) { return; }
-    var body = new FormData();
-    body.append('ms', String(ms));
-    body.append('search_id', "{{ search_id }}");
-    body.append('csrfmiddlewaretoken', "{{ csrf_token }}");
-    // keepalive so it still sends if the customer navigates away immediately.
-    fetch("{% url 'lookup_timing' %}", {
-        method: 'POST', body: body, keepalive: true
-    }).catch(function () {});
+// paint152: report the wait when the ANSWER lands, not when the page renders.
+//
+// paint149 reported on render. For a lookup that goes to paint recovery that is
+// the moment the VEHICLE appears — the code arrives up to 65s later, after the
+// /lookup-status call resolves. A 30-second lookup reported 1.23s.
+//
+// So this exposes a one-shot reporter. A settled page calls it immediately; a
+// pending one calls it from finish(), which is the single place any real answer
+// lands.
+window.cregReportWait = (function () {
+    var done = false;
+    return function () {
+        if (done) { return; }
+        var started;
+        try { started = sessionStorage.getItem('cregStart'); } catch (err) { return; }
+        if (!started) { return; }
+        // Marked done only once there is something to report. Setting it on
+        // ENTRY meant a call with no stamp — a direct visit to /results/, say —
+        // permanently disabled the real one that followed.
+        done = true;
+        // Clear FIRST, so a refresh cannot report the same wait twice or a
+        // stale one against the next lookup.
+        try { sessionStorage.removeItem('cregStart'); } catch (err) {}
+        var ms = Date.now() - parseInt(started, 10);
+        if (!(ms > 0 && ms < 300000)) { return; }
+        var body = new FormData();
+        body.append('ms', String(ms));
+        body.append('search_id', "{{ search_id }}");
+        body.append('csrfmiddlewaretoken', "{{ csrf_token }}");
+        // keepalive so it still sends if the customer navigates away at once.
+        fetch("{% url 'lookup_timing' %}", {
+            method: 'POST', body: body, keepalive: true
+        }).catch(function () {});
+    };
 })();
+{% if not paint_pending %}
+// Settled on arrival: the answer is already on screen.
+window.cregReportWait();
+{% endif %}
 </script>
 {% endif %}
 
@@ -934,6 +955,10 @@
         if (stopped) return;
         stopped = true;
         stopStages();   // paint16: halt the staged copy the moment we have a real answer
+        // paint152: THIS is when the customer has their answer, on the pending
+        // path — up to 65s after the page rendered. Reporting on render
+        // measured the spinner appearing, not the code.
+        if (window.cregReportWait) { window.cregReportWait(); }
         fn();
     }
 
