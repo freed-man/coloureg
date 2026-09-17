@@ -282,7 +282,10 @@ def store_vrm_payload(registration, payload):
             defaults={'payload': clean},
         )
     except Exception:
-        pass
+        # paint158: a silent cache-write failure is EXPENSIVE and invisible.
+        # Every repeat lookup that should have been free pays £0.06 again, and
+        # the only symptom is a slow rise in spend with no cause to point at.
+        logger.exception('vrm cache write failed')
 
 
 # ---------------------------------------------------------------------------
@@ -406,7 +409,9 @@ def record_miss(registration):
             _neg_key(registration), True, VRM_NEGATIVE_TTL_SECONDS
         )
     except Exception:
-        pass
+        # paint158: same cost as above. A miss that is not remembered means the
+        # next attempt on a dud plate pays for a fresh VDG call.
+        logger.exception('negative cache write failed')
 
 
 def clear_miss(registration):
@@ -416,7 +421,10 @@ def clear_miss(registration):
     try:
         caches['default'].delete(_neg_key(registration))
     except Exception:
-        pass
+        # paint158: failing to CLEAR a miss is the opposite problem — a
+        # registration that has started returning paint stays blocked for the
+        # rest of the hour.
+        logger.exception('negative cache clear failed')
 
 
 # ---------------------------------------------------------------------------

@@ -212,6 +212,13 @@ def _enrich_from_lookup(result, make, model=None, vdg_colour=None,
                 if result.get('name_only'):
                     result['name_only'] = False
     except Exception:
+        # paint158: LOG IT. This wraps the whole enrichment block, so anything
+        # raised here silently costs the customer a name or a code, and nothing
+        # anywhere would say so. paint155 found the origin-gate breaker swallowing
+        # a NameError on every request for weeks in exactly this shape.
+        # Still swallowed: enrichment is an improvement on the provider answer,
+        # never a precondition for it.
+        logger.exception('enrichment failed for %s', (make or '')[:40])
         pass
     return result
 
