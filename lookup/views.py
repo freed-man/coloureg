@@ -1222,8 +1222,8 @@ def index(request):
                         record_miss(registration)
                         messages.error(
                             request,
-                            'Vehicle not found. Please check the registration '
-                            'number is correct and try again.'
+                            'Vehicle not found. Please check the '
+                            'registration and try again.'
                         )
                     else:
                         # Deliberately NOT record_miss(): we have established
@@ -1232,9 +1232,9 @@ def index(request):
                         # "we checked recently" replies.
                         messages.error(
                             request,
-                            'We could not reach our data provider just now. '
-                            'This is our end, not your registration — please '
-                            'try again in a minute.'
+                            'Our data provider is not responding. This is '
+                            'our end, not your registration. Please try '
+                            'again in a minute.'
                         )
                     return redirect('index')
                 # else: fall through with the salvaged VDG fields (make/model/etc

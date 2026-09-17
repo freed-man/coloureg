@@ -188,7 +188,31 @@ def _make_request(registration, package, billing_sink=None, timeout=None):
     )
 
     if not is_success:
-        if 'not found' in status_message.lower():
+        # paint157: WHICH STATUSES ARE A STATEMENT ABOUT THE REGISTRATION?
+        #
+        # VdgNotFoundError means VDG answered and the answer is "no such
+        # vehicle", so the customer is told to check their plate and the miss
+        # is cached. Plain VdgError means VDG did not answer at all, so we
+        # blame ourselves and cache nothing.
+        #
+        # The test was the literal words "not found", and the two statuses VDG
+        # actually sends contain neither:
+        #
+        #   InvalidSearchTerm   185 lookups   "that is not a searchable plate"
+        #   NoResultsFound       70 lookups   "no vehicle for that plate"
+        #
+        # So 255 customers were told "we could not reach our data provider,
+        # this is our end, not your registration" after mistyping a plate, and
+        # invited to retry the same bad input. Both are VDG's most definite
+        # possible statement ABOUT the registration.
+        #
+        # Nothing else is added: an unrecognised status stays a VdgError, which
+        # fails toward blaming ourselves and not caching. That is the safe
+        # direction, and it is what paint55 built this split for after VDG's
+        # upstream timed out on 10 Aug.
+        _sm = status_message.lower()
+        if ('not found' in _sm or 'noresultsfound' in _sm.replace(' ', '')
+                or 'invalidsearchterm' in _sm.replace(' ', '')):
             raise VdgNotFoundError(f'Vehicle not found: {registration}')
         if 'Invalid' in status_message and 'Key' in status_message:
             raise VdgError('VDG API key invalid')
