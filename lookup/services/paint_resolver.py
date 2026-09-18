@@ -76,6 +76,15 @@ def _enrich_from_lookup(result, make, model=None, vdg_colour=None,
         from lookup.models import PaintLookup, OperatorPaintCode
 
         code = (result.get('paint_code') or '').strip()
+        # paint162: a slash-joined answer is resolved to its paint code HERE,
+        # where the provider's answer arrives, so the corrected code flows to
+        # the row, the page and the email alike.
+        _slashed = resolve_slashed_code(make, code)
+        if _slashed != code:
+            logger.info('slashed code %s resolved to %s for %s',
+                        code, _slashed, (make or '')[:30])
+            code = _slashed
+            result['paint_code'] = code
         if is_special_order_code(code):
             # paint159: never name a special-order code. Whatever the catalogue
             # holds against it is somebody else's bespoke car, picked up by a
@@ -782,6 +791,63 @@ _PLACEHOLDER_CODE = re.compile(
 #: Codes that mean "painted to special order", not a colour. The code IS on the
 #: car's sticker, so it is kept and shown — it just does not identify a paint.
 _SPECIAL_ORDER_CODES = {'999', 'L999', '0999'}
+
+
+def resolve_slashed_code(make, code):
+    """Pick the paint code out of a slash-joined string, or return it unchanged.
+
+    paint162. 283 delivered codes have contained a slash, and a customer cannot
+    order paint from any of them. They are four different conventions joined by
+    the same character:
+
+        Ford        2431C/2PJE/ZJNC  -> 2PJE   cross-references
+        Chrysler    PS3/QS3S         -> PS3    body / trim
+        Jeep        PW6/QW6S         -> PW6
+        Audi        T9/Y9C           -> Y9C    interior / exterior
+        Volkswagen  0Q0Q/C9A         -> C9A
+
+    THE GUARD IS THE CATALOGUE, not the shape. Exactly one part must resolve as
+    a code for that make. If several do, we cannot tell which is the paint and
+    it is left alone; if none does, we know nothing and it is left alone.
+
+    Measured over the full history: 266 of 283 have exactly one resolving part,
+    13 have several, 4 have none. No delivered slashed code was itself a
+    catalogue entry, but the whole string is still tried FIRST — abarth 103/B
+    and its 4,565 siblings carry a slash inside a legitimate code, and must
+    never be split.
+    """
+    code = (code or '').strip()
+    if '/' not in code:
+        return code
+    from lookup.models import PaintLookup
+    # The whole string wins if it is ITSELF a row. Checked against the raw
+    # table, NOT through lookup(), because lookup() already splits on '/'
+    # internally — so asking it would always say yes and nothing would ever be
+    # resolved. That is exactly what happened on the first attempt here.
+    #
+    # Ordering matters: this is what protects abarth 103/B and its 4,565
+    # siblings, where the slash is part of a legitimate code.
+    mfr = PaintLookup.normalize_manufacturer(make)
+    if PaintLookup.objects.filter(manufacturer=mfr, code__iexact=code).exists():
+        return code
+    # Each part is tried as sent AND `L`-prefixed, because VDG returns the VAG
+    # exterior code without the L that the catalogue carries: `T9/Y9C` is Ibis
+    # White under `LY9C`, and testing `Y9C` alone finds nothing. The interior
+    # halves — T9, 0E, 2T2T — resolve under neither form, which is what makes
+    # the pair separable at all.
+    #
+    # The part is returned AS SENT, not as the variant that matched: the
+    # customer's sticker says Y9C, and the L is our catalogue's notation.
+    hits = []
+    for part in (x.strip() for x in code.split('/')):
+        if not part:
+            continue
+        if PaintLookup.objects.filter(
+                manufacturer=mfr,
+                code__iexact=part).exists() or PaintLookup.objects.filter(
+                manufacturer=mfr, code__iexact='L' + part).exists():
+            hits.append(part)
+    return hits[0] if len(hits) == 1 else code
 
 
 def is_special_order_code(code):
