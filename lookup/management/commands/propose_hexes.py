@@ -154,18 +154,38 @@ class Command(BaseCommand):
             qs = qs.filter(manufacturer=opt['make'].strip().lower())
         # Never revisit a locked row: it has already been decided.
         qs = qs.filter(locked_fields=[])
+
+        # paint166: WORK IN ORDER OF WHETHER A CUSTOMER CAN EVER SEE IT.
+        #
+        # 42,832 rows have no hex, but only 1,141 have any model coverage. A row
+        # with no models is far less likely to be the answer for a real car, so
+        # doing them alphabetically spends the first 40,000 calls on rows nobody
+        # will look at. Model coverage first, then the rest.
+        #
+        # Sharper still: of the 984 (make, code) pairs ever DELIVERED to a
+        # customer, 36 have no hex. Those are the ones worth doing by hand.
         out = []
+        if opt['missing']:
+            # TWO PASSES, not an order_by: `models_list` is a JSONField, and
+            # ordering on it sorts by the JSON value rather than by length, so
+            # `-models_list` put the empty rows first — the opposite of what is
+            # wanted. Ask for the populated ones explicitly instead.
+            for qs_pass in (qs.filter(hex='').exclude(models_list=[]),
+                            qs.filter(hex='', models_list=[])):
+                for r in qs_pass.order_by('manufacturer', 'code').iterator():
+                    if not (r.name or '').strip():
+                        continue
+                    out.append(r)
+                    if len(out) >= opt['limit']:
+                        return out
+            return out
         for r in qs.iterator():
             if not (r.name or '').strip():
                 continue
-            if opt['missing']:
-                if not r.hex:
-                    out.append(r)
-            else:
-                if r.hex and self._contradicts(r):
-                    out.append(r)
-            if len(out) >= opt['limit']:
-                break
+            if r.hex and self._contradicts(r):
+                out.append(r)
+                if len(out) >= opt['limit']:
+                    break
         return out
 
     def _contradicts(self, row):
