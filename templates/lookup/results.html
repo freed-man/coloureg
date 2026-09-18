@@ -105,7 +105,14 @@
         font-feature-settings: "zero" 0;
         font-variant-numeric: normal;
     }
-    .paint-desc {
+    .paint-special-order {
+            font-size: .95rem;
+            line-height: 1.45;
+            color: #4a4a4a;
+            margin-top: .5rem;
+            text-align: left;
+        }
+        .paint-desc {
         font-family: 'IBM Plex Sans', sans-serif;
         font-size: 18px;
         color: #666;
@@ -430,6 +437,21 @@
                             {% endif %}
                             {% if paint_description %}
                             <p class="paint-desc">{{ paint_description }}</p>
+                            {% endif %}
+                            {% comment %}paint159: `999` and `L999` mean the car
+                            was painted to special order, so there is no
+                            catalogue colour to name. Saying nothing would read
+                            as a gap in our data; the code is correct and the
+                            explanation is what the customer needs.{% endcomment %}
+                            {% if special_order %}
+                            <p class="paint-desc paint-special-order">
+                                This code means the car was painted to special
+                                order rather than in a standard colour, so the
+                                code itself does not name a paint. The colour is
+                                recorded against your VIN. Leave your email below
+                                and we'll look it up manually and send it over,
+                                free, usually within 1 hour.
+                            </p>
                             {% endif %}
                         </div>
                     {% endif %}

@@ -42,6 +42,7 @@ from .services.paint_resolver import (
     resolve_paint,
     _enrich_from_lookup,
     is_placeholder_code,
+    is_special_order_code,
     PL24_TIMEOUT,
     acquire_recovery_slot,
     release_recovery_slot,
@@ -1849,6 +1850,11 @@ def results(request):
         'vehicle_title': vehicle_data.get('vehicle_title', ''),
         'paint_code': paint_code,
         'paint_description': vehicle_data.get('paint_description'),
+        # paint159: `999` and `L999` mean the car was painted to special order,
+        # so there IS no catalogue colour to name. The page says so rather than
+        # showing a bare code with a blank beside it.
+        'special_order': is_special_order_code(
+            vehicle_data.get('paint_code') or ''),
         'all_paint_codes': all_paint_codes,
         'paint_hex': paint_hex,
         'two_tone': two_tone,
@@ -2532,6 +2538,12 @@ def _record_paint_hit(search_id, paint_code, paint_description, source, telemetr
                 return True
             for pre in ('L', 'TE'):
                 if a == pre + b or b == pre + a:
+                    return True
+            # paint159: mmw returns B0Nxx for the Stellantis Exx codes. Seen
+            # three times — B0NPR twice and B0NZR once — every one recorded as
+            # a disagreement when it was the same paint.
+            for x, y in ((a, b), (b, a)):
+                if x.startswith('B0N') and len(x) > 3 and y == 'E' + x[3:]:
                     return True
             # A Ford answer carries a 3-LETTER paint-system suffix on a
             # 4-CHARACTER base — CTSC -> CTSCWWA, both #916A50. 772 catalogue

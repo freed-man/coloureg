@@ -76,6 +76,14 @@ def _enrich_from_lookup(result, make, model=None, vdg_colour=None,
         from lookup.models import PaintLookup, OperatorPaintCode
 
         code = (result.get('paint_code') or '').strip()
+        if is_special_order_code(code):
+            # paint159: never name a special-order code. Whatever the catalogue
+            # holds against it is somebody else's bespoke car, picked up by a
+            # scraper that found the name sitting next to the placeholder.
+            # The CODE is kept: it really is on the sticker.
+            result['paint_description'] = ''
+            result['special_order'] = True
+            return result
         # A provider can return a real code that no retailer sells (paint85).
         # Rewritten HERE, where the provider's answer arrives, so the mapped
         # code flows to the row, the page and the email alike — mapping later
@@ -771,6 +779,40 @@ _PLACEHOLDER_CODE = re.compile(
     r'^(X{2,}|N\.?/?A\.?|NONE|UNKNOWN|TBC|TBA|\?+|-+)$', re.I)
 
 
+#: Codes that mean "painted to special order", not a colour. The code IS on the
+#: car's sticker, so it is kept and shown — it just does not identify a paint.
+_SPECIAL_ORDER_CODES = {'999', 'L999', '0999'}
+
+
+def is_special_order_code(code):
+    """True for a code that marks bespoke paint rather than naming one.
+
+    paint159. DIFFERENT FROM is_placeholder_code. `XXX` is a wildcard a source
+    returns when it has nothing, and is worthless to the customer. `999` is
+    genuinely stamped on the car: it means the paint was ordered outside the
+    catalogue, and the colour lives only on the build record.
+
+    So the code is KEPT and shown. Only the name is suppressed, because every
+    name attached to it is a different car's bespoke colour that a scraper
+    happened to find next to the placeholder. The catalogue proves it — eight
+    makes carry `999` with eight unrelated colours:
+
+        bmw Medium Grey · dodge Orange · plymouth Orange · porsche Dunkelgrau
+        renault Vert Tyrol Metallic · isuzu, mazda, nissan Trans Blue
+
+    and mazda's Trans Blue ALSO exists under its real code, A6A.
+
+    Two groups use it the same way: VW Group as `L999` (Bentley has used VW
+    paint codes since 1998, and the L is often dropped on the sticker), and
+    Chrysler as plain `999` on 1969-70 Dodge and Plymouth.
+
+    NOT evidence-based, unlike is_placeholder_code. `renault/999` has a hex and
+    six models, so an evidence test would keep it — but six models is six cars
+    that had special-order paint, not six cars sharing a colour.
+    """
+    return (code or '').strip().upper() in _SPECIAL_ORDER_CODES
+
+
 def is_placeholder_code(make, code):
     """True when a code is a scraper artefact rather than a paint code.
 
@@ -928,7 +970,21 @@ def mmw_code_validates(make, code, dvla_colour):
     # Order matters: as-sent first, so an exact match is never passed over for
     # a variant.
     _bare = code.replace('-', '').replace(' ', '')
-    for candidate in (code, _bare, f'L{code}', f'L{_bare}'):
+    # paint159: B0N is mmw's notation for the Stellantis E codes. Three live
+    # deliveries agree — B0NPR twice, B0NZR once, all answered Exx by pl24 —
+    # and EWP, EZR and EPR each exist across Vauxhall, Opel, Peugeot and
+    # Citroen with consistent colours, against 847 E+2 codes in total.
+    #
+    # WEAKER EVIDENCE THAN THE OTHERS, AND DELIBERATELY SO. `TE` was confirmed
+    # at 69 of 69 inside the catalogue; B0N appears in ZERO catalogue rows, so
+    # it cannot be corroborated that way, and one counter-example exists
+    # (B0N9V answered KTV, where neither E9V nor 9V is in the catalogue). What
+    # makes it safe is that the colour check still has to pass afterwards: the
+    # prefix only earns a row a hearing, never an answer.
+    _variants = [code, _bare, f'L{code}', f'L{_bare}']
+    if _bare.upper().startswith('B0N') and len(_bare) > 3:
+        _variants.append('E' + _bare[3:])
+    for candidate in _variants:
         row = PaintLookup.lookup(make, candidate)
         if not row:
             continue
