@@ -615,6 +615,19 @@ class Search(models.Model):
 # =============================================================================
 
 
+class _ActivePaintManager(models.Manager):
+    """Default manager for PaintLookup: hides suppressed rows.
+
+    paint161. A suppressed row is kept rather than deleted, so the decision
+    stays visible and reversible — but it must never reach a lookup. Doing that
+    here rather than at each call site means a read path added later inherits
+    the exclusion instead of forgetting it.
+    """
+
+    def get_queryset(self):
+        return super().get_queryset().filter(suppressed=False)
+
+
 class PaintLookup(models.Model):
     """A paint colour row keyed by manufacturer + code (1:1 with a colour)."""
 
@@ -680,6 +693,52 @@ class PaintLookup(models.Model):
     # THE RISK, stated plainly: a locked wrong value is never challenged again.
     # `manage.py locked_rows` lists everything locked, for review.
     locked_fields = models.JSONField(default=list, blank=True)
+
+    # paint161: NAMES THE OPERATOR ADDS, MERGED rather than substituted.
+    #
+    # `all_names` belongs to the scrape and is where a new source adds value —
+    # 30,768 rows already carry more than one name. Locking it to keep one
+    # addition would forfeit every alias that ever arrives afterwards.
+    #
+    # So an added name lives here instead, and the loader UNIONS it into
+    # all_names / normalized_names after writing the scrape's own values:
+    #
+    #     vauxhall/KKJ   all_names       ['Gris Titane']      the scrape's
+    #                    operator_names  ['Titanium Grey']    yours
+    #                    resolved        both
+    #
+    # That is the case that cost a real lookup: pl24 returned the name
+    # "Titanium Grey" with no code, and the row held only its French name, so
+    # nothing matched. It is also how the 127 OperatorPaintCode rows fold in.
+    operator_names = models.JSONField(default=list, blank=True)
+
+    # paint161: THE DEFAULT MANAGER EXCLUDES SUPPRESSED ROWS.
+    #
+    # There are eight read paths on this model. Patching each to add
+    # `.exclude(suppressed=True)` would work until someone adds a ninth, and a
+    # suppressed row leaking into ONE of them is the whole failure this is
+    # meant to prevent. A default manager is safe by construction instead.
+    #
+    # `all_objects` is the explicit way to see everything, and the loader uses
+    # it — it must know a suppressed row EXISTS, or it would treat it as a new
+    # record and recreate it, which is exactly the bug suppression solves.
+    objects = _ActivePaintManager()
+    all_objects = models.Manager()
+
+    #: Deliberately absent. The loader SKIPS this row instead of recreating it.
+    #
+    # paint161. `locked_fields` protects fields on a row that exists and says
+    # nothing about one removed on purpose: delete it and the next --upsert
+    # puts it straight back, because the record is still in the source file.
+    #
+    # Needed for catalogue junk that defeats real matching — `honda/NH737-H`
+    # and `honda/89`, rows with no models and one source, whose only effect is
+    # to make a name ambiguous that would otherwise resolve. Removing 1,397
+    # such rows lets 465 names resolve that decline today.
+    #
+    # A SUPPRESSED ROW IS KEPT, NOT DELETED, so the decision stays visible and
+    # reversible. Every lookup path must exclude it — see PaintLookup.active().
+    suppressed = models.BooleanField(default=False, db_index=True)
 
     created_at = models.DateTimeField(auto_now_add=True)
 

@@ -36,6 +36,43 @@ DEFAULT_PATH = os.path.join(
 )
 
 
+def _merge_operator_names(row):
+    """Union `operator_names` into all_names / normalized_names. True if changed.
+
+    paint161. `all_names` belongs to the SCRAPE — 30,768 rows already carry more
+    than one name, and a new source adds more. Locking it to keep one operator
+    addition would forfeit every alias that ever arrives afterwards. So the
+    addition lives in `operator_names` and is merged back in here, AFTER the
+    scrape's own values have been written.
+
+    Order matters: this runs last, so it cannot be overwritten by the same pass.
+
+    The case it exists for is `vauxhall/KKJ`, which holds only its French name
+    "Gris Titane". pl24 returned the English "Titanium Grey" with no code, and
+    nothing matched, so a resolvable lookup failed.
+    """
+    extra = [n for n in (row.operator_names or []) if n]
+    if not extra:
+        return False
+    before = (list(row.all_names or []), list(row.normalized_names or []))
+    names = list(row.all_names or [])
+    norms = list(row.normalized_names or [])
+    seen = {(n or '').strip().lower() for n in names}
+    for n in extra:
+        if (n or '').strip().lower() in seen:
+            continue
+        names.append(n)
+        seen.add(n.strip().lower())
+        # MUST use the model's own normaliser, or the added name is stored in a
+        # form the matcher will never look for.
+        norm = PaintLookup.normalize_name(n)
+        if norm and norm not in norms:
+            norms.append(norm)
+    row.all_names = names
+    row.normalized_names = norms
+    return (names, norms) != before
+
+
 def build_instance(record):
     """Construct a PaintLookup instance from a JSON record (without saving).
 
@@ -59,6 +96,11 @@ class Command(BaseCommand):
     help = 'Load paint_lookup.json into the PaintLookup table.'
 
     def add_arguments(self, parser):
+        parser.add_argument(
+            '--report-orphans', action='store_true',
+            help='List rows present in the database but absent from the '
+                 'incoming file. They are never deleted.',
+        )
         parser.add_argument(
             '--force-replace', action='store_true',
             help='Allow --replace to delete rows that have locked fields. '
@@ -89,6 +131,7 @@ class Command(BaseCommand):
     def handle(self, *args, **options):
 
         self.force_replace = options.get('force_replace', False)
+        self.report_orphans = options.get('report_orphans', False)
         path = options['file']
         replace = options['replace']
         upsert = options['upsert']
@@ -100,7 +143,7 @@ class Command(BaseCommand):
         if not os.path.exists(path):
             raise CommandError(f'File not found: {path}')
 
-        existing_count = PaintLookup.objects.count()
+        existing_count = PaintLookup.all_objects.count()
 
         # Default mode (no flags) is "load only if empty" — safe for auto-deploys
         if not replace and not upsert and existing_count > 0:
@@ -126,7 +169,7 @@ class Command(BaseCommand):
             self.stdout.write('Mode: initial load (empty table → bulk insert)')
             self._bulk_insert(records, batch_size)
 
-        final_count = PaintLookup.objects.count()
+        final_count = PaintLookup.all_objects.count()
         self.stdout.write(self.style.SUCCESS(
             f'Done. PaintLookup table now has {final_count:,} rows.'
         ))
@@ -142,7 +185,7 @@ class Command(BaseCommand):
         # Not a prompt: this runs in deploys and scripts, so a question would
         # either hang or be answered blind. --force-replace is the deliberate
         # way through, and it says what it costs.
-        _locked = PaintLookup.objects.exclude(locked_fields=[]).count()
+        _locked = PaintLookup.all_objects.exclude(locked_fields=[]).count()
         if _locked and not self.force_replace:
             raise CommandError(
                 f'{_locked:,} rows have locked fields, which --replace would '
@@ -151,14 +194,14 @@ class Command(BaseCommand):
                 f'what would be lost.'
             )
         with transaction.atomic():
-            deleted, _ = PaintLookup.objects.all().delete()
+            deleted, _ = PaintLookup.all_objects.all().delete()
             self.stdout.write(f'  Deleted {deleted:,} existing rows')
             self._bulk_insert(records, batch_size)
 
     def _do_upsert(self, records, batch_size):
         self.stdout.write('Mode: upsert (preserve admin edits)')
         existing = {
-            (r.manufacturer, r.code): r for r in PaintLookup.objects.all()
+            (r.manufacturer, r.code): r for r in PaintLookup.all_objects.all()
         }
         self.stdout.write(f'  Loaded {len(existing):,} existing rows')
 
@@ -179,11 +222,19 @@ class Command(BaseCommand):
         # Per FIELD, so a corrected hex is kept while the same row still accepts
         # a better models_list from a later scrape.
         locked_skipped = 0
+        suppressed_skipped = 0
         for r in records:
             key = (r['manufacturer'], r['code'])
             new_inst = build_instance(r)
             if key in existing:
                 old = existing[key]
+                if old.suppressed:
+                    # paint161: deliberately absent. Updating it would quietly
+                    # restore a row removed on purpose — the exact failure this
+                    # field exists to stop, since the record is still in the
+                    # source file and always will be.
+                    suppressed_skipped += 1
+                    continue
                 locked = set(old.locked_fields or [])
                 writable = [f for f in fields if f not in locked]
                 if locked:
@@ -192,27 +243,56 @@ class Command(BaseCommand):
                                     for f in writable):
                     for f in writable:
                         setattr(old, f, getattr(new_inst, f))
+                    _merge_operator_names(old)
                     to_update.append(old)
                 else:
-                    unchanged += 1
+                    # Unchanged by the scrape, but an operator name may have
+                    # been added since the last load and must still be merged.
+                    if old.operator_names and _merge_operator_names(old):
+                        to_update.append(old)
+                    else:
+                        unchanged += 1
             else:
                 to_create.append(new_inst)
 
         with transaction.atomic():
             if to_create:
-                PaintLookup.objects.bulk_create(to_create, batch_size=batch_size)
+                PaintLookup.all_objects.bulk_create(to_create, batch_size=batch_size)
             if to_update:
                 # bulk_update writes every name in `fields`, locked ones
                 # included — but a locked field was never reassigned above, so
                 # the value written is the one already in the database. Correct,
                 # and worth saying: it reads like a leak and is not.
-                PaintLookup.objects.bulk_update(to_update, fields, batch_size=batch_size)
+                PaintLookup.all_objects.bulk_update(to_update, fields, batch_size=batch_size)
 
         self.stdout.write(f'  Created: {len(to_create):,}')
         self.stdout.write(f'  Updated: {len(to_update):,}')
         self.stdout.write(f'  Unchanged: {unchanged:,}')
         if locked_skipped:
             self.stdout.write(f'  Rows with locked fields: {locked_skipped:,}')
+        if suppressed_skipped:
+            self.stdout.write(f'  Suppressed, left absent: {suppressed_skipped:,}')
+        # paint161: ORPHANS. --upsert only ever visits rows the incoming file
+        # mentions, so a row the new scrape has dropped is never touched and
+        # never reported. That is usually right — losing a retired scraper
+        # should not cost you its 30,000 rows overnight — but it means a source
+        # quietly disappearing is invisible, and a row that was wrong in an old
+        # source stays forever.
+        #
+        # Reported, never deleted: deciding a row is dead is a judgement, and
+        # `suppressed` is where that decision belongs.
+        seen_keys = {(r['manufacturer'], r['code']) for r in records}
+        orphans = [k for k in existing if k not in seen_keys]
+        if orphans:
+            self.stdout.write(
+                f'  In the database but NOT in this file: {len(orphans):,} '
+                f'(kept; use --report-orphans to list them)'
+            )
+            if self.report_orphans:
+                for mfr, code in sorted(orphans)[:200]:
+                    self.stdout.write(f'      {mfr:<18}{code}')
+                if len(orphans) > 200:
+                    self.stdout.write(f'      ... and {len(orphans) - 200:,} more')
 
     def _bulk_insert(self, records, batch_size):
         start = time.time()
@@ -221,7 +301,7 @@ class Command(BaseCommand):
         for r in records:
             batch.append(build_instance(r))
             if len(batch) >= batch_size:
-                PaintLookup.objects.bulk_create(batch, ignore_conflicts=True)
+                PaintLookup.all_objects.bulk_create(batch, ignore_conflicts=True)
                 total += len(batch)
                 batch = []
                 if total % 10000 == 0:
@@ -229,7 +309,7 @@ class Command(BaseCommand):
                     rate = total / elapsed if elapsed > 0 else 0
                     self.stdout.write(f'  Inserted {total:,} rows ({rate:.0f}/s)')
         if batch:
-            PaintLookup.objects.bulk_create(batch, ignore_conflicts=True)
+            PaintLookup.all_objects.bulk_create(batch, ignore_conflicts=True)
             total += len(batch)
         elapsed = time.time() - start
         rate = total / elapsed if elapsed > 0 else 0
