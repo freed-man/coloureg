@@ -60,6 +60,11 @@ class Command(BaseCommand):
 
     def add_arguments(self, parser):
         parser.add_argument(
+            '--force-replace', action='store_true',
+            help='Allow --replace to delete rows that have locked fields. '
+                 'Those corrections are lost. See `manage.py locked_rows`.',
+        )
+        parser.add_argument(
             '--file',
             default=DEFAULT_PATH,
             help='Path to paint_lookup.json (default: lookup/data/paint_lookup.json)',
@@ -82,6 +87,8 @@ class Command(BaseCommand):
         )
 
     def handle(self, *args, **options):
+
+        self.force_replace = options.get('force_replace', False)
         path = options['file']
         replace = options['replace']
         upsert = options['upsert']
@@ -128,6 +135,21 @@ class Command(BaseCommand):
 
     def _do_replace(self, records, batch_size):
         self.stdout.write('Mode: replace (delete all + bulk insert)')
+        # paint160: REPLACE DESTROYS EVERY LOCK. Locked fields are corrections
+        # made by hand, and this path deletes the rows holding them, so it
+        # refuses rather than silently discarding the work.
+        #
+        # Not a prompt: this runs in deploys and scripts, so a question would
+        # either hang or be answered blind. --force-replace is the deliberate
+        # way through, and it says what it costs.
+        _locked = PaintLookup.objects.exclude(locked_fields=[]).count()
+        if _locked and not self.force_replace:
+            raise CommandError(
+                f'{_locked:,} rows have locked fields, which --replace would '
+                f'delete. Use --upsert to keep them, or --force-replace to '
+                f'discard them deliberately. `manage.py locked_rows` lists '
+                f'what would be lost.'
+            )
         with transaction.atomic():
             deleted, _ = PaintLookup.objects.all().delete()
             self.stdout.write(f'  Deleted {deleted:,} existing rows')
@@ -146,13 +168,29 @@ class Command(BaseCommand):
         fields = ['name', 'all_names', 'normalized_names', 'hex',
                   'color_group', 'models_list', 'sources']
 
+        # paint160: LOCKED FIELDS ARE NOT TOUCHED.
+        #
+        # This mode announces itself as "preserve admin edits" and did the
+        # opposite: every field where the scrape differed was overwritten, so no
+        # correction to this table has ever survived a load. That is why the
+        # operator table exists as a parallel patch, and why rows known to be
+        # wrong have stayed wrong.
+        #
+        # Per FIELD, so a corrected hex is kept while the same row still accepts
+        # a better models_list from a later scrape.
+        locked_skipped = 0
         for r in records:
             key = (r['manufacturer'], r['code'])
             new_inst = build_instance(r)
             if key in existing:
                 old = existing[key]
-                if any(getattr(old, f) != getattr(new_inst, f) for f in fields):
-                    for f in fields:
+                locked = set(old.locked_fields or [])
+                writable = [f for f in fields if f not in locked]
+                if locked:
+                    locked_skipped += 1
+                if writable and any(getattr(old, f) != getattr(new_inst, f)
+                                    for f in writable):
+                    for f in writable:
                         setattr(old, f, getattr(new_inst, f))
                     to_update.append(old)
                 else:
@@ -164,11 +202,17 @@ class Command(BaseCommand):
             if to_create:
                 PaintLookup.objects.bulk_create(to_create, batch_size=batch_size)
             if to_update:
+                # bulk_update writes every name in `fields`, locked ones
+                # included — but a locked field was never reassigned above, so
+                # the value written is the one already in the database. Correct,
+                # and worth saying: it reads like a leak and is not.
                 PaintLookup.objects.bulk_update(to_update, fields, batch_size=batch_size)
 
         self.stdout.write(f'  Created: {len(to_create):,}')
         self.stdout.write(f'  Updated: {len(to_update):,}')
         self.stdout.write(f'  Unchanged: {unchanged:,}')
+        if locked_skipped:
+            self.stdout.write(f'  Rows with locked fields: {locked_skipped:,}')
 
     def _bulk_insert(self, records, batch_size):
         start = time.time()

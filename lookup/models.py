@@ -660,6 +660,27 @@ class PaintLookup(models.Model):
     models_list = models.JSONField(default=list)   # models the colour appears on (colorndrive); may be []
     sources = models.JSONField(default=list)       # ["chipex"], ["colorndrive"], or both — trust signal
 
+    # paint160: FIELDS THE CATALOGUE LOAD MUST NOT TOUCH.
+    #
+    # A list of field names, e.g. ["hex"] or ["name", "all_names"]. `--upsert`
+    # skips every field named here, so a correction made by hand survives the
+    # next scrape.
+    #
+    # WHY THIS EXISTS. `--replace` deletes the table and rebuilds it, and
+    # `--upsert` — despite a docstring reading "preserve admin edits" —
+    # overwrote every field where the scrape differed. So no correction to this
+    # table has ever been durable, which is why the operator table exists as a
+    # parallel patch, and why known-wrong rows have stayed wrong: the 287 hexes
+    # that contradict their own name, `vauxhall/KKJ` carrying only its French
+    # name, `byd/STD` stored as a code when the real one is `UV`.
+    #
+    # PER FIELD, NOT PER ROW, deliberately: a hex can be corrected while a
+    # later scrape is still allowed to improve `models_list` on the same row.
+    #
+    # THE RISK, stated plainly: a locked wrong value is never challenged again.
+    # `manage.py locked_rows` lists everything locked, for review.
+    locked_fields = models.JSONField(default=list, blank=True)
+
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
