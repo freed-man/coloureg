@@ -779,6 +779,47 @@ _COLOUR_FAMILY = {
     'bronze': 'brown', 'sand': 'brown', 'tan': 'brown',
     'gold': 'gold', 'or': 'gold',
     'pink': 'pink', 'rose': 'pink',
+
+    # paint168: WIDER VOCABULARY, SAME RULE.
+    #
+    # 42% of rows with no hex had a name this map could not read, so nothing
+    # could be verified against them — and the names were mostly colour words
+    # in languages it did not know: giallo 219, azzurro 186, vermelho 143,
+    # brun 75, marrone 56, avorio 54.
+    #
+    # This map gates the mmw check, the Mitsubishi letter-trim corroboration
+    # and the hex proposals, so every addition was tested against all 163
+    # historical mmw decisions first: NONE changed. That is the point — a
+    # wider vocabulary lets more answers be CHECKED, it does not let more
+    # through.
+    #
+    # DELIBERATELY EXCLUDED: `perla`. Pearl is a FINISH, not a colour, and
+    # `citroen/KTV Noir Perla Nera` is black. Mapping it to white would have
+    # made a black car's name read white. Accented forms are excluded too —
+    # _colour_families strips non-letters, so `doré` arrives as `dor`.
+    'giallo': 'yellow', 'amarelo': 'yellow', 'geel': 'yellow',
+    'azzurro': 'blue', 'celeste': 'blue', 'blauw': 'blue', 'niebieski': 'blue',
+    'vermelho': 'red', 'czerwony': 'red',
+    'brun': 'brown', 'bruin': 'brown', 'marrone': 'brown', 'castanho': 'brown',
+    'bordeaux': 'red', 'burgundy': 'red', 'maroon': 'red', 'crimson': 'red',
+    'scarlet': 'red', 'ruby': 'red', 'cherry': 'red', 'claret': 'red',
+    'avorio': 'white', 'ivory': 'white', 'creme': 'white', 'cream': 'white',
+    'argento': 'grey', 'argent': 'grey', 'zilver': 'grey', 'grijs': 'grey',
+    'quicksilver': 'grey', 'gunmetal': 'grey', 'pewter': 'grey',
+    'slate': 'grey', 'charcoal': 'grey', 'platinum': 'grey',
+    'musta': 'black', 'zwart': 'black', 'czarny': 'black',
+    'ebony': 'black', 'onyx': 'black',
+    'oro': 'gold', 'dore': 'gold', 'goud': 'gold', 'champagne': 'gold',
+    'amber': 'gold', 'brass': 'gold',
+    'arancione': 'orange', 'naranja': 'orange', 'laranja': 'orange',
+    'oranje': 'orange',
+    'lila': 'purple', 'morado': 'purple', 'roxo': 'purple', 'porpora': 'purple',
+    'rosado': 'pink', 'roze': 'pink',
+    'emerald': 'green', 'jade': 'green', 'lime': 'green', 'sage': 'green',
+    'navy': 'blue', 'cobalt': 'blue', 'sapphire': 'blue', 'indigo': 'blue',
+    'aqua': 'blue', 'cyan': 'blue',
+    'copper': 'brown', 'chocolate': 'brown', 'mocha': 'brown', 'taupe': 'brown',
+    'khaki': 'brown', 'caramel': 'brown', 'bronzo': 'brown',
 }
 
 
