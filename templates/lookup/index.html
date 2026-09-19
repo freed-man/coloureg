@@ -4,6 +4,23 @@
 {% block extra_title %}UK Paint Code Lookup by Registration | coloureg{% endblock %}
 {% block meta_description %}UK car paint code finder. Enter your reg, get your factory code in seconds. No signup, no ads. Straight from the manufacturer.{% endblock %}
 
+{% block extra_schema %}{% include "lookup/_home_schema.html" %}{% endblock %}
+
+{% comment %}paint171: the guide's styling is SECONDARY by design — generous
+   top margin so it never competes with the search box, muted colour, normal
+   reading measure. Kept as a Django comment, not a CSS one: paint91 established
+   that /* */ inside a <style> block ships to every visitor.
+
+   position/z-index ARE LOAD-BEARING, not decoration. #particles-js is a fixed
+   full-screen white layer at z-index 0, and a positioned element paints above
+   static content in the same stacking context — so without these the guide
+   renders, occupies its space, and is completely covered by the background.
+   Which is exactly what happened: empty space and no text. .content-wrapper
+   solves it the same way.
+
+   The rgba(255,255,255,0.85) panel matches .search-form at the top of the page:
+   the particle field stays visible through it but stops competing with the
+   text. Same value, deliberately, so the two halves of the page read as one. {% endcomment %}
 {% block extra_css %}
 <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@1,400&display=swap" rel="stylesheet">
 <link href="https://fonts.cdnfonts.com/css/uk-number-plate" rel="stylesheet">
@@ -460,6 +477,51 @@
            the text may now wrap to three lines and that is fine. */{% endcomment %}
     }
 </style>
+<style>
+    .home-guide {
+        position: relative;
+        z-index: 1;
+        margin: 96px auto 0;
+        max-width: 720px;
+        color: #4a4a4a;
+        font-size: 0.95rem;
+        line-height: 1.75;
+    }
+    .home-guide .container {
+        padding: 0 16px;
+        max-width: 720px;
+    }
+    .home-guide .gl {
+        background: rgba(255, 255, 255, 0.85);
+        box-decoration-break: clone;
+        -webkit-box-decoration-break: clone;
+        padding: 0.18em 0.42em;
+        border-radius: 3px;
+    }
+    .home-guide p, .home-guide h2, .home-guide h3 {
+        line-height: 1.95;
+    }
+    @media (max-width: 576px) {
+        .home-guide .gl { padding: 0.16em 0.34em; }
+    }
+    .home-guide h2 {
+        font-size: 1.15rem;
+        color: #222;
+        margin-bottom: 18px;
+        font-weight: 600;
+    }
+    .home-guide h3 {
+        font-size: 1rem;
+        color: #333;
+        margin: 26px 0 8px;
+        font-weight: 600;
+    }
+    .home-guide p { margin-bottom: 0; }
+    .home-guide strong { color: #222; font-weight: 600; }
+    @media (max-width: 576px) {
+        .home-guide { margin-top: 64px; font-size: 0.92rem; }
+    }
+</style>
 {% endblock %}
 
 {% block content %}
@@ -629,6 +691,8 @@
         </div>
     </div>
 </div>
+
+{% include "lookup/_home_guide.html" %}
 {% endblock %}
 
 {% block extra_js %}
@@ -713,14 +777,18 @@
 </script>
 <script>
     var regInput = document.getElementById('reg-input');
-    // paint151: a fresh homepage means a fresh attempt. The stamp is only
-    // ever consumed by the results page; if the customer came back here
-    // instead, whatever is left is from an attempt they abandoned.
+    {% comment %}
+       paint151: a fresh homepage means a fresh attempt. The stamp is only
+       ever consumed by the results page; if the customer came back here
+       instead, whatever is left is from an attempt they abandoned.
+    {% endcomment %}
     try { sessionStorage.removeItem('cregStart'); } catch (err) {}
     var lookupForm = document.getElementById('lookup-form');
 
-    // In maintenance mode the search form isn't rendered — skip all of the
-    // form-dependent JS (typewriter placeholder, submit handler, loader reset).
+    {% comment %}
+       In maintenance mode the search form isn't rendered — skip all of the
+       form-dependent JS (typewriter placeholder, submit handler, loader reset).
+    {% endcomment %}
     if (regInput && lookupForm) {
     var text = 'enter your reg to find your paint code...';
     var pi = 0;
@@ -803,12 +871,17 @@
         }
     });
 
-    // Pre-warm the database the moment the user focuses the registration field.
-    // They typically take several seconds to type + submit, which is enough for
-    // Neon's suspended compute to resume — so the lookup POST hits a warm DB and
-    // skips the cold-start delay. Fires once per page load; fully best-effort
-    // (a failed/blocked request changes nothing). Bots that POST straight to /
-    // never focus this field, so they never trigger a wake.
+{% comment %}paint172: Pre-warm the database the moment the user focuses the
+   registration field. They typically take several seconds to type and submit,
+   which is enough for a suspended serverless compute to resume, so the lookup
+   POST hits a warm database and skips the cold-start delay. Fires once per page
+   load and is fully best-effort — a failed or blocked request changes nothing.
+   Bots that POST straight to / never focus this field, so they never trigger it.
+
+   MOVED OUT OF JAVASCRIPT. As a // comment this shipped to every visitor and
+   named the database provider, which is an infrastructure detail nobody
+   browsing needs. paint91 stripped HTML comments and /* */ from responses but
+   never covered // lines. {% endcomment %}
     var _warmed = false;
     function warmDb() {
         if (_warmed) return;
@@ -823,19 +896,23 @@
     }
     regInput.addEventListener('focus', warmDb, { once: true });
 
-    // Re-arm the make gate when the REGISTRATION changes (paint29). This is the
-    // safe place for it: a human typing is the only thing that fires 'input',
-    // whereas the submit handler is re-entered by our own requestSubmit().
+    {% comment %}
+       Re-arm the make gate when the REGISTRATION changes (paint29). This is the
+       safe place for it: a human typing is the only thing that fires 'input',
+       whereas the submit handler is re-entered by our own requestSubmit().
+    {% endcomment %}
     regInput.addEventListener('input', function () {
-        // maxlength is 8, not 7 (F10). Most people write a plate the way it is
-        // printed — "AB12 CDE" — which is eight characters, and at 7 the final
-        // letter was silently swallowed. The space is stripped at submit and
-        // the backend accepts [A-Z0-9]{1,8} after stripping, so widening the
-        // field is all that was missing.
-        //
-        // Uppercase live, but do NOT strip the space here: removing a character
-        // the user has just typed moves the caret and fights them mid-plate.
-        // Case-folding is safe because it never changes the length.
+        {% comment %}
+           maxlength is 8, not 7 (F10). Most people write a plate the way it is
+           printed — "AB12 CDE" — which is eight characters, and at 7 the final
+           letter was silently swallowed. The space is stripped at submit and
+           the backend accepts [A-Z0-9]{1,8} after stripping, so widening the
+           field is all that was missing.
+
+           Uppercase live, but do NOT strip the space here: removing a character
+           the user has just typed moves the caret and fights them mid-plate.
+           Case-folding is safe because it never changes the length.
+        {% endcomment %}
         var up = this.value.toUpperCase();
         if (up !== this.value) {
             var caret = this.selectionStart;
@@ -845,17 +922,19 @@
     });
 
     lookupForm.addEventListener('submit', function(e) {
-        // paint151: stamp the FIRST commit and never overwrite it.
-        //
-        // paint149 stamped unconditionally and understated every wait that had
-        // to hold for Turnstile. If the token is not ready when the customer
-        // presses enter, this handler prevents the submit, and onTurnstileSolved
-        // re-fires it through requestSubmit() — re-entering here and replacing
-        // the timestamp with the later one. The Turnstile wait is the
-        // customer's wait, and it was being erased.
-        //
-        // Cleared on page load instead (see below), so an abandoned attempt
-        // cannot inflate the next one.
+        {% comment %}
+           paint151: stamp the FIRST commit and never overwrite it.
+
+           paint149 stamped unconditionally and understated every wait that had
+           to hold for Turnstile. If the token is not ready when the customer
+           presses enter, this handler prevents the submit, and onTurnstileSolved
+           re-fires it through requestSubmit() — re-entering here and replacing
+           the timestamp with the later one. The Turnstile wait is the
+           customer's wait, and it was being erased.
+
+           Cleared on page load instead (see below), so an abandoned attempt
+           cannot inflate the next one.
+        {% endcomment %}
         try {
             if (!sessionStorage.getItem('cregStart')) {
                 sessionStorage.setItem('cregStart', String(Date.now()));
@@ -867,29 +946,33 @@
             return;
         }
 
-        //
-        // paint29: the flag is deliberately NOT reset here. paint28 did, and it
-        // hung every lookup on the site. submitAnyway() re-fires submit
-        // PROGRAMMATICALLY via requestSubmit(), so this handler runs a second
-        // time — resetting the flag it had just set, re-running the make fetch,
-        // and looping forever. Nothing ever submitted.
-        //
-        // Re-arming belongs on the registration CHANGING, not on submit; see
-        // the 'input' listener below. That is the event that actually means
-        // "different vehicle", and it cannot be triggered by our own code.
+        {% comment %}
 
-        // Turnstile guard (paint17). data-appearance="interaction-only" means a
-        // token appears on its own for a trusted visitor, but an untrusted one
-        // (incognito, VPN, fresh profile, privacy browser) has to TICK the box
-        // before one exists. Submitting first sent an empty
-        // cf-turnstile-response, the server refused it, and the page came back
-        // with "We could not verify your browser" — every single time, because
-        // the reload resets the widget and the visitor submits first again.
-        // The widget can also still be loading: Cloudflare's script is async,
-        // so there is a window on every page load where no token exists yet.
-        //
-        // So don't spend a round-trip discovering that. Hold the submit, point
-        // at the box, and let onTurnstileSolved resume it automatically.
+           paint29: the flag is deliberately NOT reset here. paint28 did, and it
+           hung every lookup on the site. submitAnyway() re-fires submit
+           PROGRAMMATICALLY via requestSubmit(), so this handler runs a second
+           time — resetting the flag it had just set, re-running the make fetch,
+           and looping forever. Nothing ever submitted.
+
+           Re-arming belongs on the registration CHANGING, not on submit; see
+           the 'input' listener below. That is the event that actually means
+           "different vehicle", and it cannot be triggered by our own code.
+        {% endcomment %}
+
+        {% comment %}
+           Turnstile guard (paint17). data-appearance="interaction-only" means a
+           token appears on its own for a trusted visitor, but an untrusted one
+           (incognito, VPN, fresh profile, privacy browser) has to TICK the box
+           before one exists. Submitting first sent an empty
+           cf-turnstile-response, the server refused it, and the page came back
+           with "We could not verify your browser" — every single time, because
+           the reload resets the widget and the visitor submits first again.
+           The widget can also still be loading: Cloudflare's script is async,
+           so there is a window on every page load where no token exists yet.
+
+           So don't spend a round-trip discovering that. Hold the submit, point
+           at the box, and let onTurnstileSolved resume it automatically.
+        {% endcomment %}
         var tsWidget = document.querySelector('.cf-turnstile');
         var tsField = lookupForm.querySelector('[name="cf-turnstile-response"]');
         if (tsWidget && (!tsField || !tsField.value)) {
@@ -897,16 +980,18 @@
             window.__turnstileWaiting = true;
             var tsNote = document.getElementById('turnstile-note');
             if (tsNote) {
-                // The wording has to match what the visitor can actually SEE.
-                // With the Cloudflare widget in Non-Interactive mode (plus
-                // appearance="interaction-only") nothing is ever rendered, so
-                // telling them to tick a box would point at empty space. In
-                // Managed mode a checkbox does appear and needs naming.
-                // offsetHeight is the honest test: zero means nothing is on
-                // screen, whatever the dashboard is set to.
-                // paint33: the caret is supplied by CSS (.turnstile-note::before),
-                // so these are the bare strings. Both were rewritten to drop the
-                // em-dash and to match the spinner captions' clipped voice.
+                {% comment %}
+                   The wording has to match what the visitor can actually SEE.
+                   With the Cloudflare widget in Non-Interactive mode (plus
+                   appearance="interaction-only") nothing is ever rendered, so
+                   telling them to tick a box would point at empty space. In
+                   Managed mode a checkbox does appear and needs naming.
+                   offsetHeight is the honest test: zero means nothing is on
+                   screen, whatever the dashboard is set to.
+                   paint33: the caret is supplied by CSS (.turnstile-note::before),
+                   so these are the bare strings. Both were rewritten to drop the
+                   em-dash and to match the spinner captions' clipped voice.
+                {% endcomment %}
                 tsNote.textContent = tsWidget.offsetHeight > 0
                     ? 'Tick the box above to continue...'
                     : 'Checking your browser...';
@@ -915,8 +1000,10 @@
             return;
         }
 
-        // Valid submit: hide form, show loader, schedule staged messages.
-        // The form still submits — the page will navigate to /results/ when the server responds.
+        {% comment %}
+           Valid submit: hide form, show loader, schedule staged messages.
+           The form still submits — the page will navigate to /results/ when the server responds.
+        {% endcomment %}
         var form = lookupForm;
         var loader = document.getElementById('lookup-loader');
         var msgEl = document.getElementById('lookup-message');
@@ -924,84 +1011,98 @@
         form.style.display = 'none';
         loader.classList.add('active');
 
-        // Two honest stages — message stays put until the 10s threshold is hit.
-        // 0s:  initial ("Connecting to manufacturer server...", already in DOM)
-        // --- Make lookup, BEFORE the submit (paint23) ------------------------
-        // It once existed only so the spinner could name the make. That message
-        // is gone (paint75), and what remains is the reason it is worth a call
-        // at all: some makes we can never resolve a paint code for, and running
-        // the full pipeline on one spends money and ends in a failure the
-        // visitor waited for.
-        //
-        // Sequential rather than parallel, because in parallel it is a race —
-        // the POST can reach the server before the make has been resolved, and
-        // the gate silently does nothing. The cost is one round trip, and only
-        // for a registration we have never seen: repeats are answered from
-        // VrmCache or our own history with no external call at all.
-        //
-        // The loader is already showing by this point, so the wait reads as the
-        // lookup starting rather than as a delay.
-        //
-        // It must NEVER block a lookup. Any failure, timeout or missing field
-        // submits anyway — the server re-checks with what it knows for free, so
+        {% comment %}
+           Two honest stages — message stays put until the 10s threshold is hit.
+           0s:  initial ("Connecting to manufacturer server...", already in DOM)
+           --- Make lookup, BEFORE the submit (paint23) ------------------------
+           It once existed only so the spinner could name the make. That message
+           is gone (paint75), and what remains is the reason it is worth a call
+           at all: some makes we can never resolve a paint code for, and running
+           the full pipeline on one spends money and ends in a failure the
+           visitor waited for.
+
+           Sequential rather than parallel, because in parallel it is a race —
+           the POST can reach the server before the make has been resolved, and
+           the gate silently does nothing. The cost is one round trip, and only
+           for a registration we have never seen: repeats are answered from
+           VrmCache or our own history with no external call at all.
+
+           The loader is already showing by this point, so the wait reads as the
+           lookup starting rather than as a delay.
+
+           It must NEVER block a lookup. Any failure, timeout or missing field
+           submits anyway — the server re-checks with what it knows for free, so
+        {% endcomment %}
         {% comment %}a DVLA outage costs us the gate, not the site.{% endcomment %}
 
 
 
 
-        // REMOVED: the pre-flight /vehicle-make/ call and its unsupported-make
-        // block. It intercepted submission, asked the server for the make, and
-        // if the make was on SiteConfig.unsupported_makes it showed a warning
-        // and DELIBERATELY DID NOT SUBMIT — the customer never left the
-        // homepage. That is the behaviour the unsupported-makes rework
-        // replaced: they now get a results page showing their vehicle plus a
-        // manual-lookup offer, which cannot happen if the form never submits.
-        //
-        // The whole block went, not just the gate. Its only other job was
-        // feeding the spinner a "Requesting <make> build sheet" caption, and
+        {% comment %}
+           REMOVED: the pre-flight /vehicle-make/ call and its unsupported-make
+           block. It intercepted submission, asked the server for the make, and
+           if the make was on SiteConfig.unsupported_makes it showed a warning
+           and DELIBERATELY DID NOT SUBMIT — the customer never left the
+           homepage. That is the behaviour the unsupported-makes rework
+           replaced: they now get a results page showing their vehicle plus a
+           manual-lookup offer, which cannot happen if the form never submits.
+
+           The whole block went, not just the gate. Its only other job was
+           feeding the spinner a "Requesting <make> build sheet" caption, and
+        {% endcomment %}
         {% comment %}paint75 removed that message. What remained was a DVLA call and up to{% endcomment %}
-        // 3.5s of ceiling in front of every single lookup, buying nothing.
-        //
-        // Worth recording how this survived: the server gate was removed and
-        // verified, but every check posts to '/' directly, so none of them ever
-        // executed this. A battery that cannot run the browser cannot see a
-        // browser-side gate — the check added alongside this asserts the
-        // template contains no submission-blocking path, which is the most that
-        // can be tested from here.
+        {% comment %}
+           3.5s of ceiling in front of every single lookup, buying nothing.
+
+           Worth recording how this survived: the server gate was removed and
+           verified, but every check posts to '/' directly, so none of them ever
+           executed this. A battery that cannot run the browser cannot see a
+           browser-side gate — the check added alongside this asserts the
+           template contains no submission-blocking path, which is the most that
+           can be tested from here.
+        {% endcomment %}
 
 
-        // paint75: fadeTo() removed with the last message that used it. It
-        // cross-faded the caption over 300ms, which only ever made sense while
-        // this page held a 10-60s wait with stages to move between.
+        {% comment %}
+           paint75: fadeTo() removed with the last message that used it. It
+           cross-faded the caption over 300ms, which only ever made sense while
+           this page held a 10-60s wait with stages to move between.
+        {% endcomment %}
 
-        // paint74: the 10s slow-server stage and the 3s patience note are gone.
-        // Both were scheduled against a page that now returns in ~190ms, so
-        // neither could ever fire. The equivalent staging lives on the results
-        // page, where the 10-26s paint wait actually happens.
+        {% comment %}
+           paint74: the 10s slow-server stage and the 3s patience note are gone.
+           Both were scheduled against a page that now returns in ~190ms, so
+           neither could ever fire. The equivalent staging lives on the results
+           page, where the 10-26s paint wait actually happens.
+        {% endcomment %}
         var t10 = null;
 
         form._loaderTimers = [];
 
     });
 
-    // Reset loader state on page show (covers back-button navigation from a bfcache).
-    // Without this, returning via back button leaves the loader visible and the messages still on their timers.
+    {% comment %}
+       Reset loader state on page show (covers back-button navigation from a bfcache).
+       Without this, returning via back button leaves the loader visible and the messages still on their timers.
+    {% endcomment %}
     window.addEventListener('pageshow', function(event) {
-        // Turnstile tokens are SINGLE-USE (paint21). A back-button return comes
-        // from the bfcache: the page is restored exactly as it was and scripts
-        // do NOT re-run, so the token sitting in the form is the one already
-        // spent on the previous search. The submit guard below only checks that
-        // a token EXISTS, so the spent one sails through, Cloudflare rejects it
-        // as used, and the visitor gets "We could not verify your browser" for
-        // pressing back to look up another car. Seen in production: two blocks
-        // in a row, then success once the widget re-solved on its own.
-        //
-        // Only on event.persisted. This handler also fires on ordinary loads,
-        // where the widget is already fresh — resetting there would throw away
-        // a good token and re-open the no-token window we close elsewhere.
-        // The other three routes back to this page (the "Look Up Another
-        // Vehicle" link, typing the URL, Enter in the address bar) are all
-        // normal navigations that re-run scripts, so they were never affected.
+        {% comment %}
+           Turnstile tokens are SINGLE-USE (paint21). A back-button return comes
+           from the bfcache: the page is restored exactly as it was and scripts
+           do NOT re-run, so the token sitting in the form is the one already
+           spent on the previous search. The submit guard below only checks that
+           a token EXISTS, so the spent one sails through, Cloudflare rejects it
+           as used, and the visitor gets "We could not verify your browser" for
+           pressing back to look up another car. Seen in production: two blocks
+           in a row, then success once the widget re-solved on its own.
+
+           Only on event.persisted. This handler also fires on ordinary loads,
+           where the widget is already fresh — resetting there would throw away
+           a good token and re-open the no-token window we close elsewhere.
+           The other three routes back to this page (the "Look Up Another
+           Vehicle" link, typing the URL, Enter in the address bar) are all
+           normal navigations that re-run scripts, so they were never affected.
+        {% endcomment %}
         if (event.persisted) {
             window.__turnstileWaiting = false;
             if (window.turnstile) {
@@ -1015,13 +1116,13 @@
         var msgEl = document.getElementById('lookup-message');
         if (!loader) return;
 
-        // Cancel any in-flight stage timers from a previous submit.
+        {% comment %}Cancel any in-flight stage timers from a previous submit.{% endcomment %}
         if (lookupForm._loaderTimers) {
             lookupForm._loaderTimers.forEach(function(t) { clearTimeout(t); });
             lookupForm._loaderTimers = null;
         }
 
-        // Hide loader, restore form, reset message to initial state.
+        {% comment %}Hide loader, restore form, reset message to initial state.{% endcomment %}
         loader.classList.remove('active');
         lookupForm.style.display = '';
         if (msgEl) {

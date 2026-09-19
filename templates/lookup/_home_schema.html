@@ -1,0 +1,126 @@
+{% comment %}paint171: STRUCTURED DATA FOR THE HOMEPAGE.
+
+   Two types, chosen because they match the queries this page should own:
+
+   HowTo   — "how do I find my car's paint code" is a procedural question, and
+             HowTo is the type an answer engine lifts steps from. The steps
+             below mirror the guide section on the page, which is a requirement
+             rather than a nicety: markup describing content that is not on the
+             page is a guidelines violation.
+
+   FAQPage — the key questions already exist on /help with FAQPage markup, but
+             the HOMEPAGE is what ranks and what gets cited, so the three that
+             matter most are repeated here. Same answers, same page, visible in
+             the guide below.
+
+   NOT included: Product or Offer schema. This is a tool, not a shop, and the
+   sites ranking for these queries are shops. Claiming to be one is the wrong
+   move even if it ranked.
+{% endcomment %}
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "HowTo",
+  "name": "How to find your car's paint code",
+  "description": "Find the factory paint code for a UK car, from the vehicle identification plate or by registration lookup.",
+  "totalTime": "PT2M",
+  "supply": [
+    {"@type": "HowToSupply", "name": "Your vehicle registration number"}
+  ],
+  "step": [
+    {
+      "@type": "HowToStep",
+      "name": "Check the driver's door shut",
+      "text": "Open the driver's door and look at the vehicle identification plate on the door frame or the edge of the door. The paint code sits near the VIN, often labelled Colour, Paint, C/TR or EXT."
+    },
+    {
+      "@type": "HowToStep",
+      "name": "Check the other common locations",
+      "text": "If it is not in the driver's door shut, look in the passenger door shut, under the bonnet near the slam panel, or in the boot floor beside the spare wheel."
+    },
+    {
+      "@type": "HowToStep",
+      "name": "Read the code",
+      "text": "The code is usually three to seven characters. Format varies by manufacturer: VW, Audi, SEAT and Skoda prefix theirs with L, Honda uses a letter and digits, Toyota and Mazda are usually three characters."
+    },
+    {
+      "@type": "HowToStep",
+      "name": "If the plate is missing or unreadable, look it up by registration",
+      "text": "Plates get painted over, corroded or removed with the panel they were on. Enter the registration at coloureg.com and the code is looked up from the manufacturer's build sheet for that car.",
+      "url": "https://coloureg.com/"
+    }
+  ]
+}
+</script>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  "mainEntity": [
+    {
+      "@type": "Question",
+      "name": "Where is the paint code on my car?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "On the vehicle identification plate. Look in the driver's door shut first, then the passenger side, then under the bonnet near the slam panel, then the boot floor beside the spare wheel. It sits near the VIN, often labelled Colour, Paint, C/TR or EXT."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "What does a car paint code look like?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Usually three to seven characters, and the format varies by manufacturer. VW, Audi, SEAT and Skoda prefix theirs with L, as in LY9T. Honda uses a letter and digits such as NH731P. Vauxhall and the other Stellantis makes use three characters like GAZ. Toyota and Mazda are usually three, like 040 or 41V."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Why do I need the paint code and not just the colour name?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "A paint supplier mixes from the code. Colour names are reused across shades and markets, so two cars both described as white can be entirely different paints. The same Mitsubishi paint is called Silky White Pearl in the UK and Diamond White Pearl in the US."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Can you find a paint code from a VIN?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "The paint code is not encoded in the VIN itself, so it cannot be worked out from the characters alone. What the VIN does is identify the exact car on the manufacturer's system, and the build sheet for that car carries the colour it was sprayed in. A registration lookup takes that route: the registration finds the VIN, and the VIN finds the paint code."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "What colour is my car, and how do I find the exact shade?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "The colour on your V5C is a broad category such as blue or silver, not the actual paint. The exact shade is identified by the paint code on the vehicle identification plate, usually in the driver's door shut. Enter your registration at coloureg.com and the code is looked up from the manufacturer's build sheet for that car."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "What do I need to order touch-up paint for my car?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "The paint code. A supplier mixes a touch-up pen, brush bottle or aerosol from the code, not from the colour name. If the finish is a pearl or a tri-coat, say so, because those are sprayed in two or three stages and a single-stage match will not blend."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "What if my paint code is faded, painted over or missing?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "A half-readable code is worse than none, because a single wrong character is a different colour: on a Ford the difference between PN4DQ and PN4GZ is dark grey against blue. If you cannot read every character with confidence, look it up by registration instead of guessing."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Does the paint code still apply if my car has been resprayed or wrapped?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "A paint code describes the original factory colour, so it will not match a car that has been resprayed a different colour. A vinyl wrap does not change the paint underneath, so the original code still applies once the wrap comes off."
+      }
+    }
+  ]
+}
+</script>

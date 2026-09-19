@@ -547,17 +547,29 @@
                 {% endif %}
             </div>
 
+            {% comment %}paint170: SAY WHAT THE SWATCH IS.
+               The bar is the most immediately believable thing on this page and
+               it was the only element with no caveat. It is verified by colour
+               FAMILY, never by shade: a generated hex is checked to be "a
+               green", not to be the right green, and a scraped one is a
+               vendor's rendering — 396 pearl whites carry a base-coat value
+               that looks nothing like the finished car.
+
+               It still earns its place. A red bar above the words "Bursting
+               Green" is exactly how that row was caught. {% endcomment %}
             {% if paint_code %}
             <p class="paint-disclaimer" id="paint-disclaimer">
-                Paint codes provided as-is from third-party sources.
-                Verify against your vehicle's paint code label before ordering paint.
+                Paint codes and colours are provided as-is from third-party
+                sources. The colour shown is a guide, not a match. Verify
+                against your vehicle's paint code label before ordering paint.
                 <a href="{% url 'disclaimer' %}">Read more</a>
             </p>
             {% elif paint_pending %}
             {# Hidden until JS confirms paint was recovered, then revealed. #}
             <p class="paint-disclaimer" id="paint-disclaimer" style="display: none;">
-                Paint codes provided as-is from third-party sources.
-                Verify against your vehicle's paint code label before ordering paint.
+                Paint codes and colours are provided as-is from third-party
+                sources. The colour shown is a guide, not a match. Verify
+                against your vehicle's paint code label before ordering paint.
                 <a href="{% url 'disclaimer' %}">Read more</a>
             </p>
             {% endif %}
@@ -650,15 +662,17 @@
 {# The value is UNTRUSTED by construction and the view treats it that way. It  #}
 {# is a metric, never an input to a decision.                                  #}
 <script>
-// paint152: report the wait when the ANSWER lands, not when the page renders.
-//
-// paint149 reported on render. For a lookup that goes to paint recovery that is
-// the moment the VEHICLE appears — the code arrives up to 65s later, after the
-// /lookup-status call resolves. A 30-second lookup reported 1.23s.
-//
-// So this exposes a one-shot reporter. A settled page calls it immediately; a
-// pending one calls it from finish(), which is the single place any real answer
-// lands.
+{% comment %}
+   paint152: report the wait when the ANSWER lands, not when the page renders.
+
+   paint149 reported on render. For a lookup that goes to paint recovery that is
+   the moment the VEHICLE appears — the code arrives up to 65s later, after the
+   /lookup-status call resolves. A 30-second lookup reported 1.23s.
+
+   So this exposes a one-shot reporter. A settled page calls it immediately; a
+   pending one calls it from finish(), which is the single place any real answer
+   lands.
+{% endcomment %}
 window.cregReportWait = (function () {
     var done = false;
     return function () {
@@ -666,12 +680,16 @@ window.cregReportWait = (function () {
         var started;
         try { started = sessionStorage.getItem('cregStart'); } catch (err) { return; }
         if (!started) { return; }
-        // Marked done only once there is something to report. Setting it on
-        // ENTRY meant a call with no stamp — a direct visit to /results/, say —
-        // permanently disabled the real one that followed.
+        {% comment %}
+           Marked done only once there is something to report. Setting it on
+           ENTRY meant a call with no stamp — a direct visit to /results/, say —
+           permanently disabled the real one that followed.
+        {% endcomment %}
         done = true;
-        // Clear FIRST, so a refresh cannot report the same wait twice or a
-        // stale one against the next lookup.
+        {% comment %}
+           Clear FIRST, so a refresh cannot report the same wait twice or a
+           stale one against the next lookup.
+        {% endcomment %}
         try { sessionStorage.removeItem('cregStart'); } catch (err) {}
         var ms = Date.now() - parseInt(started, 10);
         if (!(ms > 0 && ms < 300000)) { return; }
@@ -679,14 +697,14 @@ window.cregReportWait = (function () {
         body.append('ms', String(ms));
         body.append('search_id', "{{ search_id }}");
         body.append('csrfmiddlewaretoken', "{{ csrf_token }}");
-        // keepalive so it still sends if the customer navigates away at once.
+        {% comment %}keepalive so it still sends if the customer navigates away at once.{% endcomment %}
         fetch("{% url 'lookup_timing' %}", {
             method: 'POST', body: body, keepalive: true
         }).catch(function () {});
     };
 })();
 {% if not paint_pending %}
-// Settled on arrival: the answer is already on screen.
+{% comment %}Settled on arrival: the answer is already on screen.{% endcomment %}
 window.cregReportWait();
 {% endif %}
 </script>
@@ -709,31 +727,37 @@ window.cregReportWait();
     var CSRF_TOKEN = "{{ csrf_token }}";
     var MAKE = "{{ make|escapejs }}" || "your vehicle";
 
-    // A bit above the backend's ~65s recovery ceiling, so a slow-but-successful
-    // lookup isn't aborted just before it returns.
+    {% comment %}
+       A bit above the backend's ~65s recovery ceiling, so a slow-but-successful
+       lookup isn't aborted just before it returns.
+    {% endcomment %}
     var MAX_WAIT_MS = 75000;
     var stopped = false;
 
     function el(id) { return document.getElementById(id); }
 
-    // ---- Staged progress (paint16) -------------------------------------
-    // The single /lookup-status call runs the whole recovery synchronously, so
-    // the browser gets no intermediate events to react to. These stages are
-    // therefore time-driven — but they are NOT invented progress: each is
-    // timed to the stage the backend is genuinely in at that point, based on
-    // the measured timings (first pass returns in ~1-3s; the deep search runs
-    // 8-50s). Described by what they do, never by which provider does it.
-    //
-    // The bar is deliberately never allowed to reach 100% or stall: a static
-    // spinner reads as "hung", a crawling bar reads as "working".
-    // Four stages, retimed to the pipeline as it now runs (paint74). Each marks
-    // something real, which is what makes them honest rather than theatre:
+    {% comment %}
+       ---- Staged progress (paint16) -------------------------------------
+       The single /lookup-status call runs the whole recovery synchronously, so
+       the browser gets no intermediate events to react to. These stages are
+       therefore time-driven — but they are NOT invented progress: each is
+       timed to the stage the backend is genuinely in at that point, based on
+       the measured timings (first pass returns in ~1-3s; the deep search runs
+       8-50s). Described by what they do, never by which provider does it.
+
+       The bar is deliberately never allowed to reach 100% or stall: a static
+       spinner reads as "hung", a crawling bar reads as "working".
+       Four stages, retimed to the pipeline as it now runs (paint74). Each marks
+       something real, which is what makes them honest rather than theatre:
+    {% endcomment %}
     {% comment %}0s   both paid legs (VDG paint, One Auto) start together{% endcomment %}
     {% comment %}10s  pl24 joins via the backstop{% endcomment %}
     {% comment %}30s  One Auto's polling budget ends; the VDG second chance is what runs{% endcomment %}
-    //   45s  15s short of the 60s ceiling
-    // The old 4s stage marked nothing once both legs began at zero, and 50s left
-    // only 10s after the ceiling moved 65 -> 60.
+    {% comment %}
+       45s  15s short of the 60s ceiling
+       The old 4s stage marked nothing once both legs began at zero, and 50s left
+       only 10s after the ceiling moved 65 -> 60.
+    {% endcomment %}
     var STAGES = [
         { at: 0,     text: 'Searching paint data&hellip;' },
         { at: 10000, text: 'Checking colour records. Please stay on this page.' },
@@ -754,19 +778,23 @@ window.cregReportWait();
             }, st.at));
         });
 
-        // The bar is decoupled from the stages (paint74) and eases continuously
-        // toward 96%, never arriving on its own. Stepping it meant it sat still
-        // for the twenty seconds between stages, and a still bar reads as hung.
-        // Decoupling also means the stage wording and timings can be changed
-        // freely without the bar looking wrong.
+        {% comment %}
+           The bar is decoupled from the stages (paint74) and eases continuously
+           toward 96%, never arriving on its own. Stepping it meant it sat still
+           for the twenty seconds between stages, and a still bar reads as hung.
+           Decoupling also means the stage wording and timings can be changed
+           freely without the bar looking wrong.
+        {% endcomment %}
         if (barEl) {
             var t0 = Date.now();
             barTimer = setInterval(function () {
                 if (stopped) { clearInterval(barTimer); return; }
                 var secs = (Date.now() - t0) / 1000;
-                // 6% floor: the easing curve starts at zero, which would show
-                // an empty track for the first moment — and an empty bar reads
-                // as "nothing is happening" at exactly the wrong time.
+                {% comment %}
+                   6% floor: the easing curve starts at zero, which would show
+                   an empty track for the first moment — and an empty bar reads
+                   as "nothing is happening" at exactly the wrong time.
+                {% endcomment %}
                 barEl.style.width = (6 + 90 * (1 - Math.exp(-secs / 18))).toFixed(1) + '%';
             }, 400);
         }
@@ -788,7 +816,7 @@ window.cregReportWait();
             .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
     }
 
-    // Build one paint block's HTML (swatch + code + optional canonical/description).
+    {% comment %}Build one paint block's HTML (swatch + code + optional canonical/description).{% endcomment %}
     function paintBlockHtml(code, hex, canonical, description) {
         var html = '';
         if (hex) {
@@ -806,7 +834,7 @@ window.cregReportWait();
         return html;
     }
 
-    // Render the recovered paint into the paint card.
+    {% comment %}Render the recovered paint into the paint card.{% endcomment %}
     function showFound(data) {
         var card = el('paint-card');
         if (!card) return;
@@ -824,29 +852,33 @@ window.cregReportWait();
         }
         card.innerHTML = '<div id="paint-found-state">' + html + reportControl() + '</div>';
 
-        // Reveal the disclaimer (it was rendered hidden during the pending state).
+        {% comment %}Reveal the disclaimer (it was rendered hidden during the pending state).{% endcomment %}
         var disc = el('paint-disclaimer');
         if (disc) disc.style.display = '';
 
         revealEmail(true);
     }
 
-    // paint113: a quiet way for a customer to say "this code is wrong".
-    //
-    // DELIBERATELY UNDERSTATED — a small grey link below the code, after
-    // everything the customer actually came for. A prominent "report a
-    // problem" button invites doubt in the great majority of cases where the
-    // answer is right; this is for the person who already knows something is
-    // off, not an invitation to wonder.
-    //
-    // One press, one confirmation, no form. Asking for a reason before
-    // accepting the report would cost more reports than the reasons are worth,
-    // and the reason is the least valuable part: the COUNT against a code is
-    // what identifies a catalogue error.
+    {% comment %}
+       paint113: a quiet way for a customer to say "this code is wrong".
+
+       DELIBERATELY UNDERSTATED — a small grey link below the code, after
+       everything the customer actually came for. A prominent "report a
+       problem" button invites doubt in the great majority of cases where the
+       answer is right; this is for the person who already knows something is
+       off, not an invitation to wonder.
+
+       One press, one confirmation, no form. Asking for a reason before
+       accepting the report would cost more reports than the reasons are worth,
+       and the reason is the least valuable part: the COUNT against a code is
+       what identifies a catalogue error.
+    {% endcomment %}
     function reportControl() {
-        // mt-4 sat the link hard against the card's lower border. mb-2 lifts it
-        // clear so it reads as a separate offer rather than a caption on the
-        // paint block above it.
+        {% comment %}
+           mt-4 sat the link hard against the card's lower border. mb-2 lifts it
+           clear so it reads as a separate offer rather than a caption on the
+           paint block above it.
+        {% endcomment %}
         return '<div class="text-center mt-4 mb-2" id="report-wrap">' +
                '<button type="button" id="report-btn" class="btn btn-link btn-sm p-0" ' +
                'style="font-size: 13px; color: #888; text-decoration: underline;">' +
@@ -866,11 +898,13 @@ window.cregReportWait();
             body: body.toString()
         }).catch(function () { /* swallowed on purpose — see below */ })
           .then(function () {
-            // THE SAME MESSAGE WHATEVER HAPPENED, including a duplicate, a
-            // rate-limit refusal or a network failure. Telling someone their
-            // press did nothing invites another press; an error on a courtesy
-            // button reads as the site being broken, and the report itself is
-            // worth far less than the customer's confidence in the answer.
+            {% comment %}
+               THE SAME MESSAGE WHATEVER HAPPENED, including a duplicate, a
+               rate-limit refusal or a network failure. Telling someone their
+               press did nothing invites another press; an error on a courtesy
+               button reads as the site being broken, and the report itself is
+               worth far less than the customer's confidence in the answer.
+            {% endcomment %}
             if (wrap) {
                 wrap.innerHTML = '<div style="font-size: 13px; color: #666;">' +
                     'Thanks, we\u2019ll take a look at this one.</div>';
@@ -878,7 +912,7 @@ window.cregReportWait();
         });
     });
 
-    // Render the "servers timed out / manual lookup" state into the paint card.
+    {% comment %}Render the "servers timed out / manual lookup" state into the paint card.{% endcomment %}
     function showMissed() {
         var card = el('paint-card');
         if (!card) return;
@@ -898,9 +932,11 @@ window.cregReportWait();
     }
 
     {% comment %}Render the name-only state: pl24 found the colour NAME but no code. The{% endcomment %}
-    // name goes in the headline slot (styled as a name, not a code), with a
-    // quiet status line below. The email form is revealed in name-only mode
-    // ("leave your email, we'll send the exact code").
+    {% comment %}
+       name goes in the headline slot (styled as a name, not a code), with a
+       quiet status line below. The email form is revealed in name-only mode
+       ("leave your email, we'll send the exact code").
+    {% endcomment %}
     function showNameOnly(data) {
         var card = el('paint-card');
         if (!card) return;
@@ -917,21 +953,25 @@ window.cregReportWait();
         revealEmail('name_only');
     }
 
-    // Reveal the email section in the correct mode:
-    //   true / 'found'  => "email me this code" (we have the code)
-    //   'name_only'     => "leave your email and we'll send the exact code"
-    //                      (we have the colour name but not the code yet)
-    //   false / 'missed'=> the manual-lookup ("we'll find it") offer
+    {% comment %}
+       Reveal the email section in the correct mode:
+       true / 'found'  => "email me this code" (we have the code)
+       'name_only'     => "leave your email and we'll send the exact code"
+       (we have the colour name but not the code yet)
+       false / 'missed'=> the manual-lookup ("we'll find it") offer
+    {% endcomment %}
     function revealEmail(mode) {
         var section = el('email-section');
         if (!section) return;
 
-        // Normalise: accept the legacy boolean (true=found) and string modes.
+        {% comment %}Normalise: accept the legacy boolean (true=found) and string modes.{% endcomment %}
         if (mode === true) mode = 'found';
         else if (mode === false) mode = 'missed';
 
-        // If the user already submitted (shouldn't happen mid-poll, but be safe),
-        // leave the existing confirmation card alone.
+        {% comment %}
+           If the user already submitted (shouldn't happen mid-poll, but be safe),
+           leave the existing confirmation card alone.
+        {% endcomment %}
         if (section.querySelector('form') === null) {
             section.style.display = '';
             return;
@@ -960,8 +1000,10 @@ window.cregReportWait();
         var form = section.querySelector('form');
         var card = section.querySelector('.card .card-body');
         if (card && form) {
-            // Rebuild the heading + blurb above the (preserved) form, so the CSRF
-            // token and hidden search_id input stay intact.
+            {% comment %}
+               Rebuild the heading + blurb above the (preserved) form, so the CSRF
+               token and hidden search_id input stay intact.
+            {% endcomment %}
             var formHtml = form.outerHTML.replace(
                 /(<button[^>]*>)([\s\S]*?)(<\/button>)/,
                 '$1' + button + '$3'
@@ -977,29 +1019,35 @@ window.cregReportWait();
         if (stopped) return;
         stopped = true;
         stopStages();   // paint16: halt the staged copy the moment we have a real answer
-        // paint152: THIS is when the customer has their answer, on the pending
-        // path — up to 65s after the page rendered. Reporting on render
-        // measured the spinner appearing, not the code.
+        {% comment %}
+           paint152: THIS is when the customer has their answer, on the pending
+           path — up to 65s after the page rendered. Reporting on render
+           measured the spinner appearing, not the code.
+        {% endcomment %}
         if (window.cregReportWait) { window.cregReportWait(); }
         fn();
     }
 
-    // The /lookup-status endpoint DOES the recovery work synchronously (parallel
+    {% comment %}The /lookup-status endpoint DOES the recovery work synchronously (parallel{% endcomment %}
     {% comment %}VDG-retry + pl24), which can take up to ~65s on a slow/commercial vehicle.{% endcomment %}
-    // So we fire it exactly ONCE and await that single response — we must NOT poll
+    {% comment %}So we fire it exactly ONCE and await that single response — we must NOT poll{% endcomment %}
     {% comment %}it repeatedly, because each call re-runs the full recovery (re-charging VDG{% endcomment %}
     {% comment %}and queueing behind pl24's single warm session), which piles up and never{% endcomment %}
-    // settles. A client-side AbortController guarantees we stop waiting and show
-    // the manual offer even if the request hangs past our ceiling.
-    // 'busy' retries (paint19). The server declines when every recovery slot is
+    {% comment %}
+       settles. A client-side AbortController guarantees we stop waiting and show
+       the manual offer even if the request hangs past our ceiling.
+       'busy' retries (paint19). The server declines when every recovery slot is
+    {% endcomment %}
     {% comment %}taken, which costs nothing: no row is claimed and no VDG call is made, so{% endcomment %}
-    // retrying runs the recovery properly rather than re-charging for one
-    // already in progress. That is why this is safe even though the endpoint
-    // must otherwise be called exactly ONCE — a busy response means the work
-    // did not start.
+    {% comment %}
+       retrying runs the recovery properly rather than re-charging for one
+       already in progress. That is why this is safe even though the endpoint
+       must otherwise be called exactly ONCE — a busy response means the work
+       did not start.
+    {% endcomment %}
     var busyRetries = 0;
     var MAX_BUSY_RETRIES = 5;
-    // One extra attempt after an abort/network error, and one only (paint63).
+    {% comment %}One extra attempt after an abort/network error, and one only (paint63).{% endcomment %}
     var finalAttemptDone = false;
 
     function runRecovery() {
@@ -1022,45 +1070,53 @@ window.cregReportWait();
                 } else if (s === 'name_only') {
                     finish(function () { showNameOnly(data); });
                 } else if (s === 'locked') {
-                    // paint22: the recovery found a chargeable result while we
-                    // were polling. The code is deliberately NOT in this
-                    // response — reload so results() renders the locked view
-                    // server-side, which is the only place that decides what a
-                    // paying customer may see.
+                    {% comment %}
+                       paint22: the recovery found a chargeable result while we
+                       were polling. The code is deliberately NOT in this
+                       response — reload so results() renders the locked view
+                       server-side, which is the only place that decides what a
+                       paying customer may see.
+                    {% endcomment %}
                     stopped = true;
                     window.location.reload();
                 } else if (s === 'busy' && busyRetries < MAX_BUSY_RETRIES) {
-                    // Server is at capacity. Nothing was started, so come back
-                    // shortly; the spinner and its staged copy keep running.
+                    {% comment %}
+                       Server is at capacity. Nothing was started, so come back
+                       shortly; the spinner and its staged copy keep running.
+                    {% endcomment %}
                     busyRetries += 1;
                     var waitMs = ((data && data.retry_after) || 4) * 1000;
                     setTimeout(runRecovery, waitMs);
                 } else {
-                    // 'not_found', 'error', or anything unexpected → manual offer.
+                    {% comment %}'not_found', 'error', or anything unexpected → manual offer.{% endcomment %}
                     finish(showMissed);
                 }
             })
             .catch(function () {
                 clearTimeout(killer);
-                // Network error, or we hit MAX_WAIT_MS and aborted. Do NOT give
-                // up yet (paint63).
-                //
-                // Aborting only stops US listening — the server keeps working,
-                // finishes the recovery, and writes both the row and the
-                // session. GY59NBG on 13 Aug is the case: first pass timed out
-                // at 36s, the retry then found 354 / Titansilber Metallic and
-                // stored it, but the page had already stopped waiting, so the
-                // customer was told the servers timed out while the answer sat
-                // in the database. A refresh showed it.
-                //
-                // One more attempt costs nothing and cannot double-charge: the
-                // recovery has already been claimed, so this call returns from
+                {% comment %}
+                   Network error, or we hit MAX_WAIT_MS and aborted. Do NOT give
+                   up yet (paint63).
+
+                   Aborting only stops US listening — the server keeps working,
+                   finishes the recovery, and writes both the row and the
+                   session. GY59NBG on 13 Aug is the case: first pass timed out
+                   at 36s, the retry then found 354 / Titansilber Metallic and
+                   stored it, but the page had already stopped waiting, so the
+                   customer was told the servers timed out while the answer sat
+                   in the database. A refresh showed it.
+
+                   One more attempt costs nothing and cannot double-charge: the
+                   recovery has already been claimed, so this call returns from
+                {% endcomment %}
                 {% comment %}the session as 'already_resolved' in about 2ms with no VDG{% endcomment %}
-                // request. Measured, not assumed.
-                //
-                // Guarded to a single extra attempt — if the answer genuinely
-                // is not there, we must still show the manual offer rather than
-                // loop.
+                {% comment %}
+                   request. Measured, not assumed.
+
+                   Guarded to a single extra attempt — if the answer genuinely
+                   is not there, we must still show the manual offer rather than
+                   loop.
+                {% endcomment %}
                 if (finalAttemptDone) { finish(showMissed); return; }
                 finalAttemptDone = true;
                 setTimeout(function () {
@@ -1095,7 +1151,7 @@ window.cregReportWait();
             });
     }
 
-    // Fire once, shortly after load.
+    {% comment %}Fire once, shortly after load.{% endcomment %}
     document.addEventListener('DOMContentLoaded', function () {
         setTimeout(runRecovery, 600);
     });

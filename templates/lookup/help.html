@@ -2,7 +2,7 @@
 {% load static %}
 
 {% block extra_title %}Help & FAQ — How to Find Your Car's Paint Code | coloureg{% endblock %}
-{% block meta_description %}Frequently asked questions about coloureg — how to find your paint code, where it's located on your car, what makes are supported, and why we're free.{% endblock %}
+{% block meta_description %}Frequently asked questions about coloureg — how to find your paint code, where it's located on your car, what makes are supported, and what it costs.{% endblock %}
 
 {% block extra_schema %}
 <script type="application/ld+json">
@@ -47,7 +47,7 @@
       "name": "How accurate is the paint code?",
       "acceptedAnswer": {
         "@type": "Answer",
-        "text": "The codes come straight from manufacturer databases, so they're as accurate as the source. That said, paint codes describe the original factory colour. If your car has been resprayed, the code may not match the current paint. Vinyl wraps don't change the underlying colour — once removed, the original paint code still applies."
+        "text": "The codes come straight from the manufacturer's own build sheet for your car, so they're as accurate as the source. That said, paint codes describe the original factory colour. If your car has been resprayed, the code may not match the current paint. Vinyl wraps don't change the underlying colour — once removed, the original paint code still applies."
       }
     },
     {
@@ -266,7 +266,7 @@
                         <span class="faq-icon">▼</span>
                     </button>
                     <div class="faq-answer" id="faq-5" style="display: none;">
-                        <p>The codes come straight from manufacturer databases, so they're as accurate as the source.</p>
+                        <p>The codes come straight from the manufacturer's own build sheet for your car, so they're as accurate as the source.</p>
                         <p>That said, paint codes describe the original factory colour. If your car has been resprayed, the code may not match the current paint. Vinyl wraps (an adhesive film applied over the factory paint) don't change the underlying colour — once removed, the original paint code still applies.</p>
                     </div>
                 </div>
@@ -368,12 +368,12 @@
 </div>
 
 <script>
-    // FAQ accordion toggle - one open at a time
+    {% comment %}FAQ accordion toggle - one open at a time{% endcomment %}
     document.querySelectorAll('.faq-toggle').forEach(function(btn) {
         btn.addEventListener('click', function() {
             var expanded = btn.getAttribute('aria-expanded') === 'true';
 
-            // Close all other FAQ items
+            {% comment %}Close all other FAQ items{% endcomment %}
             document.querySelectorAll('.faq-toggle').forEach(function(otherBtn) {
                 if (otherBtn !== btn) {
                     otherBtn.setAttribute('aria-expanded', 'false');
@@ -383,7 +383,7 @@
                 }
             });
 
-            // Toggle this one
+            {% comment %}Toggle this one{% endcomment %}
             btn.setAttribute('aria-expanded', !expanded);
             var answerId = btn.getAttribute('aria-controls');
             var answer = document.getElementById(answerId);
@@ -393,7 +393,7 @@
         });
     });
 
-    // Contact form smooth scroll
+    {% comment %}Contact form smooth scroll{% endcomment %}
     var contactForm = document.getElementById('contactForm');
     if (contactForm) {
         contactForm.addEventListener('shown.bs.collapse', function() {
@@ -401,8 +401,10 @@
         });
     }
 
-    // Auto-open contact form when arriving from another page with ?contact=open
-    // Runs on DOMContentLoaded to guarantee Bootstrap's JS has loaded (it's in base.html after <main>)
+    {% comment %}
+       Auto-open contact form when arriving from another page with ?contact=open
+       Runs on DOMContentLoaded to guarantee Bootstrap's JS has loaded (it's in base.html after <main>)
+    {% endcomment %}
     document.addEventListener('DOMContentLoaded', function() {
         var params = new URLSearchParams(window.location.search);
         if (params.get('contact') !== 'open' || !contactForm) return;
@@ -410,19 +412,19 @@
         var btn = document.getElementById('sendMessageBtn');
 
         function openForm() {
-            // Prefer Bootstrap's Collapse API so the shown.bs.collapse listener fires
+            {% comment %}Prefer Bootstrap's Collapse API so the shown.bs.collapse listener fires{% endcomment %}
             if (typeof bootstrap !== 'undefined' && bootstrap.Collapse) {
                 var collapse = bootstrap.Collapse.getOrCreateInstance(contactForm, { toggle: false });
                 collapse.show();
             } else {
-                // Fallback: just add the 'show' class manually
+                {% comment %}Fallback: just add the 'show' class manually{% endcomment %}
                 contactForm.classList.add('show');
                 contactForm.scrollIntoView({ behavior: 'smooth', block: 'center' });
             }
             if (btn) btn.setAttribute('aria-expanded', 'true');
         }
 
-        // Slight delay to let Bootstrap finish initialising
+        {% comment %}Slight delay to let Bootstrap finish initialising{% endcomment %}
         setTimeout(openForm, 50);
     });
 </script>

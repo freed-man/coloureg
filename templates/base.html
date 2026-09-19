@@ -222,13 +222,15 @@
     {% endblock %}
 
     <script>
-        // paint30: 5s was not long enough to read an error and act on it — a
-        // rate-limit or refusal message vanished before it had been taken in.
-        //
-        // Errors and warnings now hold for 15s; success messages still go at 5s,
-        // because those only confirm something the visitor just did and do not
-        // need reading twice. Hovering pauses the timer entirely, so a message
-        // being read is never pulled away mid-sentence.
+        {% comment %}
+           paint30: 5s was not long enough to read an error and act on it — a
+           rate-limit or refusal message vanished before it had been taken in.
+
+           Errors and warnings now hold for 15s; success messages still go at 5s,
+           because those only confirm something the visitor just did and do not
+           need reading twice. Hovering pauses the timer entirely, so a message
+           being read is never pulled away mid-sentence.
+        {% endcomment %}
         (function () {
             var SUCCESS_MS = 5000;
             var ERROR_MS = 15000;
@@ -256,7 +258,7 @@
             });
         })();
 
-        // Toggle body class when menu opens/closes so the burger morphs to X
+        {% comment %}Toggle body class when menu opens/closes so the burger morphs to X{% endcomment %}
         (function () {
             var menuPanel = document.getElementById('mainMenu');
             if (!menuPanel) return;
@@ -267,9 +269,11 @@
                 document.body.classList.remove('menu-open');
             });
 
-            // On touch devices (mobile/tablet), let the paint-sweep animation
-            // play before navigating, so the user actually sees it. On desktop
-            // with a real mouse, the hover already shows it before any click.
+            {% comment %}
+               On touch devices (mobile/tablet), let the paint-sweep animation
+               play before navigating, so the user actually sees it. On desktop
+               with a real mouse, the hover already shows it before any click.
+            {% endcomment %}
             var isTouchDevice = window.matchMedia('(hover: none)').matches
                 || ('ontouchstart' in window);
 
@@ -279,18 +283,22 @@
                     var href = item.getAttribute('href') || '';
 
                     item.addEventListener('click', function (e) {
-                        // If we've already triggered the animation, allow the
-                        // click through normally.
+                        {% comment %}
+                           If we've already triggered the animation, allow the
+                           click through normally.
+                        {% endcomment %}
                         if (item.dataset.animating === '1') return;
 
-                        // Same-page tap (already active): no animation.
+                        {% comment %}Same-page tap (already active): no animation.{% endcomment %}
                         if (item.classList.contains('active')) return;
 
                         e.preventDefault();
                         item.dataset.animating = '1';
 
-                        // Strip 'active' from current page so its rainbow
-                        // visually leaves during the new item's animation.
+                        {% comment %}
+                           Strip 'active' from current page so its rainbow
+                           visually leaves during the new item's animation.
+                        {% endcomment %}
                         var currentlyActive = menuPanel.querySelector('.menu-item.active');
                         if (currentlyActive) {
                             currentlyActive.classList.remove('active');
@@ -304,8 +312,10 @@
                     });
                 });
 
-                // Safety net: clear any lingering 'tapping' class when menu
-                // is reopened.
+                {% comment %}
+                   Safety net: clear any lingering 'tapping' class when menu
+                   is reopened.
+                {% endcomment %}
                 menuPanel.addEventListener('show.bs.offcanvas', function () {
                     menuPanel.querySelectorAll('.menu-item.tapping').forEach(function (item) {
                         item.classList.remove('tapping');
