@@ -28,6 +28,7 @@ Nothing is written without --apply. Start small, look at the output, then widen.
 """
 import json
 import os
+import re
 import time
 
 from django.core.management.base import BaseCommand, CommandError
@@ -113,13 +114,20 @@ class Command(BaseCommand):
         self.stdout.write(f'{len(rows):,} rows selected'
                           f'{"" if opt["apply"] else "  (preview — nothing will be written)"}')
 
-        accepted = rejected = null = 0
+        accepted = rejected = null = failed = 0
         for i in range(0, len(rows), opt['batch']):
             chunk = rows[i:i + opt['batch']]
             try:
                 proposals = self._ask(key, chunk)
             except Exception as exc:  # noqa: BLE001
-                self.stderr.write(f'  batch {i // opt["batch"] + 1} failed: {exc}')
+                # paint169: name the rows too. A bare parser error says nothing
+                # about WHICH 25 rows were lost, and on a 1,700-batch run that
+                # is the only way to tell a one-off from a pattern.
+                self.stderr.write(
+                    f'  batch {i // opt["batch"] + 1} failed ({exc}); '
+                    f'{len(chunk)} rows skipped, '
+                    f'{chunk[0].manufacturer}/{chunk[0].code} onwards')
+                failed += len(chunk)
                 continue
             for row in chunk:
                 hexv = proposals.get(row.pk)
@@ -146,6 +154,9 @@ class Command(BaseCommand):
                           f'{" (written)" if opt["apply"] else " (NOT written)"}')
         self.stdout.write(f'  rejected : {rejected:,}   failed the colour check')
         self.stdout.write(f'  no answer: {null:,}   the model declined to guess')
+        if failed:
+            self.stdout.write(
+                f'  batch fail: {failed:,}   rows skipped; run again to retry them')
 
     # ------------------------------------------------------------------
 
@@ -216,21 +227,51 @@ class Command(BaseCommand):
             headers={'x-api-key': key,
                      'anthropic-version': '2023-06-01',
                      'content-type': 'application/json'},
-            json={'model': MODEL, 'max_tokens': 2000,
+            json={'model': MODEL, 'max_tokens': 4000,
                   'messages': [{'role': 'user',
                                 'content': PROMPT + '\n'.join(lines)}]},
             timeout=90,
         )
         resp.raise_for_status()
         text = ''.join(b.get('text', '') for b in resp.json().get('content', []))
-        text = text.strip().removeprefix('```json').removeprefix('```').removesuffix('```')
+        return self._parse(text)
+
+    @staticmethod
+    def _parse(text):
+        """Pull id/hex pairs out of a reply, however it arrives.
+
+        paint169. `json.loads` on the whole reply failed on the first real run
+        and took the batch with it: a prose preamble, a markdown fence, a
+        trailing comma or a truncated array all raise, and one bad character
+        discarded 25 rows.
+
+        So the pairs are extracted DIRECTLY rather than by parsing the
+        document. Anything shaped like an id next to a hex is read, and
+        everything around it is ignored — including a half-written final object
+        when the reply ran out of tokens.
+
+        A null hex stays a miss, which is the model declining to guess, and the
+        verifier still decides every value that survives.
+        """
         out = {}
-        for item in json.loads(text):
-            try:
+        for m in re.finditer(
+                r'"?id"?\s*:\s*(\d+)\s*,\s*"?hex"?\s*:\s*'
+                r'(?:"(#[0-9A-Fa-f]{6})"|null)', text or ''):
+            out[int(m.group(1))] = (m.group(2) or '').strip()
+        if out:
+            return out
+        # Nothing matched. Try the whole document, in case a future reply is
+        # shaped differently — and if that fails too, say what came back rather
+        # than raising a parser error with no context.
+        try:
+            for item in json.loads(
+                    (text or '').strip().removeprefix('```json')
+                    .removeprefix('```').removesuffix('```')):
                 out[int(item['id'])] = (item.get('hex') or '').strip()
-            except (TypeError, ValueError, KeyError):
-                continue
-        return out
+            return out
+        except Exception:
+            raise ValueError(
+                f'no id/hex pairs in reply: {(text or "")[:200]!r}')
 
     def _verify(self, row, hexv):
         """The gate. A proposal must be well formed AND agree with the name."""
