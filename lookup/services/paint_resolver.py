@@ -79,7 +79,7 @@ def _enrich_from_lookup(result, make, model=None, vdg_colour=None,
         # paint162: a slash-joined answer is resolved to its paint code HERE,
         # where the provider's answer arrives, so the corrected code flows to
         # the row, the page and the email alike.
-        _slashed = resolve_slashed_code(make, code)
+        _slashed = resolve_slashed_code(make, code, vdg_colour)
         if _slashed != code:
             logger.info('slashed code %s resolved to %s for %s',
                         code, _slashed, (make or '')[:30])
@@ -834,7 +834,7 @@ _PLACEHOLDER_CODE = re.compile(
 _SPECIAL_ORDER_CODES = {'999', 'L999', '0999'}
 
 
-def resolve_slashed_code(make, code):
+def resolve_slashed_code(make, code, dvla_colour=None):
     """Pick the paint code out of a slash-joined string, or return it unchanged.
 
     paint162. 283 delivered codes have contained a slash, and a customer cannot
@@ -881,14 +881,35 @@ def resolve_slashed_code(make, code):
     # customer's sticker says Y9C, and the L is our catalogue's notation.
     hits = []
     for part in (x.strip() for x in code.split('/')):
-        if not part:
+        # paint176: A SINGLE CHARACTER IS NOT A PAINT CODE. Some VAG codes carry
+        # the slash INSIDE them — `L8/2` is one code, not two — and splitting
+        # those produced a confident wrong answer: `L8/2` became `2`, which the
+        # L-prefix variant then matched to `L2`, Sequoia Green Metallic. Phantom
+        # Black served as a green, through three individually reasonable steps.
+        #
+        # Costs nothing: all 266 delivered codes that resolved still resolve.
+        if not part or len(part) < 2:
             continue
         if PaintLookup.objects.filter(
                 manufacturer=mfr,
                 code__iexact=part).exists() or PaintLookup.objects.filter(
                 manufacturer=mfr, code__iexact='L' + part).exists():
             hits.append(part)
-    return hits[0] if len(hits) == 1 else code
+    if len(hits) != 1:
+        return code
+    # AND IT MUST AGREE WITH THE REGISTERED COLOUR, the same guard the mmw gate
+    # and the Mitsubishi letter-trim use. `T9/1` is Ibis White, but Skoda's `T9`
+    # is Atoll Gruen — a real code for a different paint, so length alone does
+    # not catch it. Refuses 1 of the 266 in history (`L8/Z9Y` reading Dark Grey
+    # Matt on a car DVLA calls Black), which is a defensible answer rather than
+    # a wrong one; that is the price of catching the T9 class.
+    if dvla_colour:
+        _row = PaintLookup.lookup(make, hits[0])
+        _want = _colour_families(dvla_colour)
+        _got = _colour_families(_row.name) if _row else set()
+        if _want and _got and not (_want & _got):
+            return code
+    return hits[0]
 
 
 def is_special_order_code(code):
