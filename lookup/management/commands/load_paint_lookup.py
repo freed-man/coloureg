@@ -239,6 +239,27 @@ class Command(BaseCommand):
                 writable = [f for f in fields if f not in locked]
                 if locked:
                     locked_skipped += 1
+                # paint167: AN EMPTY INCOMING VALUE NEVER ERASES A POPULATED
+                # ONE.
+                #
+                # `--upsert` wrote every field it was given, so a scrape with no
+                # hex for a row blanked the hex that was already there. That is
+                # not a hex problem: if a source ever drops a column, or one
+                # scraper's coverage narrows, the catalogue silently loses data
+                # everywhere that source touches.
+                #
+                # It is also why a GENERATED hex had to be locked. It should not
+                # have to be: a guess ought to be overwritable by a future
+                # scrape that has the real value, and locking freezes it instead.
+                # With this rule, a generated value survives a scrape that knows
+                # nothing and yields to one that knows better.
+                #
+                # Deliberately one-way. A source cannot say "this row genuinely
+                # has no hex" and be believed, which is a real cost — but far
+                # smaller than mass erasure, and a deliberate blanking is what
+                # `locked_fields` and the admin are for.
+                writable = [f for f in writable
+                            if getattr(new_inst, f) or not getattr(old, f)]
                 if writable and any(getattr(old, f) != getattr(new_inst, f)
                                     for f in writable):
                     for f in writable:

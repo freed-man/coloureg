@@ -12,9 +12,10 @@ the colour family the row's own NAME states, tested with the same
 is discarded, not reviewed: there is no partial credit and no human in the loop
 per row, so the check has to be the gate.
 
-WRITES ARE LOCKED. A row with no hex is empty because no scraper has one for
-it, so an unlocked value is blanked by the next load writing the source's empty
-string back over it. `hex` goes into `locked_fields` on every write.
+WRITES ARE NOT LOCKED (paint167). A generated hex is a guess, and a guess
+should yield to a future scrape that has the real value. It used to have to be
+locked, because `--upsert` let an empty incoming value erase a populated one;
+that is fixed in the loader instead. Locking is for values we have verified.
 
 THE KEY COMES FROM THE ENVIRONMENT, never from an argument, so it cannot end up
 in shell history or a process list:
@@ -152,8 +153,14 @@ class Command(BaseCommand):
         qs = PaintLookup.objects.all()
         if opt['make']:
             qs = qs.filter(manufacturer=opt['make'].strip().lower())
-        # Never revisit a locked row: it has already been decided.
-        qs = qs.filter(locked_fields=[])
+        # Never revisit a row whose hex has been LOCKED: that is a verified
+        # decision. An unlocked generated value IS revisitable, deliberately.
+        #
+        # Filtered in Python, not with `locked_fields__contains`: that lookup
+        # is unsupported on SQLite, which is what the battery runs on. The
+        # query would work in production and fail every check.
+        def _hex_locked(row):
+            return 'hex' in (row.locked_fields or [])
 
         # paint166: WORK IN ORDER OF WHETHER A CUSTOMER CAN EVER SEE IT.
         #
@@ -173,14 +180,14 @@ class Command(BaseCommand):
             for qs_pass in (qs.filter(hex='').exclude(models_list=[]),
                             qs.filter(hex='', models_list=[])):
                 for r in qs_pass.order_by('manufacturer', 'code').iterator():
-                    if not (r.name or '').strip():
+                    if not (r.name or '').strip() or _hex_locked(r):
                         continue
                     out.append(r)
                     if len(out) >= opt['limit']:
                         return out
             return out
         for r in qs.iterator():
-            if not (r.name or '').strip():
+            if not (r.name or '').strip() or _hex_locked(r):
                 continue
             if r.hex and self._contradicts(r):
                 out.append(r)
@@ -249,8 +256,19 @@ class Command(BaseCommand):
         return False, f'proposed {got}, name says {sorted(want)}'
 
     def _write(self, row, hexv):
-        locked = list(row.locked_fields or [])
-        if 'hex' not in locked:
-            locked.append('hex')
-        PaintLookup.all_objects.filter(pk=row.pk).update(hex=hexv,
-                                                         locked_fields=locked)
+        # paint167: A GENERATED HEX IS NO LONGER LOCKED.
+        #
+        # It had to be, because `--upsert` wrote every field it was given and a
+        # scrape with no hex blanked the one we had. That is fixed at the
+        # source: an empty incoming value never erases a populated one. So a
+        # generated value now survives a scrape that knows nothing AND yields
+        # to one that knows better — which is right, because this is a guess.
+        #
+        # Locking stays for values we have actually VERIFIED: the 77 hexes
+        # corrected from catalogue evidence, ford/PN4EG's name. Those are
+        # decisions, not guesses, and a scrape should not overrule them.
+        #
+        # CONSEQUENCE, worth knowing: an unlocked row is selectable again, so a
+        # later run can revisit and change it. That is the intent — it is not a
+        # decision, it is a placeholder good enough to show a customer.
+        PaintLookup.all_objects.filter(pk=row.pk).update(hex=hexv)
