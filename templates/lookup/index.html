@@ -291,8 +291,21 @@
             padding: 0 14px;
             font-size: 16px;
         }
+        {% comment %}paint180: min-height: auto collapsed the hero to the height
+           of the search box, which put the guide on the first screen — exactly
+           what below-the-fold was meant to avoid. Desktop keeps a full screen
+           via calc(100vh - 80px) and reads correctly.
+
+           100svh, not 100vh: on phones 100vh is the viewport WITHOUT the
+           browser chrome, so it overflows by the height of the address bar and
+           the page starts scrolled-feeling. svh is the SMALL viewport height,
+           which is the honest one while the chrome is visible.
+
+           align-items stays flex-start so the box sits near the top rather than
+           floating in the middle of a tall screen. {% endcomment %}
         .content-wrapper {
-            min-height: auto;
+            min-height: calc(100vh - 140px);
+            min-height: calc(100svh - 140px);
             padding-top: 2rem;
             padding-bottom: 2rem;
             align-items: flex-start;
@@ -519,7 +532,7 @@
     .home-guide p { margin-bottom: 0; }
     .home-guide strong { color: #222; font-weight: 600; }
     @media (max-width: 576px) {
-        .home-guide { margin-top: 64px; font-size: 0.92rem; }
+        .home-guide { margin-top: 48px; font-size: 0.92rem; }
     }
 </style>
 {% endblock %}
