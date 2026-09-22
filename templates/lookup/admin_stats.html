@@ -1114,6 +1114,18 @@
     {% comment %}<!-- Cost tracker -->{% endcomment %}
         {% comment %}<!-- Recent manual lookup queue -->{% endcomment %}
     <style>
+        {% comment %}paint181: NO HEIGHT CAP AT REST.
+           max-height: 600px and overflow: hidden were here for the slide-away
+           animation, and they clashed with paint107, which makes the note field
+           grow to fit its text so there is no inner scrollbar to fight on touch.
+           A long note grew past 600px and the card CLIPPED it — the attachment
+           and the send button disappeared, and the text below the cut could
+           only be reached by moving the caret, which forced the clipped card to
+           scroll itself. Finger scrolling reached nothing.
+
+           The cap now exists only while collapsing. The JS sets the card's real
+           height the instant before, so the animation still runs from where the
+           card actually is to zero. {% endcomment %}
         .mlq-card {
             background: #fafafa;
             border: 1px solid #eee;
@@ -1121,11 +1133,10 @@
             padding: 16px;
             margin-bottom: 12px;
             transition: opacity 0.4s ease, max-height 0.5s ease, margin 0.5s ease, padding 0.5s ease;
-            overflow: hidden;
-            max-height: 600px;
             font-family: 'IBM Plex Sans', sans-serif;
         }
         .mlq-card.collapsing {
+            overflow: hidden;
             opacity: 0;
             max-height: 0;
             margin: 0;
@@ -1410,6 +1421,29 @@
                 word-break: break-all;
             }
             .recent-card-paint { font-size: 13px; margin-top: 6px; }
+            .has-note-card { cursor: pointer; }
+            .recent-card-note {
+                margin-top: 10px;
+                padding: 10px 12px;
+                background: #fafbfc;
+                border-radius: 6px;
+            }
+            .recent-card-note-block + .recent-card-note-block { margin-top: 10px; }
+            .recent-card-note-label {
+                font-size: 11px;
+                font-weight: 600;
+                letter-spacing: 0.6px;
+                text-transform: uppercase;
+                color: #666;
+                margin-bottom: 4px;
+            }
+            .recent-card-note-label.ours { color: #003399; }
+            .recent-card-note-text {
+                font-size: 13px;
+                color: #1a1a1a;
+                white-space: pre-wrap;
+                overflow-wrap: anywhere;
+            }
             .recent-card-paint .recent-paint-code { display: inline-block; margin-right: 8px; }
 
             {% comment %}/* Manual lookup queue — tighten the meta grid (default minmax(180px,1fr)
@@ -1819,9 +1853,16 @@
         {% comment %}<!-- Mobile cards (<=768px). CSS shows this only on narrow viewports. -->{% endcomment %}
         <div class="recent-cards">
             {% for s in recent_all_lookups %}
-            <div class="recent-card">
+            {% comment %}paint181: THE NOTE, ON MOBILE TOO.
+               The desktop table has a click-to-expand row for anything carrying
+               a manual note or a customer message. This card view showed the
+               envelope and never rendered the note at all, so a sent manual
+               lookup could not be read back on a phone — there was nothing to
+               open. Same markers and same content as the desktop row; tap the
+               card to reveal it. {% endcomment %}
+            <div class="recent-card{% if s.manual_note or s.customer_message %} has-note-card{% endif %}"{% if s.manual_note or s.customer_message %} data-note-card="{{ s.id }}" role="button" tabindex="0" aria-expanded="false"{% endif %}>
                 <div class="recent-card-row1">
-                    <span class="recent-card-date">{{ s.timestamp|date:"M j Y, H:i" }}{% if s.email_sent %} <span class="email-marker" title="Result emailed to {{ s.email }}">&#9993;</span>{% endif %}{% if s.access_label %} <span class="access-marker" title="Unlimited access: {{ s.access_label }}">&#9679;</span>{% endif %}</span>
+                    <span class="recent-card-date">{{ s.timestamp|date:"M j Y, H:i" }}{% if s.manual_note or s.customer_message %} <span class="note-marker" aria-hidden="true">&#9998;</span>{% endif %}{% if s.email_sent %} <span class="email-marker" title="Result emailed to {{ s.email }}">&#9993;</span>{% endif %}{% if s.access_label %} <span class="access-marker" title="Unlimited access: {{ s.access_label }}">&#9679;</span>{% endif %}</span>
                     {% if s.recovery_name_only %}
                     <span class="outcome-partial" title="Colour name found — no code">◐</span>
                     {% elif s.success %}
@@ -1861,6 +1902,22 @@
                         {% endif %}
                     </span>
                 </div>
+                {% if s.manual_note or s.customer_message %}
+                <div class="recent-card-note" id="note-card-{{ s.id }}" hidden>
+                    {% if s.customer_message %}
+                    <div class="recent-card-note-block">
+                        <div class="recent-card-note-label">Customer said</div>
+                        <div class="recent-card-note-text">{{ s.customer_message }}</div>
+                    </div>
+                    {% endif %}
+                    {% if s.manual_note %}
+                    <div class="recent-card-note-block">
+                        <div class="recent-card-note-label ours">Our note</div>
+                        <div class="recent-card-note-text">{{ s.manual_note }}</div>
+                    </div>
+                    {% endif %}
+                </div>
+                {% endif %}
             </div>
             {% empty %}
             <div style="color: #999; text-align: center; padding: 24px 0;">No lookups yet</div>
@@ -2092,6 +2149,28 @@
         if (detail) detail.hidden = !detail.hidden;
     });
 
+    {% comment %}paint181: the same for the mobile cards. A link or button
+       inside the card is left alone, so tapping the customer's email address
+       still opens a mail client rather than toggling the note. aria-expanded
+       follows the state, so a screen reader announces it. {% endcomment %}
+    function toggleNoteCard(card) {
+        var body = document.getElementById('note-card-' + card.dataset.noteCard);
+        if (!body) return;
+        body.hidden = !body.hidden;
+        card.setAttribute('aria-expanded', body.hidden ? 'false' : 'true');
+    }
+    document.addEventListener('click', function (e) {
+        if (!e.target.closest) return;
+        if (e.target.closest('a, button, input, textarea, select')) return;
+        var card = e.target.closest('[data-note-card]');
+        if (card) toggleNoteCard(card);
+    });
+    document.addEventListener('keydown', function (e) {
+        if (e.key !== 'Enter' && e.key !== ' ') return;
+        var card = e.target.closest ? e.target.closest('[data-note-card]') : null;
+        if (card && e.target === card) { e.preventDefault(); toggleNoteCard(card); }
+    });
+
     // Chart data arrives as JSON in a separate application/json block (see
     // the view). json_script escapes it properly, so a value carrying a quote
     // or an angle bracket can never break out into executable code the way a
@@ -2276,8 +2355,16 @@
 
             // After delay, fade out and collapse
             setTimeout(function() {
+                {% comment %}paint181: give max-height a real starting number.
+                   The card has no cap at rest, and a transition cannot animate
+                   from "none" — so set the current height, force a reflow so
+                   the browser commits it, then add the class that drives it to
+                   zero. {% endcomment %}
+                card.style.maxHeight = card.scrollHeight + 'px';
+                void card.offsetHeight;
                 statusEl.classList.add('collapsing');
                 card.classList.add('collapsing');
+                card.style.maxHeight = '0px';
             }, delayMs);
 
             // After collapse animation finishes, remove the card from DOM and update count

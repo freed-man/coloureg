@@ -32,7 +32,6 @@ from .models import (Search, PaintLookup, SiteConfig, VrmCache,
                      OperatorPaintCode, PaintCodeReport)
 from .services.vdg import (
     vehicle_lookup,
-    smart_title,
     normalize_fuel_type,
     fix_make_case,
     VdgError,
@@ -3144,11 +3143,39 @@ def admin_stats(request):
                 rep.operator_note = f'corrected to {code} {name}'.strip()
                 fields.append('operator_note')
                 corrected = True
+                # paint181: THE LOOKUP YOU CORRECTED CHANGES TOO.
+                #
+                # This used to write only to OperatorPaintCode, for the NEXT
+                # lookup — and never touch the row in front of you, so Recent
+                # Lookups went on showing the answer you had just said was
+                # wrong. And the operator table is only consulted when the
+                # catalogue MISSES, so for a code the catalogue already holds
+                # the correction reached nobody at all: R6EDL's JBC1927 sits in
+                # the catalogue as Zircon Mica, pl24 said "Zircon", and pl24's
+                # own name wins because enrichment only fills missing fields.
+                #
+                # So the correction now lands where it was made. Kept exactly as
+                # typed — no casing applied, only the ends trimmed above.
+                Search.objects.filter(id=rep.search_id).update(
+                    paint_code=code, paint_description=name)
+                # ...and in the registration cache, or a repeat lookup of the
+                # same plate would be served the old answer from storage for as
+                # long as the entry lives, and the fix would only ever show in
+                # the admin.
+                _cached = get_cached_vrm_payload(rep.registration, count_hit=False)
+                if _cached and _cached.get('paint_code'):
+                    _cached['paint_code'] = code
+                    _cached['paint_description'] = name
+                    store_vrm_payload(rep.registration, _cached)
 
         rep.save(update_fields=fields)
         if corrected:
-            messages.success(request, f'{rep.registration}: recorded {code} '
-                                      f'{name}'.strip() + '. Future lookups will use it.')
+            # paint181: said "Future lookups will use it", which was untrue for
+            # any code the catalogue already holds — the operator table is only
+            # consulted on a catalogue miss. What is now always true is that
+            # THIS lookup changed.
+            messages.success(request, f'{rep.registration}: corrected to {code} '
+                                      f'{name}'.strip() + '.')
         else:
             messages.success(request, f'Report for {rep.registration} marked '
                                       f'{rep.get_status_display().lower()}.')
@@ -3969,8 +3996,13 @@ def submit_manual_lookup(request):
 
     search_id = request.POST.get('search_id')
     # Paint codes are always upper-case in practice (manufacturer convention).
-    # We .upper() here so admin typos don't end up as mixed-case in the DB.
-    paint_code = (request.POST.get('paint_code') or '').strip().upper()
+    # paint181: KEPT EXACTLY AS TYPED, ends trimmed only. This used to force
+    # .upper() on the code and smart_title() on the name, so whatever the
+    # operator wrote was rewritten before it reached the customer. He sets the
+    # casing himself. Trimming stays because a phone keyboard adds a trailing
+    # space after autocomplete, and "JBC1927 " is not the same string as
+    # "JBC1927" to anything that compares them.
+    paint_code = (request.POST.get('paint_code') or '').strip()
     paint_description = (request.POST.get('paint_description') or '').strip()
     # Free-text note from the admin, shown in the email's "A note from us"
     # block. Now also PERSISTED (paint16) — previously it went into the email
@@ -4055,7 +4087,7 @@ def submit_manual_lookup(request):
 
     # Title-case the description so '  glacier white-metallic ' becomes
     # 'Glacier White-Metallic' before saving and sending.
-    paint_description_clean = smart_title(paint_description) if paint_description else ''
+    paint_description_clean = paint_description
 
     # paint92: remember a hand-researched code so the NEXT car with the same
     # make and colour resolves automatically. Written before the email so a
