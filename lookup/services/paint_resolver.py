@@ -1467,6 +1467,9 @@ def resolve_paint(registration, vin, make, category=None, telemetry=None, model=
     _t['ezyvin_credits'] = None
     _t['ezyvin_outcome'] = ''
     _t['ezyvin_started_because'] = ''
+    # paint182: what it SAID, not just whether it said anything.
+    _t['ezyvin_code'] = ''
+    _t['ezyvin_name'] = ''
     # RACE FLAG. Set the moment a usable code is found, so a second chance that
     # fires afterwards can record that it did. Measurement only right now — it
     # cancels nothing, because nothing here CAN be cancelled: an HTTP call
@@ -1697,6 +1700,14 @@ def resolve_paint(registration, vin, make, category=None, telemetry=None, model=
                 _t['ezyvin_credits'] = _ez_sink.get('credits')
                 _t['ezyvin_outcome'] = _ez_sink.get('outcome', '')
                 ez = _result_or_none(f_ezyvin)
+                # paint182: RECORDED BEFORE THE BRANCHES, so it is kept whether
+                # Ezyvin wins with a code, offers a name that loses to another
+                # leg, or is never used at all. Recording it inside a branch
+                # would keep only the answers that happened to be taken, which
+                # is the half that needs no auditing.
+                if ez is not None:
+                    _t['ezyvin_code'] = (ez.get('code') or '')[:50]
+                    _t['ezyvin_name'] = (ez.get('description') or '')[:200]
                 if ez is not None and ez.get('code'):
                     _t['ezyvin_returned'] = True
                     race_over.set()

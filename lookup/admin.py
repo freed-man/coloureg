@@ -107,6 +107,10 @@ class SearchAdmin(admin.ModelAdmin):
         'ezyvin_credits',
         'ezyvin_outcome',
         'ezyvin_started_because',
+        # paint182: what it SAID, alongside what it cost. Readonly like the
+        # rest — the pipeline writes it and editing it would falsify the record.
+        'ezyvin_code',
+        'ezyvin_name',
         'pl24_outcome',
         'pl24_name',
         'pl24_started_because',
@@ -177,7 +181,8 @@ class SearchAdmin(admin.ModelAdmin):
                        # does not render it, and fieldsets alone would make it
                        # editable.
                        'ezyvin_credits', 'ezyvin_outcome',
-                       'ezyvin_started_because'),
+                       'ezyvin_started_because',
+                       'ezyvin_code', 'ezyvin_name'),
         }),
         ('partslink24 detail', {
             'classes': ('collapse',),

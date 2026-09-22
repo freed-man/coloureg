@@ -316,6 +316,21 @@ class Search(models.Model):
     # is the diagnostic: if backstop is more than a rarity, EZYVIN_BACKSTOP_S is
     # too early and the real question is which leg is hanging.
     ezyvin_started_because = models.CharField(max_length=24, blank=True, default='')
+
+    # paint182: WHAT EZYVIN ACTUALLY SAID.
+    #
+    # Every other provider records its answer — pl24_code/pl24_name,
+    # oneauto_code/oneauto_name, vdg_retry_code/vdg_paint_name,
+    # mmw_code/mmw_colour. Ezyvin recorded only credits, outcome and why it
+    # started, so the one provider charged per call was the one whose answer
+    # was thrown away.
+    #
+    # That made every Ezyvin decision blind: an `ezyvin_outcome` of 'name_only'
+    # could be a good name pl24 had missed or a useless one, and there was no
+    # way to tell which, or to compare the two sources on a row where both
+    # answered.
+    ezyvin_code = models.CharField(max_length=50, blank=True, default='')
+    ezyvin_name = models.CharField(max_length=200, blank=True, default='')
     # WHY pl24 was brought into the race, or blank if it never was (paint68).
     # pl24 is now held back as reinforcement rather than started on every
     # lookup, so "did it run" is no longer implied by "a lookup happened" — and

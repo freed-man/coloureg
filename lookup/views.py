@@ -2404,6 +2404,14 @@ def _apply_recovery_telemetry(search, telemetry):
     if telemetry.get('ezyvin_started_because'):
         search.ezyvin_started_because = telemetry['ezyvin_started_because'][:24]
         fields.append('ezyvin_started_because')
+    # paint182: what Ezyvin actually said. Every other provider records its
+    # answer; the one charged per call recorded only that it had been called.
+    if telemetry.get('ezyvin_code'):
+        search.ezyvin_code = telemetry['ezyvin_code'][:50]
+        fields.append('ezyvin_code')
+    if telemetry.get('ezyvin_name'):
+        search.ezyvin_name = telemetry['ezyvin_name'][:200]
+        fields.append('ezyvin_name')
     if telemetry.get('pl24_started_because'):
         search.pl24_started_because = telemetry['pl24_started_because'][:24]
         fields.append('pl24_started_because')
