@@ -65,6 +65,38 @@ _BREAKER_WINDOW_S = 120
 _BREAKER_MIN_SAMPLE = 30
 _BREAKER_THRESHOLD = 0.9
 
+# paint186: THE WINDOW ABOVE CANNOT TRIP ON THIS SITE. It needs 30 requests
+# inside 120 seconds on ONE worker, and coloureg sees a few an hour. Measured,
+# with block mode on and the Transform Rule broken: at one request every five
+# minutes, and at ten times that, every visitor was refused for six hours and
+# the breaker never fired. Under block that is a total outage with no end, and
+# the admin dashboard is refused with everything else, so its switch cannot end
+# it either. Found by an external audit (N6), then reproduced.
+#
+# So under BLOCK there is a second trigger that needs no window: a run of
+# requests REFUSED IN A ROW, with none getting through. It works at any volume,
+# because it counts events rather than rates.
+#
+# Why a short run is safe here. The window's large sample guards against stray
+# scanners hitting the origin directly being read as "Cloudflare is broken".
+# The operator's dashboard showed ZERO requests bypassing Cloudflare in 14 days
+# (23 Sep), so there are no such scanners to mistake. And the costs are not
+# symmetric: a false trip drops block to observe, where the site works and the
+# dashboard says so; a missed trip refuses every customer indefinitely.
+#
+# Counted at the moment a request is REFUSED, not in _tick. _tick sees every
+# request, including the exempt Stripe webhook, and a run of those arriving
+# without the header must not trip block mode when nobody was refused. Reset by
+# any request that DID come through Cloudflare, so a working rule clears it
+# with every real visitor. Held in the per-process cache like the window, so
+# counting never touches the database.
+_BLOCK_TRIP_REFUSED_IN_A_ROW = 5
+_BLOCK_STREAK_KEY = 'origin-gate:block-refused-streak'
+# Long, deliberately. At a few requests an hour a short expiry would forget the
+# streak between refusals and it could never reach the threshold — the same
+# starvation this exists to fix, reintroduced by a TTL.
+_BLOCK_STREAK_TTL = 60 * 60 * 24
+
 
 def origin_gate_stats():
     """Direct-hit stats for the dashboard: {'count': int, 'paths': [...], 'since': str}.
@@ -133,6 +165,7 @@ class OriginGateObserverMiddleware:
                 # it is a real path refused for a reason. A monitor of ours
                 # pointed at the wrong address should see a clear refusal in its
                 # own logs rather than think the page has gone.
+                self._note_refused()
                 return HttpResponse(b'Forbidden', status=403,
                                     content_type='text/plain; charset=utf-8')
         except Exception:
@@ -236,6 +269,10 @@ class OriginGateObserverMiddleware:
             if not ok:
                 w['missing'] += 1
             cache.set(_BREAKER_KEY, w, _BREAKER_WINDOW_S * 3)
+            if ok:
+                # paint186: one request through Cloudflare proves the rule is
+                # firing, so a run of refusals so far was not an outage.
+                cache.delete(_BLOCK_STREAK_KEY)
         except Exception:
             # paint155: LOG IT. This swallowed a NameError on every request for
             # as long as the breaker has existed, and nothing anywhere said so —
@@ -263,16 +300,53 @@ class OriginGateObserverMiddleware:
         if cfg.origin_gate_mode not in (SiteConfig.ORIGIN_GATE_ENFORCE,
                                         SiteConfig.ORIGIN_GATE_BLOCK):
             return
+        self._revert(cfg, '%d of %d recent requests arrived without the '
+                          'Cloudflare header' % (w['missing'], w['total']))
+
+    def _note_refused(self):
+        """paint186: count a refusal; under block, enough in a row reverts.
+
+        Never raises. It runs on the refusal path, where an exception would be
+        swallowed by the caller's fail-open handler and the request SERVED —
+        so a broken counter must fail quietly and let the 403 stand.
+        """
+        try:
+            cache = caches['local']
+            streak = (cache.get(_BLOCK_STREAK_KEY) or 0) + 1
+            if streak >= _BLOCK_TRIP_REFUSED_IN_A_ROW and self._trip_block(streak):
+                cache.delete(_BLOCK_STREAK_KEY)
+            else:
+                cache.set(_BLOCK_STREAK_KEY, streak, _BLOCK_STREAK_TTL)
+        except Exception:
+            logger.exception('origin gate refusal streak failed')
+
+    def _trip_block(self, streak):
+        """Revert BLOCK to observe after a run of refusals. Block only: under
+        enforce nothing is refused, so this trigger has nothing to say."""
+        from lookup.views import origin_gate_mode
+        if origin_gate_mode() != 'block':
+            return False
+        from lookup.models import SiteConfig
+        cfg = SiteConfig.get()
+        if cfg.origin_gate_mode != SiteConfig.ORIGIN_GATE_BLOCK:
+            return False
+        self._revert(cfg, '%d requests in a row were refused and none came '
+                          'through Cloudflare' % streak)
+        return True
+
+    def _revert(self, cfg, why):
+        """Drop to observe. ONE copy, shared by both triggers, so the thing
+        that actually restores the site cannot drift between them."""
+        from lookup.models import SiteConfig
         cfg.origin_gate_mode = SiteConfig.ORIGIN_GATE_OBSERVE
         cfg.origin_gate_auto_reverted_at = timezone.now()
         cfg.save(update_fields=['origin_gate_mode',
                                 'origin_gate_auto_reverted_at', 'updated_at'])
         logger.error(
-            'ORIGIN GATE AUTO-REVERTED to observe: %d of %d recent requests '
-            'arrived without the Cloudflare header. Either the Transform Rule '
+            'ORIGIN GATE AUTO-REVERTED to observe: %s. Either the Transform Rule '
             'has stopped firing (check it) or the origin is being flooded '
             'directly. Enforcement is now OFF and must be re-enabled by hand.',
-            w['missing'], w['total'],
+            why,
         )
 
 
