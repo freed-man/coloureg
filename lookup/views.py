@@ -4721,6 +4721,13 @@ def _fulfil_paid_session(session):
         caches['default'].delete(lock_key)
 
 
+#: paint193: what a Stripe Checkout Session id looks like — cs_test_ or cs_live_
+#: then letters and digits (Stripe API reference, checked 23 Sep 2026). Loose on
+#: purpose: it only asks for what every genuine id has, because rejecting a real
+#: one would leave a customer who has PAID unable to see their result.
+_STRIPE_SESSION_ID = re.compile(r'cs_[A-Za-z0-9_]{1,250}')
+
+
 def paid_success(request):
     """Stripe success redirect: unlock the result and show it (paint22).
 
@@ -4731,8 +4738,27 @@ def paid_success(request):
     """
     if not payments_active():
         return redirect('index')
-    session_id = request.GET.get('session_id')
-    if not session_id:
+    session_id = (request.GET.get('session_id') or '').strip()
+    # paint193: F9, open since the August audit and raised again (N8). Whatever
+    # followed session_id= in the address went straight into a Stripe API call,
+    # with no check that it looked like a Stripe id and no limit on how often.
+    # Not a way to unlock a result — a made-up id fails to confirm — but a way to
+    # spend the Stripe API allowance that real payment confirmations share.
+    #
+    # Junk is dropped here, before it costs a call.
+    if not _STRIPE_SESSION_ID.fullmatch(session_id):
+        return redirect('index')
+    # And a well-formed fake is bounded. A real customer lands here once, maybe
+    # twice; twenty an hour is far beyond that. Even a refused customer loses
+    # nothing: the Stripe webhook fulfils the payment on its own, so this can
+    # only ever delay seeing the result, never lose a payment.
+    if is_ratelimited(request, group='paid_success', key='ip', rate='20/h',
+                      method='GET', increment=True):
+        messages.error(
+            request,
+            'We could not confirm that payment just now. If you have been '
+            'charged, please get in touch and we will sort it out straight away.'
+        )
         return redirect('index')
     search = _fulfil_paid_session(get_session(session_id))
     if search is None:

@@ -31,23 +31,39 @@ off it is not silently re-sent, so an occasional hard failure appears where
 today there would be a slow success.
 
 That is the correct trade on a billed path: a visible failure the caller can
-record beats a hidden second charge. It is also bounded — POOL_IDLE_S keeps
-connections young enough that most are still live, and every caller here
-already has a failure path because every one of these providers times out
-sometimes anyway.
+record beats a hidden second charge.
+
+WHAT ACTUALLY BOUNDS IT (paint192)
+----------------------------------
+urllib3 checks every pooled connection before reusing it, and if the far end
+has closed it, opens a fresh one instead (HTTPConnectionPool._get_conn ->
+is_connection_dropped; confirmed in urllib3 2.7.0). Nothing has been sent at
+that point, so it is NOT a retry, and Retry(total=0) does not stop it. That is
+what keeps a stale connection from failing on a coloureg-sized site, where a
+lookup arrives every few minutes and most pooled connections have sat idle for
+longer than any intermediary keeps them.
+
+What it cannot catch is a connection dropped SILENTLY — no close signal ever
+arrives, so the socket still looks alive. That surfaces as a timeout, and every
+caller here already has a failure path for timeouts, because every one of these
+providers times out sometimes anyway.
+
+Measured 23 Sep: 4,814 lookups from May to September, and not one error
+mentioning a reset or dropped connection.
+
+This used to say the trade was bounded by POOL_IDLE_S, a setting meant to stop
+reusing connections older than 60 seconds. It was defined and documented but
+never wired into anything, so the protection it described did not exist; it was
+removed rather than built, because the evidence above shows no problem for it
+to solve, and building it would mean changing the path every supplier call
+takes. Found by an external audit (N5).
 """
 
-import os
 import threading
 
 import requests
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
-
-#: Connections older than this are not reused. Railway recycles workers and
-#: intermediaries drop idle sockets; keeping the pool young trades a little of
-#: the saving for far fewer resets on the first call after a quiet spell.
-POOL_IDLE_S = int(os.environ.get('HTTP_POOL_IDLE_S', '60'))
 
 #: NO RETRIES. Read the module docstring before changing this — a silent retry
 #: on the VDG path is a second charge nobody sees.
