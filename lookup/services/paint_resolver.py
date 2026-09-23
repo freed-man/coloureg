@@ -568,6 +568,16 @@ def _vdg_retry(registration, telemetry=None, search_id=None, race_over=None):
     # found no paint. That is why partslink24 rows were storing £0.08 (one
     # call) when the account had actually been charged £0.16 (two).
     sink = {}
+    # paint195: the second chance gets its OWN record. Both calls wrote into
+    # `sink` and vdg.py overwrites rather than adds, so when the second chance
+    # ran it replaced the first call's charge before anything was recorded.
+    # That was real money. The second chance fires when the first retry comes
+    # back empty, and VDG only PARTLY refunds an empty reply: it nets ~£0.06,
+    # the vehicle part (see the COST note above). So every lookup reaching the
+    # second chance lost its first retry's charge from the row and from the
+    # budget breaker. Each call is now recorded and summed.
+    second_sink = {}
+    second = None
     data = None
     try:
         # PAINT package only (paint66). The retry never needed the vehicle
@@ -606,6 +616,7 @@ def _vdg_retry(registration, telemetry=None, search_id=None, race_over=None):
     # Only when the first call produced NO PAINT. A hit needs no second call,
     # and a hit is the only outcome that has already cost the full price — a
     # paint-less call is refunded.
+    first_data = data
     if not (data and data.get('paint_returned')):
         # RECORDED, not just done. Until now `data = second` overwrote silently,
         # so a row won on the second attempt looked identical to one won on the
@@ -617,7 +628,7 @@ def _vdg_retry(registration, telemetry=None, search_id=None, race_over=None):
         # a race-over flag would have prevented.
         after_race = bool(race_over is not None and race_over.is_set())
         try:
-            second = paint_lookup(registration, billing_sink=sink,
+            second = paint_lookup(registration, billing_sink=second_sink,
                                   timeout=SECOND_CHANCE_S)
         except Exception:  # noqa: BLE001 — a second chance must never raise
             second = None
@@ -636,13 +647,21 @@ def _vdg_retry(registration, telemetry=None, search_id=None, race_over=None):
     # nothing. Losing this figure is not a visible failure: it just makes the
     # budget breaker read low, which is precisely how the original bug went
     # unnoticed.
-    retry_cost = sink.get('transaction_cost')
-    if retry_cost is None and data:
-        retry_cost = data.get('transaction_cost')
+    first_cost = sink.get('transaction_cost')
+    if first_cost is None and first_data:
+        first_cost = first_data.get('transaction_cost')
+    second_cost = second_sink.get('transaction_cost')
+    if second_cost is None and second:
+        second_cost = second.get('transaction_cost')
+    _costs = [c for c in (first_cost, second_cost) if c is not None]
+    retry_cost = sum(_costs) if _costs else None
     if retry_cost is not None:
         _t['vdg_retry_cost'] = retry_cost
 
-    retry_balance = sink.get('balance')
+    # The balance is a snapshot, not a sum: the later call's is the current one.
+    retry_balance = second_sink.get('balance')
+    if retry_balance is None:
+        retry_balance = sink.get('balance')
     if retry_balance is None and data:
         retry_balance = data.get('balance')
     if retry_balance is not None:
@@ -1168,16 +1187,18 @@ def mmw_code_validates(make, code, dvla_colour):
     return None
 
 
-def _mmw_settle(f_mmw, make, vdg_colour, telemetry, delivered_code=None):
+def _mmw_settle(f_mmw, make, vdg_colour, telemetry):
     """Read mmw's held answer. Records agreement; returns a usable code or None.
 
-    paint140. Called in BOTH places mmw matters:
+    paint140, corrected in paint195. Called in ONE place: at the end, where a
+    validated code may be returned and served.
 
-      * when a paid leg won, with `delivered_code` set — then this only records
-        whether mmw agreed, and returns nothing. That is how the ordering gets
-        tested without changing any customer's answer.
-      * at the end, with `delivered_code` None — then a validated code may be
-        returned and served.
+    It used to take a `delivered_code` and record whether mmw agreed. Nothing
+    ever passed one, and the agreement it computed was an older, weaker copy
+    of the check in views._record_paint_hit, which also handles hyphens
+    (B-570M against B570M), the L and TE prefixes, Stellantis B0N codes and
+    Ford suffixes. The battery was testing the dead copy. Removed, so a
+    future fix cannot land in it and pass while changing nothing.
 
     NEVER BLOCKS. mmw started at t=0 and everything else has already finished
     by the time this runs, so the future is done or it hung; either way waiting
@@ -1194,16 +1215,6 @@ def _mmw_settle(f_mmw, make, vdg_colour, telemetry, delivered_code=None):
 
     validated = mmw_code_validates(make, row['code'], vdg_colour)
 
-    if delivered_code is not None:
-        # Compare against what the customer actually got. Compared on the
-        # VALIDATED form where there is one, because mmw sends the short code
-        # (A7N) and the pipeline may deliver the catalogue's (LA7N) — counting
-        # that as disagreement would understate mmw badly.
-        if telemetry is not None:
-            got = (delivered_code or '').strip().upper()
-            telemetry['mmw_agreed'] = got in {
-                (row['code'] or '').upper(), (validated or '').upper()}
-        return None
 
     if validated and telemetry is not None:
         telemetry['mmw_used'] = True

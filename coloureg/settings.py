@@ -354,10 +354,11 @@ TURNSTILE_ALLOWED_HOSTNAMES = [
 #
 # 1. THE ORIGIN GATE. Cloudflare adds a secret header to everything passing
 #    through it (F2, see views.via_cloudflare). A POST straight to Railway
-#    carries no such header, so under enforce its IP is not trusted, and under
-#    the blocking stage that is still to come it would be refused outright.
-#    Stripe retries a refused webhook quietly in the background for hours: the
-#    customer is charged, nothing is fulfilled, and no error surfaces anywhere.
+#    carries no such header, so under enforce its IP is not trusted. Under
+#    BLOCK it is NOT refused: /stripe/webhook/ is exempt (middleware
+#    _BLOCK_EXEMPT) precisely so a delivery reaching Railway directly still
+#    lands. paint195: this used to claim such a delivery would be turned
+#    away, written before block mode existed, and so disagreed with the code.
 #
 # 2. THE CONCERN THAT MOTIVATED IT IS HANDLED. Bot protection cannot challenge
 #    this path — Turnstile is checked on the lookup form, not on POSTs to

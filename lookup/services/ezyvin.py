@@ -35,7 +35,12 @@ from .http import get_session
 logger = logging.getLogger(__name__)
 
 BASE_URL = os.environ.get('EZYVIN_BASE_URL', 'https://ezyvin.com')
-TOKEN = os.environ.get('EZYVIN_TOKEN', '')
+# paint195: the token is read PER CALL, as vdg.py reads VDG_API_KEY. It was a
+# module constant read once at import. Railway redeploys on any variable
+# change, so this was never a live fault; it is consistency, and it means a
+# rotated token cannot be missed by a process that outlives the change.
+def _token():
+    return os.environ.get('EZYVIN_TOKEN', '')
 USER_AGENT = os.environ.get('EZYVIN_UA', 'coloureg/1.0 (+https://coloureg.com)')
 
 #: Measured across 40 build sheets on 8 Sep: every 200 cost 5, every 404 cost 0.
@@ -255,12 +260,12 @@ def credits_used():
     /me/info carries no credit data — user and token only — so this is the only
     endpoint that knows.
     """
-    if not TOKEN:
+    if not _token():
         return None
     try:
         resp = get_session().get(
             f'{BASE_URL}/api/v1/me/usage',
-            headers={'Authorization': f'Bearer {TOKEN}',
+            headers={'Authorization': f'Bearer {_token()}',
                      'User-Agent': USER_AGENT, 'Accept': 'application/json'},
             timeout=10)
         if resp.status_code != 200:
@@ -300,7 +305,11 @@ def _poll(job_id, headers, deadline):
                 return {'status': 'error', 'statusCode': resp.status_code}
             job = resp.json()
         except Exception as e:  # noqa: BLE001 — a broken poll is a miss
-            return {'status': 'error', 'errorMessage': f'{type(e).__name__}: {e}'}
+            # paint195: flagged as OURS. Ezyvin can return a genuine job whose
+            # status is 'error'; only this marker says the poll never got an
+            # answer at all, so the two cannot be mistaken for each other.
+            return {'status': 'error', 'errorMessage': f'{type(e).__name__}: {e}',
+                    '_transport_error': True}
         if str(job.get('status', '')).lower() in ('completed', 'failed', 'error'):
             return job
         time.sleep(POLL_GAP_S)
@@ -320,7 +329,7 @@ def lookup(vin, cost_sink=None, race_over=None, budget=None):
     sink.setdefault('credits', 0)
     sink.setdefault('outcome', '')
 
-    if not TOKEN:
+    if not _token():
         sink['outcome'] = 'no_token'
         return None
     if not vin:
@@ -334,7 +343,7 @@ def lookup(vin, cost_sink=None, race_over=None, budget=None):
         sink['outcome'] = 'skipped_race_over'
         return None
 
-    headers = {'Authorization': f'Bearer {TOKEN}',
+    headers = {'Authorization': f'Bearer {_token()}',
                'User-Agent': USER_AGENT,
                'Accept': 'application/json',
                'X-Async': 'true'}
@@ -368,6 +377,14 @@ def lookup(vin, cost_sink=None, race_over=None, budget=None):
             # Budget spent. The job may still complete and still be charged —
             # we simply are not waiting for it, and cannot know which.
             sink['outcome'] = 'timeout'
+            sink['credits'] = CREDITS_PER_HIT
+            return None
+        if job.get('_transport_error'):
+            # paint195: the POLL failed in transit. It fell through to the
+            # submit's 202 and was recorded as outcome 'http_202', which reads
+            # as an HTTP reply that never happened. The job was submitted and
+            # may still be billed, so the charge stays recorded: the safe side.
+            sink['outcome'] = 'poll_transport_error'
             sink['credits'] = CREDITS_PER_HIT
             return None
         status = job.get('statusCode') or (200 if job.get('result') else status)

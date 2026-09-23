@@ -97,8 +97,15 @@ def get_session():
             s = requests.Session()
             adapter = HTTPAdapter(
                 max_retries=_NO_RETRIES,
-                pool_connections=8,
-                pool_maxsize=8,
+                # paint195: sized to what can run at once. Each lookup runs up
+                # to 4 suppliers in parallel, on each of a worker's request
+                # threads, so one host (VDG above all) can see well over 8
+                # calls together. Past pool_maxsize nothing fails, the extra
+                # connections are just thrown away after use, with a warning.
+                # pool_connections is how many HOSTS stay pooled; there are
+                # more than 8 suppliers and services. Idle slots cost nothing.
+                pool_connections=16,
+                pool_maxsize=32,
             )
             s.mount('https://', adapter)
             s.mount('http://', adapter)
