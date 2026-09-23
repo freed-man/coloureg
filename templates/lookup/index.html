@@ -648,19 +648,11 @@
                        satisfiable under the Consumer Rights Act. A post-hoc exclusion
                        buried in a disclaimer would not be.{% endcomment %}
                     <p class="pay-notice" style="margin: 14px 0 0; font-size: 12px; color: #777; line-height: 1.5; text-align: center;">
-                        Search free. £{{ lookup_price|floatformat:2 }} only if we find your paint code —
-                        payments processed securely by Stripe.
-                        <br>
-                        We tell you whether we've found it before you pay anything. If we haven't,
-                        the payment is cancelled automatically and you pay nothing —
-                        a temporary £{{ lookup_price|floatformat:2 }} hold may appear briefly on your statement
-                        before it disappears.
-                        <br>
-                        We return the paint code our sources hold for your registration.
-                        Always check it against your vehicle's paint code label before
-                        buying paint — the label is the authoritative source for your car.
-                        <a href="{% url 'disclaimer' %}" style="color: #003399;">Full terms</a>.
-                    </p>
+{% comment %} paint194: one line, so people know the price before they search.
+The full disclosure lives where they actually pay: the results page, Stripe's
+checkout and the disclaimer. {% endcomment %}
+£{{ lookup_price|floatformat:"-2" }} per lookup (if successful)
+</p>
                     {% endif %}
                     {% comment %} paint23: shown when the make is one we cannot resolve. No
                        lookup is submitted, so nothing is spent and the answer is

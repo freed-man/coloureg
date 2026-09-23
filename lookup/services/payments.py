@@ -42,6 +42,19 @@ outcome, which can no longer occur.
 
 import logging
 
+#: paint194: THE EXACT WORDS THE CUSTOMER TICKS. One copy, read by the checkout
+#: box, the Stripe receipt and the results email. The receipt and the email
+#: quote it back as the confirmation the law requires (CCR reg 16(3)), and a
+#: confirmation quoting different words from the ones ticked would not confirm
+#: the consent at all, so the three must never drift apart.
+#:
+#: Both halves of reg 37(1) in the box the customer actively ticks: express
+#: consent ("show me my paint code now") and the acknowledgement ("I lose my
+#: right to cancel"), in the regulation's own words. The lookup has already run
+#: by the time anyone pays (paint22), so it no longer says "run my lookup".
+CONSENT_TEXT = ("Show me my paint code now. I understand that once it's shown, "
+                "I lose my right to cancel.")
+
 from django.conf import settings
 
 logger = logging.getLogger(__name__)
@@ -115,7 +128,14 @@ def create_checkout_session(registration, success_url, cancel_url, client_ip=Non
             # THE key setting: authorise now, capture later (or cancel).
             'capture_method': 'manual',
             'metadata': {'registration': registration},
-            'description': f'Paint code lookup — {registration}',
+            # paint194: THE CONFIRMATION, on the receipt Stripe emails. Quotes the
+            # ticked words back, which reg 16(3) requires; without it reg 37(4)
+            # lets the customer cancel and keep the code free. The paint code
+            # itself stays OFF: this is written when checkout starts, before
+            # anyone has paid.
+            'description': (f'Paint code for {registration}, shown on screen '
+                            f'when you paid. Before paying, you ticked: '
+                            f'"{CONSENT_TEXT}"'),
         },
         # client_ip / user_agent ride in metadata rather than being read off the
         # fulfilling request (paint18). Fulfilment happens either on the
@@ -147,24 +167,20 @@ def create_checkout_session(registration, success_url, cancel_url, client_ip=Non
         # information was never given). Since this service delivers instantly,
         # that would be every single customer.
         #
-        # The ticked terms box is the express consent (an active tick — pre-ticked
-        # boxes are expressly disallowed); the submit message carries the
-        # acknowledgement, shown before the pay button is pressed, i.e. before
-        # supply begins. Requires a Terms of Service URL set in the Stripe
+        # The ticked terms box now carries BOTH the express consent and the
+        # acknowledgement (paint194; see CONSENT_TEXT), an active tick, as
+        # pre-ticked boxes are expressly disallowed. The submit message is only
+        # reassurance: the code is found before anyone is asked to pay. Requires a Terms of Service URL set in the Stripe
         # dashboard (Settings -> Public details) or Checkout will reject this.
         consent_collection={'terms_of_service': 'required'},
         custom_text={
             'terms_of_service_acceptance': {
-                'message': (
-                    'I ask coloureg to run my lookup immediately and I accept '
-                    'that I lose my 14-day right to cancel once the paint code '
-                    'is delivered. If no paint code is found, I am not charged.'
-                ),
+                'message': CONSENT_TEXT,
             },
             'submit': {
                 'message': (
-                    'Your card is only charged if we find your paint code. '
-                    'If we find nothing, the payment is cancelled automatically.'
+                    "We've already found your paint code. "
+                    "You'll see it as soon as you pay."
                 ),
             },
         },

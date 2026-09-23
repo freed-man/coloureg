@@ -349,28 +349,28 @@
                    and colour tricks all leave the answer in the DOM. What is shown
                    here is availability, nothing more.{% endcomment %}
                 {% if locked %}
-                <div id="paint-locked-state" class="text-center">
-                    <div class="mb-3">
-                        <div class="d-flex justify-content-center gap-4 flex-wrap mb-3">
-                            <div>
-                                <div style="font-size: 13px; color: #6c757d; text-transform: uppercase; letter-spacing: .5px;">Paint code</div>
-                                <div style="font-size: 18px; font-weight: 700; color: #198754;">
-                                    <i class="fas fa-check-circle me-1"></i>Available
-                                </div>
-                            </div>
-                            <div>
-                                <div style="font-size: 13px; color: #6c757d; text-transform: uppercase; letter-spacing: .5px;">Colour name</div>
-                                <div style="font-size: 18px; font-weight: 700; color: #198754;">
-                                    <i class="fas fa-check-circle me-1"></i>Available
-                                </div>
-                            </div>
+                <div id="paint-locked-state">
+                    {% comment %} paint194: LOCKED, laid out like a real result. The colour
+                    bar runs edge to edge first, as a found result's does, and everything
+                    else sits in the padded block beneath, clear of the card edge.
+                    The bar shows the car's REAL colour, the one real value a locked page
+                    carries (see _locked_payload). The code and name are pixel blocks in
+                    the brand gradient, drawn once from a FAKE code: there is no text of
+                    any kind here, so nothing to un-blur, and if anything fails you see
+                    blocks, never a code someone could mistake for theirs. The real code
+                    and name are not in this page at all (paint22). {% endcomment %}
+                    <div class="paint-swatch-bar" style="background: {{ locked_paint_hex|default:'#c3c7cc' }};"></div>
+                    <div class="paint-block">
+                        <div aria-hidden="true">
+                            <div class="paint-code"><svg style="height: 64px; width: auto; display: block; margin: 0 auto;" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 180 48" aria-hidden="true" focusable="false" shape-rendering="crispEdges"><rect x="0" y="0" width="12" height="12" fill="#f9d2ce"/><rect x="12" y="0" width="12" height="12" fill="#f1946a"/><rect x="24" y="0" width="12" height="12" fill="#f5ab64"/><rect x="36" y="0" width="12" height="12" fill="#fbddab"/><rect x="48" y="0" width="12" height="12" fill="#f6c557"/><rect x="60" y="0" width="12" height="12" fill="#f6d15e"/><rect x="72" y="0" width="12" height="12" fill="#e8df81"/><rect x="84" y="0" width="12" height="12" fill="#d7ebba"/><rect x="96" y="0" width="12" height="12" fill="#8edf9e"/><rect x="120" y="0" width="12" height="12" fill="#69c4c4"/><rect x="132" y="0" width="12" height="12" fill="#d9edf7"/><rect x="144" y="0" width="12" height="12" fill="#90b2e1"/><rect x="156" y="0" width="12" height="12" fill="#b0acdc"/><rect x="168" y="0" width="12" height="12" fill="#ddc6e6"/><rect x="0" y="12" width="12" height="12" fill="#ef8a7f"/><rect x="12" y="12" width="12" height="12" fill="#f5b598"/><rect x="24" y="12" width="12" height="12" fill="#f5af6c"/><rect x="36" y="12" width="12" height="12" fill="#f9d08b"/><rect x="48" y="12" width="12" height="12" fill="#fadc9b"/><rect x="60" y="12" width="12" height="12" fill="#f6d260"/><rect x="72" y="12" width="12" height="12" fill="#f4f0c4"/><rect x="84" y="12" width="12" height="12" fill="#95ca48"/><rect x="96" y="12" width="12" height="12" fill="#b0e8bb"/><rect x="108" y="12" width="12" height="12" fill="#81dab7"/><rect x="120" y="12" width="12" height="12" fill="#56bdbd"/><rect x="132" y="12" width="12" height="12" fill="#cde7f4"/><rect x="144" y="12" width="12" height="12" fill="#578bd2"/><rect x="156" y="12" width="12" height="12" fill="#a19cd6"/><rect x="0" y="24" width="12" height="12" fill="#f3a49c"/><rect x="12" y="24" width="12" height="12" fill="#f08f63"/><rect x="24" y="24" width="12" height="12" fill="#f39c49"/><rect x="36" y="24" width="12" height="12" fill="#fbdfb1"/><rect x="48" y="24" width="12" height="12" fill="#f5c049"/><rect x="60" y="24" width="12" height="12" fill="#fcf0c9"/><rect x="72" y="24" width="12" height="12" fill="#e6dd79"/><rect x="84" y="24" width="12" height="12" fill="#afd876"/><rect x="96" y="24" width="12" height="12" fill="#7eda90"/><rect x="108" y="24" width="12" height="12" fill="#77d7b1"/><rect x="120" y="24" width="12" height="12" fill="#49b7b7"/><rect x="132" y="24" width="12" height="12" fill="#9bcee9"/><rect x="144" y="24" width="12" height="12" fill="#6a97d7"/><rect x="156" y="24" width="12" height="12" fill="#908bcf"/><rect x="168" y="24" width="12" height="12" fill="#dbc4e5"/><rect x="12" y="36" width="12" height="12" fill="#f9d1be"/><rect x="24" y="36" width="12" height="12" fill="#f5b16f"/><rect x="48" y="36" width="12" height="12" fill="#fceac1"/><rect x="72" y="36" width="12" height="12" fill="#f4f0c3"/><rect x="96" y="36" width="12" height="12" fill="#cff1d5"/><rect x="120" y="36" width="12" height="12" fill="#ceecec"/><rect x="144" y="36" width="12" height="12" fill="#d2e0f3"/><rect x="156" y="36" width="12" height="12" fill="#e9e8f5"/><rect x="168" y="36" width="12" height="12" fill="#e7d7ed"/></svg></div>
+                            <div class="paint-desc"><svg style="height: 22px; width: auto; display: block; margin: 0 auto;" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 348 36" aria-hidden="true" focusable="false" shape-rendering="crispEdges"><rect x="0" y="0" width="12" height="12" fill="#f7c7c2"/><rect x="12" y="0" width="12" height="12" fill="#f7c5b8"/><rect x="24" y="0" width="12" height="12" fill="#f7c3ac"/><rect x="36" y="0" width="12" height="12" fill="#fce9dc"/><rect x="48" y="0" width="12" height="12" fill="#fdebdb"/><rect x="60" y="0" width="12" height="12" fill="#fdedd8"/><rect x="72" y="0" width="12" height="12" fill="#fdf2df"/><rect x="84" y="0" width="12" height="12" fill="#fdefd5"/><rect x="96" y="0" width="12" height="12" fill="#fef6e4"/><rect x="108" y="0" width="12" height="12" fill="#fdf2d5"/><rect x="120" y="0" width="12" height="12" fill="#fdf7e4"/><rect x="132" y="0" width="12" height="12" fill="#fdf4d4"/><rect x="144" y="0" width="12" height="12" fill="#f9f7e0"/><rect x="156" y="0" width="12" height="12" fill="#f3f6de"/><rect x="168" y="0" width="12" height="12" fill="#edf6e0"/><rect x="180" y="0" width="12" height="12" fill="#e8f6e3"/><rect x="204" y="0" width="12" height="12" fill="#bdeed4"/><rect x="216" y="0" width="12" height="12" fill="#b6e9d5"/><rect x="228" y="0" width="12" height="12" fill="#ace2d7"/><rect x="240" y="0" width="12" height="12" fill="#def2f2"/><rect x="252" y="0" width="12" height="12" fill="#def1f5"/><rect x="264" y="0" width="12" height="12" fill="#deeff8"/><rect x="276" y="0" width="12" height="12" fill="#e5f0fa"/><rect x="288" y="0" width="12" height="12" fill="#e0e9f7"/><rect x="300" y="0" width="12" height="12" fill="#eef0f9"/><rect x="312" y="0" width="12" height="12" fill="#e7e5f4"/><rect x="324" y="0" width="12" height="12" fill="#f2eef8"/><rect x="336" y="0" width="12" height="12" fill="#f0e6f4"/><rect x="12" y="12" width="12" height="12" fill="#f09178"/><rect x="24" y="12" width="12" height="12" fill="#fadcce"/><rect x="36" y="12" width="12" height="12" fill="#f7bf99"/><rect x="48" y="12" width="12" height="12" fill="#f8c493"/><rect x="60" y="12" width="12" height="12" fill="#fad6a7"/><rect x="72" y="12" width="12" height="12" fill="#f8ca7c"/><rect x="84" y="12" width="12" height="12" fill="#fbe7bf"/><rect x="96" y="12" width="12" height="12" fill="#f7cd6f"/><rect x="108" y="12" width="12" height="12" fill="#fcf0d0"/><rect x="120" y="12" width="12" height="12" fill="#f7d66e"/><rect x="132" y="12" width="12" height="12" fill="#fbeebd"/><rect x="144" y="12" width="12" height="12" fill="#e8e084"/><rect x="156" y="12" width="12" height="12" fill="#e1e9ae"/><rect x="168" y="12" width="12" height="12" fill="#cbe5a5"/><rect x="180" y="12" width="12" height="12" fill="#b9e5ab"/><rect x="216" y="12" width="12" height="12" fill="#74d6b0"/><rect x="228" y="12" width="12" height="12" fill="#ceeee7"/><rect x="240" y="12" width="12" height="12" fill="#9ed9d9"/><rect x="252" y="12" width="12" height="12" fill="#9ed4e1"/><rect x="264" y="12" width="12" height="12" fill="#b2d9ee"/><rect x="276" y="12" width="12" height="12" fill="#95c2e9"/><rect x="288" y="12" width="12" height="12" fill="#d3e0f3"/><rect x="300" y="12" width="12" height="12" fill="#a0aedf"/><rect x="312" y="12" width="12" height="12" fill="#e1dff2"/><rect x="324" y="12" width="12" height="12" fill="#b7a0d7"/><rect x="336" y="12" width="12" height="12" fill="#e6d5ed"/><rect x="0" y="24" width="12" height="12" fill="#f7c4bf"/><rect x="12" y="24" width="12" height="12" fill="#f8cabe"/><rect x="24" y="24" width="12" height="12" fill="#f7c2aa"/><rect x="36" y="24" width="12" height="12" fill="#f7c5a2"/><rect x="48" y="24" width="12" height="12" fill="#f9cb9e"/><rect x="60" y="24" width="12" height="12" fill="#fad5a4"/><rect x="72" y="24" width="12" height="12" fill="#fad597"/><rect x="84" y="24" width="12" height="12" fill="#fadfab"/><rect x="96" y="24" width="12" height="12" fill="#f9da94"/><rect x="108" y="24" width="12" height="12" fill="#fbe8b5"/><rect x="120" y="24" width="12" height="12" fill="#f9e195"/><rect x="132" y="24" width="12" height="12" fill="#faeaa9"/><rect x="144" y="24" width="12" height="12" fill="#ede69c"/><rect x="156" y="24" width="12" height="12" fill="#e1e9ad"/><rect x="168" y="24" width="12" height="12" fill="#d0e8ad"/><rect x="180" y="24" width="12" height="12" fill="#c0e8b4"/><rect x="204" y="24" width="12" height="12" fill="#baedd1"/><rect x="216" y="24" width="12" height="12" fill="#bcebd9"/><rect x="228" y="24" width="12" height="12" fill="#aae2d6"/><rect x="240" y="24" width="12" height="12" fill="#a7dcdc"/><rect x="252" y="24" width="12" height="12" fill="#a8d9e4"/><rect x="264" y="24" width="12" height="12" fill="#afd8ee"/><rect x="276" y="24" width="12" height="12" fill="#abcfed"/><rect x="288" y="24" width="12" height="12" fill="#c3d5ef"/><rect x="300" y="24" width="12" height="12" fill="#bac4e7"/><rect x="312" y="24" width="12" height="12" fill="#d2d0eb"/><rect x="324" y="24" width="12" height="12" fill="#cabae1"/><rect x="336" y="24" width="12" height="12" fill="#dfcae8"/></svg></div>
                         </div>
-                        <p class="text-muted mb-3" style="font-size: 15px;">
+                        <span class="visually-hidden">Your paint code and colour name are hidden until you pay.</span>
+                        <p class="text-muted mt-3 mb-3" style="font-size: 15px;">
                             We've found the paint code and colour name for your
                             {% if vehicle_title %}{{ vehicle_title }}{% else %}vehicle{% endif %}.
                         </p>
-                    </div>
-                    <form method="POST" action="{% url 'start_paid_lookup' %}" id="unlock-form">
+                        <form method="POST" action="{% url 'start_paid_lookup' %}" id="unlock-form">
                         {% csrf_token %}
                         {% if turnstile_site_key %}
                         <div class="turnstile-holder d-flex justify-content-center mb-3">
@@ -384,10 +384,11 @@
                             <i class="fas fa-lock-open me-2"></i>Reveal for {{ lookup_price }}
                         </button>
                     </form>
-                    <p class="text-muted mt-3 mb-0" style="font-size: 12px;">
-                        Secure payment by Stripe. You're paying to see a result we've
-                        already found — we never charge before we know we have it.
-                    </p>
+                        <p class="text-muted mt-3 mb-0" style="font-size: 12px;">
+                            Secure payment by Stripe.
+                            <a href="{% url 'disclaimer' %}" style="color: #6c757d;">Full terms</a>
+                        </p>
+                    </div>
                 </div>
                 {% elif paint_code %}
                 <div id="paint-found-state">
@@ -574,7 +575,12 @@
             </p>
             {% endif %}
 
-            {% if search_id %}
+            {% comment %} paint194: not while locked. The locked page carries no paint code,
+so this section read "no code found" and offered a FREE manual lookup beside the
+£2 button. It returns, as "Email me this code", once the customer has paid. The
+server refuses to email a locked result too: hiding this stops no one who sends
+the request directly. {% endcomment %}
+{% if search_id and not locked %}
             <div id="email-section" class="mx-auto mt-4" style="max-width: 540px;{% if paint_pending %} display: none;{% endif %}">
                 {% if email_submitted %}
                 <div class="card" style="border: 2px solid #22c55e; background: #f0fdf4;">

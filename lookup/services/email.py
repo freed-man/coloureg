@@ -216,7 +216,7 @@ def send_custom_message(to_email, subject, markdown_body, extra_attachments=None
     }, context='custom_message')
 
 
-def send_user_paint_code(to_email, registration, vehicle_title, vin_masked, colour, paint_code, paint_description, canonical_code=None, paint_hex=None, message='', extra_attachments=None, bcc_owner=False):
+def send_user_paint_code(to_email, registration, vehicle_title, vin_masked, colour, paint_code, paint_description, canonical_code=None, paint_hex=None, message='', extra_attachments=None, bcc_owner=False, purchase=None):
     """Email user the found paint code.
 
     If canonical_code is provided and differs from paint_code, the email displays
@@ -255,6 +255,29 @@ def send_user_paint_code(to_email, registration, vehicle_title, vin_masked, colo
     # on the manual-lookup form. Escaped (staff-entered, but still untrusted as
     # HTML) and newlines preserved. Blank message -> no block -> identical to the
     # standard email. Matches the results-page brand accent (#003399).
+    # paint194: THE PURCHASE CONFIRMATION, only when this email follows a
+    # payment. `purchase` carries the price, the date and the exact words the
+    # customer ticked (payments.CONSENT_TEXT), quoted back because reg 16(3)
+    # requires the confirmation to confirm the consent. None, as in the
+    # "email me my result" flow, adds nothing, so that email is unchanged.
+    purchase_block = ''
+    if purchase:
+        purchase_block = f"""
+                <div style="margin-top: 28px; padding-top: 20px; border-top: 1px solid #eee;">
+                    <div style="font-size: 13px; font-weight: 600; color: #1a1a1a; margin-bottom: 8px;">Your purchase</div>
+                    <table style="width: 100%; border-collapse: collapse;">
+                        <tr>
+                            <td style="padding: 6px 0; color: #666; font-size: 13px; width: 90px;">Paid</td>
+                            <td style="padding: 6px 0; color: #1a1a1a; font-size: 13px;">{_esc(purchase.get('price'))} on {_esc(purchase.get('paid_on'))}</td>
+                        </tr>
+                    </table>
+                    <p style="margin: 14px 0 0; color: #4a4a4a; font-size: 13px; line-height: 1.55;">
+                        Before paying, you ticked the box: &ldquo;{_esc(purchase.get('consent'))}&rdquo; Your paint code was shown to you straight away, so this purchase can&rsquo;t be cancelled. Your rights if the paint code isn&rsquo;t as described are not affected.
+                    </p>
+                    <p style="margin: 10px 0 0; color: #4a4a4a; font-size: 13px; line-height: 1.55;">
+                        Sold by coloureg. Questions about your purchase? Reply to this email or write to hello@coloureg.com.
+                    </p>
+                </div>"""
     if message and message.strip():
         safe_message = html_lib.escape(message.strip()).replace('\n', '<br>')
         note_html = (
@@ -300,7 +323,7 @@ def send_user_paint_code(to_email, registration, vehicle_title, vin_masked, colo
                         <td style="padding: 12px 0; color: #666; font-size: 14px;">Colour</td>
                         <td style="padding: 12px 0; color: #1a1a1a; font-size: 14px;">{_esc(colour) or '—'}</td>
                     </tr>
-                </table>
+                </table>{purchase_block}
             </div>
         </div>
         {FOOTER}

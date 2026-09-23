@@ -2364,6 +2364,76 @@ def _apply_paywall(search, config=None):
     return True
 
 
+def _paint_email_args(search):
+    """paint194: everything send_user_paint_code needs about a result, built ONE
+    way for both callers — the customer's "email me my result" and the email
+    sent after payment — so the two can never drift apart.
+
+    Includes the paint code and name, so it is for emails ONLY. It must never
+    feed a locked page: _locked_payload takes the colour on its own.
+    """
+    paint_hex, _paint_name, canonical_code = PaintLookup.lookup_with_canonical(
+        manufacturer=search.make,
+        paint_code=search.paint_code,
+        model=search.model,
+        year=search.year,
+        vdg_colour=search.colour,
+    )
+    return {
+        'registration': search.registration,
+        'vehicle_title': search.vehicle_title,
+        'vin_masked': mask_vin(search.vin),
+        'colour': search.colour,
+        'paint_code': search.paint_code,
+        'paint_description': search.paint_description,
+        'canonical_code': canonical_code,
+        'paint_hex': paint_hex,
+    }
+
+
+def _session_email(session):
+    """The address the customer gave Stripe at checkout, or '' if absent.
+
+    Through _sget, the helper the rest of the payment code already uses for
+    Stripe objects, which can arrive as dicts or as objects.
+    """
+    details = _sget(session, 'customer_details') if session else None
+    return (_sget(details, 'email') or '').strip() if details else ''
+
+
+def _email_paid_result(search, session):
+    """paint194: after payment, email the result with the purchase confirmation.
+
+    The confirmation the law requires (CCR reg 16(3)) must reach every paying
+    customer; without it reg 37(4) lets them cancel and keep the code free. It
+    goes to the address given at checkout and quotes the exact words ticked.
+
+    Only called once the money is CAPTURED: if capture fails the customer is not
+    charged, and "you paid" would be false. Never raises: the payment is taken
+    and the code shown, and a failed email must not undo either.
+    """
+    try:
+        email = _session_email(session)
+        if not email:
+            logger.warning('paid result not emailed: no email on checkout session '
+                           'for search %s', search.id)
+            return
+        from lookup.services.payments import CONSENT_TEXT
+        now = timezone.localtime()
+        purchase = {
+            'price': f'£{dj_settings.LOOKUP_PRICE_PENCE / 100:.2f}',
+            'paid_on': f'{now.day} {now.strftime("%B %Y")}',
+            'consent': CONSENT_TEXT,
+        }
+        if send_user_paint_code(to_email=email, purchase=purchase,
+                                **_paint_email_args(search)):
+            search.email = email
+            search.email_sent = True
+            search.save(update_fields=['email', 'email_sent'])
+    except Exception:
+        logger.exception('paid result email failed for search %s', search.id)
+
+
 def _locked_payload(search, config=None):
     """What a locked result is allowed to tell the browser (paint22).
 
@@ -2372,11 +2442,36 @@ def _locked_payload(search, config=None):
     the DOM at all — because anything delivered to the page can be read out of
     it. The customer sees that we have the answer, not what it is.
     """
+    # paint194: THE ONE EXCEPTION, THE COLOUR. The swatch shows the car's real
+    # colour as a teaser. It gives little away, since customers know roughly
+    # what colour their car is and the colour alone will not buy paint. Looked
+    # up exactly as a found result is, so the colour revealed after paying
+    # matches the one shown before. The lookup also returns the name and the
+    # canonical code; both are DISCARDED here and never enter this dict. Not
+    # _paint_email_args, which carries the code.
+    locked_hex = None
+    if search.paint_code:
+        try:
+            locked_hex, _discard_name, _discard_code = PaintLookup.lookup_with_canonical(
+                manufacturer=search.make,
+                paint_code=search.paint_code,
+                model=search.model,
+                year=search.year,
+                vdg_colour=search.colour,
+            )
+        except Exception:
+            locked_hex = None
+    # It goes into a style attribute, where HTML escaping does not stop CSS: a
+    # malformed value such as "red;background:url(...)" would inject styling.
+    # Only a genuine #RRGGBB is allowed through; anything else shows the grey.
+    if locked_hex and not re.fullmatch(r'#[0-9A-Fa-f]{6}', locked_hex):
+        locked_hex = None
     return {
         'locked': True,
         'code_available': bool(search.paint_code),
         'name_available': bool(search.paint_description),
         'lookup_price': _price_display(config),
+        'locked_paint_hex': locked_hex,
     }
 
 
@@ -2773,6 +2868,15 @@ def submit_email(request):
         messages.error(request, 'Search record not found.')
         return redirect('index')
 
+    # paint194: A LOCKED RESULT IS NEVER EMAILED. The page hides the code while
+    # a result is unpaid, and this endpoint did not know: one request emailed
+    # the real code to any address, free — reproduced 23 Sep. Hiding the email
+    # form stops no one who sends the request directly, so the refusal is here.
+    # It lifts the moment the customer pays, when is_locked() turns False.
+    if search.is_locked():
+        messages.error(request, 'Reveal your paint code first, then you can email it to yourself.')
+        return redirect('results')
+
     if search.email_sent:
         request.session['email_submitted'] = search.email
         return redirect('results')
@@ -2821,26 +2925,7 @@ def submit_email(request):
     vin_masked = mask_vin(search.vin)
 
     if search.paint_code:
-        # Look up swatch (hex) and canonical code so the email matches the website UI
-        paint_hex, _paint_name, canonical_code = PaintLookup.lookup_with_canonical(
-            manufacturer=search.make,
-            paint_code=search.paint_code,
-            model=search.model,
-            year=search.year,
-            vdg_colour=search.colour,
-        )
-
-        sent = send_user_paint_code(
-            to_email=email,
-            registration=search.registration,
-            vehicle_title=search.vehicle_title,
-            vin_masked=vin_masked,
-            colour=search.colour,
-            paint_code=search.paint_code,
-            paint_description=search.paint_description,
-            canonical_code=canonical_code,
-            paint_hex=paint_hex,
-        )
+        sent = send_user_paint_code(to_email=email, **_paint_email_args(search))
         if sent:
             search.email_sent = True
             search.save(update_fields=['email_sent'])
@@ -4716,6 +4801,8 @@ def _fulfil_paid_session(session):
         # credit is skipped and the payment stands regardless.
         if captured:
             credit_sliding_allowance('lookup', search.ip_address)
+            # paint194: the result and the purchase confirmation, by email.
+            _email_paid_result(search, session)
         return search
     finally:
         caches['default'].delete(lock_key)
