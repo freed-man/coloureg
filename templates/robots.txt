@@ -5,7 +5,6 @@ Disallow: /admin-stats/
 Disallow: /results/
 Disallow: /submit-email/
 Disallow: /submit-contact/
-Disallow: /paige/
 Disallow: /health/
 Disallow: /warm/
 Disallow: /lookup-status/

@@ -1747,7 +1747,26 @@ def warm(request):
 
 
 def paige(request):
-    return render(request, 'lookup/paige.html')
+    """paint188: a page that should not be found by crawlers or AI.
+
+    It used to be listed in robots.txt as a Disallow — which was the only public
+    place its address appeared. Nothing links to it and it is not in the
+    sitemap, so that line was advertising it to anyone reading robots.txt, while
+    a Disallow also stops a crawler FETCHING the page, so it could never read the
+    noindex the page already carries. Removed from robots.txt; the signal moves
+    onto the page itself, where only this page receives it.
+
+    A header as well as the page's own meta tag: some crawlers read headers
+    without parsing the HTML. noai and noimageai are not standard, but a number
+    of AI crawlers honour them, and unknown values are ignored by the rest.
+
+    All of these are REQUESTS that well-behaved bots follow. What actually keeps
+    it private is that nothing points to it. A login would be the only real lock.
+    """
+    response = render(request, 'lookup/paige.html')
+    response['X-Robots-Tag'] = ('noindex, nofollow, noarchive, nosnippet, '
+                                'noimageindex, noai, noimageai')
+    return response
 
 
 def results(request):
