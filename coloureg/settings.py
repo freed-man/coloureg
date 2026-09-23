@@ -389,7 +389,33 @@ LOOKUP_PRICE_PENCE = int(os.environ.get('LOOKUP_PRICE_PENCE', '200'))
 #
 # Unset it (or set 0) and a lookup the reserve answered reports only the VDG
 # call — which is what it did before this existed, and made the leg look free.
-EZYVIN_CREDIT_GBP = os.environ.get('EZYVIN_CREDIT_GBP', '0.09')
+EZYVIN_CREDIT_GBP = os.environ.get('EZYVIN_CREDIT_GBP', '0.09').strip()
+
+# paint190: CHECKED HERE, AT STARTUP, like LOOKUP_PRICE_PENCE. It was converted
+# with Decimal() at every USE instead, and the daily budget check runs that on
+# every lookup once a single Ezyvin call has been made that day. So a mistyped
+# value — '0,09' with a comma, as a Spanish keyboard writes it, or '£0.09' —
+# booted perfectly well, deployed, went live, and then answered every lookup
+# with a 500. Found by an external audit (N10); reproduced, including the 500.
+#
+# Now a bad value stops the site from starting, so the deploy fails in the
+# logs, with this message, before any customer reaches it.
+#
+# VALIDATED, NOT CONVERTED. Every use still receives the same text it always
+# did, so nothing downstream changes: converting it to a Decimal here would make
+# a price of 0 falsy where the text '0' was truthy, and quietly alter what
+# Search.total_cost returns. Empty stays allowed, because empty means "not
+# priced" (see above) and was always handled as such.
+if EZYVIN_CREDIT_GBP:
+    from decimal import Decimal as _Decimal, InvalidOperation as _BadDecimal
+    try:
+        _ez_price = _Decimal(EZYVIN_CREDIT_GBP)
+    except _BadDecimal:
+        _ez_price = None
+    if _ez_price is None or not _ez_price.is_finite() or _ez_price < 0:
+        raise ImproperlyConfigured(
+            'EZYVIN_CREDIT_GBP must be a price in pounds written with a dot, '
+            f'like 0.09. It is set to {EZYVIN_CREDIT_GBP!r}.')
 
 CACHES = {
     # DEFAULT stays the database cache. django-ratelimit reads/writes here, and

@@ -37,7 +37,11 @@ class Command(BaseCommand):
         # the resolver's import graph for no reason.
         from lookup.services.paint_resolver import _colour_families, _hex_family
 
-        qs = PaintLookup.objects.exclude(locked_fields=[])
+        # paint191: all_objects, not objects. The default manager hides
+        # suppressed rows, so a row that was both locked and suppressed never
+        # appeared here — while load_paint_lookup's --replace refusal sends the
+        # operator to this command to see what would be lost (N7).
+        qs = PaintLookup.all_objects.exclude(locked_fields=[])
         if options['make']:
             qs = qs.filter(manufacturer=options['make'].strip().lower())
 
@@ -72,6 +76,7 @@ class Command(BaseCommand):
             self.stdout.write(
                 f'{r.manufacturer:<16}{r.code:<14}{(r.name or "")[:30]:<32}'
                 f'{r.hex or "--":<9}locked={locked}'
+                + ('  [suppressed]' if r.suppressed else '')
             )
             for n in notes:
                 self.stdout.write(f'    ! {n}')

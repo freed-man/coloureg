@@ -185,14 +185,34 @@ class Command(BaseCommand):
         # Not a prompt: this runs in deploys and scripts, so a question would
         # either hang or be answered blind. --force-replace is the deliberate
         # way through, and it says what it costs.
+        #
+        # paint191: AND EVERY OTHER HAND EDIT. The guard counted only locked
+        # fields, while the delete below takes every row — suppressed ones and
+        # ones carrying operator names included, both made by hand and neither
+        # coming back from a scrape. So a catalogue with suppressions but no
+        # locks was wiped without a word; and where locks did make it refuse,
+        # --force-replace took the suppressions too under a message that only
+        # mentioned locks. Found by an external audit (N7), reproduced: one
+        # suppressed row and one operator-named row, --replace ran silently,
+        # both gone. In production that is 1,397 suppressions (23 Sep).
         _locked = PaintLookup.all_objects.exclude(locked_fields=[]).count()
-        if _locked and not self.force_replace:
+        _suppressed = PaintLookup.all_objects.filter(suppressed=True).count()
+        _named = PaintLookup.all_objects.exclude(operator_names=[]).count()
+        _lost = [f'{n:,} {what}' for n, what in (
+            (_locked, 'with locked fields'),
+            (_suppressed, 'suppressed'),
+            (_named, 'carrying operator names')) if n]
+        if _lost and not self.force_replace:
             raise CommandError(
-                f'{_locked:,} rows have locked fields, which --replace would '
-                f'delete. Use --upsert to keep them, or --force-replace to '
-                f'discard them deliberately. `manage.py locked_rows` lists '
-                f'what would be lost.'
+                f'--replace would delete hand edits: {", ".join(_lost)}. Use '
+                f'--upsert to keep them, or --force-replace to discard them '
+                f'deliberately. `manage.py locked_rows` lists the locked ones.'
             )
+        if _lost:
+            # Discarding them on purpose still deserves to be said out loud, so
+            # the log of the run shows what was thrown away.
+            self.stdout.write(self.style.WARNING(
+                f'  --force-replace: discarding {", ".join(_lost)}'))
         with transaction.atomic():
             deleted, _ = PaintLookup.all_objects.all().delete()
             self.stdout.write(f'  Deleted {deleted:,} existing rows')

@@ -2759,13 +2759,17 @@ def submit_email(request):
     # arbitrary searches (paint codes to attacker addresses, admin notifications
     # to our inbox) without doing any lookup. Reject a mismatch before any DB hit.
     session_search_id = (request.session.get('vehicle_data') or {}).get('search_id')
-    if str(session_search_id) != str(search_id):
+    # paint189: a session with no search id owns nothing. str(None) is 'None',
+    # so the literal text "None" used to match a fresh session and crash the
+    # lookup below with a 500 (N9). See report_paint_code.
+    if session_search_id is None or str(session_search_id) != str(search_id):
         messages.error(request, 'Your session has expired. Please look up your vehicle again.')
         return redirect('index')
 
     try:
         search = Search.objects.get(id=search_id)
-    except Search.DoesNotExist:
+    except (Search.DoesNotExist, ValueError, TypeError):
+        # A second layer, as in report_paint_code: unreachable behind the guard.
         messages.error(request, 'Search record not found.')
         return redirect('index')
 
@@ -4322,12 +4326,24 @@ def report_paint_code(request):
     note = (request.POST.get('note') or '').strip()[:2000]
 
     session_search_id = (request.session.get('vehicle_data') or {}).get('search_id')
-    if not search_id or str(session_search_id) != str(search_id):
+    # paint189: A SESSION WITH NO SEARCH ID OWNS NOTHING. The comparison is on
+    # strings, and str(None) is 'None' — so a fresh session posting the literal
+    # text "None" matched, passed the ownership check, and crashed the lookup
+    # below with a 500. Found by an external audit (N9), reproduced. It is the
+    # same shape submit_email had, and the same one both staff endpoints were
+    # already guarded against: fixed once on the operator side, never carried
+    # to the customer side.
+    if (not search_id or session_search_id is None
+            or str(session_search_id) != str(search_id)):
         return JsonResponse({'ok': False, 'error': 'session'}, status=400)
 
     try:
         search = Search.objects.get(id=search_id)
-    except Search.DoesNotExist:
+    except (Search.DoesNotExist, ValueError, TypeError):
+        # ValueError/TypeError as in submit_manual_lookup and
+        # dismiss_manual_lookup. A SECOND LAYER: with the guard above, nothing
+        # that is not a real id reaches here, so no test can see this. It is
+        # for a future change that lets one through.
         return JsonResponse({'ok': False, 'error': 'not_found'}, status=404)
 
     if not search.paint_code:
