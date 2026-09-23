@@ -17,7 +17,7 @@ untouched, so normal host validation and security behaviour are unaffected.
 This is the standard pattern for liveness probes behind a platform proxy.
 """
 
-from django.http import HttpResponse
+from django.http import HttpResponse, JsonResponse
 
 HEALTH_PATHS = frozenset({'/health', '/health/'})
 
@@ -97,6 +97,25 @@ _BLOCK_STREAK_KEY = 'origin-gate:block-refused-streak'
 # starvation this exists to fix, reintroduced by a TTL.
 _BLOCK_STREAK_TTL = 60 * 60 * 24
 
+# paint187: CHECK BEFORE SWITCHING OFF. From the server's side, "Cloudflare's tag
+# stopped arriving" and "someone is hitting the origin directly" look identical,
+# so a run of refusals alone could be caused on purpose: five direct requests
+# and block mode switches itself off. The operator spotted it. So before acting
+# on a run, the site asks ITSELF, through Cloudflare, whether the tag arrives.
+_ORIGIN_CHECK_PATH = '/origin-check/'
+# The refused request waits for this, so it is short; and the shared session has
+# no default timeout, so without one a hung check would hold the worker.
+_SELF_CHECK_TIMEOUT_S = 5
+# One check per ten minutes per worker. Without it, an attacker's thousand
+# requests would make this server send two hundred requests of its own. Held
+# (blocking stays on) for the length of it, so a genuine break during a
+# cooldown waits at most this long before the next check switches off.
+_SELF_CHECK_COOLDOWN_KEY = 'origin-gate:self-check-cooldown'
+_SELF_CHECK_COOLDOWN_S = 600
+# An attack that keeps coming must not flood the operator's inbox.
+_HELD_ALERT_KEY = 'origin-gate:held-alert'
+_HELD_ALERT_THROTTLE_S = 3600
+
 
 def origin_gate_stats():
     """Direct-hit stats for the dashboard: {'count': int, 'paths': [...], 'since': str}.
@@ -146,6 +165,13 @@ class OriginGateObserverMiddleware:
             # Observation must never affect a response. If the cache table is
             # missing (see F6) or anything else misbehaves, the request continues.
             pass
+
+        # paint187: the self-check's probe. AFTER observation, so the
+        # dashboard's count of direct hits stays honest, and BEFORE the block
+        # decision, so it answers even when the tag is missing, which is the
+        # one moment it has to: a broken rule must be reported, not refused.
+        if request.path == _ORIGIN_CHECK_PATH:
+            return self._answer_origin_check(request)
 
         # BLOCK MODE. Everything enforce does, plus refusing the request
         # outright — which is what restores Cloudflare's WAF and bot protection,
@@ -321,8 +347,18 @@ class OriginGateObserverMiddleware:
             logger.exception('origin gate refusal streak failed')
 
     def _trip_block(self, streak):
-        """Revert BLOCK to observe after a run of refusals. Block only: under
-        enforce nothing is refused, so this trigger has nothing to say."""
+        """Under BLOCK, act on a run of refusals, after checking why.
+
+        paint187: it used to revert straight away, which meant anyone who knew
+        the origin's address could switch block mode off with five requests.
+        Now it asks, through Cloudflare, whether the tag arrives: if it does,
+        the run was an attack and blocking stays on; if not, or if the check
+        cannot tell, the rule is taken as broken and it reverts.
+
+        Block only: under enforce nothing is refused, so this trigger has
+        nothing to say. Returns True when the run was dealt with, so the caller
+        clears the streak.
+        """
         from lookup.views import origin_gate_mode
         if origin_gate_mode() != 'block':
             return False
@@ -330,9 +366,112 @@ class OriginGateObserverMiddleware:
         cfg = SiteConfig.get()
         if cfg.origin_gate_mode != SiteConfig.ORIGIN_GATE_BLOCK:
             return False
-        self._revert(cfg, '%d requests in a row were refused and none came '
-                          'through Cloudflare' % streak)
+        cache = caches['local']
+        # Set BEFORE the check, so concurrent refusals on this worker cannot
+        # each fire one of their own while the first is still waiting.
+        if cache.get(_SELF_CHECK_COOLDOWN_KEY):
+            return False
+        cache.set(_SELF_CHECK_COOLDOWN_KEY, True, _SELF_CHECK_COOLDOWN_S)
+        tagged = self._tag_arrives_through_cloudflare()
+        if tagged is True:
+            # The rule works, so these came from someone going round
+            # Cloudflare. Switching off now would hand them exactly what they
+            # were trying to get.
+            logger.warning(
+                'ORIGIN GATE HELD: %d requests in a row were refused, but a '
+                'check through Cloudflare confirmed the tag is arriving, so they '
+                'came from a direct connection. Blocking stays on.', streak)
+            if not cache.get(_HELD_ALERT_KEY):
+                cache.set(_HELD_ALERT_KEY, True, _HELD_ALERT_THROTTLE_S)
+                self._alert('held', streak, tagged)
+            return True
+        # LEAVING block, so clear the cooldown: re-enabling block within ten
+        # minutes would otherwise find it still set and hold, refusing every
+        # customer, for up to that long.
+        cache.delete(_SELF_CHECK_COOLDOWN_KEY)
+        if tagged is False:
+            why = ('%d requests in a row were refused, and a check through '
+                   'Cloudflare found the tag is not arriving' % streak)
+        else:
+            why = ('%d requests in a row were refused, and a check through '
+                   'Cloudflare could not complete' % streak)
+        self._revert(cfg, why)
+        self._alert('reverted', streak, tagged)
         return True
+
+    def _tag_arrives_through_cloudflare(self):
+        """Ask the site, through Cloudflare, whether Cloudflare's tag arrives.
+
+        True   the tag arrived: the rule works.
+        False  no tag: the rule is broken.
+        None   could not tell: no URL, a timeout, an error, or an answer that
+               was not the probe's. The caller treats it like False, because
+               the costly mistake is staying blocked while customers are
+               refused. That also makes an unreachable check fall back to the
+               plain run-of-five rule rather than to never switching off.
+
+        An attacker cannot fake the answer: going round Cloudflare is what they
+        are doing, and they cannot stop Cloudflare adding the tag to a request
+        that goes through it.
+        """
+        from django.conf import settings
+        from lookup.services.http import get_session
+        url = getattr(settings, 'ORIGIN_CHECK_URL', '') or ''
+        if not url:
+            return None
+        try:
+            # A unique query string as well as no-store on the answer, so no
+            # cache between here and the origin can hand back an old verdict.
+            resp = get_session().get(url, params={'t': int(time.time() * 1000)},
+                                     timeout=_SELF_CHECK_TIMEOUT_S)
+            if resp.status_code != 200:
+                return None
+            body = resp.json()
+        except Exception:
+            logger.warning('origin gate self-check could not complete',
+                           exc_info=True)
+            return None
+        # Only an explicit boolean counts. A 200 from something else, such as a
+        # Cloudflare error page or a maintenance page, is "could not tell", not
+        # "the rule is broken".
+        if not isinstance(body, dict) or not isinstance(body.get('tagged'), bool):
+            return None
+        return body['tagged']
+
+    def _answer_origin_check(self, request):
+        """Report whether THIS request carried Cloudflare's tag.
+
+        No database. And never cached: a cached "tagged" served after the rule
+        broke would tell the self-check all was well while block mode refused
+        every customer, the outage this exists to end, now with a check
+        vouching for it.
+        """
+        from lookup.views import via_cloudflare
+        try:
+            tagged = bool(via_cloudflare(request))
+        except Exception:
+            tagged = False
+        resp = JsonResponse({'tagged': tagged})
+        resp['Cache-Control'] = 'no-store, max-age=0'
+        return resp
+
+    def _alert(self, kind, streak, tagged):
+        """Email the operator. Never raises, as a SECOND layer.
+
+        What actually keeps a failing email from turning a refusal into a
+        served request is _note_refused's own guard (paint186): it catches an
+        exception from here before the caller's fail-open handler ever sees it.
+        This guard changes nothing the customer sees, and a break test proved
+        it — removing it left every refusal refused. It is kept for whatever
+        calls this in future WITHOUT that outer guard, and because _safe_send
+        builds its email client outside its own try, so it can raise before it
+        gets to protect itself.
+        """
+        try:
+            from lookup.services.email import send_admin_origin_gate_alert
+            send_admin_origin_gate_alert(kind, streak, tagged)
+        except Exception:
+            logger.exception('origin gate alert could not be sent')
 
     def _revert(self, cfg, why):
         """Drop to observe. ONE copy, shared by both triggers, so the thing

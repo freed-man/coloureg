@@ -95,6 +95,16 @@ def RATELIMIT_IP_META_KEY(request):
     # everyone without a resolvable address in one shared bucket: the safe side.
     return get_client_ip(request) or '0.0.0.0'
 
+
+# paint187: where the origin gate asks ITSELF whether Cloudflare's tag arrives,
+# before it lets a run of refusals switch block mode off. MUST be the public,
+# Cloudflare-fronted address: pointed at Railway directly the request would go
+# round Cloudflare, arrive without the tag every time, and switch block mode off
+# on every run. Empty disables the check, and the gate then treats every run as
+# "could not tell" — which switches off, the safe direction for availability.
+ORIGIN_CHECK_URL = os.environ.get('ORIGIN_CHECK_URL',
+                                  'https://coloureg.com/origin-check/')
+
 # CSRF_TRUSTED_ORIGINS: Django 4+ requires the request's Origin to be trusted
 # for any POST over HTTPS (the reg-lookup submit, email submit, admin manual
 # -lookup actions). Behind Railway's proxy on a new domain, POSTs would 403

@@ -535,6 +535,65 @@ def send_admin_ip_alert(ip, count, threshold, rows):
     }, context='ip_alert')
 
 
+def send_admin_origin_gate_alert(kind, streak, tagged):
+    """paint187: tell the operator the origin gate acted on a run of refusals.
+
+    'reverted'  the tag was not arriving (or the check could not complete), so
+                block mode switched itself off to let customers back in. Needs
+                action: fix the Cloudflare rule, then turn blocking back on.
+    'held'      the tag WAS arriving, so the refusals came from someone going
+                round Cloudflare. Blocking stayed on. No action; at most one of
+                these an hour, so an attack does not flood the inbox.
+
+    No customer data in either, and the counts are integers, but escaped all
+    the same so a later edit cannot quietly add an unescaped field.
+    """
+    if kind == 'held':
+        colour, border = '#eef6ee', '#2e7d32'
+        headline = 'Block mode held off a direct attack'
+        detail = (f'{int(streak)} requests in a row were refused. A check through '
+                  f'Cloudflare confirmed its tag is arriving, so these came from '
+                  f'someone connecting to the server directly and going round '
+                  f'Cloudflare.')
+        action = ('Blocking stays on and customers are unaffected. Nothing to do. '
+                  'You will get at most one of these an hour.')
+        subject = 'coloureg: block mode held off a direct attack'
+    else:
+        colour, border = '#fdecea', '#c62828'
+        headline = 'Block mode switched itself off'
+        why = ('found Cloudflare\'s tag is not arriving' if tagged is False
+               else 'could not complete, so it could not rule out a broken rule')
+        detail = (f'{int(streak)} requests in a row were refused, and a check '
+                  f'through Cloudflare {why}. The site is now in watching mode '
+                  f'so customers can get in.')
+        action = ('Check your Cloudflare Transform Rule is still adding the tag, '
+                  'then turn blocking back on in the dashboard: '
+                  '"Start enforcing", then "Start blocking".')
+        subject = 'coloureg: block mode switched itself off'
+    html = f"""
+    <div style="background: #f5f5f5; padding: 40px 20px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;">
+        <div style="max-width: 560px; margin: 0 auto; background: #ffffff; border-radius: 8px; overflow: hidden;">
+            {_brand_header()}
+            <div style="padding: 32px;">
+                <div style="background: {colour}; border-left: 3px solid {border}; padding: 14px 18px; border-radius: 4px; margin-bottom: 24px;">
+                    <div style="font-size: 15px; font-weight: 600; color: #1a1a1a;">{_esc(headline)}</div>
+                    <div style="color: #4a4a4a; font-size: 13px; margin-top: 6px; line-height: 1.5;">{_esc(detail)}</div>
+                </div>
+                <p style="margin: 0; color: #1a1a1a; font-size: 14px; line-height: 1.5;">{_esc(action)}</p>
+            </div>
+        </div>
+        {FOOTER}
+    </div>
+    """
+    return _safe_send({
+        "from": settings.DEFAULT_FROM_EMAIL,
+        "to": settings.ADMIN_EMAIL,
+        "subject": subject,
+        "html": html,
+        "attachments": _attachments(),
+    }, context='origin_gate_' + ('held' if kind == 'held' else 'reverted'))
+
+
 def send_admin_paint_report(report, total_for_code=1, vehicle_title='',
                             vin_full='', dvla_colour=''):
     """Tell the operator a customer says a delivered code is wrong.
