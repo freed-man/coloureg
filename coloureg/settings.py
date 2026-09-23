@@ -71,28 +71,29 @@ if _railway_private:
 #
 # paint17 added exactly this guard to views.get_client_ip() and missed the
 # sibling here, which is why the comment below claimed the two agreed when they
-# no longer did. They agree again now.
+# no longer did.
+#
+# paint185: AND THEN IT HAPPENED AGAIN. The origin gate (F2) taught
+# get_client_ip to distrust CF-Connecting-IP on a request that did not come
+# through Cloudflare, and never taught this copy. Under 'enforce', a direct
+# connection to the origin with a forged header per request got a fresh bucket
+# every time: measured, five forged IPs against a 3/h limit were limited ZERO
+# times, where one real visitor making five requests is limited twice. That is
+# unlimited email through submit_email and submit_contact, the exact hole the
+# origin gate was built to close. Found by an external audit.
+#
+# Three times these two drifted, each time under a comment saying they agreed.
+# So there is now ONE function: this delegates, and cannot drift again.
+#
+# Imported inside the function: settings load before the app, and by the time a
+# request is being rate-limited, lookup.views is long since loaded.
 def RATELIMIT_IP_META_KEY(request):
-    from django.core.exceptions import ValidationError
-    from django.core.validators import validate_ipv46_address
-
-    for candidate in (
-        request.META.get('HTTP_CF_CONNECTING_IP'),
-        request.META.get('REMOTE_ADDR'),
-    ):
-        candidate = (candidate or '').strip()
-        if not candidate:
-            continue
-        try:
-            validate_ipv46_address(candidate)
-        except ValidationError:
-            continue
-        return candidate
-    # Nothing usable. Return a constant rather than '' so callers still share a
-    # single bucket instead of django-ratelimit seeing an empty key — anyone
-    # arriving without a resolvable address is limited together, which is the
-    # safe direction.
-    return '0.0.0.0'
+    from lookup.views import get_client_ip
+    # get_client_ip returns None when nothing is valid; django-ratelimit feeds
+    # the key into ipaddress.ip_network and would raise on it — paint19 found
+    # that as a 500 on these same two endpoints. So a constant, which also puts
+    # everyone without a resolvable address in one shared bucket: the safe side.
+    return get_client_ip(request) or '0.0.0.0'
 
 # CSRF_TRUSTED_ORIGINS: Django 4+ requires the request's Origin to be trusted
 # for any POST over HTTPS (the reg-lookup submit, email submit, admin manual

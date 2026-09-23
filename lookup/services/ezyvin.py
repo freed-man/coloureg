@@ -97,9 +97,38 @@ def _is_code(candidate):
 
     Note what code_from_name does with the same shape: treats it as a suffix to
     STRIP, never as a code. That asymmetry is the bug in one sentence.
+
+    paint184: AND A PHRASE IS NOT A CODE. The finish rule alone let a two-word
+    name through, because only a candidate made ENTIRELY of finish words
+    normalises to empty: 'Bianco Perlato (Pearl White)' became code
+    'PEARL WHITE', and 'Rosso Corsa (Racing Red)' code 'RACING RED'. pl24
+    returns that first shape. An external audit found it; it was reproduced.
+
+    One Auto had the OPPOSITE half: it rejected spaces but not finishes, so it
+    still turns 'INK BLUE (METALLIC)' into code METALLIC. Two adapters, two
+    half-fixes. This is now the single predicate both use.
+
+    NOT "reject any space". Real codes carry them: 'RAL 9010', 'T9 / Y9C',
+    'CAH - 2144'. What marks a NAME is two or more words that are letters
+    only. And a SLASH joins codes, not words: 'PDM/QDMS', 'KGX/EXY' and
+    'PXR/QXRS' are real letter-only pairs that splitting on the slash would
+    have thrown away. So the phrase test splits on spaces, and is skipped
+    entirely when a slash is present.
     """
+    c = (candidate or '').strip()
+    if not c:
+        return False
+    if '/' not in c:
+        words = c.split()
+        if len(words) >= 2 and all(w.isalpha() for w in words):
+            return False
     from lookup.models import PaintLookup      # local: avoids a circular import
-    return bool(PaintLookup.normalize_name(candidate or ''))
+    return bool(PaintLookup.normalize_name(c))
+
+
+#: The name other modules import. One Auto uses the same predicate, so the two
+#: adapters cannot drift apart again.
+is_bracket_code = _is_code
 
 
 def _title_if_shouting(s):

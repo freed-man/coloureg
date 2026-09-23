@@ -47,6 +47,7 @@ import time
 import requests
 
 from .http import get_session
+from .ezyvin import is_bracket_code
 
 logger = logging.getLogger(__name__)
 
@@ -140,7 +141,15 @@ def _extract(payload):
             # A bracketed value is only a code if it looks like one. Some
             # descriptions carry a bracketed WORD ('(metallic finish)') which
             # must not become a paint code.
-            if candidate and len(candidate) <= 16 and ' ' not in candidate:
+            #
+            # paint184: the shared predicate, not a space test of its own.
+            # This check rejected spaces but never finishes, so it turned
+            # 'INK BLUE (METALLIC)' into code METALLIC — the paint104 bug,
+            # fixed in Ezyvin and never ported here. It also wrongly rejected
+            # real codes with a space, like 'RAL 9010'. One Auto is out of the
+            # race, so this was dormant; it is fixed so re-enabling the leg
+            # cannot bring the bug back with it.
+            if candidate and len(candidate) <= 16 and is_bracket_code(candidate):
                 code = candidate.upper()
                 desc = head.strip() or desc
 

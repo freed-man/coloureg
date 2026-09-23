@@ -11,6 +11,7 @@ from django.conf import settings as dj_settings
 from django.contrib import messages
 from django.contrib.admin.views.decorators import staff_member_required
 import secrets
+import threading
 
 # F12: one shared Session for every outbound call, with retries pinned off.
 # Imported under a distinct name — views.get_session() already exists and is the
@@ -290,6 +291,30 @@ def _remember_make(registration, make):
 # same VrmCache-then-history walk for its own answer.
 
 
+#: paint184: WHETHER DVLA ANSWERED, one slot PER THREAD.
+#:
+#: This used to live on the function object — `get_dvla_data.last_answered` —
+#: which every thread of a gthread worker shares (2 workers x 8 threads). Thread
+#: A's call hangs toward its 10s timeout; thread B's gets a 404 and sets True;
+#: A times out, returns None, and reads B's True. An outage is then treated as a
+#: definite "no such vehicle": the customer is told to check their plate and the
+#: registration is negative-cached for an hour — the exact outcome the flag was
+#: added to prevent, and most likely during a VDG outage, when this branch is
+#: busiest. Found by an external audit.
+#:
+#: threading.local, as paint133 did for _ambiguity_state. CORRECT ONLY BECAUSE
+#: THE WRITE AND THE READ HAPPEN ON THE SAME THREAD: _timed_call runs fn()
+#: directly, and the read follows it. If this call is ever moved into an
+#: executor, the reader gets a different thread's slot and always sees False —
+#: move the flag into the return value then instead.
+_dvla_state = threading.local()
+
+
+def dvla_last_answered():
+    """Did the most recent get_dvla_data call ON THIS THREAD get an answer?"""
+    return getattr(_dvla_state, 'answered', False)
+
+
 def get_dvla_data(registration):
     url = os.environ.get('DVLA_API_URL')
     api_key = os.environ.get('DVLA_API_KEY')
@@ -305,18 +330,18 @@ def get_dvla_data(registration):
     # being unreachable — and told the customer to check their typing either
     # way, then remembered the registration as a dud for an hour.
     #
-    # The flag rides on the function rather than the return value because every
-    # caller expects None-or-dict, and changing that shape would touch several
-    # call sites for one of them.
-    get_dvla_data.last_answered = False
+    # The flag rides in a per-thread slot (_dvla_state, above) rather than the
+    # return value because every caller expects None-or-dict. It used to ride on
+    # the function object, which all threads share — see paint184.
+    _dvla_state.answered = False
     try:
         response = http_session().post(url, json=payload, headers=headers, timeout=10)
         if response.status_code == 200:
-            get_dvla_data.last_answered = True
+            _dvla_state.answered = True
             return response.json()
         if response.status_code == 404:
             # A definite "no such vehicle" — DVLA answered, the answer is no.
-            get_dvla_data.last_answered = True
+            _dvla_state.answered = True
     except requests.exceptions.RequestException:
         return None
     return None
@@ -1181,7 +1206,7 @@ def index(request):
 
             dvla = _timed_call('dvla', registration,
                                lambda: get_dvla_data(registration))
-            dvla_answered = getattr(get_dvla_data, 'last_answered', False)
+            dvla_answered = dvla_last_answered()
             if not dvla:
                 # DVLA has nothing. Normally that's a genuine "not found" — but
                 # if VDG already identified the vehicle (we salvaged a VIN just
@@ -2020,7 +2045,12 @@ def _lookup_status(request, search_id):
         _record_recovery(search_id, telemetry)
         return JsonResponse({'status': 'error'}, status=200)
 
-    if not result:
+    # paint184: a refused placeholder is a MISS. The resolver empties the code
+    # and name at source, but the result is still a non-empty dict, so without
+    # this it would skip the branch below and land in "found" with a blank code
+    # — the page told the answer was found, with nothing to show. Routed on the
+    # explicit flag rather than on "no code", so no other path's routing moves.
+    if not result or result.get('placeholder_refused'):
         # Both paths missed. Log what the recovery did (for the dashboard), clear
         # the pending flag so further polls short-circuit, and tell the page to
         # surface the manual-lookup offer.

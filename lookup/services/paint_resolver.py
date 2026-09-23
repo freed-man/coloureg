@@ -85,6 +85,39 @@ def _enrich_from_lookup(result, make, model=None, vdg_colour=None,
                         code, _slashed, (make or '')[:30])
             code = _slashed
             result['paint_code'] = code
+        if is_placeholder_code(make, code):
+            # paint184: A PLACEHOLDER IS REFUSED WHERE IT ARRIVES, not after.
+            #
+            # paint146 refused it in _record_paint_hit, which cleans the ROW —
+            # and nothing else. The caller had already taken the code from
+            # this result, and went on to write it to the session, cache it for
+            # seven days and return it to the customer as status "found". An
+            # external audit found it by reading; running it confirmed all
+            # four destinations: the row was '' and the other three were XXX.
+            # T80KAF, a 2026 Audi, was shown XXX on 22 Sep while the log line
+            # recorded the refusal as a success.
+            #
+            # Refused HERE because every provider answer passes through this
+            # function — the initial lookup (views, VDG) and every return path
+            # of resolve_paint — so no destination can be missed again. The
+            # same reasoning put the slash and special-order rules here.
+            #
+            # BOTH FIELDS CLEARED. A placeholder means the source has no
+            # answer, so a name travelling with it is not evidence either:
+            # BO55LDP was delivered XXX with "Blue" on a car registered GREY.
+            # paint146's intent was that a failed lookup at least offers the
+            # customer a free manual one, and an empty result does exactly
+            # that. Returned before the catalogue is consulted, because the
+            # catalogue holds a junk row for XXX that would name it.
+            #
+            # Manual fulfilments never reach this function, so an operator's
+            # deliberate N/A (YD70XAA, an AJS motorcycle) is untouched.
+            logger.info('placeholder code refused at source: %s %s',
+                        (make or '')[:30], code)
+            result['paint_code'] = ''
+            result['paint_description'] = ''
+            result['placeholder_refused'] = True
+            return result
         if is_special_order_code(code):
             # paint159: never name a special-order code. Whatever the catalogue
             # holds against it is somebody else's bespoke car, picked up by a
