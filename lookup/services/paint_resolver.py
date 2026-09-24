@@ -146,6 +146,23 @@ def _enrich_from_lookup(result, make, model=None, vdg_colour=None,
                 result['paint_description'] = code.title()
                 return result
             code = ''
+        if _is_finish_word_not_code(make, code):
+            # paint200 (old list #6): the code says how the paint LOOKS, not which
+            # paint it is. Refused; a real name beside it survives as name_only,
+            # and the rest of this function may still find the code by that name.
+            logger.info('finish word refused as a code: %s %s',
+                        (make or '')[:30], code)
+            result['paint_code'] = ''
+            result['finish_word_refused'] = True
+            if not (result.get('paint_description') or '').strip():
+                # Nothing usable is left. Routed as NOT FOUND the way a
+                # placeholder is (placeholder_refused is what the status view
+                # reads), so an empty answer can never be recorded as found.
+                result['paint_description'] = ''
+                result['placeholder_refused'] = True
+                return result
+            result['name_only'] = True
+            code = ''
         # A provider can return a real code that no retailer sells (paint85).
         # Rewritten HERE, where the provider's answer arrives, so the mapped
         # code flows to the row, the page and the email alike — mapping later
@@ -1147,6 +1164,31 @@ def _is_colour_word_not_code(make, code):
     mfr = PaintLookup.normalize_manufacturer(make)
     return not any(PaintLookup.objects.filter(manufacturer=mfr, code__iexact=x).exists()
                    for x in [c] + parts)
+
+
+def _is_finish_word_not_code(make, code):
+    """paint200 (old list #6): a FINISH word delivered as a paint code.
+
+    Reproduced in production on 24 Sep: in the previous 30 days a Ford customer
+    was handed METALLIC as their paint code. The Ezyvin and One Auto adapters
+    refuse finish words at the bracket (paint104); every other leg could pass
+    one straight through, because nothing between the legs and the customer
+    asked the question.
+
+    A code made ONLY of finish words (normalize_name empties it: METALLIC,
+    MICA, MATT, SOLID, PEARL, GLOSS, PEARL METALLIC) says how a paint looks,
+    not which paint it is. Real codes keep a word normalize_name does not
+    drop (PN3BG, KTA). As with P3, a make whose catalogue holds the word as a
+    code keeps it.
+    """
+    c = (code or '').strip()
+    if not c or not c.replace(' ', '').replace('-', '').isalpha():
+        return False
+    from lookup.models import PaintLookup
+    if PaintLookup.normalize_name(c):
+        return False
+    mfr = PaintLookup.normalize_manufacturer(make)
+    return not PaintLookup.objects.filter(manufacturer=mfr, code__iexact=c).exists()
 
 
 def mmw_code_validates(make, code, dvla_colour):
