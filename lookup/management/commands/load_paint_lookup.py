@@ -51,26 +51,9 @@ def _merge_operator_names(row):
     "Gris Titane". pl24 returned the English "Titanium Grey" with no code, and
     nothing matched, so a resolvable lookup failed.
     """
-    extra = [n for n in (row.operator_names or []) if n]
-    if not extra:
-        return False
-    before = (list(row.all_names or []), list(row.normalized_names or []))
-    names = list(row.all_names or [])
-    norms = list(row.normalized_names or [])
-    seen = {(n or '').strip().lower() for n in names}
-    for n in extra:
-        if (n or '').strip().lower() in seen:
-            continue
-        names.append(n)
-        seen.add(n.strip().lower())
-        # MUST use the model's own normaliser, or the added name is stored in a
-        # form the matcher will never look for.
-        norm = PaintLookup.normalize_name(n)
-        if norm and norm not in norms:
-            norms.append(norm)
-    row.all_names = names
-    row.normalized_names = norms
-    return (names, norms) != before
+    # paint202: the body now lives on the model, so the loader and
+    # fold_operator_names merge through the same code.
+    return row.merge_operator_names()
 
 
 def build_instance(record):

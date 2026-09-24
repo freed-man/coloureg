@@ -1379,6 +1379,75 @@ class PaintLookup(models.Model):
         'mitsubishi': {'P26B': 'P26'},
     }
 
+    def merge_operator_names(self):
+        """Union `operator_names` into all_names / normalized_names. True if changed.
+
+        paint202: THE ONE COPY. This body lived in load_paint_lookup; it moved
+        here so the loader and fold_operator_names merge identically. The
+        reasoning is paint161's: `all_names` belongs to the scrape, so an
+        operator's addition lives in `operator_names` and is merged back in,
+        and it MUST use the model's own normaliser, or the added name is stored
+        in a form the matcher will never look for.
+        """
+        extra = [n for n in (self.operator_names or []) if n]
+        if not extra:
+            return False
+        before = (list(self.all_names or []), list(self.normalized_names or []))
+        names = list(self.all_names or [])
+        norms = list(self.normalized_names or [])
+        seen = {(n or '').strip().lower() for n in names}
+        for n in extra:
+            if (n or '').strip().lower() in seen:
+                continue
+            names.append(n)
+            seen.add(n.strip().lower())
+            norm = type(self).normalize_name(n)
+            if norm and norm not in norms:
+                norms.append(norm)
+        self.all_names = names
+        self.normalized_names = norms
+        return (names, norms) != before
+
+    @classmethod
+    def fold_operator_name(cls, make, code, name, apply=True):
+        """paint202: fold one name the operator typed into its catalogue row.
+
+        paint161 built `operator_names` for exactly this (vauxhall/KKJ held
+        only 'Gris Titane', so pl24's 'Titanium Grey' found nothing), but
+        nothing ever moved the 127 operator entries across. Returns what
+        happened, and writes only on 'folded' with apply=True:
+
+            folded            added; now matchable by that name
+            already known     the row already carries it (idempotent)
+            not in catalogue  reported, NEVER created: a row needs provenance
+            suppressed        left alone: suppression is a decision
+            contradicts       the name's colour disagrees with the row's, the
+                              guard P3 and paint176 use; reported for review
+            no name           nothing to fold
+        """
+        name = (name or '').strip()
+        if not name:
+            return 'no name'
+        row = cls.all_objects.filter(manufacturer=cls.normalize_manufacturer(make),
+                                     code__iexact=(code or '').strip()).first()
+        if not row:
+            return 'not in catalogue'
+        if row.suppressed:
+            return 'suppressed'
+        norm = cls.normalize_name(name)
+        known = {(n or '').strip().lower() for n in list(row.all_names or []) + list(row.operator_names or [])}
+        if name.lower() in known or (norm and norm in (row.normalized_names or [])):
+            return 'already known'
+        from lookup.services.paint_resolver import _colour_families
+        want, got = _colour_families(name), _colour_families(row.name or '')
+        if want and got and not (want & got):
+            return 'contradicts'
+        if apply:
+            row.operator_names = list(row.operator_names or []) + [name]
+            row.merge_operator_names()
+            row.save(update_fields=['operator_names', 'all_names', 'normalized_names'])
+        return 'folded'
+
     @classmethod
     def map_code(cls, manufacturer, code):
         """Rewrite a provider code to the one a customer can buy, if we know of
@@ -2347,6 +2416,15 @@ class OperatorPaintCode(models.Model):
                    if conflict else {}),
             },
         )
+        # paint202: fold the name into its catalogue row as it is recorded, so
+        # the catalogue can never fall behind the operator again. Not for an
+        # answer flagged for review, and NEVER allowed to break the fulfilment
+        # that called this.
+        if name and not conflict:
+            try:
+                PaintLookup.fold_operator_name(make, code, name)
+            except Exception:
+                logger.exception('operator name fold failed for %s/%s', mfr, code)
         return row
 
     @classmethod
