@@ -391,6 +391,23 @@ LOOKUP_PRICE_PENCE = int(os.environ.get('LOOKUP_PRICE_PENCE', '200'))
 #
 # Unset it (or set 0) and a lookup the reserve answered reports only the VDG
 # call — which is what it did before this existed, and made the leg look free.
+# paint198 (audit #3, P7): THE ORIGIN SECRET'S LENGTH IS ITS STRENGTH. Under
+# block mode it is the only thing telling a real Cloudflare request from a
+# direct one, and the origin answers a right guess differently from a wrong
+# one, so a short secret could in principle be guessed. Production's is 64
+# random characters (confirmed 24 Sep). This refuses to start with anything
+# under 32, so a typo or a placeholder can never quietly weaken it. Unset is
+# allowed: the gate is then inert, which is how development runs. The error
+# gives the LENGTH only, never the value, because errors end up in logs.
+ORIGIN_SECRET_MIN_LENGTH = 32
+_origin_secret_len = len(os.environ.get('ORIGIN_SECRET', '').strip())
+if 0 < _origin_secret_len < ORIGIN_SECRET_MIN_LENGTH:
+    raise ImproperlyConfigured(
+        f'ORIGIN_SECRET must be at least {ORIGIN_SECRET_MIN_LENGTH} characters; '
+        f'it is {_origin_secret_len}. Make one with: python -c "import secrets; '
+        'print(secrets.token_urlsafe(48))", and set the same value in the '
+        'Cloudflare Transform Rule.')
+
 EZYVIN_CREDIT_GBP = os.environ.get('EZYVIN_CREDIT_GBP', '0.09').strip()
 
 # paint190: CHECKED HERE, AT STARTUP, like LOOKUP_PRICE_PENCE. It was converted
