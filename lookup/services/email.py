@@ -558,15 +558,20 @@ def send_admin_ip_alert(ip, count, threshold, rows):
     }, context='ip_alert')
 
 
-def send_admin_origin_gate_alert(kind, streak, tagged):
+def send_admin_origin_gate_alert(kind, what, tagged):
     """paint187: tell the operator the origin gate acted on a run of refusals.
 
-    'reverted'  the tag was not arriving (or the check could not complete), so
+    'reverted'  the tag was not arriving (or the check could not complete
+                three times running), so
                 block mode switched itself off to let customers back in. Needs
                 action: fix the Cloudflare rule, then turn blocking back on.
     'held'      the tag WAS arriving, so the refusals came from someone going
                 round Cloudflare. Blocking stayed on. No action; at most one of
                 these an hour, so an attack does not flood the inbox.
+    'unsure'    paint196: the check could not complete, so blocking HELD for
+                now; the third in a row switches it off. At most one an hour.
+    `what` says what triggered it (a run of refusals, or paint196's window of
+    direct requests), built by the middleware from integers.
 
     No customer data in either, and the counts are integers, but escaped all
     the same so a later edit cannot quietly add an unescaped field.
@@ -574,19 +579,31 @@ def send_admin_origin_gate_alert(kind, streak, tagged):
     if kind == 'held':
         colour, border = '#eef6ee', '#2e7d32'
         headline = 'Block mode held off a direct attack'
-        detail = (f'{int(streak)} requests in a row were refused. A check through '
+        detail = (f'{what}. A check through '
                   f'Cloudflare confirmed its tag is arriving, so these came from '
                   f'someone connecting to the server directly and going round '
                   f'Cloudflare.')
         action = ('Blocking stays on and customers are unaffected. Nothing to do. '
                   'You will get at most one of these an hour.')
         subject = 'coloureg: block mode held off a direct attack'
+    elif kind == 'unsure':
+        colour, border = '#fff8e1', '#f9a825'
+        headline = 'Block mode held, but its check could not complete'
+        detail = (f'{what}, and a check through Cloudflare could not complete. '
+                  f'Blocking stays on for now. If the check fails three times '
+                  f'running, block mode switches itself off, so a broken rule '
+                  f'cannot keep customers out.')
+        action = ('Nothing to do if this does not repeat. If it does, make sure '
+                  'Cloudflare is not challenging /origin-check/, and look for a '
+                  'heavy flood of direct requests slowing the server.')
+        subject = 'coloureg: block mode could not check Cloudflare'
     else:
         colour, border = '#fdecea', '#c62828'
         headline = 'Block mode switched itself off'
         why = ('found Cloudflare\'s tag is not arriving' if tagged is False
-               else 'could not complete, so it could not rule out a broken rule')
-        detail = (f'{int(streak)} requests in a row were refused, and a check '
+               else 'could not complete three times running, so it could not rule '
+                 'out a broken rule')
+        detail = (f'{what}, and a check '
                   f'through Cloudflare {why}. The site is now in watching mode '
                   f'so customers can get in.')
         action = ('Check your Cloudflare Transform Rule is still adding the tag, '

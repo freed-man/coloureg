@@ -115,6 +115,18 @@ _SELF_CHECK_COOLDOWN_S = 600
 # An attack that keeps coming must not flood the operator's inbox.
 _HELD_ALERT_KEY = 'origin-gate:held-alert'
 _HELD_ALERT_THROTTLE_S = 3600
+# paint196: an inconclusive self-check HOLDS, up to this many in a row. The
+# probe comes back into this same server through Cloudflare, so a heavy direct
+# flood can slow it into a timeout: reverting on "could not tell" would let
+# the flood itself produce the answer that switches block off. A broken
+# Transform Rule does not look like this; it makes the probe answer a definite
+# false. The third in a row reverts anyway (at least twenty minutes, given the
+# cooldown), so a real double fault cannot keep customers out for long.
+# The alert email says "three": change both together.
+_SELF_CHECK_UNSURE_KEY = 'origin-gate:self-check-unsure'
+_SELF_CHECK_UNSURE_LIMIT = 3
+_SELF_CHECK_UNSURE_TTL_S = 60 * 60
+_UNSURE_ALERT_KEY = 'origin-gate:unsure-alert'
 
 
 def origin_gate_stats():
@@ -326,8 +338,25 @@ class OriginGateObserverMiddleware:
         if cfg.origin_gate_mode not in (SiteConfig.ORIGIN_GATE_ENFORCE,
                                         SiteConfig.ORIGIN_GATE_BLOCK):
             return
-        self._revert(cfg, '%d of %d recent requests arrived without the '
-                          'Cloudflare header' % (w['missing'], w['total']))
+        what = ('%d of %d recent requests arrived without the Cloudflare '
+                'header' % (w['missing'], w['total']))
+        if cfg.origin_gate_mode == SiteConfig.ORIGIN_GATE_BLOCK:
+            # paint196 (audit #3, P1): under BLOCK, ask Cloudflare first, the
+            # same check the streak makes. This used to revert directly, and
+            # refused requests are counted here BEFORE they are refused, so
+            # about 35 direct requests in one window switched block off with
+            # no check and no email: the hole paint187 closed on the other
+            # trigger, left open on this one. The check can make the request
+            # that closes the window wait up to five seconds, at most once per
+            # ten minutes per worker, and only when nearly every request in
+            # the window skipped Cloudflare.
+            # ENFORCE still reverts directly. The same flood could switch it
+            # off, but production runs block; if enforce is ever the live mode
+            # again, route it through the check too (the emails would need
+            # wording for enforce).
+            self._check_then_act(cfg, what)
+            return
+        self._revert(cfg, what)
 
     def _note_refused(self):
         """paint186: count a refusal; under block, enough in a row reverts.
@@ -352,8 +381,10 @@ class OriginGateObserverMiddleware:
         paint187: it used to revert straight away, which meant anyone who knew
         the origin's address could switch block mode off with five requests.
         Now it asks, through Cloudflare, whether the tag arrives: if it does,
-        the run was an attack and blocking stays on; if not, or if the check
-        cannot tell, the rule is taken as broken and it reverts.
+        the run was an attack and blocking stays on; if not, the rule is taken
+        as broken and it reverts. paint196: if the check cannot tell, it holds,
+        up to three times running. The decision lives in _check_then_act,
+        shared with the window trigger.
 
         Block only: under enforce nothing is refused, so this trigger has
         nothing to say. Returns True when the run was dealt with, so the caller
@@ -366,6 +397,23 @@ class OriginGateObserverMiddleware:
         cfg = SiteConfig.get()
         if cfg.origin_gate_mode != SiteConfig.ORIGIN_GATE_BLOCK:
             return False
+        return self._check_then_act(cfg, '%d requests in a row were refused' % streak)
+
+    def _check_then_act(self, cfg, what):
+        """paint196: the ONE place block mode decides whether to switch itself
+        off, shared by both triggers (a run of refusals, a window of direct
+        requests) so the decision cannot drift between them, which is why
+        _revert is shared too.
+
+        True   the tag arrives, so the requests went round Cloudflare: HOLD.
+        False  the tag does not arrive, so the rule is broken: REVERT.
+        None   the check could not complete: HOLD, until the third in a row,
+               then revert. See _SELF_CHECK_UNSURE_LIMIT for why.
+
+        Returns True when it acted (held or reverted), and False when a check
+        already ran on this worker in the last ten minutes, so the caller
+        keeps counting.
+        """
         cache = caches['local']
         # Set BEFORE the check, so concurrent refusals on this worker cannot
         # each fire one of their own while the first is still waiting.
@@ -377,26 +425,41 @@ class OriginGateObserverMiddleware:
             # The rule works, so these came from someone going round
             # Cloudflare. Switching off now would hand them exactly what they
             # were trying to get.
+            cache.delete(_SELF_CHECK_UNSURE_KEY)
             logger.warning(
-                'ORIGIN GATE HELD: %d requests in a row were refused, but a '
-                'check through Cloudflare confirmed the tag is arriving, so they '
-                'came from a direct connection. Blocking stays on.', streak)
+                'ORIGIN GATE HELD: %s, but a check through Cloudflare confirmed '
+                'the tag is arriving, so they came from a direct connection. '
+                'Blocking stays on.', what)
             if not cache.get(_HELD_ALERT_KEY):
                 cache.set(_HELD_ALERT_KEY, True, _HELD_ALERT_THROTTLE_S)
-                self._alert('held', streak, tagged)
+                self._alert('held', what, tagged)
             return True
+        if tagged is None:
+            unsure = (cache.get(_SELF_CHECK_UNSURE_KEY) or 0) + 1
+            if unsure < _SELF_CHECK_UNSURE_LIMIT:
+                cache.set(_SELF_CHECK_UNSURE_KEY, unsure, _SELF_CHECK_UNSURE_TTL_S)
+                logger.warning(
+                    'ORIGIN GATE HELD, UNSURE: %s, and a check through Cloudflare '
+                    'could not complete (%d of %d). Blocking stays on; it switches '
+                    'off if the check fails %d times running.', what, unsure,
+                    _SELF_CHECK_UNSURE_LIMIT, _SELF_CHECK_UNSURE_LIMIT)
+                if not cache.get(_UNSURE_ALERT_KEY):
+                    cache.set(_UNSURE_ALERT_KEY, True, _HELD_ALERT_THROTTLE_S)
+                    self._alert('unsure', what, tagged)
+                return True
         # LEAVING block, so clear the cooldown: re-enabling block within ten
         # minutes would otherwise find it still set and hold, refusing every
         # customer, for up to that long.
         cache.delete(_SELF_CHECK_COOLDOWN_KEY)
+        cache.delete(_SELF_CHECK_UNSURE_KEY)
         if tagged is False:
-            why = ('%d requests in a row were refused, and a check through '
-                   'Cloudflare found the tag is not arriving' % streak)
+            why = ('%s, and a check through Cloudflare found the tag is not '
+                   'arriving' % what)
         else:
-            why = ('%d requests in a row were refused, and a check through '
-                   'Cloudflare could not complete' % streak)
+            why = ('%s, and a check through Cloudflare could not complete %d '
+                   'times running' % (what, _SELF_CHECK_UNSURE_LIMIT))
         self._revert(cfg, why)
-        self._alert('reverted', streak, tagged)
+        self._alert('reverted', what, tagged)
         return True
 
     def _tag_arrives_through_cloudflare(self):
@@ -405,10 +468,12 @@ class OriginGateObserverMiddleware:
         True   the tag arrived: the rule works.
         False  no tag: the rule is broken.
         None   could not tell: no URL, a timeout, an error, or an answer that
-               was not the probe's. The caller treats it like False, because
-               the costly mistake is staying blocked while customers are
-               refused. That also makes an unreachable check fall back to the
-               plain run-of-five rule rather than to never switching off.
+               was not the probe's. paint196: the caller HOLDS on this, until
+               the third in a row. It used to revert at once, reasoning that
+               staying blocked while customers are refused is the costly
+               mistake. But a broken rule makes this answer a definite False,
+               so None means the check itself failed, and a heavy direct flood
+               can cause exactly that by slowing the probe into a timeout.
 
         An attacker cannot fake the answer: going round Cloudflare is what they
         are doing, and they cannot stop Cloudflare adding the tag to a request
@@ -455,7 +520,7 @@ class OriginGateObserverMiddleware:
         resp['Cache-Control'] = 'no-store, max-age=0'
         return resp
 
-    def _alert(self, kind, streak, tagged):
+    def _alert(self, kind, what, tagged):
         """Email the operator. Never raises, as a SECOND layer.
 
         What actually keeps a failing email from turning a refusal into a
@@ -469,7 +534,7 @@ class OriginGateObserverMiddleware:
         """
         try:
             from lookup.services.email import send_admin_origin_gate_alert
-            send_admin_origin_gate_alert(kind, streak, tagged)
+            send_admin_origin_gate_alert(kind, what, tagged)
         except Exception:
             logger.exception('origin gate alert could not be sent')
 
