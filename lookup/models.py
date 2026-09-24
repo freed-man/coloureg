@@ -1072,6 +1072,50 @@ class PaintLookup(models.Model):
         best = max(candidates, key=lambda s: (len(s.sources or []), -len(s.code), s.code))
         return best.code
 
+    #: paint201: THE RENAULT GROUP'S PAINT-TYPE PREFIX. A five-character code
+    #: such as TEKNA is a two-letter paint TYPE and the three-character colour
+    #: code, KNA. Measured on the catalogue, 24 Sep 2026: every Renault and
+    #: Dacia code starting TE (94), OV (21), NV (8) or MV (4) also has its
+    #: three-character remainder catalogued, 127 of 127, and where both colours
+    #: are known they agree 99 times in 99; where names differ it is wording
+    #: ('Ac Noir' / 'Noir'). BI has no such evidence and may mean bi-ton, so it
+    #: is left out, as is every other two letters.
+    #:
+    #: WHY ONLY HERE. The same test REJECTED the look-alikes: JLR's JBC1807 is
+    #: Ebony Black while 1807 is Narvik Black, Ford's PN3KP is White Platinum
+    #: while 3KP is Mistral Blue. Both kinds pass a colour-family check, which
+    #: is why this is an allow-list of measured makes and prefixes, never a
+    #: general strip. (CURATED_CODE_OVERRIDES records the suffix version of
+    #: the same lesson: 94% of general suffix strips are a different colour.)
+    TYPE_PREFIX_MAKES = ('renault', 'dacia')
+    TYPE_PREFIXES = ('TE', 'OV', 'NV', 'MV')
+
+    @classmethod
+    def _via_type_prefix(cls, manufacturer, paint_code, model=None, year=None, vdg_colour=None):
+        """(row, base) when a Renault group code resolves through its paint-type
+        prefix and the base agrees with the car's colour; (None, None) otherwise.
+        Consulted only once the code as delivered has failed, so a catalogued
+        prefixed code (OV369) always resolves as itself."""
+        c = (paint_code or '').strip().upper()
+        if (cls.normalize_manufacturer(manufacturer) not in cls.TYPE_PREFIX_MAKES
+                or len(c) != 5 or c[:2] not in cls.TYPE_PREFIXES):
+            return None, None
+        base = c[2:]
+        row = cls.lookup(manufacturer=manufacturer, paint_code=base, model=model,
+                         year=year, vdg_colour=vdg_colour)
+        if not row:
+            return None, None
+        # THE GUARD paint176 gives slash codes: refused only when both colours
+        # are known and share no family.
+        if vdg_colour:
+            from lookup.services.paint_resolver import _colour_families
+            want, got = _colour_families(vdg_colour), _colour_families(row.name or '')
+            if want and got and not (want & got):
+                logger.info('type prefix refused: %s %s reads %r, DVLA says %r',
+                            manufacturer, c, row.name, vdg_colour)
+                return None, None
+        return row, base
+
     @classmethod
     def lookup_with_canonical(cls, manufacturer, paint_code, model=None, year=None, vdg_colour=None):
         """Convenience: swatch lookup + canonical expansion.
@@ -1120,6 +1164,15 @@ class PaintLookup(models.Model):
                         )
                         swatch = alt
                         paint_code = stripped[1:]
+            if not swatch:
+                _alt, _base = cls._via_type_prefix(manufacturer, paint_code, model, year, vdg_colour)
+                if _alt:
+                    logger.info(
+                        'paint code %s resolved as %s: Renault group paint-type '
+                        'prefix dropped (%s)', paint_code, _base, manufacturer,
+                    )
+                    swatch = _alt
+                    paint_code = _base
             if not swatch:
                 return None, None, None
             canonical = cls.find_canonical_code(
