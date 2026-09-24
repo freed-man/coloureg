@@ -12,7 +12,7 @@ psycopg2-binary==2.9.13
 requests==2.34.2
 resend==2.32.2
 sentry-sdk==2.64.0
-sqlparse==0.5.5
+sqlparse==0.6.0
 stripe==15.6.1
 typing_extensions==4.15.0
 tzdata==2026.2

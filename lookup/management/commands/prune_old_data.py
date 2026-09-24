@@ -22,7 +22,7 @@ from django.utils import timezone
 
 from django.contrib.sessions.models import Session
 
-from lookup.models import Search, VrmCache
+from lookup.models import PaintCodeReport, Search, VrmCache
 from lookup.services.protection import VRM_CACHE_TTL_DAYS
 
 
@@ -52,7 +52,7 @@ class Command(BaseCommand):
         # skip. With none given it still does all three, so the cron entry and
         # anything already scripted are unaffected.
         parser.add_argument('--searches', action='store_true',
-                            help='Scrub personal fields from old Search rows.')
+                            help='Scrub personal fields from old Search rows and paint code reports.')
         parser.add_argument('--cache', action='store_true',
                             help='Delete stale VrmCache entries.')
         parser.add_argument('--sessions', action='store_true',
@@ -84,6 +84,12 @@ class Command(BaseCommand):
             | ~Q(manual_note='')
         )
         candidates = Search.objects.filter(timestamp__lt=cutoff).filter(has_personal)
+        # paint197 (audit #3, P5): paint code reports hold the same kind of
+        # personal data, an IP, a session key and a free-text note that can say
+        # anything, and sat outside the 365-day promise. Same cutoff, same
+        # target. What a report is FOR stays: make, code, registration.
+        reports = PaintCodeReport.objects.filter(created_at__lt=cutoff).filter(
+            Q(ip_address__isnull=False) | ~Q(session_key='') | ~Q(note=''))
 
         # --- VrmCache (paint16, ordering fixed in paint17) ------------------
         # Cache payloads embed the VIN, so leaving them in place retains a VIN
@@ -121,6 +127,7 @@ class Command(BaseCommand):
         expired_session_count = expired_sessions.count() if do_sessions else 0
 
         count = candidates.count() if do_searches else 0
+        report_count = reports.count() if do_searches else 0
         oldest = candidates.order_by('timestamp').values_list('timestamp', flat=True).first()
         newest = candidates.order_by('-timestamp').values_list('timestamp', flat=True).first()
 
@@ -128,6 +135,7 @@ class Command(BaseCommand):
         self.stdout.write(self.style.HTTP_INFO('Privacy retention scrub'))
         self.stdout.write(f'  Search cutoff:          {cutoff.isoformat()}')
         self.stdout.write(f'  Records to scrub:       {count}')
+        self.stdout.write(f'  Reports to scrub:       {report_count}')
         if oldest and newest:
             self.stdout.write(f'  Oldest record:          {oldest.isoformat()}')
             self.stdout.write(f'  Newest record:          {newest.isoformat()}')
@@ -140,13 +148,17 @@ class Command(BaseCommand):
         self.stdout.write(f'  Mode:                   {"DRY RUN (no changes)" if dry_run else "LIVE (will modify)"}')
         self.stdout.write('')
 
-        if count == 0 and stale_count == 0 and expired_session_count == 0:
+        # Reports belong in this test: leaving them out would repeat the
+        # VrmCache bug above, never scrubbing them on a day with no old Searches.
+        if (count == 0 and report_count == 0 and stale_count == 0
+                and expired_session_count == 0):
             self.stdout.write(self.style.SUCCESS('Nothing to scrub. Database is clean.'))
             return
 
         if dry_run:
             self.stdout.write(self.style.WARNING(
-                f'Dry run only. {count} records, {stale_count} cache entries and '
+                f'Dry run only. {count} records, {report_count} reports, '
+                f'{stale_count} cache entries and '
                 f'{expired_session_count} expired sessions WOULD be processed. '
                 f'Run without --dry-run to apply.'
             ))
@@ -169,6 +181,9 @@ class Command(BaseCommand):
             )
 
         # Independent of the Search scrub above — see the note at the cutoff.
+        reports_updated = 0
+        if do_searches and report_count:
+            reports_updated = reports.update(ip_address=None, session_key='', note='')
         if do_cache and stale_count:
             stale.delete()
 
@@ -178,6 +193,9 @@ class Command(BaseCommand):
 
         self.stdout.write(self.style.SUCCESS(
             f'Scrubbed personal fields from {updated} records.'
+        ))
+        self.stdout.write(self.style.SUCCESS(
+            f'Scrubbed personal fields from {reports_updated} paint code reports.'
         ))
         self.stdout.write(self.style.SUCCESS(
             f'Deleted {stale_count} stale VrmCache entries '

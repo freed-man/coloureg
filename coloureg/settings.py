@@ -365,11 +365,12 @@ TURNSTILE_ALLOWED_HOSTNAMES = [
 #    /stripe/webhook/, and Cloudflare's own challenges do not apply to a plain
 #    API POST with no browser session.
 #
-# Verified 18 Aug 2026: the Stripe dashboard has NO webhook destination
-# configured at all, so nothing currently depends on either address. That also
-# means full Cloudflare blocking is safe to enable today — there is no webhook
-# for it to break — but the moment one is registered, it must be on
-# coloureg.com or blocking has to be reconsidered first.
+# Verified 18 Aug 2026: the Stripe dashboard had NO webhook destination
+# configured, so nothing depended on either address. paint197: this also said
+# a webhook registered anywhere but coloureg.com would force a rethink of
+# blocking. Not so, since /stripe/webhook/ is exempt from block (middleware
+# _BLOCK_EXEMPT) and a direct delivery still lands. Register it on
+# coloureg.com all the same, as the heading says.
 # ==========================================================================
 STRIPE_PUBLISHABLE_KEY = os.environ.get('STRIPE_PUBLISHABLE_KEY', '')
 STRIPE_SECRET_KEY = os.environ.get('STRIPE_SECRET_KEY', '')

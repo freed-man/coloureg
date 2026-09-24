@@ -126,6 +126,26 @@ def _enrich_from_lookup(result, make, model=None, vdg_colour=None,
             result['paint_description'] = ''
             result['special_order'] = True
             return result
+        if _is_colour_word_not_code(make, code):
+            # paint197 (audit #3, P3): the word is the colour's NAME. Refused
+            # as a code and marked name_only. With the manufacturer's own name
+            # beside it ('Nero'), the rest of this function may still find the
+            # real code by THAT name, under its exactly-one-code rule.
+            logger.info('colour word refused as a code: %s %s',
+                        (make or '')[:30], code)
+            result['paint_code'] = ''
+            result['name_only'] = True
+            result['colour_word_refused'] = True
+            if not (result.get('paint_description') or '').strip():
+                # No name at all: the word WAS the name. Kept as that and
+                # returned now, because a generic word is not the maker's name
+                # for a paint, and looking a code up by it would be a guess. A
+                # Ferrari 'Black' matches 910 Black Metallic as the ONLY hit,
+                # but only because the catalogue calls Ferrari's other blacks
+                # Nero: unique by language, not by paint.
+                result['paint_description'] = code.title()
+                return result
+            code = ''
         # A provider can return a real code that no retailer sells (paint85).
         # Rewritten HERE, where the provider's answer arrives, so the mapped
         # code flows to the row, the page and the email alike — mapping later
@@ -1098,6 +1118,35 @@ def _colour_families(text):
     """Every colour family named in a string. Empty set when it names none."""
     words = re.sub(r'[^a-z]+', ' ', (text or '').lower()).split()
     return {_COLOUR_FAMILY[w] for w in words if w in _COLOUR_FAMILY}
+
+
+def _is_colour_word_not_code(make, code):
+    """paint197 (audit #3, P3): a colour word delivered as a paint code.
+
+    'Nero (Black)' reached the customer as code BLACK. The bracket rule takes
+    a single word in brackets as a code; only finish words (paint104) and
+    phrases of two or more words (paint184) were refused. 'Bianco (White)',
+    'Grigio (Silver)' and 'Rosso (Pearl-Red)' the same.
+
+    A single word of letters (a hyphen joins words, a slash joins parts) that
+    names a colour family is the colour's NAME, UNLESS the catalogue holds it
+    as a code FOR THIS MAKE. Measured, not guessed: of 120,594 catalogued
+    codes, 17 are also colour words, among them Kia BLA, Mitsubishi OR and
+    Tesla ONYX, and a make-blind rule would refuse every one. Exempting any
+    catalogued code fails the other way: five classic British makes list RED,
+    so a Ferrari's '(Red)' would pass. Per make gets both right.
+    """
+    c = (code or '').strip()
+    if not c:
+        return False
+    parts = [p.strip() for p in c.split('/')]
+    if not all(p and ' ' not in p and p.replace('-', '').isalpha()
+               and _colour_families(p) for p in parts):
+        return False
+    from lookup.models import PaintLookup
+    mfr = PaintLookup.normalize_manufacturer(make)
+    return not any(PaintLookup.objects.filter(manufacturer=mfr, code__iexact=x).exists()
+                   for x in [c] + parts)
 
 
 def mmw_code_validates(make, code, dvla_colour):

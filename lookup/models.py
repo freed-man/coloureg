@@ -1358,6 +1358,16 @@ class PaintLookup(models.Model):
     def _strip_unsellable_form(cls, manufacturer, code):
         """Reduce a compound or suffixed code to the half a retailer sells.
 
+        paint197 (audit #3, P4): SLASHED CODES ARE NO LONGER SPLIT HERE. They
+        are resolved by paint_resolver.resolve_slashed_code (paint162, 176),
+        which runs first on the one path that calls this. So a slash only
+        reached this branch where that rule had DECLINED: two parts known, or
+        the only known part the wrong colour. Taking the tail there was a
+        guess, and it undid paint176's colour guard: L8/Z9Y on a black Audi
+        became Z9Y, Dark Grey Matt, and Z2Z2/H5X on a white VW became H5X, a
+        blue. The slash notes below are history; only the Mercedes suffix is
+        handled here now.
+
         ONLY REWRITES WHEN IT RESCUES THE CODE. The candidate must resolve in
         the catalogue AND the original must not. That single condition is what
         makes this safe: it cannot degrade a code that already works, whatever
@@ -1381,11 +1391,8 @@ class PaintLookup(models.Model):
         mfr = cls.normalize_manufacturer(manufacturer or '')
 
         candidates = []
-        if '/' in raw:
-            tail = raw.rsplit('/', 1)[-1].strip()
-            if len(tail) >= 3:
-                candidates.append(tail)
-        elif mfr in cls._MB_MAKES and len(raw) >= 4 \
+        # paint197: no slash branch. See the docstring.
+        if '/' not in raw and mfr in cls._MB_MAKES and len(raw) >= 4 \
                 and raw[-1].isalpha() and raw[:-1].isdigit():
             candidates.append(raw[:-1])
 
