@@ -359,7 +359,10 @@
                     any kind here, so nothing to un-blur, and if anything fails you see
                     blocks, never a code someone could mistake for theirs. The real code
                     and name are not in this page at all (paint22). {% endcomment %}
-                    <div class="paint-swatch-bar" style="background: {{ locked_paint_hex|default:'#c3c7cc' }};"></div>
+                    {% comment %} paint199: NO COLOUR, NO BAR. The grey stand-in read as the car's
+                       colour, and the paid page shows no bar in the same case, so a customer saw
+                       grey before paying and nothing after. {% endcomment %}
+                    {% if locked_paint_hex %}<div class="paint-swatch-bar" style="background: {{ locked_paint_hex }};"></div>{% endif %}
                     <div class="paint-block">
                         <div aria-hidden="true">
                             <div class="paint-code"><svg style="height: 64px; width: auto; display: block; margin: 0 auto;" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 180 48" aria-hidden="true" focusable="false" shape-rendering="crispEdges"><rect x="0" y="0" width="12" height="12" fill="#f9d2ce"/><rect x="12" y="0" width="12" height="12" fill="#f1946a"/><rect x="24" y="0" width="12" height="12" fill="#f5ab64"/><rect x="36" y="0" width="12" height="12" fill="#fbddab"/><rect x="48" y="0" width="12" height="12" fill="#f6c557"/><rect x="60" y="0" width="12" height="12" fill="#f6d15e"/><rect x="72" y="0" width="12" height="12" fill="#e8df81"/><rect x="84" y="0" width="12" height="12" fill="#d7ebba"/><rect x="96" y="0" width="12" height="12" fill="#8edf9e"/><rect x="120" y="0" width="12" height="12" fill="#69c4c4"/><rect x="132" y="0" width="12" height="12" fill="#d9edf7"/><rect x="144" y="0" width="12" height="12" fill="#90b2e1"/><rect x="156" y="0" width="12" height="12" fill="#b0acdc"/><rect x="168" y="0" width="12" height="12" fill="#ddc6e6"/><rect x="0" y="12" width="12" height="12" fill="#ef8a7f"/><rect x="12" y="12" width="12" height="12" fill="#f5b598"/><rect x="24" y="12" width="12" height="12" fill="#f5af6c"/><rect x="36" y="12" width="12" height="12" fill="#f9d08b"/><rect x="48" y="12" width="12" height="12" fill="#fadc9b"/><rect x="60" y="12" width="12" height="12" fill="#f6d260"/><rect x="72" y="12" width="12" height="12" fill="#f4f0c4"/><rect x="84" y="12" width="12" height="12" fill="#95ca48"/><rect x="96" y="12" width="12" height="12" fill="#b0e8bb"/><rect x="108" y="12" width="12" height="12" fill="#81dab7"/><rect x="120" y="12" width="12" height="12" fill="#56bdbd"/><rect x="132" y="12" width="12" height="12" fill="#cde7f4"/><rect x="144" y="12" width="12" height="12" fill="#578bd2"/><rect x="156" y="12" width="12" height="12" fill="#a19cd6"/><rect x="0" y="24" width="12" height="12" fill="#f3a49c"/><rect x="12" y="24" width="12" height="12" fill="#f08f63"/><rect x="24" y="24" width="12" height="12" fill="#f39c49"/><rect x="36" y="24" width="12" height="12" fill="#fbdfb1"/><rect x="48" y="24" width="12" height="12" fill="#f5c049"/><rect x="60" y="24" width="12" height="12" fill="#fcf0c9"/><rect x="72" y="24" width="12" height="12" fill="#e6dd79"/><rect x="84" y="24" width="12" height="12" fill="#afd876"/><rect x="96" y="24" width="12" height="12" fill="#7eda90"/><rect x="108" y="24" width="12" height="12" fill="#77d7b1"/><rect x="120" y="24" width="12" height="12" fill="#49b7b7"/><rect x="132" y="24" width="12" height="12" fill="#9bcee9"/><rect x="144" y="24" width="12" height="12" fill="#6a97d7"/><rect x="156" y="24" width="12" height="12" fill="#908bcf"/><rect x="168" y="24" width="12" height="12" fill="#dbc4e5"/><rect x="12" y="36" width="12" height="12" fill="#f9d1be"/><rect x="24" y="36" width="12" height="12" fill="#f5b16f"/><rect x="48" y="36" width="12" height="12" fill="#fceac1"/><rect x="72" y="36" width="12" height="12" fill="#f4f0c3"/><rect x="96" y="36" width="12" height="12" fill="#cff1d5"/><rect x="120" y="36" width="12" height="12" fill="#ceecec"/><rect x="144" y="36" width="12" height="12" fill="#d2e0f3"/><rect x="156" y="36" width="12" height="12" fill="#e9e8f5"/><rect x="168" y="36" width="12" height="12" fill="#e7d7ed"/></svg></div>
@@ -397,18 +400,22 @@
                        code resolves to a combination row AND both halves resolve; every
                        ordinary colour falls through to the blocks below unchanged. {% endcomment %}
                     {% if two_tone %}
+                        {% comment %} paint199: the split only when EVERY paint has a colour. A grey
+                           half, or one half on its own, would misdraw the car. {% endcomment %}
+                        {% if two_tone_swatch %}
                         <div class="paint-swatch-split">
                             {% for part in two_tone %}
-                            <span style="background: {{ part.hex|default:'#e9ecef' }};"></span>
+                            <span style="background: {{ part.hex }};"></span>
                             {% endfor %}
                         </div>
+                        {% endif %}
                         <div class="paint-block">
                             <div class="paint-code">{{ paint_code }}</div>
                             <p class="paint-alt">Two-tone finish, two paints</p>
                             <div class="two-tone-parts">
                                 {% for part in two_tone %}
                                 <span class="tt-chip">
-                                    <span class="tt-dot" style="background: {{ part.hex|default:'#e9ecef' }};"></span>
+                                    {% if part.hex %}<span class="tt-dot" style="background: {{ part.hex }};"></span>{% endif %}
                                     <span class="tt-text"><b>{{ part.code }}</b> {{ part.name }}</span>
                                     {% if part.is_body %}<span class="tt-tag">body</span>
                                     {% elif forloop.counter > 1 and two_tone.0.is_body %}<span class="tt-tag">roof</span>{% endif %}

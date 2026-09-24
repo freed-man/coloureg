@@ -1901,6 +1901,8 @@ def results(request):
         'all_paint_codes': all_paint_codes,
         'paint_hex': paint_hex,
         'two_tone': two_tone,
+        # paint199: draw the split swatch only when every paint has a colour.
+        'two_tone_swatch': bool(two_tone) and all(p.get('hex') for p in two_tone),
         'paint_name': paint_name,
         'canonical_code': canonical_code,
         'search_id': vehicle_data.get('search_id'),
