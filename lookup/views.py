@@ -49,6 +49,7 @@ from .services.paint_resolver import (
 )
 from .services.uploads import process_image_upload
 from .services.protection import (
+    normalize_registration,
     budget_exceeded,
     spend_today,
     spend_today_by_provider,
@@ -255,7 +256,7 @@ _REG_KEY_RE = re.compile(r'^[A-Z0-9]{1,8}$')
 
 def _make_cache_key(registration):
     """Cache key for a resolved make, or None if the reg is not key-safe."""
-    reg = (registration or '').strip().upper().replace(' ', '')
+    reg = normalize_registration(registration)
     return f'make:{reg}' if _REG_KEY_RE.match(reg) else None
 
 
@@ -641,7 +642,7 @@ def index(request):
         # IP + reg once here and reuse them below. The response is a generic
         # error — we don't tell a blocked client why.
         client_ip = get_client_ip(request)
-        posted_reg = request.POST.get('registration', '').strip().upper().replace(' ', '')
+        posted_reg = normalize_registration(request.POST.get('registration', ''))
         if (config.is_ip_blocked(client_ip)
                 or (posted_reg and config.is_reg_blocked(posted_reg))):
             messages.error(
@@ -747,8 +748,9 @@ def index(request):
                 'turnstile_site_key': dj_settings.TURNSTILE_SITE_KEY,
             })
 
-        registration = request.POST.get('registration', '').strip().upper()
-        registration = registration.replace(' ', '')
+        # paint206: one clean-up for every path (normalize_registration), so
+        # 0088FF is looked up, cached and blocked as the 88FF it is.
+        registration = normalize_registration(request.POST.get('registration', ''))
 
         if not registration:
             messages.error(request, 'Please enter a registration number.')
@@ -1556,7 +1558,7 @@ def vehicle_make(request):
     money and returns only a manufacturer name (low value to an abuser), but it
     does consume a third-party API call, so it gets its own rate-limit bucket.
     """
-    registration = (request.POST.get('registration') or '').strip().upper().replace(' ', '')
+    registration = normalize_registration(request.POST.get('registration'))
     if not re.fullmatch(r'[A-Z0-9]{1,8}', registration or ''):
         return JsonResponse({})
 

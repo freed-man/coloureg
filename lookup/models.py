@@ -2822,8 +2822,10 @@ class SiteConfig(models.Model):
         return [p.strip() for p in parts if p.strip()]
 
     def blocked_reg_set(self):
-        """Uppercased, whitespace-stripped set of blocked registrations."""
-        return {r.upper().replace(' ', '') for r in self._parse_list(self.blocked_regs)}
+        """Blocked registrations, read the way a lookup reads a typed plate
+        (paint206: upper case, no spaces, no leading zeros on a dateless plate)."""
+        from lookup.services.protection import normalize_registration
+        return {normalize_registration(r) for r in self._parse_list(self.blocked_regs)}
 
     def blocked_ip_set(self):
         return set(self._parse_list(self.blocked_ips))
@@ -2987,7 +2989,8 @@ class SiteConfig(models.Model):
     def is_reg_blocked(self, registration):
         if not registration:
             return False
-        return registration.upper().replace(' ', '') in self.blocked_reg_set()
+        from lookup.services.protection import normalize_registration
+        return normalize_registration(registration) in self.blocked_reg_set()
 
     def is_ip_blocked(self, ip):
         if not ip:

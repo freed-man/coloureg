@@ -34,10 +34,32 @@ from datetime import timedelta
 from decimal import Decimal
 
 import logging
+import re
 
 from django.conf import settings
 from django.db.models import F, Sum
 from django.utils import timezone
+
+
+# paint206: A PLATE TYPED WITH LEADING ZEROS. UK plates never start with 0.
+# A dateless plate starts with its number, 1 to 9999, then up to three
+# letters (88 FF, 54 EF), and people sometimes pad the number: 0088FF. DVLA
+# reads 0088FF as 88FF and finds the car; VDG refuses it as InvalidSearchTerm,
+# so the lookup came back with a make and year from DVLA, no VIN and no paint
+# code. Seen in production: 0088FF (a 2025 VW, found at once as 88FF),
+# 0054EF (a 2025 Porsche), 0054HE and 0054HEB. The zeros go ONLY when what is
+# left is exactly that dateless shape. Anything else is left as typed, so
+# hex-looking junk (0X59482B, 0E0E) is not turned into a real-looking plate
+# that would then cost a VDG call.
+_LEADING_ZERO_PLATE_RE = re.compile(r'^0+([1-9][0-9]{0,3}[A-Z]{1,3})$')
+
+
+def normalize_registration(raw):
+    """A typed registration as every lookup reads it: upper case, no spaces,
+    and no leading zeros on a plate that starts with its number."""
+    reg = (raw or '').strip().upper().replace(' ', '')
+    m = _LEADING_ZERO_PLATE_RE.match(reg)
+    return m.group(1) if m else reg
 from .http import get_session
 
 
