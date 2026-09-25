@@ -4,7 +4,8 @@ paint165. Two jobs, one shape:
 
     manage.py propose_hexes --contradicted      210 rows whose hex contradicts
                                                 its own colour name
-    manage.py propose_hexes --missing           42,833 rows with no hex at all
+    manage.py propose_hexes --missing           rows with no hex whose NAME
+                                                states a colour (paint205)
 
 THE MODEL PROPOSES, A DETERMINISTIC CHECK DECIDES. Every proposal must land in
 the colour family the row's own NAME states, tested with the same
@@ -77,7 +78,8 @@ class Command(BaseCommand):
         g.add_argument('--contradicted', action='store_true',
                        help='Rows whose current hex contradicts their own name.')
         g.add_argument('--missing', action='store_true',
-                       help='Rows with no hex at all.')
+                       help='Rows with no hex whose name states a colour, '
+                            'the only ones a proposal can pass.')
         parser.add_argument('--limit', type=int, default=25,
                             help='Rows to process (default 25). Start small.')
         parser.add_argument('--batch', type=int, default=25,
@@ -188,10 +190,22 @@ class Command(BaseCommand):
             # ordering on it sorts by the JSON value rather than by length, so
             # `-models_list` put the empty rows first — the opposite of what is
             # wanted. Ask for the populated ones explicitly instead.
+            #
+            # paint205: ONLY ROWS WHOSE NAME STATES A COLOUR. _verify refuses
+            # every proposal for a name with no colour word (unknown is not
+            # approval), so sending those rows paid for answers that could only
+            # be thrown away. In production on 24 Sep that was 16,334 of the
+            # 20,556 rows with no hex: four calls in five, and --limit filled up
+            # with them before reaching the 4,222 that can pass. Those rows need
+            # a NAME first, not a hex. Same test as _verify, same function, so
+            # the two can never disagree about which rows are checkable.
+            from lookup.services.paint_resolver import _colour_families
             for qs_pass in (qs.filter(hex='').exclude(models_list=[]),
                             qs.filter(hex='', models_list=[])):
                 for r in qs_pass.order_by('manufacturer', 'code').iterator():
                     if not (r.name or '').strip() or _hex_locked(r):
+                        continue
+                    if not _colour_families(r.name):
                         continue
                     out.append(r)
                     if len(out) >= opt['limit']:
