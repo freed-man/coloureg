@@ -230,6 +230,25 @@ def get_client_ip(request):
     return _valid_ip(request.META.get('REMOTE_ADDR'))
 
 
+def _tidy_mot_model(raw):
+    """MOT's model name, cased for the results page (paint207).
+
+    MOT sends models in capitals: CX-5, 3 SERIES, C-HR. str.title() turned
+    those into 'Cx-5' and 'C-Hr'. A word keeps its capitals when it carries a
+    digit or every hyphenated piece is two letters or fewer (CX-5, MX-5, C-HR,
+    GT, SE); every other piece is capitalised on its own (E-PACE -> E-Pace,
+    RANGE ROVER SPORT -> Range Rover Sport).
+    """
+    words = []
+    for w in str(raw or '').split():
+        parts = w.split('-')
+        if any(c.isdigit() for c in w) or all(len(p) <= 2 for p in parts if p):
+            words.append(w.upper())
+        else:
+            words.append('-'.join(p.capitalize() for p in parts))
+    return ' '.join(words)
+
+
 def extract_mot_field(mot_data, field_name):
     """Pull a field from the DVLA MOT API response.
 
@@ -1169,6 +1188,29 @@ def index(request):
                     if not make:
                         make = fix_make_case(
                             str(_cls.get('make') or '').strip().title())
+
+            # paint207: VDG ANSWERED WITHOUT A MODEL. DK15FWO, 25 Sep: a 2015
+            # Mazda came back with VIN, make and year but an empty model, so
+            # the page read "2015 Mazda". DVLA's enquiry service never returns
+            # a model; the MOT history API does, and the fallback branch below
+            # has always asked it. This branch never did. Measured in the
+            # export: 29 of 2,790 lookups where VDG answered had no model (1%),
+            # all older cars, so the extra call is rare.
+            #
+            # FILLS A BLANK, NEVER OVERWRITES: VDG's model, with its trim, is
+            # the richer source wherever there is one. A failed MOT call, or an
+            # exception out of it, leaves the blank exactly as before; a model
+            # name is never worth breaking a lookup for.
+            if not str(model or '').strip():
+                try:
+                    _mot = _timed_call('mot_model', registration,
+                                       lambda: get_mot_data(registration))
+                    _mot_model = _tidy_mot_model(extract_mot_field(_mot, 'model'))
+                except Exception:
+                    logger.warning('MOT model fill failed', exc_info=True)
+                    _mot_model = ''
+                if _mot_model:
+                    model = _mot_model
         else:
             # --- FALLBACK: DVLA + MOT ---
             #
@@ -1286,7 +1328,7 @@ def index(request):
             mot = _timed_call('mot', registration,
                               lambda: get_mot_data(registration))
             mot_model = extract_mot_field(mot, 'model') or ''
-            model = mot_model.title() or model
+            model = _tidy_mot_model(mot_model) or model
 
         vehicle_title = build_vehicle_title(year, make, model)
 
