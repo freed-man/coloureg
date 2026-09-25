@@ -272,6 +272,15 @@ MAKE_CACHE_TTL_S = 600
 #: LocMem/Database caches, a hard error on memcached or Redis.
 _REG_KEY_RE = re.compile(r'^[A-Z0-9]{1,8}$')
 
+#: paint208: the operator's note on a manual answer. It was 1000 characters,
+#: which a careful explanation outgrew; 5000 matches the contact form's limit.
+MANUAL_NOTE_MAX_CHARS = 5000
+
+#: paint209: how long a same-browser repeat of a plate is sent back to the
+#: lookup already running for it. The recovery is bounded at about 65s; 120s
+#: covers that with room, and anything older is treated as finished or dead.
+IN_FLIGHT_REPEAT_S = 120
+
 
 def _make_cache_key(registration):
     """Cache key for a resolved make, or None if the reg is not key-safe."""
@@ -788,6 +797,34 @@ def index(request):
 
         if registration == 'PNZ282':
             return redirect('paige')
+
+        # paint209: THE SAME BROWSER, THE SAME PLATE, WHILE ITS LOOKUP IS STILL
+        # RUNNING. ML19NKH, 24 Sep: searched again 12 seconds into a 15-second
+        # recovery. The cache is written only when a lookup finishes, so the
+        # repeat ran a second full lookup and came back with another, equally
+        # right, notation of the same paint (PAB, then 1AG). 33 such repeats in
+        # the export. Send the repeat to the lookup already running: its page
+        # polls the same row, and a second poll of a claimed row waits for that
+        # result (_wait_for_recovery_result) instead of starting another.
+        #
+        # SAME BROWSER ONLY. The running lookup is found through THIS session,
+        # never through the plate alone, so nobody is shown a lookup someone
+        # else started. Bounded by IN_FLIGHT_REPEAT_S, so a lookup that died
+        # without finishing cannot trap the plate.
+        _vd_prev = request.session.get('vehicle_data') or {}
+        if (_vd_prev.get('search_id') and _vd_prev.get('paint_pending')
+                and (_vd_prev.get('registration') or '') == registration
+                and Search.objects.filter(
+                    pk=_vd_prev['search_id'], registration=registration,
+                    paint_code='', recovery_duration_ms__isnull=True,
+                    timestamp__gte=timezone.now() - timedelta(seconds=IN_FLIGHT_REPEAT_S),
+                ).exists()):
+            # Give back the per-visitor allowance taken above: this repeat
+            # costs nothing and starts nothing (the paint30 lesson, exactly as
+            # the per-registration window below does when it refuses).
+            if not access_label:
+                credit_sliding_allowance('lookup', client_ip)
+            return redirect('results')
 
         # --- VRM result cache (A) ------------------------------------------
         # If we've recently returned a successful result for this exact reg,
@@ -3172,6 +3209,42 @@ def submit_contact(request):
     return redirect('help')
 
 
+def _make_tables(lookups, min_cars=10, limit=10):
+    """The dashboard's two make tables (paint208), counted in CARS.
+
+    They counted searches: a plate searched five times counted five times, and
+    "no paint code" included makes deliberately not automated, cars later
+    answered by hand, and the operator's own lookups. Ford topped the misses
+    only because it is searched most, while 85% of Ford cars got a code.
+
+    Top searched: distinct plates per make, the operator's own lookups left
+    out. Misses: of the cars the pipeline actually TRIED (gated makes and "no
+    code exists" answers left out, the operator's own lookups too), how many
+    never got a code AUTOMATICALLY. A hand answer counts as a miss: it is the
+    pipeline's miss, answered by a person. A rate, not a raw count, and only
+    for makes with at least `min_cars` cars, so one unlucky car cannot top it.
+    """
+    mine = lookups.exclude(make='').exclude(access_label__gt='')
+    top = list(mine.values('make')
+               .annotate(count=Count('registration', distinct=True))
+               .order_by('-count', 'make')[:limit])
+    tried = (mine.exclude(error_message__contains='make_not_automated')
+             .exclude(no_code_available=True)
+             .values('make')
+             .annotate(cars=Count('registration', distinct=True),
+                       answered=Count('registration', distinct=True,
+                                      filter=Q(paint_code__gt='')
+                                      & ~Q(provider=Search.PROVIDER_MANUAL))))
+    rows = []
+    for r in tried:
+        missed = r['cars'] - r['answered']
+        if r['cars'] >= min_cars and missed > 0:
+            rows.append({'make': r['make'], 'missed': missed, 'cars': r['cars'],
+                         'rate': round(100 * missed / r['cars'])})
+    rows.sort(key=lambda d: (-d['rate'], -d['missed'], d['make']))
+    return top, rows[:limit]
+
+
 @staff_member_required
 def admin_stats(request):
     """Admin-only stats dashboard."""
@@ -3793,13 +3866,8 @@ def admin_stats(request):
         src_manual.append(row.get('s_manual', 0))
         src_cache.append(row.get('s_cache', 0))
 
-    # Top searched makes
-    top_makes = (
-        real_lookups.exclude(make='')
-        .values('make')
-        .annotate(count=Count('id'))
-        .order_by('-count')[:10]
-    )
+    # Top searched makes, and the makes the pipeline misses most (paint208)
+    top_makes, failed_makes = _make_tables(real_lookups)
 
     # Top searched registrations
     top_regs = (
@@ -3808,13 +3876,6 @@ def admin_stats(request):
         .order_by('-count')[:10]
     )
 
-    # Top makes with NO paint code
-    failed_makes = (
-        real_lookups.filter(paint_code='').exclude(make='')
-        .values('make')
-        .annotate(count=Count('id'))
-        .order_by('-count')[:10]
-    )
 
     # Pending manual lookups (the actual to-do list — shows ALL unfulfilled
     # requests, no [:10] cap. In practice this is small; if your backlog grew
@@ -4028,6 +4089,7 @@ def admin_stats(request):
             'src_cache': src_cache,
         },
         'top_makes': top_makes,
+        'manual_note_max': MANUAL_NOTE_MAX_CHARS,
         'top_regs': top_regs,
         'failed_makes': failed_makes,
         'recent_failures': recent_failures_with_email,
@@ -4246,10 +4308,10 @@ def submit_manual_lookup(request):
             'success': False,
             'error': f'Paint description too long ({len(paint_description)} chars, max 200).',
         }, status=400)
-    if len(message) > 1000:
+    if len(message) > MANUAL_NOTE_MAX_CHARS:
         return JsonResponse({
             'success': False,
-            'error': f'Note too long ({len(message)} chars, max 1000).',
+            'error': f'Note too long ({len(message)} chars, max {MANUAL_NOTE_MAX_CHARS}).',
         }, status=400)
 
     try:

@@ -1024,7 +1024,7 @@
                 <thead>
                     <tr>
                         <th>Make</th>
-                        <th class="num-col">Searches</th>
+                        <th class="num-col">Cars</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -1043,23 +1043,28 @@
 
         {% comment %}<!-- Top failed makes -->{% endcomment %}
         <div class="panel">
-            <h3>Top makes with no paint code</h3>
+            <h3>Makes the pipeline misses most</h3>
+            <div style="color: #666; font-size: 12px; margin: -4px 0 8px;">Cars the pipeline tried, at least 10 per make. A hand answer counts as a miss.</div>
             <div class="table-scroll">
             <table class="stats-table">
                 <thead>
                     <tr>
                         <th>Make</th>
-                        <th class="num-col">Failures</th>
+                        <th class="num-col">Missed</th>
+                        <th class="num-col">Cars</th>
+                        <th class="num-col">Rate</th>
                     </tr>
                 </thead>
                 <tbody>
                     {% for item in failed_makes %}
                     <tr>
                         <td>{{ item.make }}</td>
-                        <td class="num-col">{{ item.count }}</td>
+                        <td class="num-col">{{ item.missed }}</td>
+                        <td class="num-col">{{ item.cars }}</td>
+                        <td class="num-col">{{ item.rate }}%</td>
                     </tr>
                     {% empty %}
-                    <tr><td colspan="2" style="color: #999; text-align: center; padding: 24px 0;">No data yet</td></tr>
+                    <tr><td colspan="4" style="color: #999; text-align: center; padding: 24px 0;">No data yet</td></tr>
                     {% endfor %}
                 </tbody>
             </table>
@@ -1718,7 +1723,7 @@
                     <input type="text" name="paint_description" placeholder="colour name / description">
                     <div class="note-body" hidden>
                         <div class="note-lbl">Note — added to the email (required if no code)</div>
-                        <textarea name="message" maxlength="1000" placeholder="Sourced this from the main dealer — happy to help if anything's unclear."></textarea>
+                        <textarea name="message" maxlength="{{ manual_note_max }}" placeholder="Sourced this from the main dealer — happy to help if anything's unclear."></textarea>
                         <div class="note-lbl" style="margin-top:8px;">Attach a photo (optional)</div>
                         <input type="file" name="photo" accept="image/*" style="font-size:12px;">
                     </div>
@@ -1757,7 +1762,7 @@
             <tbody>
                 {% for s in recent_all_lookups %}
                 {% comment %} paint16: a note marker rather than a note COLUMN. The table is
-                   already wide and notes run to 1000 chars, so a column would
+                   already wide and notes run to 5000 chars, so a column would
                    wreck the layout; a hover tooltip would be useless on mobile,
                    which is where this dashboard actually gets read. A marker that
                    toggles a full-width row below costs no horizontal space, works
