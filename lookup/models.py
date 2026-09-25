@@ -1409,6 +1409,83 @@ class PaintLookup(models.Model):
         return (names, norms) != before
 
     @classmethod
+    def resolve_operator_code(cls, make, code):
+        """(row, rule): the catalogue row a lookup of this code lands on, and
+        the rule that got there. (None, None) when nothing does.
+
+        paint203. paint202 folded a name only onto a row carrying the operator's
+        code EXACTLY, so 35 of the 133 production entries read "not in
+        catalogue" although a lookup of the same code finds a row every day:
+        `T9/Y9C` is Audi's LY9C through the slash rule, `149U` is Mercedes 149
+        through the suffix rule, `NH-731P` is Honda NH731P once the hyphen goes.
+        The fold now lands where the lookups land, BY CALLING THEIR RULES, not
+        copies of them:
+
+            exact      the code as typed (suppressed rows too, so the fold can
+                       say so rather than look past a decision)
+            slash      paint_resolver.resolve_slashed_code: exactly one part is
+                       a known code for the make (paint162, paint176)
+            suffix     map_code: the Mercedes 799U -> 799 rescue and the curated
+                       pairs, rewriting only when it rescues (paint85)
+            hyphen     HONDA ONLY, the mmw gate's reading: 778 of 2,080 Honda
+                       codes carry a hyphen and the rest do not, so NH-731P and
+                       NH731P are one code punctuated two ways. A factory
+                       variant keeps its letter (NH737M-A becomes NH737MA,
+                       which is no row), so the shade suffix is never stripped
+            L prefix   VW and Audi only, and only when the plain form is absent,
+                       as lookup() does (Y3D is catalogued as LY3D)
+
+        DELIBERATELY NOT HERE, though a lookup would try them: lookup()'s
+        general numeric-suffix strip, because 94% of general suffix strips are
+        a different colour (see CURATED_CODE_OVERRIDES), and a lookup can
+        afford a last-resort guess where a write into the catalogue cannot; and
+        mmw's B0N reading, which only ever earns a code a hearing. The Renault
+        type prefix and BMW's L-drop are left out for want of a case: the
+        24 Sep measurement named only the rules above. Add one here, with its
+        check, when the preview shows an entry that needs it.
+
+        The colour is still checked after this, by fold_operator_name: a rule
+        finds the row, and the name has to agree with it before anything is
+        written.
+        """
+        raw = (code or '').strip().upper()
+        if not raw or not make:
+            return None, None
+        mfr = cls.normalize_manufacturer(make)
+        row = cls.all_objects.filter(manufacturer=mfr, code__iexact=raw).first()
+        if row:
+            return row, 'exact'
+
+        def land(c):
+            # Active rows only, as every lookup reads: exact, then the L form.
+            hit = cls.objects.filter(manufacturer=mfr, code__iexact=c).first()
+            if not hit and mfr in cls.LEADING_L_MAKES:
+                hit = cls.objects.filter(manufacturer=mfr, code__iexact='L' + c).first()
+            return hit
+
+        from lookup.services.paint_resolver import resolve_slashed_code
+        part = resolve_slashed_code(make, raw)
+        if part and part.upper() != raw:
+            hit = land(part)
+            if hit:
+                return hit, 'slash'
+        mapped = cls.map_code(make, raw)
+        if mapped and mapped.upper() != raw:
+            hit = cls.objects.filter(manufacturer=mfr, code__iexact=mapped).first()
+            if hit:
+                return hit, 'suffix'
+        if mfr == 'honda' and '-' in raw:
+            hit = cls.objects.filter(manufacturer=mfr,
+                                     code__iexact=raw.replace('-', '').replace(' ', '')).first()
+            if hit:
+                return hit, 'hyphen'
+        if mfr in cls.LEADING_L_MAKES:
+            hit = cls.objects.filter(manufacturer=mfr, code__iexact='L' + raw).first()
+            if hit:
+                return hit, 'L prefix'
+        return None, None
+
+    @classmethod
     def fold_operator_name(cls, make, code, name, apply=True):
         """paint202: fold one name the operator typed into its catalogue row.
 
@@ -1424,12 +1501,15 @@ class PaintLookup(models.Model):
             contradicts       the name's colour disagrees with the row's, the
                               guard P3 and paint176 use; reported for review
             no name           nothing to fold
+
+        paint203: the row is found the way a lookup finds it, through
+        resolve_operator_code, so `T9/Y9C` folds onto LY9C instead of reading
+        "not in catalogue". The colour check below still decides.
         """
         name = (name or '').strip()
         if not name:
             return 'no name'
-        row = cls.all_objects.filter(manufacturer=cls.normalize_manufacturer(make),
-                                     code__iexact=(code or '').strip()).first()
+        row, _rule = cls.resolve_operator_code(make, code)
         if not row:
             return 'not in catalogue'
         if row.suppressed:
