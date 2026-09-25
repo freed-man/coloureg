@@ -3658,6 +3658,9 @@ def admin_stats(request):
         # already outside it — the exclusion here is what keeps `incomplete`
         # honest, not what keeps the rate honest.
         not_automated=Count('id', filter=Q(error_message='make_not_automated')),
+        not_automated_make=Count('id', filter=Q(error_message='make_not_automated', gate_reason=Search.GATE_MAKE)),
+        not_automated_class=Count('id', filter=Q(error_message='make_not_automated', gate_reason=Search.GATE_CLASS)),
+        not_automated_wheelplan=Count('id', filter=Q(error_message='make_not_automated', gate_reason=Search.GATE_WHEELPLAN)),
         # Sub-count: vehicle found and a colour NAME recovered, but still no code.
         name_only_miss=Count('id', filter=Q(recovery_name_only=True) & Q(paint_code='')),
         # Email pipeline
@@ -3785,6 +3788,9 @@ def admin_stats(request):
             bad_plate=Count('id', filter=Q(paint_code='', no_code_available=False,
                                            make='')),
             not_automated=Count('id', filter=Q(error_message='make_not_automated')),
+            not_automated_make=Count('id', filter=Q(error_message='make_not_automated', gate_reason=Search.GATE_MAKE)),
+            not_automated_class=Count('id', filter=Q(error_message='make_not_automated', gate_reason=Search.GATE_CLASS)),
+            not_automated_wheelplan=Count('id', filter=Q(error_message='make_not_automated', gate_reason=Search.GATE_WHEELPLAN)),
             abandoned=Count('id', filter=Q(paint_code='', no_code_available=False,
                                            recovery_attempted=False)
                             & ~Q(make='') & ~Q(error_message='make_not_automated')),
@@ -4046,6 +4052,17 @@ def admin_stats(request):
         'month_searches': month_searches,
         'success_rate': round(success_rate, 1),
         'not_automated': top_metrics['not_automated'],
+        # paint211: WHICH gate fired (recorded since paint132): the make list,
+        # the vehicle class, or the wheelplan. Rows from before paint132 carry
+        # no reason and are shown as such rather than guessed.
+        'not_automated_by': {
+            'make': top_metrics.get('not_automated_make') or 0,
+            'vclass': top_metrics.get('not_automated_class') or 0,
+            'wheelplan': top_metrics.get('not_automated_wheelplan') or 0,
+            'unrecorded': (top_metrics.get('not_automated') or 0) - sum(
+                top_metrics.get(k) or 0 for k in ('not_automated_make', 'not_automated_class',
+                                                  'not_automated_wheelplan')),
+        },
         'success_with_code': success_with_code,
         'vehicle_found': vehicle_found,
         'searched_to_completion': searched_to_completion,

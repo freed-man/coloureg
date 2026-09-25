@@ -172,6 +172,9 @@ class Search(models.Model):
     GATE_MAKE = 'make'
     GATE_CLASS = 'class'
     GATE_WHEELPLAN = 'wheelplan'
+    #: paint211: the dashboard's words for each gate.
+    GATE_LABELS = {GATE_MAKE: 'make list', GATE_CLASS: 'vehicle class',
+                   GATE_WHEELPLAN: 'wheelplan'}
     GATE_REASON_CHOICES = [
         (GATE_MAKE, 'Make on the unsupported list'),
         (GATE_CLASS, 'Vehicle class unsupported'),
@@ -469,6 +472,11 @@ class Search(models.Model):
     pl24_returned = models.BooleanField(default=False)
     recovery_name_only = models.BooleanField(default=False)
     recovery_duration_ms = models.IntegerField(null=True, blank=True)
+
+    @property
+    def gate_reason_label(self):
+        """Which gate made this lookup not automated, in words (paint211)."""
+        return self.GATE_LABELS.get(self.gate_reason, 'reason not recorded')
 
     @property
     def source_label(self):
@@ -1090,6 +1098,35 @@ class PaintLookup(models.Model):
     TYPE_PREFIX_MAKES = ('renault', 'dacia')
     TYPE_PREFIXES = ('TE', 'OV', 'NV', 'MV')
 
+    #: paint212: RENAULT'S "BI" IS BI-TON, NOT A PAINT TYPE, which is why it is
+    #: not in TYPE_PREFIXES. Measured on 25 Sep: all 7 distinct BI codes
+    #: customers received (8 lookups, all Renault) were two-tones, and what
+    #: follows the BI is catalogued as that two-tone: BIXND was delivered as
+    #: "Ivory D16 + Black Gne", and XND is the row "D16 + Gne". All 7 expand
+    #: into two codes a customer can buy. The base catalogue holds no BI codes.
+    BITONE_PREFIX = 'BI'
+
+    @classmethod
+    def _via_bitone_prefix(cls, manufacturer, paint_code):
+        """The two-tone row a Renault or Dacia BI code names, or None (paint212).
+
+        Only BI plus three characters, only the TYPE_PREFIX_MAKES, and only when
+        the row after the BI is itself a two-tone ("D16 + Gne"). A single paint
+        there is refused: BI says two colours, and answering with one would drop
+        the roof. The caller expands the two-tone exactly as it expands any
+        combination row, so the customer gets both codes, and the swatch of the
+        body, or nothing.
+        """
+        mfr = cls.normalize_manufacturer(manufacturer)
+        code = (paint_code or '').strip().upper()
+        if (mfr not in cls.TYPE_PREFIX_MAKES or len(code) != 5
+                or not code.startswith(cls.BITONE_PREFIX)):
+            return None
+        base = cls.objects.filter(manufacturer=mfr, code__iexact=code[2:]).first()
+        if base and cls.is_combination_name(base.name):
+            return base
+        return None
+
     @classmethod
     def _via_type_prefix(cls, manufacturer, paint_code, model=None, year=None, vdg_colour=None):
         """(row, base) when a Renault group code resolves through its paint-type
@@ -1173,6 +1210,15 @@ class PaintLookup(models.Model):
                     )
                     swatch = _alt
                     paint_code = _base
+            if not swatch:
+                _bi = cls._via_bitone_prefix(manufacturer, paint_code)
+                if _bi:
+                    logger.info(
+                        'paint code %s resolved as the two-tone %s: Renault group '
+                        'bi-ton prefix (%s)', paint_code, _bi.code, manufacturer,
+                    )
+                    swatch = _bi
+                    paint_code = _bi.code
             if not swatch:
                 return None, None, None
             canonical = cls.find_canonical_code(
@@ -1793,8 +1839,8 @@ class PaintLookup(models.Model):
           2. Dash-suffix variants of one base ('B554P-L'/'B554P-S' -> 'B554P').
           3. Prefix variants: one code is a strict prefix of all the others
              (Ford 'FLVA' / 'FLVAWWA' — the same paint in a bare vs suffixed code
-             convention) -> return the shortest (the canonical base). Safe because
-             genuinely different codes ('001'/'826') have no prefix relationship.
+             convention) -> return the shortest (the canonical base). NOT proven
+             safe: a prefix does not prove the same paint (see rule 3 below, 25 Sep).
           4. If the full candidate set is still ambiguous, retry rules 1-3 on just
              the rows whose PRIMARY name equals the query — i.e. paints actually
              *named* this, excluding ones that merely list it as a secondary alias
@@ -2073,8 +2119,17 @@ class PaintLookup(models.Model):
 
         # 3. Prefix variants: the shortest code is a strict prefix of all others
         #    (Ford 'FLVA' prefixes 'FLVAWWA'). Same paint, two code conventions —
-        #    return the shortest (canonical bare code). Genuinely different codes
-        #    have no prefix relationship, so this can't merge unrelated paints.
+        #    return the shortest (canonical bare code).
+        #
+        #    25 Sep: A PREFIX DOES NOT PROVE THE SAME PAINT. The premise this rule
+        #    was written on, that genuinely different codes have no prefix
+        #    relationship, is false: Ford BMU "Smoke Metallic" (#565C62) prefixes
+        #    BMUEWHA "Smoke" (#2D2D2D), and of 20 Ford 3-character codes whose
+        #    EWHA form also has a hex, 8 sit more than 40 apart. 4-character
+        #    codes with WHA/WWA agree far better (181 of 204 identical). KEPT AS
+        #    IS BY DECISION: no wrong merge has been seen, and a wrong merge never
+        #    shows up as a decline, so name_match_count cannot judge it. Make it
+        #    evidence-based only when a wrong merge is found.
         ordered = sorted(codes, key=len)
         shortest = ordered[0]
         if all(c.startswith(shortest) for c in ordered):

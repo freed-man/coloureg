@@ -1741,6 +1741,7 @@
     {% comment %}<!-- Recent paint code lookups (all searches, success + failure) -->{% endcomment %}
     <div class="panel">
         <h3>Recent paint code lookups</h3>
+        {% if not_automated %}<div style="color: #666; font-size: 12px; margin: -4px 0 8px;">Not automated: {{ not_automated }} (make list {{ not_automated_by.make }}, vehicle class {{ not_automated_by.vclass }}, wheelplan {{ not_automated_by.wheelplan }}{% if not_automated_by.unrecorded %}, reason not recorded {{ not_automated_by.unrecorded }}{% endif %})</div>{% endif %}
 
         {% comment %}<!-- Desktop/tablet table (>768px). CSS hides this below 768px. -->{% endcomment %}
         <div class="table-scroll">
@@ -1824,7 +1825,7 @@
                         {% elif s.paint_description %}
                         <span class="outcome-partial" title="Colour name found — no code">◐</span>
                         {% elif s.error_message == 'make_not_automated' %}
-                        <span class="outcome-none" title="Make not automated — manual lookup offered" aria-label="Not automated"></span>
+                        <span class="outcome-none" title="Not automated ({{ s.gate_reason_label }}), manual lookup offered" aria-label="Not automated"></span>
                         {% else %}
                         <span class="outcome-cross" title="Not found">✗</span>
                         {% endif %}
@@ -1875,7 +1876,7 @@
                     {% elif s.paint_description %}
                     <span class="outcome-partial" title="Colour name found — no code">◐</span>
                     {% elif s.error_message == 'make_not_automated' %}
-                    <span class="outcome-none" title="Make not automated — manual lookup offered" aria-label="Not automated"></span>
+                    <span class="outcome-none" title="Not automated ({{ s.gate_reason_label }}), manual lookup offered" aria-label="Not automated"></span>
                     {% else %}
                     <span class="outcome-cross" title="Not found">✗</span>
                     {% endif %}
