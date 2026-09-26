@@ -1373,15 +1373,17 @@ def _pl24_lookup(vin, make, category=None, search_id=None):
     # `error`). coloureg simply never kept the reply unless it was a 200, and
     # never recorded its own timeouts. 24 of the 25 were cars with no real VIN.
     vin = (vin or '').strip()
-    if not make or len(vin) != 17:
-        # Measured: 42 pl24 calls ever made with a VIN that was not 17
-        # characters (classics, chassis numbers, cars DVLA answered without a
-        # VIN), 0 answers. So they are not sent at all, and the row says why.
-        _record_worker_result(
-            search_id, pl24_outcome='client_skipped',
-            pl24_error=('no make' if not make else
-                        f'VIN is {len(vin)} characters, not 17'))
+    if not make or not vin:
+        # Nothing to send; the row says so.
+        _record_worker_result(search_id, pl24_outcome='client_skipped',
+                              pl24_error='no make' if not make else 'no VIN')
         return None
+    # paint214: A SHORT VIN IS SENT, AND PL24 DECIDES. paint213 stopped sending
+    # anything but 17 characters (42 such calls ever, 0 answers), but what
+    # partslink24 will take is pl24's call, not coloureg's: its classic
+    # catalogues may accept a chassis number, now or later. A refusal is fast
+    # and costs nothing, and pl24's reply is now kept (status, outcome, error),
+    # so the day pl24 starts answering one, the rows will show it.
     params = {'vin': vin, 'make': make}
     if category:
         params['category'] = category
