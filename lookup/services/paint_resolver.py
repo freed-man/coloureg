@@ -1366,7 +1366,21 @@ def _mmw_lookup(registration, search_id=None):
 def _pl24_lookup(vin, make, category=None, search_id=None):
     """Call the pl24 service. Returns a paint dict if pl24 found a code, else
     None. Never raises — network/HTTP/timeout errors degrade to None."""
-    if not vin or not make:
+    # paint213: EVERY CALL NOW LEAVES A REASON ON THE ROW. 25 pl24 calls
+    # since 14 Aug ended with no outcome recorded, and they were read as pl24
+    # being busy. They were not: pl24 queues a busy request rather than
+    # refusing it, and says why any call failed (its HTTP status, `outcome` and
+    # `error`). coloureg simply never kept the reply unless it was a 200, and
+    # never recorded its own timeouts. 24 of the 25 were cars with no real VIN.
+    vin = (vin or '').strip()
+    if not make or len(vin) != 17:
+        # Measured: 42 pl24 calls ever made with a VIN that was not 17
+        # characters (classics, chassis numbers, cars DVLA answered without a
+        # VIN), 0 answers. So they are not sent at all, and the row says why.
+        _record_worker_result(
+            search_id, pl24_outcome='client_skipped',
+            pl24_error=('no make' if not make else
+                        f'VIN is {len(vin)} characters, not 17'))
         return None
     params = {'vin': vin, 'make': make}
     if category:
@@ -1377,7 +1391,21 @@ def _pl24_lookup(vin, make, category=None, search_id=None):
             f'{PL24_BASE_URL}/lookup-paint',
             params=params, headers=headers, timeout=_PL24_HTTP_TIMEOUT,
         )
-    except requests.exceptions.RequestException:
+    except requests.exceptions.Timeout as exc:
+        # coloureg's own timeout (PL24_TIMEOUT), shorter than pl24's 120s, so
+        # pl24's 504 and its reason can never arrive in this case.
+        _record_worker_result(
+            search_id, pl24_outcome='client_timeout',
+            pl24_error=(f'{type(exc).__name__}: coloureg gave up after '
+                        f'{PL24_TIMEOUT:g}s')[:200])
+        return None
+    except requests.exceptions.ConnectionError as exc:
+        _record_worker_result(search_id, pl24_outcome='client_connection_error',
+                              pl24_error=type(exc).__name__[:200])
+        return None
+    except requests.exceptions.RequestException as exc:
+        _record_worker_result(search_id, pl24_outcome='client_error',
+                              pl24_error=type(exc).__name__[:200])
         return None
     # paint144: READ THE BODY BEFORE GIVING UP ON THE STATUS. pl24 puts `slot`
     # on its 502 and 504 bodies too, and that is where it is most informative —
@@ -1387,6 +1415,9 @@ def _pl24_lookup(vin, make, category=None, search_id=None):
         data = resp.json()
     except ValueError:
         data = {}
+    if not isinstance(data, dict):
+        data = {}                       # a list or a string must not raise here
+    _err = str(data.get('error') or '').strip()[:200]
     _slot = data.get('slot')
     _via = (data.get('via') or '').strip()[:40]
     # `is not None`, NOT truthiness: slot 0 is the first account, and `if
@@ -1399,6 +1430,14 @@ def _pl24_lookup(vin, make, category=None, search_id=None):
             **({'pl24_via': _via} if _via else {}),
         )
     if resp.status_code != 200 or not data:
+        # paint213: a refusal or failure says why; keep it. pl24's own outcome
+        # when the body carries one, else the status itself.
+        _record_worker_result(
+            search_id, pl24_http_status=resp.status_code,
+            pl24_outcome=(str(data.get('outcome') or '').strip()
+                          or ('empty_reply' if resp.status_code == 200
+                              else f'http_{resp.status_code}'))[:40],
+            **({'pl24_error': _err} if _err else {}))
         return None
     code = (data.get('paint_code') or '').strip()
     desc = (data.get('paint_description') or '').strip()
@@ -1414,11 +1453,12 @@ def _pl24_lookup(vin, make, category=None, search_id=None):
     # Model.save() and its truncation guard.
     outcome = (data.get('outcome') or '').strip()[:40]
     name = (data.get('paint_description') or '').strip()[:120]
-    if search_id is not None and (code or outcome or name):
-        _record_worker_result(search_id,
+    if search_id is not None:
+        _record_worker_result(search_id, pl24_http_status=200,
                               **({'pl24_code': code[:100]} if code else {}),
                               **({'pl24_name': name} if name else {}),
-                              **({'pl24_outcome': outcome} if outcome else {}))
+                              **({'pl24_outcome': outcome} if outcome else {}),
+                              **({'pl24_error': _err} if _err else {}))
     # Keep the result if pl24 returned EITHER a code OR a colour name. The
     # name-only case (code == '' but desc set) covers brands partslink24 carries
     # a colour name but no code for (Ford passenger, Jaguar, older Land Rover,

@@ -467,6 +467,12 @@ class Search(models.Model):
     #: pl24's own account of which internal route found the code. Returned
     #: since the service was written and discarded until now.
     pl24_via = models.CharField(max_length=40, blank=True, default='')
+    # paint213: pl24's own reply, kept whatever it was: the HTTP status, and
+    # the `error` text pl24 sends with a failure. With pl24_outcome, which now
+    # also carries coloureg's own client_timeout / client_connection_error /
+    # client_skipped, every pl24 call leaves a reason on its row.
+    pl24_http_status = models.SmallIntegerField(null=True, blank=True)
+    pl24_error = models.CharField(max_length=200, blank=True, default='')
 
     pl24_attempted = models.BooleanField(default=False)
     pl24_returned = models.BooleanField(default=False)

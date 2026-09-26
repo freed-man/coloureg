@@ -77,7 +77,7 @@ class SearchAdmin(admin.ModelAdmin):
         # slot is positional to PL24_ACCOUNTS ordering, so reordering that JSON
         # remaps historical rows — pl24 prints the mapping at startup.
         'pl24_slot',
-        'pl24_via',
+        'pl24_via', 'pl24_http_status', 'pl24_error',
         'recovery_name_only',
         'recovery_duration_ms',
         'vdg_second_chance',
@@ -198,7 +198,7 @@ class SearchAdmin(admin.ModelAdmin):
         # startup. Null means no session ever dequeued the job.
         ('pl24 session', {
             'classes': ('collapse',),
-            'fields': ('pl24_slot', 'pl24_via'),
+            'fields': ('pl24_slot', 'pl24_via', 'pl24_http_status', 'pl24_error'),
         }),
         # paint149: what the CUSTOMER waited, as their browser measured it.
         # Null before this shipped and on any browser that did not report.
