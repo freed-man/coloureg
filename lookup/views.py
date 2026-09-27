@@ -368,8 +368,11 @@ def get_dvla_data(registration):
         if response.status_code == 200:
             _dvla_state.answered = True
             return response.json()
-        if response.status_code == 404:
+        if response.status_code in (400, 404):
             # A definite "no such vehicle" — DVLA answered, the answer is no.
+            # paint226: so is a 400, which is DVLA saying the registration is
+            # not in a valid format. Our request never changes shape, so a 400
+            # can only be about the registration typed.
             _dvla_state.answered = True
     except requests.exceptions.RequestException:
         return None
@@ -791,7 +794,21 @@ def index(request):
         # Real UK plates — current and older formats — are all A-Z / 0-9 and at
         # most 7-8 characters. The PNZ282 easter-egg below still matches (it's
         # alphanumeric), since this runs on the normalised value.
-        if not re.fullmatch(r'[A-Z0-9]{1,8}', registration):
+        # paint226: A VIN PASTED INTO THE REGISTRATION BOX. The box used to cut
+        # anything past 8 characters, so a pasted VIN arrived as its first
+        # eight (LB3P11SD, JMZDEA4J, TMBFN6NJ in the export: none ever a car),
+        # passed the old 1-8 check, cost a VDG call, and was answered with
+        # "our data provider is not responding". The box now takes 20, so a VIN
+        # arrives whole and is recognised here, before any call is made.
+        if re.fullmatch(r'[A-Z0-9]{17}', registration) and re.search(r'\d', registration) \
+                and re.search(r'[A-Z]', registration):
+            messages.error(request, "That looks like a VIN (chassis number). Please enter the "
+                                    "vehicle's registration number, as on its number plate.")
+            return redirect('index')
+        # paint226: a UK plate is at most 7 characters once its space is gone
+        # (4,466 of the export's lookups were 7; the 14 of 8 were all junk or
+        # cut-off VINs, and none found a car).
+        if not re.fullmatch(r'[A-Z0-9]{1,7}', registration):
             messages.error(request, 'Please enter a valid registration number.')
             return redirect('index')
 
@@ -1109,6 +1126,16 @@ def index(request):
                 # of any refund) so admin can sum exact spend.
                 if vdg_data.get('transaction_cost') is not None:
                     search.vdg_transaction_cost = vdg_data.get('transaction_cost')
+            else:
+                # paint226: vehicle_lookup returns None ONLY when VDG answered "no
+                # such vehicle" (InvalidSearchTerm, NoResultsFound): it catches
+                # its own VdgNotFoundError, so the except below never saw one,
+                # and paint157's fix never reached this page. VDG's most definite
+                # statement about a plate was read as silence, and whenever DVLA
+                # also had nothing the customer was told it was our fault.
+                vdg_answered = True
+                if not search.error_message:
+                    search.error_message = 'VDG: vehicle not found'
         except VdgNotFoundError as e:
             # VDG ANSWERED, and the answer is "no such vehicle". That is a fact
             # about the registration, so it is safe to tell the customer their

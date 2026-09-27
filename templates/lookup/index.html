@@ -617,7 +617,7 @@
                            flex item in this row — see .turnstile-holder above. {% endcomment %}
                         <div class="search-form">
                             <input type="text" class="search-input" id="reg-input"
-                                name="registration" maxlength="8" placeholder="">
+                                name="registration" maxlength="20" placeholder="">
                             <button type="submit" class="search-btn" id="search-btn" aria-label="Search">
                                 <i class="fas fa-search"></i>
                             </button>
@@ -910,9 +910,10 @@ checkout and the disclaimer. {% endcomment %}
         {% comment %}
            maxlength is 8, not 7 (F10). Most people write a plate the way it is
            printed — "AB12 CDE" — which is eight characters, and at 7 the final
-           letter was silently swallowed. The space is stripped at submit and
-           the backend accepts [A-Z0-9]{1,8} after stripping, so widening the
-           field is all that was missing.
+           letter was silently swallowed. paint226: now 20, because at 8 a pasted
+           VIN was cut to its first eight characters and looked up as if it were
+           a plate. It now arrives whole and the backend recognises it; the
+           backend accepts a plate of [A-Z0-9]{1,7} once the space is stripped.
 
            Uppercase live, but do NOT strip the space here: removing a character
            the user has just typed moves the caret and fights them mid-plate.
