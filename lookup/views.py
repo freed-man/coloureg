@@ -2310,6 +2310,7 @@ def _lookup_status(request, search_id):
         'paint_name': paint_name,
         'canonical_code': canonical_code,
         'all_paint_codes': all_paint_codes,
+        'two_tone': _two_tone_json(make, paint_code, vehicle_data.get('colour', '')),   # paint228
     })
 
 
@@ -2394,6 +2395,7 @@ def _wait_for_recovery_result(search_id):
                 # Multi-code detail lives in the winner's session write; the
                 # single recovered code is what matters here and is complete.
                 'all_paint_codes': [],
+                'two_tone': _two_tone_json(row.make, row.paint_code, row.colour),   # paint228
             })
         if row.recovery_duration_ms is not None:
             # Recovery finished without a code.
@@ -3004,6 +3006,21 @@ def car_picture(request, search_id):
     if pic is None and search.timestamp > timezone.now() - timedelta(seconds=PICTURE_WAIT_SECONDS):
         return JsonResponse({'status': 'pending'})       # the lookup is young: one is probably on its way
     return JsonResponse({'status': 'none'})
+
+
+def _two_tone_json(make, paint_code, colour):
+    """paint228: a two-tone's two paints for the page's script, built exactly
+    as results() builds them for the template. A code found by the recovery is
+    drawn by the script, and the script only knew one bar and a sentence, so a
+    two-tone looked like an ordinary colour until the page was reloaded (after
+    "email me", say) and the template drew it properly. [] when the code is
+    not a two-tone. Never raises."""
+    try:
+        parts = PaintLookup.two_tone_parts(make, paint_code, vdg_colour=colour) if paint_code else None
+    except Exception:
+        return []
+    return [{'code': p.get('code') or '', 'name': p.get('name') or '', 'hex': p.get('hex') or '',
+             'is_body': bool(p.get('is_body'))} for p in (parts or [])]
 
 
 def _start_car_picture(search_id):

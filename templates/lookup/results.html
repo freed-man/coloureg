@@ -607,12 +607,15 @@ the request directly. {% endcomment %}
                width (the picture is 3:2, and 190px covers the close button's strip,
                the caption and the margins), so the whole of it, close button and
                caption included, fits on any screen; the close button lower and
-               bigger.
+               bigger. paint228: a larger thumbnail; the large view fills the whole
+               screen, on white, the picture as big as the screen allows; the cross
+               is drawn rather than typed, so it sits dead centre in its circle; a
+               tap on the white around the picture closes it too.
                A ready picture is built into the page, so nothing moves, not even
                after "email me" reloads it.{% endcomment %}
             <style>
                 .car-thumb { margin: 16px auto 4px; text-align: center; }
-                .car-thumb-btn { position: relative; display: block; width: 220px; max-width: 70%; margin: 0 auto; padding: 0;
+                .car-thumb-btn { position: relative; display: block; width: 280px; max-width: 80%; margin: 0 auto; padding: 0;
                                  border: none; background: none; cursor: zoom-in; }
                 .car-thumb-btn:disabled { cursor: default; }
                 .car-thumb-btn img { display: block; width: 100%; height: auto; }
@@ -628,20 +631,19 @@ the request directly. {% endcomment %}
                 .cp-dots span:nth-child(3) { animation-delay: .3s; }
                 @keyframes cp-bounce { 0%, 80%, 100% { transform: translateY(0); opacity: .35; } 40% { transform: translateY(-4px); opacity: 1; } }
                 @media (prefers-reduced-motion: reduce) { .cp-dots span { animation: none; opacity: .7; } }
-                .car-lightbox { position: fixed; inset: 0; z-index: 1050; background: rgba(0, 0, 0, .6);
-                                display: flex; align-items: center; justify-content: center; padding: 16px; overflow: auto; }
+                .car-lightbox { position: fixed; inset: 0; z-index: 1050; background: #fff; overflow: auto; }
                 .car-lightbox[hidden] { display: none; }
-                .car-lightbox-figure { position: relative; margin: 0; background: #fff; border-radius: 12px;
-                                       padding: 72px 16px 18px; width: auto; max-width: 100%; }
-                .car-lightbox-figure img { display: block; height: auto; margin: 0 auto;
-                                           width: min(868px, calc(100vw - 64px), calc((100vh - 190px) * 1.5)); }
+                .car-lightbox-figure { position: relative; margin: 0; width: 100%; height: 100%; box-sizing: border-box;
+                                       display: flex; flex-direction: column; align-items: center; justify-content: center;
+                                       padding: 76px 16px 20px; }
+                .car-lightbox-figure img { display: block; width: auto; height: auto; max-width: 100%; max-height: calc(100vh - 150px); }
                 @supports (height: 100dvh) {
-                    .car-lightbox-figure img { width: min(868px, calc(100vw - 64px), calc((100dvh - 190px) * 1.5)); }
+                    .car-lightbox-figure img { max-height: calc(100dvh - 150px); }
                 }
                 .car-lightbox-figure figcaption { text-align: center; color: #555; font-size: 14px; margin-top: 12px; line-height: 1.4; }
                 .car-lightbox-close { position: absolute; top: 14px; right: 14px; width: 50px; height: 50px; padding: 0;
                                       border: none; border-radius: 50%; background: #f1f3f5; color: #333;
-                                      font-size: 36px; line-height: 50px; text-align: center; cursor: pointer; }
+                                      display: flex; align-items: center; justify-content: center; cursor: pointer; }
                 .car-lightbox-close:hover { background: #e5e7eb; }
             </style>
             <div id="car-thumb-holder" style="display: none;">
@@ -660,7 +662,7 @@ the request directly. {% endcomment %}
             </div>
             <div id="car-lightbox" class="car-lightbox" role="dialog" aria-modal="true" aria-label="Picture of your car" hidden>
                 <figure class="car-lightbox-figure">
-                    <button type="button" id="car-lightbox-close" class="car-lightbox-close" aria-label="Close">&times;</button>
+                    <button type="button" id="car-lightbox-close" class="car-lightbox-close" aria-label="Close"><svg width="22" height="22" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 5l14 14M19 5L5 19" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></svg></button>
                     <img id="car-lightbox-img" alt="Illustration of your car in its paint">
                     <figcaption><svg width="15" height="15" viewBox="0 0 16 16" aria-hidden="true" style="vertical-align: -2px; margin-right: 4px;"><path d="M6 1.5c.4 2.9 1.6 4.1 4.5 4.5-2.9.4-4.1 1.6-4.5 4.5-.4-2.9-1.6-4.1-4.5-4.5 2.9-.4 4.1-1.6 4.5-4.5z" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/><path d="M12.5 9.5c.2 1.4.8 2 2.2 2.2-1.4.2-2 .8-2.2 2.2-.2-1.4-.8-2-2.2-2.2 1.4-.2 2-.8 2.2-2.2z" fill="none" stroke="currentColor" stroke-width="1.1" stroke-linejoin="round"/></svg>illustration, not your actual vehicle</figcaption>
                 </figure>
@@ -724,7 +726,7 @@ the request directly. {% endcomment %}
                 }
                 btn.addEventListener('click', openBig);
                 closeBtn.addEventListener('click', closeBig);
-                box.addEventListener('click', function (ev) { if (ev.target === box) { closeBig(); } });
+                box.addEventListener('click', function (ev) { if (ev.target === box || ev.target === box.firstElementChild) { closeBig(); } });
                 document.addEventListener('keydown', function (ev) { if (ev.key === 'Escape' && !box.hidden) { closeBig(); } });
                 window.startCarPicture = function () {
                     if (!place()) { return; }
@@ -987,6 +989,34 @@ window.cregReportWait();
     }
 
     {% comment %}Build one paint block's HTML (swatch + code + optional canonical/description).{% endcomment %}
+    {% comment %} paint228: a two-tone, drawn exactly as the template's paint50 block
+       draws it: the split swatch only when every paint has a colour (paint199),
+       both codes as chips, body and roof tagged. {% endcomment %}
+    function twoToneHtml(code, parts) {
+        var html = '', allHex = true, i;
+        for (i = 0; i < parts.length; i++) { if (!parts[i].hex) { allHex = false; } }
+        if (allHex) {
+            html += '<div class="paint-swatch-split">';
+            for (i = 0; i < parts.length; i++) {
+                html += '<span style="background: ' + escapeHtml(parts[i].hex) + ';"></span>';
+            }
+            html += '</div>';
+        }
+        html += '<div class="paint-block"><div class="paint-code">' + escapeHtml(code) + '</div>';
+        html += '<p class="paint-alt">Two-tone finish, two paints</p><div class="two-tone-parts">';
+        for (i = 0; i < parts.length; i++) {
+            var p = parts[i];
+            html += '<span class="tt-chip">';
+            if (p.hex) { html += '<span class="tt-dot" style="background: ' + escapeHtml(p.hex) + ';"></span>'; }
+            html += '<span class="tt-text"><b>' + escapeHtml(p.code) + '</b> ' + escapeHtml(p.name) + '</span>';
+            if (p.is_body) { html += '<span class="tt-tag">body</span>'; }
+            else if (i > 0 && parts[0].is_body) { html += '<span class="tt-tag">roof</span>'; }
+            html += '</span>';
+        }
+        html += '</div></div>';
+        return html;
+    }
+
     function paintBlockHtml(code, hex, canonical, description) {
         var html = '';
         if (hex) {
@@ -1010,7 +1040,10 @@ window.cregReportWait();
         if (!card) return;
         var html = '';
         var list = data.all_paint_codes;
-        if (list && list.length > 1) {
+        var tt = data.two_tone;
+        if (tt && tt.length) {
+            html += twoToneHtml(data.paint_code, tt);   // paint228: as the template draws it
+        } else if (list && list.length > 1) {
             for (var i = 0; i < list.length; i++) {
                 var it = list[i] || {};
                 html += paintBlockHtml(it.code, it.hex, it.canonical, it.description);
