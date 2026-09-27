@@ -214,9 +214,10 @@ def check_wheel(data, mime='image/png', key=None):
 
 
 # ---------------------------------------------------------------------------
-# paint218: THE FEATURE. Every finished lookup that found a car gets one
-# picture, drawn in the background and kept in R2, reused for a repeat lookup
-# of the same car in the same paint. For now only the operator sees it, via
+# paint218: THE FEATURE. Every finished lookup that found a paint code gets
+# one picture, drawn in the background and kept in R2, reused for a repeat
+# lookup of the same car in the same paint. (paint223: no code, no picture;
+# a picture in DVLA's generic colour was more misleading than none.) For now only the operator sees it, via
 # the admin panel's "View" link.
 #
 # paint219: ON wherever the OpenAI and R2 settings are present (Railway, and
@@ -252,6 +253,8 @@ def _start_for(search_id):
     if not search or not (search.make or '').strip() or not (search.registration or '').strip():
         return None
     reg, code = search.registration, (search.paint_code or '').strip()[:50]
+    if not code:
+        return None                           # paint223: no code, no picture
     now = timezone.now()
     existing = CarPicture.objects.filter(registration=reg, paint_code=code).first()
     if existing and (existing.status == CarPicture.READY or (

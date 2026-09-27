@@ -1459,11 +1459,10 @@ def index(request):
                 search.gate_reason = Search.GATE_WHEELPLAN
 
         search.save()
-        # paint218: a lookup that ends here (a code already, or not automated)
-        # gets its picture now; one that goes on to the recovery gets it when
-        # the recovery finishes (_record_paint_hit, _record_name_only,
-        # _record_recovery).
-        if search.paint_code or make_not_automated:
+        # paint218: a lookup that ends here with a code gets its picture now;
+        # one that goes on to the recovery gets it if the recovery finds a code
+        # (_record_paint_hit). paint223: no code, no picture.
+        if search.paint_code:
             _start_car_picture(search.id)
 
         # paint135: warn if one IP has crossed the 24-hour threshold.
@@ -1972,6 +1971,7 @@ def results(request):
         # pictures are off). The locked branch above never sets it, so a
         # withheld result shows no picture of its paint either.
         'picture_url': _car_picture_url(vehicle_data.get('search_id')),
+        'picture_ready_url': _ready_picture_url(vehicle_data.get('search_id')),   # paint223
         'registration': vehicle_data.get('registration', ''),
         'make': vehicle_data.get('make', ''),
         'model': vehicle_data.get('model', ''),
@@ -2929,6 +2929,31 @@ def _car_picture_url(search_id):
     return ''
 
 
+def _ready_picture_url(search_id):
+    """paint223: the address of this lookup's picture if it is ready as the
+    page is built, so the page can show it at once rather than a moment
+    later: nothing then moves, not even after "email me" reloads the page.
+    '' otherwise. Records shown_at like the polling does. Never raises."""
+    try:
+        from lookup.models import CarPicture
+        from lookup.services import ai_pictures
+        if not search_id or not ai_pictures.enabled():
+            return ''
+        search = Search.objects.filter(id=search_id).first()
+        if search is None or search.is_locked() or not (search.paint_code or '').strip():
+            return ''
+        pic = (CarPicture.objects.filter(registration=search.registration,
+                                         paint_code=search.paint_code.strip()[:50],
+                                         status=CarPicture.READY)
+               .exclude(file_key='').first())
+        if pic is None:
+            return ''
+        CarPicture.objects.filter(id=pic.id, shown_at__isnull=True).update(shown_at=timezone.now())
+        return pic.url
+    except Exception:
+        return ''
+
+
 def car_picture(request, search_id):
     """paint220: the results page asks here, every few seconds, whether the
     car's AI picture is ready. Only for the lookup in this visitor's session,
@@ -2940,8 +2965,8 @@ def car_picture(request, search_id):
     if str(vehicle_data.get('search_id')) != str(search_id):
         return JsonResponse({'status': 'none'}, status=404)
     search = Search.objects.filter(id=search_id).first()
-    if search is None or search.is_locked():
-        return JsonResponse({'status': 'none'})
+    if search is None or search.is_locked() or not (search.paint_code or '').strip():
+        return JsonResponse({'status': 'none'})          # paint223: no code, no picture
     pic = CarPicture.objects.filter(registration=search.registration,
                                     paint_code=(search.paint_code or '').strip()[:50]).first()
     if pic is not None and pic.status == CarPicture.READY and pic.file_key:
@@ -2973,7 +2998,6 @@ def _record_recovery(search_id, telemetry):
     fields = _apply_recovery_telemetry(search, telemetry)
     if fields:
         search.save(update_fields=fields)
-    _start_car_picture(search_id)                     # paint218: in DVLA's colour
 
 
 def _record_name_only(search_id, paint_description, telemetry=None):
@@ -2997,7 +3021,6 @@ def _record_name_only(search_id, paint_description, telemetry=None):
     fields = ['paint_description', 'success', 'provider']
     fields += _apply_recovery_telemetry(search, telemetry)
     search.save(update_fields=fields)
-    _start_car_picture(search_id)                     # paint218
 
 
 @require_POST

@@ -608,20 +608,26 @@ the request directly. {% endcomment %}
                 @keyframes cp-bounce { 0%, 80%, 100% { transform: translateY(0); opacity: .35; } 40% { transform: translateY(-4px); opacity: 1; } }
                 @media (prefers-reduced-motion: reduce) { .cp-dots span { animation: none; opacity: .7; } }
             </style>
-            <div id="car-picture" class="mx-auto mt-4 text-center" style="max-width: 540px; display: none;">
+            {% comment %} paint223: the page is built in its final shape wherever it can be. A picture
+               already ready is shown at once, and a code already on the page gets its
+               placeholder at once, so nothing moves when the picture lands or when
+               "email me" reloads the page. While the paint is still being searched for,
+               the box stays hidden and showFound starts it; no code, no picture.{% endcomment %}
+            <div id="car-picture" class="mx-auto mt-4 text-center" style="max-width: 540px;{% if not picture_ready_url and not paint_code or paint_pending %} display: none;{% endif %}">
+                {% if picture_ready_url %}
+                <img id="car-picture-img" src="{{ picture_ready_url }}" alt="Illustration of the car in its paint" style="display: block; width: 100%; height: auto;">
+                {% else %}
                 <img id="car-picture-img" alt="Illustration of the car in its paint" style="display: none; width: 100%; height: auto; opacity: 0; transition: opacity 0.6s ease;">
                 <div id="car-picture-wait" class="cp-wait" aria-live="polite"><span class="cp-pill">Drawing your car<span class="cp-dots" aria-hidden="true"><span></span><span></span><span></span></span></span></div>
-                <div id="car-picture-note" style="color: #888; font-size: 12px; margin-top: 4px; display: none;">Illustration, not a photo of your car</div>
+                {% endif %}
+                <div id="car-picture-note" style="color: #888; font-size: 12px; margin-top: 4px;{% if not picture_ready_url %} display: none;{% endif %}"><svg width="13" height="13" viewBox="0 0 16 16" aria-hidden="true" style="vertical-align: -2px; margin-right: 3px;"><path d="M6 1.5c.4 2.9 1.6 4.1 4.5 4.5-2.9.4-4.1 1.6-4.5 4.5-.4-2.9-1.6-4.1-4.5-4.5 2.9-.4 4.1-1.6 4.5-4.5z" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/><path d="M12.5 9.5c.2 1.4.8 2 2.2 2.2-1.4.2-2 .8-2.2 2.2-.2-1.4-.8-2-2.2-2.2 1.4-.2 2-.8 2.2-2.2z" fill="none" stroke="currentColor" stroke-width="1.1" stroke-linejoin="round"/></svg>illustration, not your actual vehicle</div>
             </div>
             <script>
             (function () {
                 var URL = "{{ picture_url }}", tries = 0, MAX = 120;   // once a second, two minutes at most
+                var started = {% if picture_ready_url %}true{% else %}false{% endif %};
                 var box = document.getElementById('car-picture');
                 var img = document.getElementById('car-picture-img');
-                function resultShown() {
-                    var e = document.getElementById('email-section');
-                    return !e || e.style.display !== 'none';
-                }
                 function stop() { box.style.display = 'none'; }
                 function again() { if (tries < MAX) { setTimeout(poll, 1000); } else { stop(); } }
                 function poll() {
@@ -640,7 +646,6 @@ the request directly. {% endcomment %}
                                 img.onerror = stop;
                                 img.src = d.url;
                             } else if (d.status === 'pending') {
-                                if (resultShown()) { box.style.display = 'block'; }
                                 again();
                             } else {
                                 stop();
@@ -648,7 +653,13 @@ the request directly. {% endcomment %}
                         })
                         .catch(again);
                 }
-                poll();
+                window.startCarPicture = function () {
+                    if (started) { return; }
+                    started = true;
+                    box.style.display = 'block';
+                    poll();
+                };
+                {% if paint_code and not paint_pending %}window.startCarPicture();{% endif %}
             })();
             </script>
             {% endif %}
@@ -698,7 +709,7 @@ the request directly. {% endcomment %}
                            arrive, so nothing server-side breaks and they can be
                            reinstated without touching the view. enctype dropped with the
                            file input.{% endcomment %}
-                        <form method="POST" action="{% url 'submit_email' %}#email-section">
+                        <form method="POST" action="{% url 'submit_email' %}" onsubmit="try { sessionStorage.setItem('cr-email-offset', String(document.getElementById('email-section').getBoundingClientRect().top)); } catch (e) {}">
                             {% csrf_token %}
                             <input type="hidden" name="search_id" value="{{ search_id }}">
                             <div class="d-flex gap-2">
@@ -719,10 +730,19 @@ the request directly. {% endcomment %}
 </div>
 
 {% if email_submitted %}
+{% comment %} paint223: after "email me" the page comes back where the customer left it:
+   the email box sits exactly where it was on their screen when they clicked
+   (remembered on submit), rather than jumping to the middle. Centred only if
+   nothing was remembered.{% endcomment %}
 <script>
     document.addEventListener('DOMContentLoaded', function() {
         var el = document.getElementById('email-section');
-        if (el) {
+        if (!el) { return; }
+        var saved = null;
+        try { saved = sessionStorage.getItem('cr-email-offset'); sessionStorage.removeItem('cr-email-offset'); } catch (e) {}
+        if (saved !== null && !isNaN(parseFloat(saved))) {
+            window.scrollTo(0, el.getBoundingClientRect().top + window.pageYOffset - parseFloat(saved));
+        } else {
             el.scrollIntoView({ behavior: 'instant', block: 'center' });
         }
     });
@@ -913,6 +933,7 @@ window.cregReportWait();
 
     {% comment %}Render the recovered paint into the paint card.{% endcomment %}
     function showFound(data) {
+        if (window.startCarPicture) { window.startCarPicture(); }   // paint223: a code, so a picture
         var card = el('paint-card');
         if (!card) return;
         var html = '';
