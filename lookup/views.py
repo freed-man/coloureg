@@ -920,6 +920,7 @@ def index(request):
                 lookup_duration_ms=int((time.time() - start_time) * 1000),
             )
             cache_search.save()
+            _start_car_picture(cache_search.id)          # paint218: usually the stored picture
 
             # Gate it exactly like a fresh lookup (paint28). This branch
             # could not previously run with payments on, so it never needed
@@ -1458,6 +1459,12 @@ def index(request):
                 search.gate_reason = Search.GATE_WHEELPLAN
 
         search.save()
+        # paint218: a lookup that ends here (a code already, or not automated)
+        # gets its picture now; one that goes on to the recovery gets it when
+        # the recovery finishes (_record_paint_hit, _record_name_only,
+        # _record_recovery).
+        if search.paint_code or make_not_automated:
+            _start_car_picture(search.id)
 
         # paint135: warn if one IP has crossed the 24-hour threshold.
         #
@@ -2841,6 +2848,7 @@ def _record_paint_hit(search_id, paint_code, paint_description, source, telemetr
             if 'pl24_returned' not in fields:
                 fields.append('pl24_returned')
     search.save(update_fields=fields)
+    _start_car_picture(search_id)                     # paint218
 
     # A lookup that started as "no paint yet" and recovered a code minutes later
     # is worth exactly as much as one that resolved immediately, so it gets
@@ -2868,6 +2876,15 @@ def _persist_recovered_vin(search_id, vin):
                        exc_info=True)
 
 
+def _start_car_picture(search_id):
+    """paint218: queue the AI picture for a finished lookup. Never raises."""
+    try:
+        from lookup.services import ai_pictures
+        ai_pictures.start_for(search_id)
+    except Exception:
+        pass
+
+
 def _record_recovery(search_id, telemetry):
     """Persist just the recovery telemetry (for the both-missed / error paths,
     where no paint was found). Best-effort."""
@@ -2878,6 +2895,7 @@ def _record_recovery(search_id, telemetry):
     fields = _apply_recovery_telemetry(search, telemetry)
     if fields:
         search.save(update_fields=fields)
+    _start_car_picture(search_id)                     # paint218: in DVLA's colour
 
 
 def _record_name_only(search_id, paint_description, telemetry=None):
@@ -2901,6 +2919,7 @@ def _record_name_only(search_id, paint_description, telemetry=None):
     fields = ['paint_description', 'success', 'provider']
     fields += _apply_recovery_telemetry(search, telemetry)
     search.save(update_fields=fields)
+    _start_car_picture(search_id)                     # paint218
 
 
 @require_POST
@@ -3921,10 +3940,17 @@ def admin_stats(request):
     # Requiring BOTH to be empty hides exactly what the old filter hid — every
     # block and every empty attempt has neither — while surfacing the one shape
     # worth looking at: money spent on a vehicle that resolved to nothing.
-    recent_all_lookups = (
+    recent_all_lookups = list(
         Search.objects.exclude(make='', vin='')
         .order_by('-timestamp')[:50]
     )
+    # paint218: each row's AI picture, found by registration and paint code
+    # (a repeat lookup shares the first one's picture).
+    from lookup.models import CarPicture
+    _pictures = {(p.registration, p.paint_code): p for p in CarPicture.objects.filter(
+        registration__in={s.registration for s in recent_all_lookups})}
+    for _s in recent_all_lookups:
+        _s.car_picture = _pictures.get((_s.registration, (_s.paint_code or '').strip()[:50]))
 
     # (total_emails, emails_sent, conversion_rate computed in top_metrics above)
 

@@ -290,3 +290,18 @@ class OperatorPaintCodeAdmin(admin.ModelAdmin):
     readonly_fields = ('normalized_name', 'created_at')
     search_fields = ('manufacturer', 'code', 'colour_name', 'source_registration')
     ordering = ('-created_at',)
+
+
+# paint218: the AI car pictures, read only.
+from .models import CarPicture  # noqa: E402
+
+
+@admin.register(CarPicture)
+class CarPictureAdmin(admin.ModelAdmin):
+    list_display = ('registration', 'paint_code', 'status', 'verdict', 'cost', 'seconds', 'started_at')
+    list_filter = ('status', 'verdict')
+    search_fields = ('registration', 'paint_code')
+    readonly_fields = [f.name for f in CarPicture._meta.fields]
+
+    def has_add_permission(self, request):
+        return False

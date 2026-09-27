@@ -3156,3 +3156,43 @@ class SiteConfig(models.Model):
         except Exception:
             pass
         return obj
+
+
+class CarPicture(models.Model):
+    """An AI picture of a looked-up car in its paint (paint218).
+
+    One per registration and paint code: a repeat lookup of the same car in
+    the same paint reuses it, a respray gets its own. Made in the background
+    by lookup.services.ai_pictures once the lookup has its answer, kept in
+    Cloudflare R2 under a random name (never the registration), and for now
+    shown only to the operator (the admin panel's "View" link). OpenAI never
+    sees the registration: the prompt holds make, model, year and paint.
+    """
+    PENDING, READY, FAILED = 'pending', 'ready', 'failed'
+
+    registration = models.CharField(max_length=10, db_index=True)
+    paint_code = models.CharField(max_length=50, blank=True, default='')
+    search = models.ForeignKey('Search', null=True, blank=True, on_delete=models.SET_NULL,
+                               related_name='car_pictures')
+    status = models.CharField(max_length=10, default=PENDING, db_index=True)
+    painted = models.CharField(max_length=200, blank=True, default='')   # the paint as the prompt put it
+    file_key = models.CharField(max_length=100, blank=True, default='')
+    verdict = models.CharField(max_length=10, blank=True, default='')    # the wheel check: RIGHT, LEFT, BOTH, UNSURE
+    cost = models.DecimalField(max_digits=8, decimal_places=4, null=True, blank=True)   # dollars, picture and check
+    seconds = models.FloatField(null=True, blank=True)
+    error = models.CharField(max_length=200, blank=True, default='')
+    created_at = models.DateTimeField(auto_now_add=True)
+    started_at = models.DateTimeField(default=timezone.now, db_index=True)   # this attempt
+    shown_at = models.DateTimeField(null=True, blank=True)                   # for the customer stage
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=['registration', 'paint_code'],
+                                               name='one_car_picture_per_paint')]
+
+    def __str__(self):
+        return f'{self.registration} {self.paint_code or "(DVLA colour)"}: {self.status}'
+
+    @property
+    def url(self):
+        from lookup.services.picture_store import public_url
+        return public_url(self.file_key)

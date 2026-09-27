@@ -27,15 +27,26 @@ handoff):
     On the site it only records the verdict; a wrong wheel is not redone.
 """
 import base64
+import concurrent.futures
+import io
+import logging
 import os
 import re
 import time
+import uuid
 from dataclasses import dataclass
+from datetime import timedelta
+from decimal import Decimal
 
 import requests
+from django.db import IntegrityError, connection
+from django.utils import timezone
 
-from lookup.models import PaintLookup
+from lookup.models import CarPicture, PaintLookup, Search
+from lookup.services import picture_store
 from lookup.services.http import get_session
+
+logger = logging.getLogger(__name__)
 
 OPENAI_IMAGES_URL = 'https://api.openai.com/v1/images/generations'
 OPENAI_RESPONSES_URL = 'https://api.openai.com/v1/responses'
@@ -200,3 +211,122 @@ def check_wheel(data, mime='image/png', key=None):
     if status != 200:
         return None, None, f'check failed: HTTP {status} {message}'.strip()
     return wheel_verdict(_reply_text(reply)), cost_of(CHECKER_MODEL, reply.get('usage')), ''
+
+
+# ---------------------------------------------------------------------------
+# paint218: THE FEATURE. Every finished lookup that found a car gets one
+# picture, drawn in the background and kept in R2, reused for a repeat lookup
+# of the same car in the same paint. For now only the operator sees it, via
+# the admin panel's "View" link. Off until Railway has CAR_PICTURES=on (and
+# the OpenAI and R2 settings), so deploying this spends nothing.
+# ---------------------------------------------------------------------------
+DAILY_LIMIT = 300            # attempts in any 24 hours; CAR_PICTURES_DAILY_LIMIT overrides
+STALE_MINUTES = 10           # a picture still "pending" after this was lost with its worker
+_executor = concurrent.futures.ThreadPoolExecutor(max_workers=2, thread_name_prefix='car-picture')
+
+
+def enabled():
+    return (os.environ.get('CAR_PICTURES', '').strip().lower() == 'on'
+            and bool(openai_key()) and picture_store.configured())
+
+
+def daily_limit():
+    try:
+        return int(os.environ.get('CAR_PICTURES_DAILY_LIMIT', DAILY_LIMIT))
+    except ValueError:
+        return DAILY_LIMIT
+
+
+def start_for(search_id):
+    """Queue the picture for a finished lookup. Returns its CarPicture, or
+    None. Never raises: a picture must never break a lookup."""
+    try:
+        return _start_for(search_id)
+    except Exception:
+        logger.exception('car picture: could not start for search %s', search_id)
+        return None
+
+
+def _start_for(search_id):
+    if not enabled():
+        return None
+    search = Search.objects.filter(id=search_id).first()
+    if not search or not (search.make or '').strip() or not (search.registration or '').strip():
+        return None
+    reg, code = search.registration, (search.paint_code or '').strip()[:50]
+    now = timezone.now()
+    existing = CarPicture.objects.filter(registration=reg, paint_code=code).first()
+    if existing and (existing.status == CarPicture.READY or (
+            existing.status == CarPicture.PENDING
+            and existing.started_at > now - timedelta(minutes=STALE_MINUTES))):
+        return existing                       # already drawn, or being drawn
+    if CarPicture.objects.filter(started_at__gte=now - timedelta(hours=24)).count() >= daily_limit():
+        logger.warning('car picture: daily limit of %s reached, none for search %s',
+                       daily_limit(), search_id)
+        return existing
+    if existing:                              # it failed, or its worker died: try again
+        CarPicture.objects.filter(id=existing.id).update(
+            status=CarPicture.PENDING, search=search, error='', started_at=now)
+        pic = existing
+    else:
+        try:
+            pic = CarPicture.objects.create(registration=reg, paint_code=code, search=search)
+        except IntegrityError:                # another request started it a moment ago
+            return CarPicture.objects.filter(registration=reg, paint_code=code).first()
+    _executor.submit(_make_in_thread, pic.id)
+    return pic
+
+
+def _make_in_thread(picture_id):
+    try:
+        make_picture(picture_id)
+    finally:
+        connection.close()                    # a worker thread's own connection, not the request's
+
+
+def to_webp(png):
+    """(data, extension, content type): WebP keeps the transparency at a
+    fraction of the PNG's size; the PNG itself if the conversion fails."""
+    try:
+        from PIL import Image
+        img = Image.open(io.BytesIO(png))
+        img.load()
+        out = io.BytesIO()
+        img.save(out, format='WEBP', quality=85, method=4)
+        return out.getvalue(), 'webp', 'image/webp'
+    except Exception:
+        logger.exception('car picture: WebP conversion failed, keeping the PNG')
+        return png, 'png', 'image/png'
+
+
+def _fail(picture_id, why):
+    CarPicture.objects.filter(id=picture_id).update(status=CarPicture.FAILED, error=why[:200])
+
+
+def make_picture(picture_id):
+    """Draw, store and check one picture. The picture is marked ready before
+    the wheel check, which only records its verdict."""
+    try:
+        pic = CarPicture.objects.select_related('search').get(id=picture_id)
+        if pic.search is None:
+            _fail(picture_id, 'the lookup is gone')
+            return
+        prompt, painted = search_prompt(pic.search)
+        drawn = draw(prompt)
+        if not drawn.ok:
+            _fail(picture_id, f'HTTP {drawn.status}: {drawn.message}')
+            return
+        data, ext, content_type = to_webp(drawn.data)
+        key = f'cars/{uuid.uuid4().hex}.{ext}'
+        picture_store.upload(key, data, content_type)
+        cost = drawn.cost or 0.0
+        CarPicture.objects.filter(id=picture_id).update(
+            status=CarPicture.READY, file_key=key, painted=painted[:200],
+            seconds=round(drawn.seconds, 1), cost=Decimal(str(round(cost, 4))))
+        verdict, check_cost, note = check_wheel(drawn.data, drawn.mime)
+        CarPicture.objects.filter(id=picture_id).update(
+            verdict=verdict or '', error=(note or '')[:200],
+            cost=Decimal(str(round(cost + (check_cost or 0.0), 4))))
+    except Exception as exc:
+        logger.exception('car picture %s failed', picture_id)
+        _fail(picture_id, f'{type(exc).__name__}: {exc}')
