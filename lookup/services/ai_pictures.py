@@ -98,10 +98,30 @@ def openai_key():
     return os.environ.get('OPENAI_API_KEY', '').strip()
 
 
+def _one_paint(make, part):
+    return (f"{part.get('name') or part.get('code')} ({make} paint code {part.get('code')}"
+            + (f", hex {part['hex']}" if part.get('hex') else '') + ')')
+
+
 def paint_words(make, code, name, dvla_colour):
     """The paint as the prompt names it: the catalogue's name and hex when it
-    knows the code, else the name the lookup found, else DVLA's colour."""
+    knows the code, else the name the lookup found, else DVLA's colour.
+
+    paint229: A TWO-TONE NAMES BOTH PAINTS, EACH WITH ITS OWN HEX, and which
+    is the body. The combination row carries one hex at most, and for 2VN it
+    was the black roof's, so the prompt gave the model no colour at all for
+    the Lunar Rock body, and it drew a warm beige-grey from the name alone."""
     if code:
+        try:
+            parts = PaintLookup.two_tone_parts(make, code, vdg_colour=dvla_colour)
+        except Exception:
+            parts = None
+        if parts:
+            body = next((p for p in parts if p.get('is_body')), None)
+            if body is not None:
+                rest = ' and '.join(_one_paint(make, p) for p in parts if p is not body)
+                return f'two-tone, the body in {_one_paint(make, body)} and the roof in {rest}'
+            return 'two-tone, ' + ' and '.join(_one_paint(make, p) for p in parts)
         hex_value, cat_name, _canonical = PaintLookup.lookup_with_canonical(make, code)
         words = cat_name or name
         if words:
