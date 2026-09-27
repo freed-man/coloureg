@@ -602,6 +602,12 @@ the request directly. {% endcomment %}
                space, so nothing moves when the car arrives. paint225: no box; the car
                sits straight on the card, its background see-through; a magnifier on
                it says "tap to enlarge"; a larger close button and a clearer caption.
+               paint227: the magnifier top right, where the angled car always leaves
+               space; the large view sized from the screen's height as well as its
+               width (the picture is 3:2, and 190px covers the close button's strip,
+               the caption and the margins), so the whole of it, close button and
+               caption included, fits on any screen; the close button lower and
+               bigger.
                A ready picture is built into the page, so nothing moves, not even
                after "email me" reloads it.{% endcomment %}
             <style>
@@ -613,7 +619,7 @@ the request directly. {% endcomment %}
                 .cp-wait { aspect-ratio: 3 / 2; width: 100%; display: flex; align-items: center; justify-content: center; }
                 .cp-pill { display: inline-flex; align-items: center; background: #f0fdf4; color: #15803d;
                            border: 1px solid #bbf7d0; font-size: 13px; padding: 6px 12px; border-radius: 999px; white-space: nowrap; }
-                .car-thumb-zoom { position: absolute; right: 2px; bottom: 2px; width: 32px; height: 32px; border-radius: 50%;
+                .car-thumb-zoom { position: absolute; right: 2px; top: 2px; width: 32px; height: 32px; border-radius: 50%;
                                   background: #fff; border: 1px solid #e5e7eb; color: #333;
                                   display: flex; align-items: center; justify-content: center; }
                 .cp-dots span { display: inline-block; width: 6px; height: 6px; margin: 0 2px; border-radius: 50%;
@@ -623,15 +629,19 @@ the request directly. {% endcomment %}
                 @keyframes cp-bounce { 0%, 80%, 100% { transform: translateY(0); opacity: .35; } 40% { transform: translateY(-4px); opacity: 1; } }
                 @media (prefers-reduced-motion: reduce) { .cp-dots span { animation: none; opacity: .7; } }
                 .car-lightbox { position: fixed; inset: 0; z-index: 1050; background: rgba(0, 0, 0, .6);
-                                display: flex; align-items: center; justify-content: center; padding: 16px; }
+                                display: flex; align-items: center; justify-content: center; padding: 16px; overflow: auto; }
                 .car-lightbox[hidden] { display: none; }
                 .car-lightbox-figure { position: relative; margin: 0; background: #fff; border-radius: 12px;
-                                       padding: 56px 16px 14px; width: 100%; max-width: 900px; }
-                .car-lightbox-figure img { display: block; width: 100%; height: auto; }
-                .car-lightbox-figure figcaption { text-align: center; color: #555; font-size: 14px; margin-top: 8px; }
-                .car-lightbox-close { position: absolute; top: 8px; right: 8px; width: 44px; height: 44px; padding: 0;
+                                       padding: 72px 16px 18px; width: auto; max-width: 100%; }
+                .car-lightbox-figure img { display: block; height: auto; margin: 0 auto;
+                                           width: min(868px, calc(100vw - 64px), calc((100vh - 190px) * 1.5)); }
+                @supports (height: 100dvh) {
+                    .car-lightbox-figure img { width: min(868px, calc(100vw - 64px), calc((100dvh - 190px) * 1.5)); }
+                }
+                .car-lightbox-figure figcaption { text-align: center; color: #555; font-size: 14px; margin-top: 12px; line-height: 1.4; }
+                .car-lightbox-close { position: absolute; top: 14px; right: 14px; width: 50px; height: 50px; padding: 0;
                                       border: none; border-radius: 50%; background: #f1f3f5; color: #333;
-                                      font-size: 32px; line-height: 44px; text-align: center; cursor: pointer; }
+                                      font-size: 36px; line-height: 50px; text-align: center; cursor: pointer; }
                 .car-lightbox-close:hover { background: #e5e7eb; }
             </style>
             <div id="car-thumb-holder" style="display: none;">
