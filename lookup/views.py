@@ -1968,6 +1968,10 @@ def results(request):
         item['canonical'] = item_canonical
 
     context = {
+        # paint220: where the page asks for the car's AI picture ('' when
+        # pictures are off). The locked branch above never sets it, so a
+        # withheld result shows no picture of its paint either.
+        'picture_url': _car_picture_url(vehicle_data.get('search_id')),
         'registration': vehicle_data.get('registration', ''),
         'make': vehicle_data.get('make', ''),
         'model': vehicle_data.get('model', ''),
@@ -2478,7 +2482,41 @@ def _paint_email_args(search):
         'paint_description': search.paint_description,
         'canonical_code': canonical_code,
         'paint_hex': paint_hex,
+        'car_picture_jpeg': _email_picture(search),      # paint221
     }
+
+
+def _email_picture(search):
+    """paint221: the car's AI picture as a JPEG for the paint code email, if
+    it is ready right now; None otherwise. Never waits and never raises.
+    Emails get a JPEG on white, at most 960 pixels across: many mail programs
+    cannot show WebP, and not all respect transparency."""
+    try:
+        import io
+        from PIL import Image
+        from lookup.models import CarPicture
+        from lookup.services.http import get_session
+        pic = (CarPicture.objects.filter(registration=search.registration,
+                                         paint_code=(search.paint_code or '').strip()[:50],
+                                         status=CarPicture.READY)
+               .exclude(file_key='').first())
+        if pic is None:
+            return None
+        r = get_session().get(pic.url, timeout=10)
+        if r.status_code != 200 or not r.content:
+            return None
+        img = Image.open(io.BytesIO(r.content))
+        img.load()
+        img = img.convert('RGBA')
+        flat = Image.new('RGB', img.size, (255, 255, 255))
+        flat.paste(img, mask=img.split()[3])
+        flat.thumbnail((960, 960))
+        out = io.BytesIO()
+        flat.save(out, format='JPEG', quality=85, optimize=True)
+        return out.getvalue()
+    except Exception:
+        logger.exception('car picture for the email of search %s', getattr(search, 'id', None))
+        return None
 
 
 def _session_email(session):
@@ -2874,6 +2912,46 @@ def _persist_recovered_vin(search_id, vin):
     except Exception:  # noqa: BLE001
         logger.warning('recovered VIN not stored for search=%s', search_id,
                        exc_info=True)
+
+
+PICTURE_WAIT_SECONDS = 120   # paint220: how long after a lookup its picture may still be coming
+
+
+def _car_picture_url(search_id):
+    """paint220: the results page's picture address, or '' when pictures are off."""
+    try:
+        from lookup.services import ai_pictures
+        if search_id and ai_pictures.enabled():
+            from django.urls import reverse
+            return reverse('car_picture', args=[search_id])
+    except Exception:
+        pass
+    return ''
+
+
+def car_picture(request, search_id):
+    """paint220: the results page asks here, every few seconds, whether the
+    car's AI picture is ready. Only for the lookup in this visitor's session,
+    exactly as lookup_status checks. Answers ready (with the picture's
+    address), pending, or none. The first answer of ready records shown_at,
+    which is how the admin will see how many pictures reach a page in time."""
+    from lookup.models import CarPicture
+    vehicle_data = request.session.get('vehicle_data') or {}
+    if str(vehicle_data.get('search_id')) != str(search_id):
+        return JsonResponse({'status': 'none'}, status=404)
+    search = Search.objects.filter(id=search_id).first()
+    if search is None or search.is_locked():
+        return JsonResponse({'status': 'none'})
+    pic = CarPicture.objects.filter(registration=search.registration,
+                                    paint_code=(search.paint_code or '').strip()[:50]).first()
+    if pic is not None and pic.status == CarPicture.READY and pic.file_key:
+        CarPicture.objects.filter(id=pic.id, shown_at__isnull=True).update(shown_at=timezone.now())
+        return JsonResponse({'status': 'ready', 'url': pic.url})
+    if pic is not None and pic.status == CarPicture.PENDING:
+        return JsonResponse({'status': 'pending'})
+    if pic is None and search.timestamp > timezone.now() - timedelta(seconds=PICTURE_WAIT_SECONDS):
+        return JsonResponse({'status': 'pending'})       # the lookup is young: one is probably on its way
+    return JsonResponse({'status': 'none'})
 
 
 def _start_car_picture(search_id):

@@ -216,7 +216,7 @@ def send_custom_message(to_email, subject, markdown_body, extra_attachments=None
     }, context='custom_message')
 
 
-def send_user_paint_code(to_email, registration, vehicle_title, vin_masked, colour, paint_code, paint_description, canonical_code=None, paint_hex=None, message='', extra_attachments=None, bcc_owner=False, purchase=None):
+def send_user_paint_code(to_email, registration, vehicle_title, vin_masked, colour, paint_code, paint_description, canonical_code=None, paint_hex=None, message='', extra_attachments=None, bcc_owner=False, purchase=None, car_picture_jpeg=None):
     """Email user the found paint code.
 
     If canonical_code is provided and differs from paint_code, the email displays
@@ -291,6 +291,25 @@ def send_user_paint_code(to_email, registration, vehicle_title, vin_masked, colo
     else:
         note_html = ''
 
+    # paint221: the car's AI picture, inline (cid:car) like the logo, when it
+    # was ready as the email went out. Never waited for: the code is what was
+    # asked for. Labelled an illustration, as on the results page.
+    if car_picture_jpeg:
+        picture_html = (
+            '<div style="text-align: center; margin: 0 0 24px;">'
+            '<img src="cid:car" alt="Illustration of your car in its paint" width="480" '
+            'style="width: 100%; max-width: 480px; height: auto; display: block; margin: 0 auto;">'
+            '<div style="color: #999; font-size: 12px; margin-top: 6px;">Illustration, not your actual vehicle</div>'
+            '</div>')
+        extra_attachments = list(extra_attachments or []) + [{
+            "filename": "car.jpg",
+            "content": base64.b64encode(car_picture_jpeg).decode(),
+            "content_id": "car",
+            "content_type": "image/jpeg",
+        }]
+    else:
+        picture_html = ''
+
     html = f"""
     <div style="background: #f8f9fa; padding: 40px 20px; font-family: 'IBM Plex Sans', Arial, Helvetica, sans-serif;">
         <div style="max-width: 560px; margin: 0 auto; background: #fff; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.04);">
@@ -306,6 +325,7 @@ def send_user_paint_code(to_email, registration, vehicle_title, vin_masked, colo
                     {f'<div style="margin-top: 12px; color: #666; font-size: 14px; letter-spacing: 0.5px;">{_esc(paint_description)}</div>' if paint_description else ''}
                 </div>
                 {note_html}
+                {picture_html}
                 <table style="width: 100%; border-collapse: collapse;">
                     <tr>
                         <td style="padding: 12px 0; color: #666; font-size: 14px; width: 120px;">Vehicle</td>

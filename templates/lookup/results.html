@@ -588,6 +588,55 @@ so this section read "no code found" and offered a FREE manual lookup beside the
 server refuses to email a locked result too: hiding this stops no one who sends
 the request directly. {% endcomment %}
 {% if search_id and not locked %}
+            {% if picture_url %}
+            {% comment %} paint220: the car's AI picture. Hidden until it has loaded, then
+               faded in with its label. While it is still being drawn, and only once
+               the paint result itself is on the page, a line says so; if no picture
+               comes (off, failed, or two minutes pass) nothing is shown at all.{% endcomment %}
+            <div id="car-picture" class="mx-auto mt-4 text-center" style="max-width: 540px; display: none;">
+                <img id="car-picture-img" alt="Illustration of the car in its paint" style="display: none; width: 100%; height: auto; opacity: 0; transition: opacity 0.6s ease;">
+                <div id="car-picture-wait" style="color: #888; font-size: 13px; padding: 12px 0;">Drawing your car&hellip;</div>
+                <div id="car-picture-note" style="color: #888; font-size: 12px; margin-top: 4px; display: none;">Illustration, not your actual vehicle</div>
+            </div>
+            <script>
+            (function () {
+                var URL = "{{ picture_url }}", tries = 0, MAX = 120;   // once a second, two minutes at most
+                var box = document.getElementById('car-picture');
+                var img = document.getElementById('car-picture-img');
+                function resultShown() {
+                    var e = document.getElementById('email-section');
+                    return !e || e.style.display !== 'none';
+                }
+                function stop() { box.style.display = 'none'; }
+                function again() { if (tries < MAX) { setTimeout(poll, 1000); } else { stop(); } }
+                function poll() {
+                    tries += 1;
+                    fetch(URL, {credentials: 'same-origin', cache: 'no-store'})
+                        .then(function (r) { return r.ok ? r.json() : {status: 'none'}; })
+                        .then(function (d) {
+                            if (d.status === 'ready' && d.url) {
+                                img.onload = function () {
+                                    document.getElementById('car-picture-wait').style.display = 'none';
+                                    document.getElementById('car-picture-note').style.display = 'block';
+                                    img.style.display = 'block';
+                                    box.style.display = 'block';
+                                    requestAnimationFrame(function () { img.style.opacity = 1; });
+                                };
+                                img.onerror = stop;
+                                img.src = d.url;
+                            } else if (d.status === 'pending') {
+                                if (resultShown()) { box.style.display = 'block'; }
+                                again();
+                            } else {
+                                stop();
+                            }
+                        })
+                        .catch(again);
+                }
+                poll();
+            })();
+            </script>
+            {% endif %}
             <div id="email-section" class="mx-auto mt-4" style="max-width: 540px;{% if paint_pending %} display: none;{% endif %}">
                 {% if email_submitted %}
                 <div class="card" style="border: 2px solid #22c55e; background: #f0fdf4;">
