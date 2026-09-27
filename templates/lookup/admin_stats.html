@@ -1738,43 +1738,43 @@
         </div>
     </div>
 
-    {% comment %} paint230: the car pictures. Counted per picture: a repeat lookup reuses its
-       car's picture. "Reached a results page" means a customer's page was handed it;
-       "within 2 minutes" means while that page was still asking, counted from the
-       lookup. An email carries the picture only if it was ready as the email went
-       out. {% endcomment %}
+    {% comment %} paint231: the car pictures, only what the operator would act on, for the
+       last 7 days. Each figure is worked out in _picture_panel (views.py), which says
+       exactly how. Everything else is still stored: the View link's hover on each
+       lookup, and the Car pictures list in Django admin. {% endcomment %}
+    {% with p=picture_panel %}
     <div class="panel" id="car-picture-stats">
         <h3>Car pictures</h3>
-        <table class="table table-sm" style="max-width: 640px; font-size: 14px;">
-            <thead><tr><th></th><th style="text-align: right;">Last 7 days</th><th style="text-align: right;">All time</th></tr></thead>
-            <tbody>
-                <tr><td>Drawn{% if picture_stats_all.failed %} (failed){% endif %}</td>
-                    <td style="text-align: right;">{{ picture_stats_week.drawn }}{% if picture_stats_week.failed %} ({{ picture_stats_week.failed }}){% endif %}</td>
-                    <td style="text-align: right;">{{ picture_stats_all.drawn }}{% if picture_stats_all.failed %} ({{ picture_stats_all.failed }}){% endif %}</td></tr>
-                <tr><td>Reached a results page</td>
-                    <td style="text-align: right;">{{ picture_stats_week.shown }}</td>
-                    <td style="text-align: right;">{{ picture_stats_all.shown }}</td></tr>
-                <tr><td>&nbsp;&nbsp;of which within 2 minutes of the lookup</td>
-                    <td style="text-align: right;">{{ picture_stats_week.in_time }}</td>
-                    <td style="text-align: right;">{{ picture_stats_all.in_time }}</td></tr>
-                <tr><td>Paint code emails sent</td>
-                    <td style="text-align: right;">{{ picture_stats_week.emails }}</td>
-                    <td style="text-align: right;">{{ picture_stats_all.emails }}</td></tr>
-                <tr><td>&nbsp;&nbsp;of which carried the picture</td>
-                    <td style="text-align: right;">{{ picture_stats_week.emails_with_picture }}</td>
-                    <td style="text-align: right;">{{ picture_stats_all.emails_with_picture }}</td></tr>
-                <tr><td>Wheel check: right / left / unsure</td>
-                    <td style="text-align: right;">{{ picture_stats_week.verdicts.RIGHT }} / {{ picture_stats_week.verdicts.LEFT }} / {{ picture_stats_week.verdicts.UNSURE }}</td>
-                    <td style="text-align: right;">{{ picture_stats_all.verdicts.RIGHT }} / {{ picture_stats_all.verdicts.LEFT }} / {{ picture_stats_all.verdicts.UNSURE }}</td></tr>
-                <tr><td>Typical drawing time</td>
-                    <td style="text-align: right;">{% if picture_stats_week.median_seconds %}{{ picture_stats_week.median_seconds }}s{% else %}&mdash;{% endif %}</td>
-                    <td style="text-align: right;">{% if picture_stats_all.median_seconds %}{{ picture_stats_all.median_seconds }}s{% else %}&mdash;{% endif %}</td></tr>
-                <tr><td>Cost (OpenAI, dollars)</td>
-                    <td style="text-align: right;">${{ picture_stats_week.cost|floatformat:2 }}</td>
-                    <td style="text-align: right;">${{ picture_stats_all.cost|floatformat:2 }}</td></tr>
-            </tbody>
-        </table>
+        <div style="color: #666; font-size: 12px; margin: -8px 0 16px;">Last 7 days.</div>
+        <div class="stats-grid" style="grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); margin-bottom: 0;">
+            <div class="stat-card">
+                <p class="stat-label">Got a picture</p>
+                <p class="stat-value">{% if p.with_picture_pct is not None %}{{ p.with_picture_pct }}%{% else %}&mdash;{% endif %}</p>
+                <p class="stat-subvalue">{{ p.with_picture }} of {{ p.cars }} cars with a code{% if p.failed %} &middot; {{ p.failed }} failed{% endif %}</p>
+            </div>
+            <div class="stat-card">
+                <p class="stat-label">Seen in time</p>
+                <p class="stat-value">{% if p.in_time_pct is not None %}{{ p.in_time_pct }}%{% else %}&mdash;{% endif %}</p>
+                <p class="stat-subvalue">{{ p.in_time }} of {{ p.drawn }} within 2 minutes</p>
+            </div>
+            <div class="stat-card">
+                <p class="stat-label">Emails with it</p>
+                <p class="stat-value">{% if p.emails_with_pct is not None %}{{ p.emails_with_pct }}%{% else %}&mdash;{% endif %}</p>
+                <p class="stat-subvalue">{{ p.emails_with }} of {{ p.emails }} paint code emails</p>
+            </div>
+            <div class="stat-card">
+                <p class="stat-label">Wrong wheel</p>
+                <p class="stat-value">{{ p.wrong }}</p>
+                <p class="stat-subvalue">of {{ p.checked }} checked{% if p.wrong %} &middot; <a href="{% url 'admin:lookup_carpicture_changelist' %}?verdict__in=LEFT,BOTH">see them</a>{% endif %}</p>
+            </div>
+            <div class="stat-card">
+                <p class="stat-label">Cost</p>
+                <p class="stat-value">${{ p.cost_week|floatformat:2 }}</p>
+                <p class="stat-subvalue">${{ p.cost_month|floatformat:2 }} this month</p>
+            </div>
+        </div>
     </div>
+    {% endwith %}
 
     {% comment %}<!-- Recent paint code lookups (all searches, success + failure) -->{% endcomment %}
     <div class="panel">

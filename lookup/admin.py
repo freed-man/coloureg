@@ -302,6 +302,7 @@ class CarPictureAdmin(admin.ModelAdmin):
     list_display = ('registration', 'paint_code', 'status', 'verdict', 'cost', 'seconds', 'started_at')
     list_filter = ('status', 'verdict')
     search_fields = ('registration', 'paint_code')
+    ordering = ('-created_at',)          # paint231: newest first, where the dashboard's link lands
     readonly_fields = [f.name for f in CarPicture._meta.fields]
 
     def has_add_permission(self, request):

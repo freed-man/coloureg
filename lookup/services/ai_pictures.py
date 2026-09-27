@@ -333,6 +333,9 @@ def make_picture(picture_id):
             _fail(picture_id, 'the lookup is gone')
             return
         prompt, painted = search_prompt(pic.search)
+        # paint231: a redraw or retry ADDS to what the picture has cost; it
+        # used to replace it, so redraws vanished from the dashboard's cost.
+        prior = float(pic.cost or 0)
         drawn = draw(prompt)
         if not drawn.ok:
             _fail(picture_id, f'HTTP {drawn.status}: {drawn.message}')
@@ -340,7 +343,7 @@ def make_picture(picture_id):
         data, ext, content_type = to_webp(drawn.data)
         key = f'cars/{uuid.uuid4().hex}.{ext}'
         picture_store.upload(key, data, content_type)
-        cost = drawn.cost or 0.0
+        cost = prior + (drawn.cost or 0.0)
         CarPicture.objects.filter(id=picture_id).update(
             status=CarPicture.READY, file_key=key, painted=painted[:200],
             seconds=round(drawn.seconds, 1), cost=Decimal(str(round(cost, 4))))
