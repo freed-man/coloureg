@@ -217,24 +217,22 @@ def check_wheel(data, mime='image/png', key=None):
 # paint218: THE FEATURE. Every finished lookup that found a car gets one
 # picture, drawn in the background and kept in R2, reused for a repeat lookup
 # of the same car in the same paint. For now only the operator sees it, via
-# the admin panel's "View" link. Off until Railway has CAR_PICTURES=on (and
-# the OpenAI and R2 settings), so deploying this spends nothing.
+# the admin panel's "View" link.
+#
+# paint219: ON wherever the OpenAI and R2 settings are present (Railway, and
+# env.py locally), with the limit set here rather than in Railway. The one
+# variable left is an emergency brake: CAR_PICTURES=off in Railway stops new
+# pictures without a code change. The battery's clone has no R2 settings, so
+# nothing there ever draws.
 # ---------------------------------------------------------------------------
-DAILY_LIMIT = 300            # attempts in any 24 hours; CAR_PICTURES_DAILY_LIMIT overrides
+DAILY_LIMIT = 300            # picture attempts in any 24 hours, about $5 a day at most
 STALE_MINUTES = 10           # a picture still "pending" after this was lost with its worker
 _executor = concurrent.futures.ThreadPoolExecutor(max_workers=2, thread_name_prefix='car-picture')
 
 
 def enabled():
-    return (os.environ.get('CAR_PICTURES', '').strip().lower() == 'on'
+    return (os.environ.get('CAR_PICTURES', '').strip().lower() != 'off'
             and bool(openai_key()) and picture_store.configured())
-
-
-def daily_limit():
-    try:
-        return int(os.environ.get('CAR_PICTURES_DAILY_LIMIT', DAILY_LIMIT))
-    except ValueError:
-        return DAILY_LIMIT
 
 
 def start_for(search_id):
@@ -260,9 +258,9 @@ def _start_for(search_id):
             existing.status == CarPicture.PENDING
             and existing.started_at > now - timedelta(minutes=STALE_MINUTES))):
         return existing                       # already drawn, or being drawn
-    if CarPicture.objects.filter(started_at__gte=now - timedelta(hours=24)).count() >= daily_limit():
+    if CarPicture.objects.filter(started_at__gte=now - timedelta(hours=24)).count() >= DAILY_LIMIT:
         logger.warning('car picture: daily limit of %s reached, none for search %s',
-                       daily_limit(), search_id)
+                       DAILY_LIMIT, search_id)
         return existing
     if existing:                              # it failed, or its worker died: try again
         CarPicture.objects.filter(id=existing.id).update(
