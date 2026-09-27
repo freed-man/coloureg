@@ -597,18 +597,25 @@ the request directly. {% endcomment %}
                The slot is kept here, hidden, and moved into the card: at once when the
                code is already on the page, or by showFound when the recovery finds it.
                No code, no picture: without a code it never leaves this holder.
-               While drawing: a small picture-shaped box with green dots (still for
-               anyone who prefers reduced motion). A ready picture is built into the
-               page, so nothing moves, not even after "email me" reloads it.{% endcomment %}
+               While drawing: the green "Drawing your car" line with its dots (still
+               for anyone who prefers reduced motion), in an invisible picture-shaped
+               space, so nothing moves when the car arrives. paint225: no box; the car
+               sits straight on the card, its background see-through; a magnifier on
+               it says "tap to enlarge"; a larger close button and a clearer caption.
+               A ready picture is built into the page, so nothing moves, not even
+               after "email me" reloads it.{% endcomment %}
             <style>
                 .car-thumb { margin: 16px auto 4px; text-align: center; }
-                .car-thumb-btn { display: block; width: 180px; max-width: 60%; margin: 0 auto; padding: 0; overflow: hidden;
-                                 border: 1px solid #e5e7eb; border-radius: 8px; background: #f8f9fa; cursor: zoom-in; }
+                .car-thumb-btn { position: relative; display: block; width: 220px; max-width: 70%; margin: 0 auto; padding: 0;
+                                 border: none; background: none; cursor: zoom-in; }
                 .car-thumb-btn:disabled { cursor: default; }
                 .car-thumb-btn img { display: block; width: 100%; height: auto; }
                 .cp-wait { aspect-ratio: 3 / 2; width: 100%; display: flex; align-items: center; justify-content: center; }
-                .cp-thumb-wait { color: #15803d; }
-                .car-thumb-label { font-size: 13px; margin-top: 6px; color: #15803d; }
+                .cp-pill { display: inline-flex; align-items: center; background: #f0fdf4; color: #15803d;
+                           border: 1px solid #bbf7d0; font-size: 13px; padding: 6px 12px; border-radius: 999px; white-space: nowrap; }
+                .car-thumb-zoom { position: absolute; right: 2px; bottom: 2px; width: 32px; height: 32px; border-radius: 50%;
+                                  background: #fff; border: 1px solid #e5e7eb; color: #333;
+                                  display: flex; align-items: center; justify-content: center; }
                 .cp-dots span { display: inline-block; width: 6px; height: 6px; margin: 0 2px; border-radius: 50%;
                                 background: currentColor; animation: cp-bounce 1.2s infinite ease-in-out; }
                 .cp-dots span:nth-child(2) { animation-delay: .15s; }
@@ -619,30 +626,33 @@ the request directly. {% endcomment %}
                                 display: flex; align-items: center; justify-content: center; padding: 16px; }
                 .car-lightbox[hidden] { display: none; }
                 .car-lightbox-figure { position: relative; margin: 0; background: #fff; border-radius: 12px;
-                                       padding: 16px 16px 10px; width: 100%; max-width: 900px; }
+                                       padding: 56px 16px 14px; width: 100%; max-width: 900px; }
                 .car-lightbox-figure img { display: block; width: 100%; height: auto; }
-                .car-lightbox-figure figcaption { text-align: center; color: #888; font-size: 12px; margin-top: 6px; }
-                .car-lightbox-close { position: absolute; top: 4px; right: 10px; border: none; background: none;
-                                      font-size: 28px; line-height: 1; color: #666; cursor: pointer; }
+                .car-lightbox-figure figcaption { text-align: center; color: #555; font-size: 14px; margin-top: 8px; }
+                .car-lightbox-close { position: absolute; top: 8px; right: 8px; width: 44px; height: 44px; padding: 0;
+                                      border: none; border-radius: 50%; background: #f1f3f5; color: #333;
+                                      font-size: 32px; line-height: 44px; text-align: center; cursor: pointer; }
+                .car-lightbox-close:hover { background: #e5e7eb; }
             </style>
             <div id="car-thumb-holder" style="display: none;">
                 <div id="car-thumb" class="car-thumb">
-                    <button type="button" class="car-thumb-btn" id="car-thumb-btn" aria-label="View a larger picture of your car"{% if not picture_ready_url %} disabled{% endif %}>
+                    <button type="button" class="car-thumb-btn" id="car-thumb-btn" aria-label="Enlarge the picture of your car"{% if not picture_ready_url %} disabled{% endif %}>
                         {% if picture_ready_url %}
                         <img id="car-thumb-img" src="{{ picture_ready_url }}" alt="Illustration of your car in its paint">
+                        <span id="car-thumb-zoom" class="car-thumb-zoom" aria-hidden="true"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="M15.5 15.5 21 21M8 10.5h5M10.5 8v5"/></svg></span>
                         {% else %}
-                        <span id="car-thumb-wait" class="cp-wait cp-thumb-wait" aria-hidden="true"><span class="cp-dots" aria-hidden="true"><span></span><span></span><span></span></span></span>
+                        <span id="car-thumb-wait" class="cp-wait" aria-live="polite"><span class="cp-pill">Drawing your car<span class="cp-dots" aria-hidden="true"><span></span><span></span><span></span></span></span></span>
                         <img id="car-thumb-img" alt="Illustration of your car in its paint" style="display: none;">
+                        <span id="car-thumb-zoom" class="car-thumb-zoom" aria-hidden="true" style="display: none;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="M15.5 15.5 21 21M8 10.5h5M10.5 8v5"/></svg></span>
                         {% endif %}
                     </button>
-                    <div id="car-thumb-label" class="car-thumb-label" aria-live="polite">{% if picture_ready_url %}<a href="#" id="car-thumb-view">View</a>{% else %}Drawing your car{% endif %}</div>
                 </div>
             </div>
             <div id="car-lightbox" class="car-lightbox" role="dialog" aria-modal="true" aria-label="Picture of your car" hidden>
                 <figure class="car-lightbox-figure">
                     <button type="button" id="car-lightbox-close" class="car-lightbox-close" aria-label="Close">&times;</button>
                     <img id="car-lightbox-img" alt="Illustration of your car in its paint">
-                    <figcaption><svg width="13" height="13" viewBox="0 0 16 16" aria-hidden="true" style="vertical-align: -2px; margin-right: 3px;"><path d="M6 1.5c.4 2.9 1.6 4.1 4.5 4.5-2.9.4-4.1 1.6-4.5 4.5-.4-2.9-1.6-4.1-4.5-4.5 2.9-.4 4.1-1.6 4.5-4.5z" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/><path d="M12.5 9.5c.2 1.4.8 2 2.2 2.2-1.4.2-2 .8-2.2 2.2-.2-1.4-.8-2-2.2-2.2 1.4-.2 2-.8 2.2-2.2z" fill="none" stroke="currentColor" stroke-width="1.1" stroke-linejoin="round"/></svg>illustration, not your actual vehicle</figcaption>
+                    <figcaption><svg width="15" height="15" viewBox="0 0 16 16" aria-hidden="true" style="vertical-align: -2px; margin-right: 4px;"><path d="M6 1.5c.4 2.9 1.6 4.1 4.5 4.5-2.9.4-4.1 1.6-4.5 4.5-.4-2.9-1.6-4.1-4.5-4.5 2.9-.4 4.1-1.6 4.5-4.5z" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/><path d="M12.5 9.5c.2 1.4.8 2 2.2 2.2-1.4.2-2 .8-2.2 2.2-.2-1.4-.8-2-2.2-2.2 1.4-.2 2-.8 2.2-2.2z" fill="none" stroke="currentColor" stroke-width="1.1" stroke-linejoin="round"/></svg>illustration, not your actual vehicle</figcaption>
                 </figure>
             </div>
             <script>
@@ -653,7 +663,7 @@ the request directly. {% endcomment %}
                 var slot = document.getElementById('car-thumb');
                 var btn = document.getElementById('car-thumb-btn');
                 var img = document.getElementById('car-thumb-img');
-                var label = document.getElementById('car-thumb-label');
+                var zoom = document.getElementById('car-thumb-zoom');
                 var box = document.getElementById('car-lightbox');
                 var big = document.getElementById('car-lightbox-img');
                 var closeBtn = document.getElementById('car-lightbox-close');
@@ -669,8 +679,8 @@ the request directly. {% endcomment %}
                         var wait = document.getElementById('car-thumb-wait');
                         if (wait) { wait.style.display = 'none'; }
                         img.style.display = 'block';
+                        zoom.style.display = 'flex';
                         btn.disabled = false;
-                        label.innerHTML = '<a href="#" id="car-thumb-view">View</a>';
                         ready = true;
                     };
                     img.onerror = hide;
@@ -703,7 +713,6 @@ the request directly. {% endcomment %}
                     if (lastFocus && lastFocus.focus) { lastFocus.focus(); }
                 }
                 btn.addEventListener('click', openBig);
-                slot.addEventListener('click', function (ev) { if (ev.target && ev.target.id === 'car-thumb-view') { openBig(ev); } });
                 closeBtn.addEventListener('click', closeBig);
                 box.addEventListener('click', function (ev) { if (ev.target === box) { closeBig(); } });
                 document.addEventListener('keydown', function (ev) { if (ev.key === 'Escape' && !box.hidden) { closeBig(); } });
