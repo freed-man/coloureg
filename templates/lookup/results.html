@@ -463,6 +463,7 @@
                             {% endif %}
                         </div>
                     {% endif %}
+                    <div id="car-thumb-anchor"></div>
                 </div>
                 {% elif paint_pending %}
                 {# Paint not in the first VDG response, but a VIN exists, so a       #}
@@ -589,74 +590,127 @@ server refuses to email a locked result too: hiding this stops no one who sends
 the request directly. {% endcomment %}
 {% if search_id and not locked %}
             {% if picture_url %}
-            {% comment %} paint220: the car's AI picture. Hidden until it has loaded, then
-               faded in with its label. While it is still being drawn, and only once
-               the paint result itself is on the page, a line says so; if no picture
-               comes (off, failed, or two minutes pass) nothing is shown at all.{% endcomment %}
-            {% comment %} paint222: while it is drawn, a picture-sized placeholder (so the page
-               does not jump when the picture lands) with a highlighted line and three
-               dots that bounce in turn; still for anyone who prefers reduced motion.{% endcomment %}
+            {% comment %} paint224: the car's picture lives INSIDE the paint card, just under the
+               code, where it cannot be missed; tapping it opens it large over the page.
+               The big picture that used to sit below the card is gone, so the email box
+               sits straight under the code again and nothing below the card moves.
+               The slot is kept here, hidden, and moved into the card: at once when the
+               code is already on the page, or by showFound when the recovery finds it.
+               No code, no picture: without a code it never leaves this holder.
+               While drawing: a small picture-shaped box with green dots (still for
+               anyone who prefers reduced motion). A ready picture is built into the
+               page, so nothing moves, not even after "email me" reloads it.{% endcomment %}
             <style>
-                .cp-wait { aspect-ratio: 3 / 2; width: 100%; display: flex; align-items: center; justify-content: center;
-                           background: #f8f9fa; border: 1px dashed #e5e7eb; border-radius: 8px; }
-                .cp-pill { display: inline-flex; align-items: center; background: #fdecee; color: #C8102E;
-                           font-size: 14px; padding: 8px 16px; border-radius: 999px; }
-                .cp-dots span { display: inline-block; width: 6px; height: 6px; margin-left: 4px; border-radius: 50%;
+                .car-thumb { margin: 16px auto 4px; text-align: center; }
+                .car-thumb-btn { display: block; width: 180px; max-width: 60%; margin: 0 auto; padding: 0; overflow: hidden;
+                                 border: 1px solid #e5e7eb; border-radius: 8px; background: #f8f9fa; cursor: zoom-in; }
+                .car-thumb-btn:disabled { cursor: default; }
+                .car-thumb-btn img { display: block; width: 100%; height: auto; }
+                .cp-wait { aspect-ratio: 3 / 2; width: 100%; display: flex; align-items: center; justify-content: center; }
+                .cp-thumb-wait { color: #15803d; }
+                .car-thumb-label { font-size: 13px; margin-top: 6px; color: #15803d; }
+                .cp-dots span { display: inline-block; width: 6px; height: 6px; margin: 0 2px; border-radius: 50%;
                                 background: currentColor; animation: cp-bounce 1.2s infinite ease-in-out; }
                 .cp-dots span:nth-child(2) { animation-delay: .15s; }
                 .cp-dots span:nth-child(3) { animation-delay: .3s; }
                 @keyframes cp-bounce { 0%, 80%, 100% { transform: translateY(0); opacity: .35; } 40% { transform: translateY(-4px); opacity: 1; } }
                 @media (prefers-reduced-motion: reduce) { .cp-dots span { animation: none; opacity: .7; } }
+                .car-lightbox { position: fixed; inset: 0; z-index: 1050; background: rgba(0, 0, 0, .6);
+                                display: flex; align-items: center; justify-content: center; padding: 16px; }
+                .car-lightbox[hidden] { display: none; }
+                .car-lightbox-figure { position: relative; margin: 0; background: #fff; border-radius: 12px;
+                                       padding: 16px 16px 10px; width: 100%; max-width: 900px; }
+                .car-lightbox-figure img { display: block; width: 100%; height: auto; }
+                .car-lightbox-figure figcaption { text-align: center; color: #888; font-size: 12px; margin-top: 6px; }
+                .car-lightbox-close { position: absolute; top: 4px; right: 10px; border: none; background: none;
+                                      font-size: 28px; line-height: 1; color: #666; cursor: pointer; }
             </style>
-            {% comment %} paint223: the page is built in its final shape wherever it can be. A picture
-               already ready is shown at once, and a code already on the page gets its
-               placeholder at once, so nothing moves when the picture lands or when
-               "email me" reloads the page. While the paint is still being searched for,
-               the box stays hidden and showFound starts it; no code, no picture.{% endcomment %}
-            <div id="car-picture" class="mx-auto mt-4 text-center" style="max-width: 540px;{% if not picture_ready_url and not paint_code or paint_pending %} display: none;{% endif %}">
-                {% if picture_ready_url %}
-                <img id="car-picture-img" src="{{ picture_ready_url }}" alt="Illustration of the car in its paint" style="display: block; width: 100%; height: auto;">
-                {% else %}
-                <img id="car-picture-img" alt="Illustration of the car in its paint" style="display: none; width: 100%; height: auto; opacity: 0; transition: opacity 0.6s ease;">
-                <div id="car-picture-wait" class="cp-wait" aria-live="polite"><span class="cp-pill">Drawing your car<span class="cp-dots" aria-hidden="true"><span></span><span></span><span></span></span></span></div>
-                {% endif %}
-                <div id="car-picture-note" style="color: #888; font-size: 12px; margin-top: 4px;{% if not picture_ready_url %} display: none;{% endif %}"><svg width="13" height="13" viewBox="0 0 16 16" aria-hidden="true" style="vertical-align: -2px; margin-right: 3px;"><path d="M6 1.5c.4 2.9 1.6 4.1 4.5 4.5-2.9.4-4.1 1.6-4.5 4.5-.4-2.9-1.6-4.1-4.5-4.5 2.9-.4 4.1-1.6 4.5-4.5z" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/><path d="M12.5 9.5c.2 1.4.8 2 2.2 2.2-1.4.2-2 .8-2.2 2.2-.2-1.4-.8-2-2.2-2.2 1.4-.2 2-.8 2.2-2.2z" fill="none" stroke="currentColor" stroke-width="1.1" stroke-linejoin="round"/></svg>illustration, not your actual vehicle</div>
+            <div id="car-thumb-holder" style="display: none;">
+                <div id="car-thumb" class="car-thumb">
+                    <button type="button" class="car-thumb-btn" id="car-thumb-btn" aria-label="View a larger picture of your car"{% if not picture_ready_url %} disabled{% endif %}>
+                        {% if picture_ready_url %}
+                        <img id="car-thumb-img" src="{{ picture_ready_url }}" alt="Illustration of your car in its paint">
+                        {% else %}
+                        <span id="car-thumb-wait" class="cp-wait cp-thumb-wait" aria-hidden="true"><span class="cp-dots" aria-hidden="true"><span></span><span></span><span></span></span></span>
+                        <img id="car-thumb-img" alt="Illustration of your car in its paint" style="display: none;">
+                        {% endif %}
+                    </button>
+                    <div id="car-thumb-label" class="car-thumb-label" aria-live="polite">{% if picture_ready_url %}<a href="#" id="car-thumb-view">View</a>{% else %}Drawing your car{% endif %}</div>
+                </div>
+            </div>
+            <div id="car-lightbox" class="car-lightbox" role="dialog" aria-modal="true" aria-label="Picture of your car" hidden>
+                <figure class="car-lightbox-figure">
+                    <button type="button" id="car-lightbox-close" class="car-lightbox-close" aria-label="Close">&times;</button>
+                    <img id="car-lightbox-img" alt="Illustration of your car in its paint">
+                    <figcaption><svg width="13" height="13" viewBox="0 0 16 16" aria-hidden="true" style="vertical-align: -2px; margin-right: 3px;"><path d="M6 1.5c.4 2.9 1.6 4.1 4.5 4.5-2.9.4-4.1 1.6-4.5 4.5-.4-2.9-1.6-4.1-4.5-4.5 2.9-.4 4.1-1.6 4.5-4.5z" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/><path d="M12.5 9.5c.2 1.4.8 2 2.2 2.2-1.4.2-2 .8-2.2 2.2-.2-1.4-.8-2-2.2-2.2 1.4-.2 2-.8 2.2-2.2z" fill="none" stroke="currentColor" stroke-width="1.1" stroke-linejoin="round"/></svg>illustration, not your actual vehicle</figcaption>
+                </figure>
             </div>
             <script>
             (function () {
                 var URL = "{{ picture_url }}", tries = 0, MAX = 120;   // once a second, two minutes at most
-                var started = {% if picture_ready_url %}true{% else %}false{% endif %};
-                var box = document.getElementById('car-picture');
-                var img = document.getElementById('car-picture-img');
-                function stop() { box.style.display = 'none'; }
-                function again() { if (tries < MAX) { setTimeout(poll, 1000); } else { stop(); } }
+                var ready = {% if picture_ready_url %}true{% else %}false{% endif %};
+                var started = ready, lastFocus = null;
+                var slot = document.getElementById('car-thumb');
+                var btn = document.getElementById('car-thumb-btn');
+                var img = document.getElementById('car-thumb-img');
+                var label = document.getElementById('car-thumb-label');
+                var box = document.getElementById('car-lightbox');
+                var big = document.getElementById('car-lightbox-img');
+                var closeBtn = document.getElementById('car-lightbox-close');
+                function place() {
+                    var anchor = document.getElementById('car-thumb-anchor');
+                    if (!anchor) { return false; }
+                    anchor.appendChild(slot);
+                    return true;
+                }
+                function hide() { slot.style.display = 'none'; }
+                function showReady(url) {
+                    img.onload = function () {
+                        var wait = document.getElementById('car-thumb-wait');
+                        if (wait) { wait.style.display = 'none'; }
+                        img.style.display = 'block';
+                        btn.disabled = false;
+                        label.innerHTML = '<a href="#" id="car-thumb-view">View</a>';
+                        ready = true;
+                    };
+                    img.onerror = hide;
+                    img.src = url;
+                }
+                function again() { if (tries < MAX) { setTimeout(poll, 1000); } else { hide(); } }
                 function poll() {
                     tries += 1;
                     fetch(URL, {credentials: 'same-origin', cache: 'no-store'})
                         .then(function (r) { return r.ok ? r.json() : {status: 'none'}; })
                         .then(function (d) {
-                            if (d.status === 'ready' && d.url) {
-                                img.onload = function () {
-                                    document.getElementById('car-picture-wait').style.display = 'none';
-                                    document.getElementById('car-picture-note').style.display = 'block';
-                                    img.style.display = 'block';
-                                    box.style.display = 'block';
-                                    requestAnimationFrame(function () { img.style.opacity = 1; });
-                                };
-                                img.onerror = stop;
-                                img.src = d.url;
-                            } else if (d.status === 'pending') {
-                                again();
-                            } else {
-                                stop();
-                            }
+                            if (d.status === 'ready' && d.url) { showReady(d.url); }
+                            else if (d.status === 'pending') { again(); }
+                            else { hide(); }
                         })
                         .catch(again);
                 }
+                function openBig(ev) {
+                    if (ev) { ev.preventDefault(); }
+                    if (!ready) { return; }
+                    big.src = img.src;
+                    lastFocus = document.activeElement;
+                    box.hidden = false;
+                    document.body.style.overflow = 'hidden';
+                    closeBtn.focus();
+                }
+                function closeBig() {
+                    box.hidden = true;
+                    document.body.style.overflow = '';
+                    if (lastFocus && lastFocus.focus) { lastFocus.focus(); }
+                }
+                btn.addEventListener('click', openBig);
+                slot.addEventListener('click', function (ev) { if (ev.target && ev.target.id === 'car-thumb-view') { openBig(ev); } });
+                closeBtn.addEventListener('click', closeBig);
+                box.addEventListener('click', function (ev) { if (ev.target === box) { closeBig(); } });
+                document.addEventListener('keydown', function (ev) { if (ev.key === 'Escape' && !box.hidden) { closeBig(); } });
                 window.startCarPicture = function () {
+                    if (!place()) { return; }
                     if (started) { return; }
                     started = true;
-                    box.style.display = 'block';
                     poll();
                 };
                 {% if paint_code and not paint_pending %}window.startCarPicture();{% endif %}
@@ -933,7 +987,6 @@ window.cregReportWait();
 
     {% comment %}Render the recovered paint into the paint card.{% endcomment %}
     function showFound(data) {
-        if (window.startCarPicture) { window.startCarPicture(); }   // paint223: a code, so a picture
         var card = el('paint-card');
         if (!card) return;
         var html = '';
@@ -948,7 +1001,8 @@ window.cregReportWait();
                 data.paint_code, data.paint_hex, data.canonical_code, data.paint_description
             );
         }
-        card.innerHTML = '<div id="paint-found-state">' + html + reportControl() + '</div>';
+        card.innerHTML = '<div id="paint-found-state">' + html + '<div id="car-thumb-anchor"></div>' + reportControl() + '</div>';
+        if (window.startCarPicture) { window.startCarPicture(); }   // paint224: a code, so its picture, in the card
 
         {% comment %}Reveal the disclaimer (it was rendered hidden during the pending state).{% endcomment %}
         var disc = el('paint-disclaimer');
