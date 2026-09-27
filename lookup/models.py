@@ -557,6 +557,10 @@ class Search(models.Model):
     # Email / manual fallback
     email = models.EmailField(blank=True, default='')
     email_sent = models.BooleanField(default=False)
+    # paint230: the paint code email carried the car's picture (it goes only
+    # when the picture was ready as the email went out, so this says how often
+    # it made it in time).
+    email_picture = models.BooleanField(default=False)
     manual_lookup_completed = models.BooleanField(default=False)
 
     # --- Manual lookup: context in both directions (paint16) ---------------

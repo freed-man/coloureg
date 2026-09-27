@@ -2582,11 +2582,12 @@ def _email_paid_result(search, session):
             'paid_on': f'{now.day} {now.strftime("%B %Y")}',
             'consent': CONSENT_TEXT,
         }
-        if send_user_paint_code(to_email=email, purchase=purchase,
-                                **_paint_email_args(search)):
+        _email_args = _paint_email_args(search)
+        if send_user_paint_code(to_email=email, purchase=purchase, **_email_args):
             search.email = email
             search.email_sent = True
-            search.save(update_fields=['email', 'email_sent'])
+            search.email_picture = bool(_email_args.get('car_picture_jpeg'))   # paint230
+            search.save(update_fields=['email', 'email_sent', 'email_picture'])
     except Exception:
         logger.exception('paid result email failed for search %s', search.id)
 
@@ -3172,10 +3173,12 @@ def submit_email(request):
     vin_masked = mask_vin(search.vin)
 
     if search.paint_code:
-        sent = send_user_paint_code(to_email=email, **_paint_email_args(search))
+        _email_args = _paint_email_args(search)
+        sent = send_user_paint_code(to_email=email, **_email_args)
         if sent:
             search.email_sent = True
-            search.save(update_fields=['email_sent'])
+            search.email_picture = bool(_email_args.get('car_picture_jpeg'))   # paint230
+            search.save(update_fields=['email_sent', 'email_picture'])
     else:
         admin_sent = send_admin_failure_notification(
             registration=search.registration,
@@ -3407,6 +3410,41 @@ def _make_tables(lookups, min_cars=10, limit=10):
                          'rate': round(100 * missed / r['cars'])})
     rows.sort(key=lambda d: (-d['rate'], -d['missed'], d['make']))
     return top, rows[:limit]
+
+
+PICTURE_IN_TIME_SECONDS = 120   # paint230: the results page asks for two minutes
+
+
+def _picture_stats(since=None):
+    """paint230: how the car pictures are doing, for the dashboard. Counted
+    per picture (a repeat lookup reuses its car's picture), over pictures
+    first drawn since `since`, or all of them."""
+    import statistics
+    from lookup.models import CarPicture
+    pics = CarPicture.objects.select_related('search')
+    searches = Search.objects.exclude(paint_code='')
+    if since is not None:
+        pics = pics.filter(created_at__gte=since)
+        searches = searches.filter(timestamp__gte=since)
+    pics = list(pics)
+    ready = [p for p in pics if p.status == CarPicture.READY]
+    shown = [p for p in ready if p.shown_at]
+    in_time = [p for p in shown if p.search is not None
+               and (p.shown_at - p.search.timestamp).total_seconds() <= PICTURE_IN_TIME_SECONDS]
+    seconds = [p.seconds for p in ready if p.seconds]
+    verdicts = {v: sum(1 for p in ready if p.verdict == v) for v in ('RIGHT', 'LEFT', 'BOTH', 'UNSURE')}
+    emails = searches.filter(email_sent=True)
+    return {
+        'drawn': len(ready),
+        'failed': sum(1 for p in pics if p.status == CarPicture.FAILED),
+        'shown': len(shown),
+        'in_time': len(in_time),
+        'median_seconds': round(statistics.median(seconds), 1) if seconds else None,
+        'verdicts': verdicts,
+        'cost': round(sum(float(p.cost or 0) for p in pics), 2),
+        'emails': emails.count(),
+        'emails_with_picture': emails.filter(email_picture=True).count(),
+    }
 
 
 @staff_member_required
@@ -4265,6 +4303,9 @@ def admin_stats(request):
         'failed_makes': failed_makes,
         'recent_failures': recent_failures_with_email,
         'recent_all_lookups': recent_all_lookups,
+        # paint230: the car pictures, last 7 days and all time
+        'picture_stats_week': _picture_stats(timezone.now() - timedelta(days=7)),
+        'picture_stats_all': _picture_stats(),
         'total_emails': total_emails,
         'emails_sent': emails_sent,
         'conversion_rate': round(conversion_rate, 1),

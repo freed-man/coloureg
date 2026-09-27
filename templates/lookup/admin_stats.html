@@ -1738,6 +1738,44 @@
         </div>
     </div>
 
+    {% comment %} paint230: the car pictures. Counted per picture: a repeat lookup reuses its
+       car's picture. "Reached a results page" means a customer's page was handed it;
+       "within 2 minutes" means while that page was still asking, counted from the
+       lookup. An email carries the picture only if it was ready as the email went
+       out. {% endcomment %}
+    <div class="panel" id="car-picture-stats">
+        <h3>Car pictures</h3>
+        <table class="table table-sm" style="max-width: 640px; font-size: 14px;">
+            <thead><tr><th></th><th style="text-align: right;">Last 7 days</th><th style="text-align: right;">All time</th></tr></thead>
+            <tbody>
+                <tr><td>Drawn{% if picture_stats_all.failed %} (failed){% endif %}</td>
+                    <td style="text-align: right;">{{ picture_stats_week.drawn }}{% if picture_stats_week.failed %} ({{ picture_stats_week.failed }}){% endif %}</td>
+                    <td style="text-align: right;">{{ picture_stats_all.drawn }}{% if picture_stats_all.failed %} ({{ picture_stats_all.failed }}){% endif %}</td></tr>
+                <tr><td>Reached a results page</td>
+                    <td style="text-align: right;">{{ picture_stats_week.shown }}</td>
+                    <td style="text-align: right;">{{ picture_stats_all.shown }}</td></tr>
+                <tr><td>&nbsp;&nbsp;of which within 2 minutes of the lookup</td>
+                    <td style="text-align: right;">{{ picture_stats_week.in_time }}</td>
+                    <td style="text-align: right;">{{ picture_stats_all.in_time }}</td></tr>
+                <tr><td>Paint code emails sent</td>
+                    <td style="text-align: right;">{{ picture_stats_week.emails }}</td>
+                    <td style="text-align: right;">{{ picture_stats_all.emails }}</td></tr>
+                <tr><td>&nbsp;&nbsp;of which carried the picture</td>
+                    <td style="text-align: right;">{{ picture_stats_week.emails_with_picture }}</td>
+                    <td style="text-align: right;">{{ picture_stats_all.emails_with_picture }}</td></tr>
+                <tr><td>Wheel check: right / left / unsure</td>
+                    <td style="text-align: right;">{{ picture_stats_week.verdicts.RIGHT }} / {{ picture_stats_week.verdicts.LEFT }} / {{ picture_stats_week.verdicts.UNSURE }}</td>
+                    <td style="text-align: right;">{{ picture_stats_all.verdicts.RIGHT }} / {{ picture_stats_all.verdicts.LEFT }} / {{ picture_stats_all.verdicts.UNSURE }}</td></tr>
+                <tr><td>Typical drawing time</td>
+                    <td style="text-align: right;">{% if picture_stats_week.median_seconds %}{{ picture_stats_week.median_seconds }}s{% else %}&mdash;{% endif %}</td>
+                    <td style="text-align: right;">{% if picture_stats_all.median_seconds %}{{ picture_stats_all.median_seconds }}s{% else %}&mdash;{% endif %}</td></tr>
+                <tr><td>Cost (OpenAI, dollars)</td>
+                    <td style="text-align: right;">${{ picture_stats_week.cost|floatformat:2 }}</td>
+                    <td style="text-align: right;">${{ picture_stats_all.cost|floatformat:2 }}</td></tr>
+            </tbody>
+        </table>
+    </div>
+
     {% comment %}<!-- Recent paint code lookups (all searches, success + failure) -->{% endcomment %}
     <div class="panel">
         <h3>Recent paint code lookups</h3>

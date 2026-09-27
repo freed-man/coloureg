@@ -85,6 +85,7 @@ class SearchAdmin(admin.ModelAdmin):
         'second_chance_after_race',
         'email',
         'email_sent',
+        'email_picture',
         # Everything below was added after paint65 and was invisible in the row
         # view because fieldsets were never extended to match (F13). Note that
         # listing a field HERE is not enough on its own: with fieldsets defined,
@@ -161,7 +162,7 @@ class SearchAdmin(admin.ModelAdmin):
             )
         }),
         ('Manual Fallback', {
-            'fields': ('email', 'email_sent', 'manual_lookup_completed')
+            'fields': ('email', 'email_sent', 'email_picture', 'manual_lookup_completed')
         }),
         # COLLAPSED BY DEFAULT. These are the columns added across paint66-85,
         # and there are sixteen of them — enough to bury the fields above if
