@@ -1,0 +1,202 @@
+"""AI pictures of cars in their paint (paint217): the part the car_pictures command and the site share.
+
+Nothing here touches the database except reading the catalogue for a paint's
+name and swatch hex. Every outbound call goes through the shared session
+(rule F12): a dropped connection is sent once, never retried into a second
+paid picture.
+
+HOW THE RECIPE WAS FOUND (26 and 27 Sep; the full story is in the paint217
+handoff):
+  * The steering wheel came out left-hand drive 0 of 12 times while the
+    prompt said "right" in two senses a few words apart (the car's right-hand
+    side and the picture's right side, opposite ends of the windscreen from
+    this angle). Placing it by NEAR and FAR fixed it: 24 of 24, and every
+    picture since.
+  * The camera stands at the front corner on the driver's side, so every car
+    points the same way.
+  * gpt-image-2.5-sunburst at MEDIUM quality: about 15 seconds and 1.1 cents a
+    picture (the operator's choice; low was 13.5 seconds and 0.5 cents, high
+    26.6 seconds and 4.2 cents).
+  * Tried and dropped: gpt-image-2.5-flare (no faster, a wrong wheel); a
+    DVLA-colour draft repainted when the code arrives (later and dearer than
+    one picture); Google's Nano Banana 2 (10 seconds but about 5p a picture,
+    no transparent background, one car turned round); Black Forest Labs'
+    FLUX.2 [klein] (4.6 seconds but mostly left-hand drive, some drawing
+    errors) and FLUX.2 [pro] (11.5 seconds, 4.5 cents, 3 of 5 wrong).
+  * A vision model (gpt-6-sol) checks the wheel: RIGHT, LEFT, BOTH or UNSURE.
+    On the site it only records the verdict; a wrong wheel is not redone.
+"""
+import base64
+import os
+import re
+import time
+from dataclasses import dataclass
+
+import requests
+
+from lookup.models import PaintLookup
+from lookup.services.http import get_session
+
+OPENAI_IMAGES_URL = 'https://api.openai.com/v1/images/generations'
+OPENAI_RESPONSES_URL = 'https://api.openai.com/v1/responses'
+AI_MODEL = 'gpt-image-2.5-sunburst'
+QUALITY = 'medium'
+CHECKER_MODEL = 'gpt-6-sol'
+
+# Per 1M tokens, from OpenAI's pricing page on 26 Sep 2026, standard
+# processing: (text in, picture in, out).
+PRICES = {
+    AI_MODEL: (5.00, 8.00, 30.00),
+    CHECKER_MODEL: (2.00, 2.00, 10.00),
+}
+
+# Answers about the key, the account or the model name: every other car would
+# get the same.
+STOP_STATUSES = (401, 403, 404)
+
+WHEEL_QUESTION = (
+    "This is a studio photo of a car. Where is its steering wheel, from the car's own "
+    "point of view (its right-hand side is on your right when you sit in the car facing "
+    "forward)? Answer with one word only: RIGHT if it has a single steering wheel on its "
+    "right-hand side, LEFT if the single steering wheel is on its left-hand side, BOTH if "
+    "you can see more than one steering wheel, UNSURE if you cannot tell.")
+VERDICTS = ('RIGHT', 'LEFT', 'BOTH', 'UNSURE')
+
+
+@dataclass
+class Picture:
+    """One drawing: the picture, or why there is none."""
+    data: bytes = b''
+    mime: str = ''
+    seconds: float = 0.0
+    cost: float = None            # dollars, when the price is known
+    tokens: int = 0
+    status: int = None            # HTTP status; None if the request failed
+    message: str = ''
+
+    @property
+    def ok(self):
+        return bool(self.data)
+
+    @property
+    def stop(self):
+        return self.status in STOP_STATUSES
+
+
+def openai_key():
+    return os.environ.get('OPENAI_API_KEY', '').strip()
+
+
+def paint_words(make, code, name, dvla_colour):
+    """The paint as the prompt names it: the catalogue's name and hex when it
+    knows the code, else the name the lookup found, else DVLA's colour."""
+    if code:
+        hex_value, cat_name, _canonical = PaintLookup.lookup_with_canonical(make, code)
+        words = cat_name or name
+        if words:
+            return (f'{words} ({make} paint code {code}'
+                    + (f', hex {hex_value}' if hex_value else '') + ')')
+    return (dvla_colour or 'its factory paint').lower()
+
+
+def prompt_for(year, make, model, paint):
+    """The recipe. The wheel is placed by near and far, never by "right"."""
+    return (f'Photorealistic studio photo of a {year} {make} {model}, painted {paint}. '
+            "It is a British right-hand-drive car. The camera stands in front of the car, "
+            "off to the driver's side, so the front of the car points towards the right side "
+            "of the image. The driver's seat and its steering wheel are on the side of the car "
+            "nearest the camera, just behind the door mirror closest to the camera. The front "
+            "seat on the far side is the passenger seat and has no steering wheel. "
+            'Transparent background with a soft shadow under the car, '
+            'no people, no text, no number plate.')
+
+
+def search_prompt(search):
+    """(prompt, paint words) for a saved lookup."""
+    paint = paint_words(search.make, search.paint_code, search.paint_description, search.colour)
+    return prompt_for(search.year or '', search.make, search.model, paint), paint
+
+
+def _post(url, headers, payload):
+    """(status, data, seconds, message); never raises."""
+    started = time.monotonic()
+    try:
+        r = get_session().post(url, timeout=300, json=payload,
+                               headers=dict(headers, **{'Content-Type': 'application/json'}))
+    except requests.RequestException as exc:
+        return None, {}, time.monotonic() - started, f'request failed: {type(exc).__name__}'
+    seconds = time.monotonic() - started
+    try:
+        data = r.json()
+    except ValueError:
+        data = {}
+    if not isinstance(data, dict):
+        data = {}
+    message = ''
+    if r.status_code != 200:
+        err = data.get('error')
+        message = (err.get('message') if isinstance(err, dict) else '') or r.text[:300]
+    return r.status_code, data, seconds, message
+
+
+def cost_of(model, usage):
+    """What OpenAI charged for one call, from the tokens it reports, or None."""
+    rates = PRICES.get(model)
+    if not rates or not isinstance(usage, dict):
+        return None
+    tokens_in = usage.get('input_tokens') or 0
+    tokens_out = usage.get('output_tokens') or 0
+    if not (tokens_in or tokens_out):
+        return None
+    details = usage.get('input_tokens_details')
+    picture_in = (details.get('image_tokens') or 0) if isinstance(details, dict) else 0
+    return ((tokens_in - picture_in) * rates[0] + picture_in * rates[1] + tokens_out * rates[2]) / 1e6
+
+
+def draw(prompt, key=None):
+    """One picture, transparent PNG, medium quality."""
+    status, data, seconds, message = _post(
+        OPENAI_IMAGES_URL, {'Authorization': f'Bearer {key or openai_key()}'},
+        {'model': AI_MODEL, 'prompt': prompt, 'size': '1536x1024', 'quality': QUALITY,
+         'n': 1, 'background': 'transparent', 'output_format': 'png'})
+    pic = Picture(seconds=seconds, status=status, message=message)
+    if status == 200:
+        items = [i.get('b64_json') for i in (data.get('data') or [])
+                 if isinstance(i, dict) and i.get('b64_json')]
+        if items:
+            pic.data, pic.mime = base64.b64decode(items[0]), 'image/png'
+        usage = data.get('usage') or {}
+        pic.cost = cost_of(AI_MODEL, usage)
+        pic.tokens = (usage.get('total_tokens') or 0) if isinstance(usage, dict) else 0
+    return pic
+
+
+def wheel_verdict(text):
+    """RIGHT, LEFT, BOTH or UNSURE from the checker's answer; anything else is UNSURE."""
+    m = re.match(r'\W*(RIGHT|LEFT|BOTH|UNSURE)\b', text or '', re.IGNORECASE)
+    return m.group(1).upper() if m else 'UNSURE'
+
+
+def _reply_text(data):
+    if isinstance(data.get('output_text'), str):
+        return data['output_text']
+    for item in data.get('output') or []:
+        for part in (item.get('content') or []) if isinstance(item, dict) else []:
+            if isinstance(part, dict) and part.get('type') == 'output_text':
+                return part.get('text') or ''
+    return ''
+
+
+def check_wheel(data, mime='image/png', key=None):
+    """(verdict, cost, note) for one picture; the verdict is None on failure."""
+    key = key or openai_key()
+    b64 = base64.b64encode(data).decode()
+    status, reply, _seconds, message = _post(OPENAI_RESPONSES_URL, {'Authorization': f'Bearer {key}'}, {
+        'model': CHECKER_MODEL,
+        'input': [{'role': 'user', 'content': [
+            {'type': 'input_text', 'text': WHEEL_QUESTION},
+            {'type': 'input_image', 'image_url': f'data:{mime};base64,{b64}'},
+        ]}]})
+    if status != 200:
+        return None, None, f'check failed: HTTP {status} {message}'.strip()
+    return wheel_verdict(_reply_text(reply)), cost_of(CHECKER_MODEL, reply.get('usage')), ''
