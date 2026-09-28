@@ -10,6 +10,11 @@ Disallow: /warm/
 Disallow: /lookup-status/
 Disallow: /paid/
 Disallow: /vehicle-make/
+# paint233: Cloudflare hides the email address from spam bots by rewriting its
+# links to /cdn-cgi/l/email-protection, which answers 404 to anything that does
+# not run its script. Crawlers are asked not to follow them, so site audits stop
+# counting them as broken while the address stays hidden.
+Disallow: /cdn-cgi/l/
 Allow: /.well-known/security.txt
 
 Sitemap: https://coloureg.com/sitemap.xml
