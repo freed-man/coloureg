@@ -981,6 +981,15 @@ class PaintLookup(models.Model):
     # where the L-prefix is rare (~8-22%) and the inference would be a guess.
     LEADING_L_MAKES = {'volkswagen', 'audi'}
 
+    # paint236: SOURCES THAT ONLY TOP UP. A row that comes only from these was
+    # added by `topup_catalogue` (lookup/services/catalogue_topup.py) to fill a
+    # gap, so it answers only when no established row would: see lookup().
+    TOPUP_SOURCES = frozenset({'bsp'})
+
+    @classmethod
+    def is_topup_only(cls, row):
+        return bool(row.sources) and set(row.sources) <= cls.TOPUP_SOURCES
+
     @classmethod
     def lookup(cls, manufacturer, paint_code, model=None, year=None, vdg_colour=None):
         """Find the row for (manufacturer, code). Returns a PaintLookup or None.
@@ -1019,12 +1028,18 @@ class PaintLookup(models.Model):
             r.code: r
             for r in cls.objects.filter(manufacturer=mfr_norm, code__in=variants)
         }
+        # paint236: established rows first. A top-up row (only from
+        # TOPUP_SOURCES) answers only when no established row would, through
+        # any variant or the L fallback, so topping up can add answers but can
+        # never change one: measured, a new part of a compound code like Ford
+        # '2431C/2PJE/ZJNC' otherwise took over from the part that answered.
         for code in variants:
             match = rows.get(code)
-            if match:
+            if match and not cls.is_topup_only(match):
                 return match
 
         # 2) VW/Audi leading-L fallback (only when the plain form is absent).
+        l_rows, l_variants = {}, []
         if mfr_norm in cls.LEADING_L_MAKES:
             l_variants = ['L' + code for code in variants]
             l_rows = {
@@ -1039,9 +1054,16 @@ class PaintLookup(models.Model):
                 # where both 'LX' and 'LLX' exist as different colours — so the
                 # plain-absent check is the real guard, not a no-double-L rule.
                 match = l_rows.get(code)
-                if match:
+                if match and not cls.is_topup_only(match):
                     return match
 
+        # 3) paint236: only now the top-up rows, in the same order.
+        for code in variants:
+            if rows.get(code):
+                return rows[code]
+        for code in l_variants:
+            if l_rows.get(code):
+                return l_rows[code]
         return None
 
     @classmethod
@@ -1182,6 +1204,13 @@ class PaintLookup(models.Model):
                 year=year,
                 vdg_colour=vdg_colour,
             )
+            # paint236: a top-up row is HELD, not taken, while the fallbacks
+            # below look for an established row; it answers only if none does.
+            # Measured: Renault TED68 answered through its type prefix as D68
+            # "Bluish Black Pearl" until bsp's own TED68 row took over.
+            _held = None
+            if swatch is not None and cls.is_topup_only(swatch):
+                _held, swatch = (swatch, paint_code), None
             if not swatch:
                 # L-PREFIX FALLBACK (paint72). BMW paint codes exist in two
                 # forms — bare ('475') and the catalogue form with an L for
@@ -1204,7 +1233,9 @@ class PaintLookup(models.Model):
                         year=year,
                         vdg_colour=vdg_colour,
                     )
-                    if alt:
+                    if alt and cls.is_topup_only(alt):
+                        _held = _held or (alt, stripped[1:])
+                    elif alt:
                         logger.info(
                             'paint code %s resolved as %s after dropping the '
                             'L prefix (%s)', paint_code, stripped[1:], manufacturer,
@@ -1213,7 +1244,9 @@ class PaintLookup(models.Model):
                         paint_code = stripped[1:]
             if not swatch:
                 _alt, _base = cls._via_type_prefix(manufacturer, paint_code, model, year, vdg_colour)
-                if _alt:
+                if _alt and cls.is_topup_only(_alt):
+                    _held = _held or (_alt, _base)
+                elif _alt:
                     logger.info(
                         'paint code %s resolved as %s: Renault group paint-type '
                         'prefix dropped (%s)', paint_code, _base, manufacturer,
@@ -1222,13 +1255,17 @@ class PaintLookup(models.Model):
                     paint_code = _base
             if not swatch:
                 _bi = cls._via_bitone_prefix(manufacturer, paint_code)
-                if _bi:
+                if _bi and cls.is_topup_only(_bi):
+                    _held = _held or (_bi, _bi.code)
+                elif _bi:
                     logger.info(
                         'paint code %s resolved as the two-tone %s: Renault group '
                         'bi-ton prefix (%s)', paint_code, _bi.code, manufacturer,
                     )
                     swatch = _bi
                     paint_code = _bi.code
+            if not swatch and _held:
+                swatch, paint_code = _held
             if not swatch:
                 return None, None, None
             canonical = cls.find_canonical_code(
