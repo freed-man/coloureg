@@ -3417,11 +3417,17 @@ PICTURE_IN_TIME_SECONDS = 120   # paint230: the results page asks for two minute
 # paint231: paint230 went live at 22:09 on 27 Sep (UK), 21:09 UTC. Emails before
 # then never recorded whether they carried the picture, so they are not counted.
 PICTURE_EMAILS_RECORDED_FROM = _dt.datetime(2026, 9, 27, 21, 9, tzinfo=_dt.timezone.utc)
+# paint232: the panel counts from when pictures went on the results page:
+# paint220, live at 16:56 on 27 Sep (UK), 15:56 UTC. Before then pictures were
+# an admin-only trial that no customer could have seen.
+PICTURES_ON_PAGE_FROM = _dt.datetime(2026, 9, 27, 15, 56, tzinfo=_dt.timezone.utc)
 
 
 def _picture_panel(now=None):
-    """paint231: the dashboard's Car pictures panel: five figures for the last
-    7 days, each one the operator would act on, each counted the right way.
+    """paint231: the dashboard's Car pictures panel: five figures, each one the
+    operator would act on, each counted the right way. paint232: counted from
+    when pictures went on the results page (PICTURES_ON_PAGE_FROM), not over
+    a rolling window, at the operator's choice while the numbers are young.
 
     Got a picture: of the cars looked up with a code, how many have a picture,
       whenever it was drawn (a car first drawn two weeks ago has one).
@@ -3431,23 +3437,23 @@ def _picture_panel(now=None):
     Emails with it: of the automatic paint code emails since recording began,
       how many carried the picture (the operator's manual replies never do).
     Wrong wheel: pictures the check called LEFT or BOTH, of those checked.
-    Cost: what OpenAI reported for pictures first drawn this week, and this
+    Cost: what OpenAI reported for pictures first drawn since then, and this
       month (redraws are added to their picture, paint231).
     """
     from lookup.models import CarPicture
     now = now or timezone.now()
-    week = now - timedelta(days=7)
+    since = PICTURES_ON_PAGE_FROM
     month_start = timezone.localtime(now).replace(day=1, hour=0, minute=0, second=0, microsecond=0)
     cars = {(reg, (code or '').strip()[:50]) for reg, code in
-            Search.objects.filter(timestamp__gte=week).exclude(paint_code='').exclude(make='')
+            Search.objects.filter(timestamp__gte=since).exclude(paint_code='').exclude(make='')
             .values_list('registration', 'paint_code')}
     pictured = set(CarPicture.objects.filter(status=CarPicture.READY).exclude(file_key='')
                    .values_list('registration', 'paint_code'))
-    drawn = list(CarPicture.objects.filter(status=CarPicture.READY, created_at__gte=week)
+    drawn = list(CarPicture.objects.filter(status=CarPicture.READY, created_at__gte=since)
                  .select_related('search'))
     in_time = sum(1 for p in drawn if p.shown_at and p.search is not None
                   and 0 <= (p.shown_at - p.search.timestamp).total_seconds() <= PICTURE_IN_TIME_SECONDS)
-    emails = (Search.objects.filter(timestamp__gte=max(week, PICTURE_EMAILS_RECORDED_FROM), email_sent=True)
+    emails = (Search.objects.filter(timestamp__gte=max(since, PICTURE_EMAILS_RECORDED_FROM), email_sent=True)
               .exclude(paint_code='').exclude(manual_lookup_completed=True))
     emails_sent, emails_with = emails.count(), emails.filter(email_picture=True).count()
     checked = [p for p in drawn if p.verdict in ('RIGHT', 'LEFT', 'BOTH', 'UNSURE')]
@@ -3463,11 +3469,11 @@ def _picture_panel(now=None):
     with_picture = len(cars & pictured)
     return {
         'cars': len(cars), 'with_picture': with_picture, 'with_picture_pct': pct(with_picture, len(cars)),
-        'failed': CarPicture.objects.filter(status=CarPicture.FAILED, started_at__gte=week).count(),
+        'failed': CarPicture.objects.filter(status=CarPicture.FAILED, started_at__gte=since).count(),
         'drawn': len(drawn), 'in_time': in_time, 'in_time_pct': pct(in_time, len(drawn)),
         'emails': emails_sent, 'emails_with': emails_with, 'emails_with_pct': pct(emails_with, emails_sent),
         'checked': len(checked), 'wrong': wrong,
-        'cost_week': cost_since(week), 'cost_month': cost_since(month_start),
+        'cost_since': cost_since(since), 'cost_month': cost_since(month_start),
     }
 
 

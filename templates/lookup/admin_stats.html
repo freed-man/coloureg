@@ -1599,6 +1599,45 @@
        Sits ABOVE the manual queue because it is rarer and more urgent: a
        manual request is work you expected, a report is a code you may have
        already sent to someone else. {% endcomment %}
+    {% comment %} paint231: the car pictures, only what the operator would act on.
+       paint232: counted since pictures went on the results page, and placed above
+       Reported lookups. Each figure is worked out in _picture_panel (views.py), which says
+       exactly how. Everything else is still stored: the View link's hover on each
+       lookup, and the Car pictures list in Django admin. {% endcomment %}
+    {% with p=picture_panel %}
+    <div class="panel" id="car-picture-stats">
+        <h3>Car pictures</h3>
+        <div style="color: #666; font-size: 12px; margin: -8px 0 16px;">Since 27 September, when pictures went on the results page.</div>
+        <div class="stats-grid" style="grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); margin-bottom: 0;">
+            <div class="stat-card">
+                <p class="stat-label">Got a picture</p>
+                <p class="stat-value">{% if p.with_picture_pct is not None %}{{ p.with_picture_pct }}%{% else %}&mdash;{% endif %}</p>
+                <p class="stat-subvalue">{{ p.with_picture }} of {{ p.cars }} cars with a code{% if p.failed %} &middot; {{ p.failed }} failed{% endif %}</p>
+            </div>
+            <div class="stat-card">
+                <p class="stat-label">Seen in time</p>
+                <p class="stat-value">{% if p.in_time_pct is not None %}{{ p.in_time_pct }}%{% else %}&mdash;{% endif %}</p>
+                <p class="stat-subvalue">{{ p.in_time }} of {{ p.drawn }} within 2 minutes</p>
+            </div>
+            <div class="stat-card">
+                <p class="stat-label">Emails with it</p>
+                <p class="stat-value">{% if p.emails_with_pct is not None %}{{ p.emails_with_pct }}%{% else %}&mdash;{% endif %}</p>
+                <p class="stat-subvalue">{{ p.emails_with }} of {{ p.emails }} paint code emails</p>
+            </div>
+            <div class="stat-card">
+                <p class="stat-label">Wrong wheel</p>
+                <p class="stat-value">{{ p.wrong }}</p>
+                <p class="stat-subvalue">of {{ p.checked }} checked{% if p.wrong %} &middot; <a href="{% url 'admin:lookup_carpicture_changelist' %}?verdict__in=LEFT,BOTH">see them</a>{% endif %}</p>
+            </div>
+            <div class="stat-card">
+                <p class="stat-label">Cost</p>
+                <p class="stat-value">${{ p.cost_since|floatformat:2 }}</p>
+                <p class="stat-subvalue">${{ p.cost_month|floatformat:2 }} this month</p>
+            </div>
+        </div>
+    </div>
+    {% endwith %}
+
     {% comment %} paint118: ALWAYS RENDERED, with an all-clear when empty.
 
        paint115 hid this panel when there was nothing outstanding, on the
@@ -1737,44 +1776,6 @@
             {% endfor %}
         </div>
     </div>
-
-    {% comment %} paint231: the car pictures, only what the operator would act on, for the
-       last 7 days. Each figure is worked out in _picture_panel (views.py), which says
-       exactly how. Everything else is still stored: the View link's hover on each
-       lookup, and the Car pictures list in Django admin. {% endcomment %}
-    {% with p=picture_panel %}
-    <div class="panel" id="car-picture-stats">
-        <h3>Car pictures</h3>
-        <div style="color: #666; font-size: 12px; margin: -8px 0 16px;">Last 7 days.</div>
-        <div class="stats-grid" style="grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); margin-bottom: 0;">
-            <div class="stat-card">
-                <p class="stat-label">Got a picture</p>
-                <p class="stat-value">{% if p.with_picture_pct is not None %}{{ p.with_picture_pct }}%{% else %}&mdash;{% endif %}</p>
-                <p class="stat-subvalue">{{ p.with_picture }} of {{ p.cars }} cars with a code{% if p.failed %} &middot; {{ p.failed }} failed{% endif %}</p>
-            </div>
-            <div class="stat-card">
-                <p class="stat-label">Seen in time</p>
-                <p class="stat-value">{% if p.in_time_pct is not None %}{{ p.in_time_pct }}%{% else %}&mdash;{% endif %}</p>
-                <p class="stat-subvalue">{{ p.in_time }} of {{ p.drawn }} within 2 minutes</p>
-            </div>
-            <div class="stat-card">
-                <p class="stat-label">Emails with it</p>
-                <p class="stat-value">{% if p.emails_with_pct is not None %}{{ p.emails_with_pct }}%{% else %}&mdash;{% endif %}</p>
-                <p class="stat-subvalue">{{ p.emails_with }} of {{ p.emails }} paint code emails</p>
-            </div>
-            <div class="stat-card">
-                <p class="stat-label">Wrong wheel</p>
-                <p class="stat-value">{{ p.wrong }}</p>
-                <p class="stat-subvalue">of {{ p.checked }} checked{% if p.wrong %} &middot; <a href="{% url 'admin:lookup_carpicture_changelist' %}?verdict__in=LEFT,BOTH">see them</a>{% endif %}</p>
-            </div>
-            <div class="stat-card">
-                <p class="stat-label">Cost</p>
-                <p class="stat-value">${{ p.cost_week|floatformat:2 }}</p>
-                <p class="stat-subvalue">${{ p.cost_month|floatformat:2 }} this month</p>
-            </div>
-        </div>
-    </div>
-    {% endwith %}
 
     {% comment %}<!-- Recent paint code lookups (all searches, success + failure) -->{% endcomment %}
     <div class="panel">
