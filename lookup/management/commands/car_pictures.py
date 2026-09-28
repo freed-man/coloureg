@@ -10,6 +10,8 @@ supplies the keys.
 
     python manage.py car_pictures G66LWP
     python manage.py car_pictures G66LWP VE67NLP          several cars
+    python manage.py car_pictures G66LWP --plate          trial: COLOUREG on the front plate,
+                                                          saved as REG-plate.png, read back
 
 Each picture is saved as car_pictures/REG.png.
 """
@@ -37,19 +39,23 @@ class Command(BaseCommand):
     def add_arguments(self, parser):
         parser.add_argument('registrations', nargs='+', help='one or more registrations already looked up')
         parser.add_argument('--out', default='', help=argparse.SUPPRESS)   # the battery's own folder
+        # paint234: trial the COLOUREG front plate; the site's pictures are unchanged
+        parser.add_argument('--plate', action='store_true',
+                            help='trial: put COLOUREG on a UK front plate, and read it back')
 
     def handle(self, *args, **opts):
         if not cp.openai_key():
             raise CommandError('No OPENAI_API_KEY: env.py sets it locally.')
         out = Path(opts['out']) if opts['out'] else Path(settings.BASE_DIR) / 'car_pictures'
-        costs, seconds, verdicts = [], [], []
+        costs, seconds, verdicts, plates = [], [], [], []
+        plate = cp.PLATE_TEXT if opts['plate'] else None
         for raw in opts['registrations']:
             search = latest_lookup(raw)
             reg = normalize_registration(raw)
             if not search:
                 self.stdout.write(f'{reg}: no lookup of this registration found a car')
                 continue
-            prompt, paint = cp.search_prompt(search)
+            prompt, paint = cp.search_prompt(search, plate=plate)
             self.stdout.write(f'{reg}: {search.year or ""} {search.make} {search.model}, painted {paint}')
             pic = cp.draw(prompt)
             if not pic.ok:
@@ -60,7 +66,7 @@ class Command(BaseCommand):
                     break
                 continue
             out.mkdir(parents=True, exist_ok=True)
-            path = out / f'{reg}.png'
+            path = out / (f'{reg}-plate.png' if plate else f'{reg}.png')
             path.write_bytes(pic.data)
             seconds.append(pic.seconds)
             if pic.cost is not None:
@@ -70,16 +76,27 @@ class Command(BaseCommand):
                 costs.append(check_cost)
             if verdict:
                 verdicts.append(verdict)
+            read = ''
+            if plate:
+                read, plate_cost, plate_note = cp.read_plate(pic.data, pic.mime)
+                if plate_cost is not None:
+                    costs.append(plate_cost)
+                if read is not None:
+                    plates.append(read == plate)
+                read = (f'  plate {read or "unreadable"} ' + ('(right)' if read == plate else '(WRONG)')
+                        if read is not None else f'  {plate_note}')
             self.stdout.write(
                 f'  {pic.seconds:5.1f}s  saved {path.name}'
                 + (f'  about ${pic.cost:.3f}' if pic.cost is not None else '')
-                + (f'  wheel {verdict}' if verdict else f'  {note}'))
+                + (f'  wheel {verdict}' if verdict else f'  {note}') + read)
         if seconds:
             self.stdout.write(f'\nSeconds per picture: average {sum(seconds) / len(seconds):.1f}, '
                               f'fastest {min(seconds):.1f}, slowest {max(seconds):.1f}')
         if verdicts:
             self.stdout.write('Steering wheel: ' + ', '.join(
                 f'{v} {verdicts.count(v)}' for v in cp.VERDICTS if verdicts.count(v)))
+        if plates:
+            self.stdout.write(f'Plate spelled right: {sum(plates)} of {len(plates)}')
         if costs:
             self.stdout.write(f'Cost as OpenAI counted it: about ${sum(costs):.2f}')
         if seconds:

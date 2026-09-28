@@ -130,22 +130,38 @@ def paint_words(make, code, name, dvla_colour):
     return (dvla_colour or 'its factory paint').lower()
 
 
-def prompt_for(year, make, model, paint):
-    """The recipe. The wheel is placed by near and far, never by "right"."""
+# paint234: a TRIAL of the operator's idea, the brand on the front number plate,
+# UK style with the blue UK band (his choice of style 2). Only `car_pictures
+# --plate` uses it; the site's pictures are unchanged until the trial passes:
+# the plate spelled right, the wheel still right, and a good look.
+PLATE_TEXT = 'COLOUREG'
+PLATE_QUESTION = ('Read the front number plate of the car in this picture. Reply with only the '
+                  'characters on it, or NONE if there is no readable front plate.')
+
+
+def prompt_for(year, make, model, paint, plate=None):
+    """The recipe. The wheel is placed by near and far, never by "right".
+    With `plate`, the front plate carries it (paint234 trial)."""
+    ending = ('Transparent background with a soft shadow under the car, '
+              'no people, no text, no number plate.')
+    if plate:
+        ending = ('Transparent background with a soft shadow under the car, no people. '
+                  'The front number plate is a UK front plate: white, with a narrow blue band at '
+                  'its left end carrying the white letters UK, and the black characters '
+                  f'{plate} in the standard UK number plate font. There is no other text anywhere.')
     return (f'Photorealistic studio photo of a {year} {make} {model}, painted {paint}. '
             "It is a British right-hand-drive car. The camera stands in front of the car, "
             "off to the driver's side, so the front of the car points towards the right side "
             "of the image. The driver's seat and its steering wheel are on the side of the car "
             "nearest the camera, just behind the door mirror closest to the camera. The front "
             "seat on the far side is the passenger seat and has no steering wheel. "
-            'Transparent background with a soft shadow under the car, '
-            'no people, no text, no number plate.')
+            + ending)
 
 
-def search_prompt(search):
+def search_prompt(search, plate=None):
     """(prompt, paint words) for a saved lookup."""
     paint = paint_words(search.make, search.paint_code, search.paint_description, search.colour)
-    return prompt_for(search.year or '', search.make, search.model, paint), paint
+    return prompt_for(search.year or '', search.make, search.model, paint, plate=plate), paint
 
 
 def _post(url, headers, payload):
@@ -216,6 +232,32 @@ def _reply_text(data):
             if isinstance(part, dict) and part.get('type') == 'output_text':
                 return part.get('text') or ''
     return ''
+
+
+def plate_reading(text):
+    """What the checker read on the plate, as one run of letters and digits;
+    '' for NONE or nothing readable. A plate split by a space ("COLOU REG") is
+    joined; the UK band's letters are not part of it; if the checker wrapped
+    the plate in a sentence, the longest word is the plate."""
+    words = [w for w in re.findall(r'[A-Z0-9]+', (text or '').upper()) if w not in ('UK', 'GB')]
+    if not words or words == ['NONE']:
+        return ''
+    return ''.join(words) if len(words) <= 2 else max(words, key=len)
+
+
+def read_plate(data, mime='image/png', key=None):
+    """(what the plate says, cost, note) for one picture (paint234 trial)."""
+    key = key or openai_key()
+    b64 = base64.b64encode(data).decode()
+    status, reply, _seconds, message = _post(OPENAI_RESPONSES_URL, {'Authorization': f'Bearer {key}'}, {
+        'model': CHECKER_MODEL,
+        'input': [{'role': 'user', 'content': [
+            {'type': 'input_text', 'text': PLATE_QUESTION},
+            {'type': 'input_image', 'image_url': f'data:{mime};base64,{b64}'},
+        ]}]})
+    if status != 200:
+        return None, None, f'plate check failed: HTTP {status} {message}'.strip()
+    return plate_reading(_reply_text(reply)), cost_of(CHECKER_MODEL, reply.get('usage')), ''
 
 
 def check_wheel(data, mime='image/png', key=None):
