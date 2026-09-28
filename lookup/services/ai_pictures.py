@@ -130,10 +130,11 @@ def paint_words(make, code, name, dvla_colour):
     return (dvla_colour or 'its factory paint').lower()
 
 
-# paint234: a TRIAL of the operator's idea, the brand on the front number plate,
-# UK style with the blue UK band (his choice of style 2). Only `car_pictures
-# --plate` uses it; the site's pictures are unchanged until the trial passes:
-# the plate spelled right, the wheel still right, and a good look.
+# paint234: the operator's idea, the brand on the front number plate, UK style
+# with the blue UK band (his choice of style 2). Trialled on six cars: the plate
+# spelled right 6 of 6, the wheel still right 6 of 6, 16.4 seconds on average.
+# paint235: every picture now carries it, and the checker reads the plate back
+# after the wheel (recorded in CarPicture.plate, never redrawn automatically).
 PLATE_TEXT = 'COLOUREG'
 PLATE_QUESTION = ('Read the front number plate of the car in this picture. Reply with only the '
                   'characters on it, or NONE if there is no readable front plate.')
@@ -374,7 +375,7 @@ def make_picture(picture_id):
         if pic.search is None:
             _fail(picture_id, 'the lookup is gone')
             return
-        prompt, painted = search_prompt(pic.search)
+        prompt, painted = search_prompt(pic.search, plate=PLATE_TEXT)     # paint235
         # paint231: a redraw or retry ADDS to what the picture has cost; it
         # used to replace it, so redraws vanished from the dashboard's cost.
         prior = float(pic.cost or 0)
@@ -390,9 +391,11 @@ def make_picture(picture_id):
             status=CarPicture.READY, file_key=key, painted=painted[:200],
             seconds=round(drawn.seconds, 1), cost=Decimal(str(round(cost, 4))))
         verdict, check_cost, note = check_wheel(drawn.data, drawn.mime)
+        read, plate_cost, plate_note = read_plate(drawn.data, drawn.mime)      # paint235
         CarPicture.objects.filter(id=picture_id).update(
-            verdict=verdict or '', error=(note or '')[:200],
-            cost=Decimal(str(round(cost + (check_cost or 0.0), 4))))
+            verdict=verdict or '', plate=(read or '')[:20],
+            error='; '.join(n for n in (note, plate_note) if n)[:200],
+            cost=Decimal(str(round(cost + (check_cost or 0.0) + (plate_cost or 0.0), 4))))
     except Exception as exc:
         logger.exception('car picture %s failed', picture_id)
         _fail(picture_id, f'{type(exc).__name__}: {exc}')

@@ -3182,6 +3182,7 @@ class CarPicture(models.Model):
     painted = models.CharField(max_length=200, blank=True, default='')   # the paint as the prompt put it
     file_key = models.CharField(max_length=100, blank=True, default='')
     verdict = models.CharField(max_length=10, blank=True, default='')    # the wheel check: RIGHT, LEFT, BOTH, UNSURE
+    plate = models.CharField(max_length=20, blank=True, default='')      # paint235: what the check read on the front plate (COLOUREG when right)
     cost = models.DecimalField(max_digits=8, decimal_places=4, null=True, blank=True)   # dollars, picture and check
     seconds = models.FloatField(null=True, blank=True)
     error = models.CharField(max_length=200, blank=True, default='')

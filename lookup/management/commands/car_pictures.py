@@ -10,8 +10,6 @@ supplies the keys.
 
     python manage.py car_pictures G66LWP
     python manage.py car_pictures G66LWP VE67NLP          several cars
-    python manage.py car_pictures G66LWP --plate          trial: COLOUREG on the front plate,
-                                                          saved as REG-plate.png, read back
 
 Each picture is saved as car_pictures/REG.png.
 """
@@ -39,16 +37,13 @@ class Command(BaseCommand):
     def add_arguments(self, parser):
         parser.add_argument('registrations', nargs='+', help='one or more registrations already looked up')
         parser.add_argument('--out', default='', help=argparse.SUPPRESS)   # the battery's own folder
-        # paint234: trial the COLOUREG front plate; the site's pictures are unchanged
-        parser.add_argument('--plate', action='store_true',
-                            help='trial: put COLOUREG on a UK front plate, and read it back')
 
     def handle(self, *args, **opts):
         if not cp.openai_key():
             raise CommandError('No OPENAI_API_KEY: env.py sets it locally.')
         out = Path(opts['out']) if opts['out'] else Path(settings.BASE_DIR) / 'car_pictures'
         costs, seconds, verdicts, plates = [], [], [], []
-        plate = cp.PLATE_TEXT if opts['plate'] else None
+        plate = cp.PLATE_TEXT          # paint235: the same recipe as the site, plate and all
         for raw in opts['registrations']:
             search = latest_lookup(raw)
             reg = normalize_registration(raw)
@@ -66,7 +61,7 @@ class Command(BaseCommand):
                     break
                 continue
             out.mkdir(parents=True, exist_ok=True)
-            path = out / (f'{reg}-plate.png' if plate else f'{reg}.png')
+            path = out / f'{reg}.png'
             path.write_bytes(pic.data)
             seconds.append(pic.seconds)
             if pic.cost is not None:
