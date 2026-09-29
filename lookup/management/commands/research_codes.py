@@ -4,10 +4,14 @@ Writes NOTHING to the catalogue: every finding goes to a review file (one JSON
 line per code), and a rerun skips codes already in it. See
 lookup/services/code_research.py.
 
-    python manage.py research_codes --out C:\\Users\\Roland\\Desktop\\code_research.jsonl --dry-run
-    python manage.py research_codes --out C:\\Users\\Roland\\Desktop\\code_research.jsonl --pilot 50
-    python manage.py research_codes --out C:\\Users\\Roland\\Desktop\\code_research.jsonl --summary
-    python manage.py research_codes --out C:\\Users\\Roland\\Desktop\\code_research.jsonl --customers   (paint240)
+    python manage.py research_codes --dry-run
+    python manage.py research_codes --pilot 50
+    python manage.py research_codes --summary
+    python manage.py research_codes --customers              (paint240)
+
+The review file is etc/code_research.jsonl unless --out says otherwise (paint241):
+.gitignore keeps etc/ out of the repo, which is public, so it is never committed
+or deployed, and a rerun always finds the codes already researched.
 
 --customers researches only codes customers have landed on and that are not in
 the review file yet, the most recent first: research on demand. Run it now and
@@ -30,7 +34,8 @@ class Command(BaseCommand):
     help = 'Research paint codes whose names disagree (Claude with web search); writes only a review file'
 
     def add_arguments(self, parser):
-        parser.add_argument('--out', required=True, help='the review file (JSON lines); keep it outside the repo')
+        parser.add_argument('--out', default=os.path.join('etc', 'code_research.jsonl'),
+                            help='the review file (JSON lines); default etc/code_research.jsonl, which .gitignore keeps out of the repo')
         parser.add_argument('--pilot', type=int, default=50, help='how many codes this run (default 50)')
         parser.add_argument('--model', default=cr.DEFAULT_MODEL, choices=sorted(cr.PRICES))
         parser.add_argument('--max-searches', type=int, default=3, help='web searches allowed per code')
@@ -68,6 +73,7 @@ class Command(BaseCommand):
         key = os.environ.get('ANTHROPIC_API_KEY', '').strip()
         if not key:
             raise CommandError('ANTHROPIC_API_KEY is not set in this terminal.')
+        os.makedirs(os.path.dirname(os.path.abspath(o['out'])), exist_ok=True)
         spent, fails, scores = 0.0, 0, Counter()
         for i, c in enumerate(todo, 1):
             if spent >= o['max_cost']:
@@ -94,7 +100,8 @@ class Command(BaseCommand):
                   'your organisation in the Claude Console.')
                 break
         w(f'\nSpent about ${spent:.2f}. Scores this run: ' + ', '.join(f'{k} {n}' for k, n in scores.most_common()))
-        w(f'Review file: {o["out"]} (python manage.py research_codes --out "{o["out"]}" --summary)')
+        w(f'Review file: {o["out"]} (python manage.py research_codes --summary'
+          + ('' if o['out'] == os.path.join('etc', 'code_research.jsonl') else f' --out "{o["out"]}"') + ')')
 
     @staticmethod
     def _done(path):

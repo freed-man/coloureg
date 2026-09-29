@@ -6,9 +6,12 @@ see plan_guess_upgrades in lookup/services/catalogue_topup.py. A preview by
 default; --apply saves every old value to a backup file first, and --restore
 puts a backup back.
 
-    python manage.py upgrade_swatches bsp BSP.csv HISTORY.json.gz              preview
-    python manage.py upgrade_swatches bsp BSP.csv HISTORY.json.gz --apply      write, with a backup
-    python manage.py upgrade_swatches --restore BACKUP.json                    undo
+    python manage.py upgrade_swatches bsp etc\\BSP.csv etc\\HISTORY.json.gz            preview
+    python manage.py upgrade_swatches bsp etc\\BSP.csv etc\\HISTORY.json.gz --apply    write, with a backup
+    python manage.py upgrade_swatches --restore etc\\BACKUP.json                      undo
+
+The backup is written beside the history file, so with the files in etc/ (which
+.gitignore keeps out of the public repo) the backups stay there too.
 """
 import gzip
 import json

@@ -4686,7 +4686,7 @@ def submit_manual_lookup(request):
     )
 
     # Cache a manually-found code (paint16b). The manual route is the most
-    # expensive result we produce — it costs Roland's time, not an API call — so
+    # expensive result we produce — it costs the operator's time, not an API call — so
     # not storing it meant doing the same hand-search again the next time anyone
     # asked for that registration. Caching turns that one-off effort into a
     # permanent asset: the next request for this reg is answered instantly from

@@ -404,7 +404,7 @@ def send_user_no_code_available(to_email, registration, vehicle_title, colour, m
 
     Both fixed paragraphs are therefore gone, and the explanation lives entirely
     in `message` — which submit_manual_lookup already REQUIRES on this path.
-    Roland writes what is true for that car; the template no longer guesses.
+    The operator writes what is true for that car; the template no longer guesses.
 
     `colour_name` carries a manufacturer colour name when we have one but no
     code (e.g. "Black Pearl"). It is the useful half of the answer and lets the

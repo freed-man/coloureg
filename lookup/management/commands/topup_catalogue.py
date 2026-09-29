@@ -4,10 +4,11 @@ Adds only what the catalogue lacks and never changes what it has: see
 lookup/services/catalogue_topup.py for the rules. A preview by default; nothing
 is written without --apply.
 
-    python manage.py topup_catalogue bsp C:\\path\\bsp-paint-codes-2026-09-28.csv
-    python manage.py topup_catalogue bsp C:\\path\\bsp-paint-codes-2026-09-28.csv --apply
+    python manage.py topup_catalogue bsp etc\\bsp-paint-codes-2026-09-28.csv
+    python manage.py topup_catalogue bsp etc\\bsp-paint-codes-2026-09-28.csv --apply
 
-Run it where the file is: from your PC, env.py points it at the live catalogue.
+Run it where the file is: from the PC, env.py points it at the live catalogue.
+Source files belong in etc/, which .gitignore keeps out of the (public) repo.
 """
 from django.core.management.base import BaseCommand, CommandError
 

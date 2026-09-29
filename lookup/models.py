@@ -1430,7 +1430,7 @@ class PaintLookup(models.Model):
     CURATED_MODEL_OVERRIDES = {
         'ford': {
             'race red': {
-                # Confirmed against Roland's Ford catalogue for a 2018 Focus
+                # Confirmed against the operator's Ford catalogue for a 2018 Focus
                 # ST-3 (VIN WF05XXGCC5JT23802). partslink24 returns the NAME
                 # for Ford passenger cars but no code, so this is the path that
                 # turns a name-only result into a usable answer.
@@ -2520,7 +2520,7 @@ class PaintCodeReport(models.Model):
 
 
 class OperatorPaintCode(models.Model):
-    """Paint codes Roland researched by hand, kept OUTSIDE paint_lookup.json.
+    """Paint codes the operator researched by hand, kept OUTSIDE paint_lookup.json.
 
     paint92. A manual lookup was previously written to its Search row and
     nowhere else. The same make and colour arriving next week resolved nothing,
