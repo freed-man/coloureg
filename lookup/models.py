@@ -1314,9 +1314,51 @@ class PaintLookup(models.Model):
                     'reading a trim field)', manufacturer, paint_code, _name,
                 )
                 _name = None
+            # paint239: A CODE THAT COVERS TWO PAINTS, PICKED BY THE CAR'S COLOUR.
+            _picked = cls.pick_by_colour(swatch, vdg_colour) if _name else None
+            if _picked:
+                logger.info('paint %s %s named by the car\'s colour %r: %r -> %r',
+                            manufacturer, paint_code, vdg_colour, _name, _picked[0])
+                return _picked[1], _picked[0], canonical
             return (swatch.hex or None), _name, canonical
         except Exception:
             return None, None, None
+
+    @classmethod
+    def pick_by_colour(cls, row, car_colour):
+        """(name, hex or None) when the car's registered colour says which of a
+        code's paints this is; None to leave the answer as it is.
+
+        paint239. Some codes cover two paints, usually reused across model
+        generations: the research pilot confirmed 15 of 48 (Citroen EEB is Bronze
+        Pearl and Lazuli Blue; Alfa 414 is Azzurro Nuvola and Alfa Red), and a
+        blue 2006 Astra came back 4CU with the catalogue calling 4CU "Power Red".
+        The name shown is the row's, whichever paint that is.
+
+        Only when all of these hold, so an answer that works is never touched:
+          * the code's listed names state DIFFERENT colours (not other languages
+            of one paint: "Acid Green" / "Vert Acide" never qualifies);
+          * the name shown states a colour, and it is NOT the car's (a name that
+            states no colour is unknown, not wrong: left alone);
+          * another listed name states the car's colour (the first such, in the
+            row's own order, which puts the most-attested name first).
+        The swatch stays only if it matches the car's colour too: it belongs to
+        the name shown, so after a switch it is usually the other paint's."""
+        from lookup.services.paint_resolver import _colour_families, _hex_family
+        want = _colour_families(car_colour or '')
+        if not want or row is None:
+            return None
+        names = list(dict.fromkeys([n for n in (row.all_names or []) if n] + ([row.name] if row.name else [])))
+        fams = [f for f in (_colour_families(n) for n in names) if f]
+        if len(fams) < 2 or set.intersection(*fams):
+            return None
+        shown = _colour_families(row.name or '')
+        if not shown or shown & want:
+            return None
+        for n in names:
+            if _colour_families(n) & want:
+                return n, (row.hex if row.hex and _hex_family(row.hex) in want else None)
+        return None
 
     # ------------------------------------------------------------------
     # name -> code  [the conservative direction]

@@ -45,6 +45,7 @@ from django.utils import timezone
 from lookup.models import CarPicture, PaintLookup, Search
 from lookup.services import picture_store
 from lookup.services.http import get_session
+from lookup.services.paint_resolver import _colour_families
 
 logger = logging.getLogger(__name__)
 
@@ -103,6 +104,15 @@ def _one_paint(make, part):
             + (f", hex {part['hex']}" if part.get('hex') else '') + ')')
 
 
+# paint239: names that say the code is not one colour (special or individual paint).
+NOT_ONE_COLOUR = ('special paint', 'special order', 'individual', 'sonderlack', 'bespoke', 'personal line')
+
+
+def _not_one_colour(name):
+    low = (name or '').lower()
+    return any(w in low for w in NOT_ONE_COLOUR) and not _colour_families(name)
+
+
 def paint_words(make, code, name, dvla_colour):
     """The paint as the prompt names it: the catalogue's name and hex when it
     knows the code, else the name the lookup found, else DVLA's colour.
@@ -122,9 +132,18 @@ def paint_words(make, code, name, dvla_colour):
                 rest = ' and '.join(_one_paint(make, p) for p in parts if p is not body)
                 return f'two-tone, the body in {_one_paint(make, body)} and the roof in {rest}'
             return 'two-tone, ' + ' and '.join(_one_paint(make, p) for p in parts)
-        hex_value, cat_name, _canonical = PaintLookup.lookup_with_canonical(make, code)
+        # paint239: the car's colour goes in, so a code covering two paints is
+        # drawn as the one this car has (the same pick the page makes).
+        hex_value, cat_name, _canonical = PaintLookup.lookup_with_canonical(make, code, vdg_colour=dvla_colour)
         words = cat_name or name
         if words:
+            if not hex_value and dvla_colour and _not_one_colour(words):
+                # paint239: a paint that is not one colour (BMW 490, "BMW
+                # Individual special paint") would leave the colour to the model's
+                # guess; the registered colour is the best we know. Only for such
+                # names: a German "Royalblau" states its colour inside the word,
+                # and its prompt stays exactly as it was.
+                return f'{dvla_colour.lower()} ({words}, {make} paint code {code})'
             return (f'{words} ({make} paint code {code}'
                     + (f', hex {hex_value}' if hex_value else '') + ')')
     return (dvla_colour or 'its factory paint').lower()
