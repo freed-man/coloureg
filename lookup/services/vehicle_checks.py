@@ -26,7 +26,9 @@ logger = logging.getLogger(__name__)
 
 _POOL = ThreadPoolExecutor(max_workers=4, thread_name_prefix='vehicle-checks')
 WAIT_SECONDS = 4          # the most collect() waits, once the lookup reaches it
-ASKMID_URL = 'https://ownvehicle.askmid.com/'
+# paint247: the Motor Insurers' Bureau's own vehicle check (MIB Navigate), in
+# place of the old askMID address.
+INSURANCE_URL = 'https://enquiry.navigate.mib.org.uk/checkyourvehicle'
 MAJOR_TYPES = ('DANGEROUS', 'MAJOR', 'FAIL', 'PRS')     # motoreg's grouping; the rest are advisories
 
 # paint245: ULEZ, as motoreg answers it: Transport Scotland's emissions checker,
@@ -287,5 +289,5 @@ def display(f, today=None):
             notice = (ULEZ_NOTICES['u'] if letter == 'u' else ULEZ_NOTICES['unclear'] if letter
                       else ULEZ_NOTICES.get(f.get('lez_error', ''), ''))
             out['vc_ulez'] = {'ok': None, 'link': TFL_ULEZ_URL, 'notice': f'({notice})' if notice else ''}
-        out['vc_insurance_url'] = ASKMID_URL
+        out['vc_insurance_url'] = INSURANCE_URL
     return out
