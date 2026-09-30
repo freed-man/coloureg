@@ -30,6 +30,7 @@ from django.utils import timezone
 from django.views.decorators.http import require_POST, require_GET
 from django.views.decorators.csrf import csrf_exempt
 from django_ratelimit.core import is_ratelimited
+from lookup.services import vehicle_checks
 from .models import (Search, PaintLookup, SiteConfig, VrmCache,
                      OperatorPaintCode, PaintCodeReport)
 from .services.vdg import (
@@ -404,6 +405,17 @@ def _clear_mot_token():
         caches['local'].delete(_MOT_TOKEN_CACHE_KEY)
     except Exception:  # noqa: BLE001
         pass
+
+
+# paint244: what the background vehicle checks call. Captured once, so faking
+# get_dvla_data or get_mot_data for the paint path (as many checks do) does not
+# also fake, or count, these; a check that wants to fake them patches these two.
+def _CHECKS_DVLA(registration):
+    return _REAL_DVLA(registration)
+
+
+def _CHECKS_MOT(registration):
+    return _REAL_MOT(registration)
 
 
 def _timed_call(name, registration, fn):
@@ -1084,6 +1096,10 @@ def index(request):
         # ModelDetails + PaintCodeDetails, so one HTTP request returns
         # everything we used to fetch in two. Latency roughly halved at the
         # same £0.50 cost.
+        # paint244: YEAR, V5C, MOT AND TAX need DVLA and the MOT service, which
+        # the VDG path below only calls when VDG leaves a gap. Asked in the
+        # background now; picked up when the answer is stored.
+        _checks = vehicle_checks.start(registration, _CHECKS_DVLA, _CHECKS_MOT)
         vdg_data = None
         # Whether VDG gave us an ANSWER — including a definite "no such
         # vehicle" — as distinct from failing to respond at all. Read at the
@@ -1563,6 +1579,9 @@ def index(request):
             # the wheelplan gate existed — ERZ223 was cached on 7 Sep with
             # make_not_automated False and kept serving that False afterwards.
             'wheelplan': wheelplan,
+            # paint244: DVLA's and the MOT service's own facts (dates, statuses);
+            # what the page says about them is worked out when it is shown.
+            'vehicle_status': vehicle_checks.collect(_checks),
         }
 
         # --- Unsupported make: stop here, deliberately ----------------------
@@ -1924,6 +1943,7 @@ def results(request):
             'transmission': vehicle_data.get('transmission', ''),
             'engine_description': vehicle_data.get('engine_description', ''),
             'vin_masked': vehicle_data.get('vin_masked', ''),
+            **vehicle_checks.display(vehicle_data.get('vehicle_status')),
             'make_logo': vehicle_data.get('make_logo', ''),
             'vehicle_title': vehicle_data.get('vehicle_title', ''),
             'search_id': _locked_search.id,
@@ -2009,6 +2029,7 @@ def results(request):
         'transmission': vehicle_data.get('transmission', ''),
         'engine_description': vehicle_data.get('engine_description', ''),
         'vin_masked': vehicle_data.get('vin_masked', ''),
+        **vehicle_checks.display(vehicle_data.get('vehicle_status')),
         'make_logo': vehicle_data.get('make_logo', ''),
         'vehicle_title': vehicle_data.get('vehicle_title', ''),
         'paint_code': paint_code,
@@ -5255,3 +5276,8 @@ def stripe_webhook(request):
             # Still 200: we don't want infinite Stripe retries on our bug; the
             # success redirect path is the primary and this is the backstop.
     return HttpResponse(status=200)
+
+
+# paint244: the real DVLA and MOT calls, as defined above, for the vehicle checks.
+_REAL_DVLA = get_dvla_data
+_REAL_MOT = get_mot_data

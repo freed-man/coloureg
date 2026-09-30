@@ -185,6 +185,36 @@ def _enrich_from_lookup(result, make, model=None, vdg_colour=None,
                         desc, make)
             desc = ''
             result['paint_description'] = ''
+        # paint243: TIDY A PROVIDER'S NAME. Ezyvin writes one name twice in two
+        # spellings ("Wolf Gray Metallic/Wolf Grey Metallic") and adds a word
+        # that is not part of it ("Pearl White Paint"). Only provider answers
+        # pass through here; a manual answer is the operator's and never does.
+        if desc:
+            _tidy = tidy_provider_name(desc)
+            if _tidy != desc:
+                logger.info('provider name tidied for %s: %r -> %r', (make or '')[:30], desc, _tidy)
+                desc = _tidy
+                result['paint_description'] = _tidy
+        # paint243: A NAME THAT IS ONLY A COLOUR WORD gives way to the
+        # catalogue's own name for the code, when that name states the same
+        # colour. A 2015 Renault Captur came back from pl24 as TED69 "Grey"; the
+        # catalogue calls TED69 "Gris Platine". Measured before shipping: 100
+        # answers so far had a colour word for a name (pl24 58, VDG 34), and the
+        # catalogue had a proper name of the same colour for 46 (TEGNE "Black"
+        # -> Noir Etoile, W2Y "Orange" -> Eclipse Orange).
+        if code and desc and is_bare_colour_name(desc):
+            _h, _n, _c = PaintLookup.lookup_with_canonical(
+                manufacturer=make, paint_code=code,
+                vdg_colour=vdg_colour or result.get('colour') or '',
+            )
+            if _n and not is_bare_colour_name(_n) and (_colour_families(_n) & _colour_families(desc)):
+                logger.info('bare colour name %r replaced by the catalogue\'s %r for %s %s',
+                            desc, _n, (make or '')[:30], code)
+                desc = _n
+                result['paint_description'] = _n
+                result['enriched_from'] = 'name'
+                if _h and not result.get('paint_hex'):
+                    result['paint_hex'] = _h
 
         if code and not desc:
             # code -> name (+ swatch)
@@ -923,6 +953,53 @@ _PLACEHOLDER_CODE = re.compile(
 _SPECIAL_ORDER_CODES = {'999', 'L999', '0999'}
 
 
+# paint243: a name that is only a colour word, with at most a shade before it
+# and a finish after it: "Grey", "Blue Metallic", "Black Pearl", "Pearl White".
+_BARE_COLOUR_NAME = re.compile(
+    r'^(?:(?:dark|light|metallic|pearl)\s+)?'
+    r'(?:white|black|grey|gray|silver|blue|red|green|yellow|orange|brown|beige|gold|purple|maroon|bronze)'
+    r'(?:\s+(?:metallic|pearl|mica|solid|paint))?$', re.I)
+# A trailing "Paint" is part of the name after these words ("Special Paint").
+_KEEP_PAINT_AFTER = {'special', 'custom', 'individual', 'exclusive', 'bespoke'}
+
+
+def _same_paint(a, b):
+    """paint243: two catalogue rows for the same paint: the same name (one
+    containing the other counts, after normalising) or swatches within 8 on
+    every channel."""
+    from lookup.models import PaintLookup
+    na, nb = PaintLookup.normalize_name(a.name or ''), PaintLookup.normalize_name(b.name or '')
+    if na and nb and (na == nb or na in nb or nb in na):
+        return True
+    ha, hb = (a.hex or '').lstrip('#'), (b.hex or '').lstrip('#')
+    if len(ha) == 6 and len(hb) == 6:
+        try:
+            return max(abs(int(ha[i:i + 2], 16) - int(hb[i:i + 2], 16)) for i in (0, 2, 4)) <= 8
+        except ValueError:
+            return False
+    return False
+
+
+def is_bare_colour_name(name):
+    return bool(_BARE_COLOUR_NAME.match((name or '').strip()))
+
+
+def tidy_provider_name(name):
+    """paint243. One name written twice in two spellings becomes one ("Wolf
+    Gray Metallic/Wolf Grey Metallic" -> "Wolf Grey Metallic", the British
+    spelling kept), and a trailing "Paint" that is not part of the name goes
+    ("Pearl White Paint" -> "Pearl White"). Anything else is left as sent."""
+    out = (name or '').strip()
+    parts = [p.strip() for p in out.split('/') if p.strip()]
+    key = lambda p: re.sub(r'\s+', ' ', p.lower().replace('gray', 'grey'))
+    if len(parts) > 1 and len({key(p) for p in parts}) == 1:
+        out = next((p for p in parts if 'grey' in p.lower()), parts[0])
+    stripped = re.sub(r'\s+paint$', '', out, flags=re.I).strip()
+    if stripped and stripped != out and stripped.split()[-1].lower() not in _KEEP_PAINT_AFTER:
+        out = stripped
+    return out
+
+
 def resolve_slashed_code(make, code, dvla_colour=None):
     """Pick the paint code out of a slash-joined string, or return it unchanged.
 
@@ -968,7 +1045,7 @@ def resolve_slashed_code(make, code, dvla_colour=None):
     #
     # The part is returned AS SENT, not as the variant that matched: the
     # customer's sticker says Y9C, and the L is our catalogue's notation.
-    hits = []
+    hits, found = [], {}      # found: part -> (its row, matched only through the L prefix)
     for part in (x.strip() for x in code.split('/')):
         # paint176: A SINGLE CHARACTER IS NOT A PAINT CODE. Some VAG codes carry
         # the slash INSIDE them — `L8/2` is one code, not two — and splitting
@@ -979,11 +1056,30 @@ def resolve_slashed_code(make, code, dvla_colour=None):
         # Costs nothing: all 266 delivered codes that resolved still resolve.
         if not part or len(part) < 2:
             continue
-        if PaintLookup.objects.filter(
-                manufacturer=mfr,
-                code__iexact=part).exists() or PaintLookup.objects.filter(
-                manufacturer=mfr, code__iexact='L' + part).exists():
+        _plain = PaintLookup.objects.filter(manufacturer=mfr, code__iexact=part).first()
+        _lrow = None if _plain else PaintLookup.objects.filter(manufacturer=mfr, code__iexact='L' + part).first()
+        if _plain or _lrow:
             hits.append(part)
+            found[part] = (_plain or _lrow, _lrow is not None)
+    if len(hits) > 1:
+        # paint243: SEVERAL HALVES ARE CODES, BUT FOR THE SAME PAINT. Audi
+        # `2T/C9X` (29 Sep, an RS Q8 from VDG's second try): production holds
+        # 2T "Deep Black Metallic" and LC9X "Orcaschwarz Perleffekt" with the
+        # same swatch; 2T is VW's two-character short code for it. When every
+        # half is the SAME PAINT, the full code is kept (the longest; the first
+        # of equal length). Same paint means the same name (one containing the
+        # other counts) or practically the same swatch. NOT the same colour
+        # family: Ford 0210 Ermine White and 0691 Diamond White are both white
+        # and different paints, and the older check P4 caught my first version
+        # merging them. Anything else still leaves the string alone.
+        # Which half to keep: the VAG exterior code where there is one (the
+        # half found only as L + part: C9X over 2T, N1K over 9141), else the
+        # longest.
+        _rows = [found[part][0] for part in hits]
+        if not all(_same_paint(_rows[0], r) for r in _rows[1:]):
+            return code
+        _vag = [part for part in hits if found[part][1]]
+        hits = [max(_vag or hits, key=len)]
     if len(hits) != 1:
         return code
     # AND IT MUST AGREE WITH THE REGISTERED COLOUR, the same guard the mmw gate

@@ -38,6 +38,23 @@
     .vehicle-divider {
         border-top: 0.5px solid rgba(0, 0, 0, 0.1);
     }
+    /* paint244: a value with a detail line under it, and a tick or a cross */
+    .vehicle-value-stack {
+        display: flex;
+        flex-direction: column;
+        align-items: flex-end;
+        gap: 2px;
+    }
+    .vehicle-sub {
+        color: #5c636a;
+        font-weight: 500;
+        font-size: 14px;
+    }
+    .vehicle-status {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+    }
     .paint-card {
         font-family: 'IBM Plex Sans', sans-serif;
         overflow: hidden;
@@ -311,6 +328,15 @@
                         <span class="vehicle-value">{{ vin_masked }}</span>
                     </div>
                     {% endif %}
+                    {% if vc_year %}
+                    <div class="vehicle-row">
+                        <span class="vehicle-label">Year</span>
+                        <span class="vehicle-value vehicle-value-stack">
+                            <span>{{ vc_year }}</span>
+                            {% if vc_age %}<span class="vehicle-sub">{{ vc_age }}</span>{% endif %}
+                        </span>
+                    </div>
+                    {% endif %}
                     {% if engine_description %}
                     <div class="vehicle-row">
                         <span class="vehicle-label">Engine</span>
@@ -333,6 +359,42 @@
                         <span class="vehicle-label">Colour</span>
                         <span class="vehicle-value">{{ colour }}</span>
                     </div>
+                    {% comment %} paint244: V5C, MOT, tax and insurance, in motoreg's words, worked
+                    out when the page is shown from the facts stored with the lookup. {% endcomment %}
+                    {% if vc_v5c %}
+                    <div class="vehicle-row">
+                        <span class="vehicle-label">V5C issued</span>
+                        <span class="vehicle-value vehicle-value-stack">
+                            <span>{{ vc_v5c }}</span>
+                            <span class="vehicle-sub">{{ vc_v5c_ago }}</span>
+                        </span>
+                    </div>
+                    {% endif %}
+                    {% if vc_mot %}
+                    <div class="vehicle-row">
+                        <span class="vehicle-label">MOT</span>
+                        <span class="vehicle-value vehicle-value-stack">
+                            <span class="vehicle-status">{% if vc_mot.ok %}<i class="fas fa-check-circle text-success" aria-hidden="true"></i><span class="text-success">{{ vc_mot.label }}</span>{% elif vc_mot.ok is None %}<i class="fas fa-info-circle text-muted" aria-hidden="true"></i><span class="text-muted">{{ vc_mot.label }}</span>{% else %}<i class="fas fa-times-circle text-danger" aria-hidden="true"></i><span class="text-danger">{{ vc_mot.label }}</span>{% endif %}</span>
+                            {% if vc_mot.detail %}<span class="vehicle-sub">{{ vc_mot.detail }}</span>{% endif %}
+                        </span>
+                    </div>
+                    {% endif %}
+                    {% if vc_tax %}
+                    <div class="vehicle-row">
+                        <span class="vehicle-label">Tax</span>
+                        <span class="vehicle-value vehicle-value-stack">
+                            <span class="vehicle-status">{% if vc_tax.ok %}<i class="fas fa-check-circle text-success" aria-hidden="true"></i><span class="text-success">{{ vc_tax.label }}</span>{% else %}<i class="fas fa-times-circle text-danger" aria-hidden="true"></i><span class="text-danger">{{ vc_tax.label }}</span>{% endif %}</span>
+                            {% if vc_tax.detail %}<span class="vehicle-sub">{{ vc_tax.detail }}</span>{% endif %}
+                            {% if vc_tax.estimate %}<span class="vehicle-sub">{{ vc_tax.estimate }}</span>{% endif %}
+                        </span>
+                    </div>
+                    {% endif %}
+                    {% if vc_insurance_url %}
+                    <div class="vehicle-row">
+                        <span class="vehicle-label">Insurance</span>
+                        <span class="vehicle-value"><a href="{{ vc_insurance_url }}" target="_blank" rel="noopener noreferrer" class="text-decoration-none">Check on askMID <i class="fas fa-external-link-alt small" aria-hidden="true"></i></a></span>
+                    </div>
+                    {% endif %}
                 </div>
             </div>
 
