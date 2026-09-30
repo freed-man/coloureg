@@ -1061,13 +1061,22 @@ def is_placeholder_code(make, code):
     NOT APPLIED TO MANUAL FULFILMENTS — see the caller. `YD70XAA` is an AJS
     motorcycle where the operator entered `N/A` with 'Metallic Blue': no code
     exists for that bike, the colour does, and that is a real answer.
+
+    paint242: A SWATCH IS NO LONGER EVIDENCE, only a model list. Swatches can
+    now be made after loading (propose_hexes names a colour from the name;
+    the top-up fills gaps), so a junk row can gain one: production's Audi
+    `XXX` "Blue" did, and a 2015 A5 registered MAROON was shown XXX "Blue"
+    on 29 Sep. partslink24's own data for that car reads
+    "Exterior color / Paint Code: Q0 / XXX": no catalogue paint at all. On
+    the repository's catalogue the change keeps exactly the same 7
+    placeholder-shaped rows as before; all 7 have models.
     """
     code = (code or '').strip()
     if not code or not _PLACEHOLDER_CODE.match(code):
         return False
     from lookup.models import PaintLookup
     row = PaintLookup.lookup(make, code)
-    if row and (row.hex or (row.models_list or [])):
+    if row and (row.models_list or []):
         return False
     return True
 
