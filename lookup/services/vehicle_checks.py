@@ -27,6 +27,7 @@ logger = logging.getLogger(__name__)
 _POOL = ThreadPoolExecutor(max_workers=4, thread_name_prefix='vehicle-checks')
 WAIT_SECONDS = 4          # the most collect() waits, once the lookup reaches it
 ASKMID_URL = 'https://ownvehicle.askmid.com/'
+MAJOR_TYPES = ('DANGEROUS', 'MAJOR', 'FAIL', 'PRS')     # motoreg's grouping; the rest are advisories
 
 # paint245: ULEZ, as motoreg answers it: Transport Scotland's emissions checker,
 # asked the same way its own page asks. Scotland's LEZs and London's ULEZ set the
@@ -128,6 +129,21 @@ def facts(dvla, mot, lez=None):
         'reg_month': dvla.get('monthOfFirstRegistration') or '',
         'engine_cc': dvla.get('engineCapacity'),
     }
+    # paint246: the MOT tests, kept small: date, result, mileage, expiry, and each
+    # defect's type and text.
+    tests = []
+    for t in (mot.get('motTests') or [])[:60]:
+        if not isinstance(t, dict):
+            continue
+        tests.append({
+            'd': str(t.get('completedDate') or '')[:10], 'r': t.get('testResult') or '',
+            'o': str(t.get('odometerValue') or ''), 'u': t.get('odometerUnit') or '',
+            'x': str(t.get('expiryDate') or '')[:10],
+            'f': [[str(d.get('type') or ''), str(d.get('text') or '')[:300]]
+                  for d in (t.get('defects') or []) if isinstance(d, dict) and d.get('text')],
+        })
+    if tests:
+        out['mot_tests'] = tests
     if lez:
         status, letter = lez
         if letter:
@@ -232,6 +248,33 @@ def display(f, today=None):
         if est and est.get('annual_rate'):
             six = f", 6 months: £{est['six_month_rate']}" if est.get('six_month_rate') else ''
             out['vc_tax']['estimate'] = f"(est. annual tax: £{est['annual_rate']}{six})"
+    # paint246: the MOT history, as motoreg shows it: newest first, the mileage
+    # and its change since the test before, then Major and Advisory items.
+    history = []
+    for t in sorted(f.get('mot_tests') or [], key=lambda t: t.get('d', ''), reverse=True):
+        when = _date(t.get('d'))
+        unit = {'MI': 'miles', 'KM': 'km'}.get(str(t.get('u', '')).upper(), str(t.get('u', '')).lower())
+        try:
+            miles = int(str(t.get('o', '')).replace(',', ''))
+        except ValueError:
+            miles = None
+        caps = lambda text: text[:1].upper() + text[1:]
+        history.append({
+            'date': _shown(when) if when else t.get('d', ''), 'passed': t.get('r') == 'PASSED',
+            'miles': miles, 'unit': unit, 'mileage': f'{miles:,} {unit}'.strip() if miles is not None else '',
+            'majors': [caps(x) for k, x in t.get('f', []) if k in MAJOR_TYPES],
+            'advisories': [caps(x) for k, x in t.get('f', []) if k not in MAJOR_TYPES],
+        })
+    for i, t in enumerate(history):
+        older = history[i + 1] if i + 1 < len(history) else None
+        # Only like with like: a test read in km against one in miles is no
+        # discrepancy (motoreg compared the raw numbers).
+        if older and t['miles'] is not None and older['miles'] is not None and t['unit'] == older['unit']:
+            diff = t['miles'] - older['miles']
+            t['diff'] = f'+{diff:,}' if diff >= 0 else f'-{-diff:,}'
+            t['diff_negative'] = diff < 0
+    if history:
+        out['vc_mot_tests'] = history
     if out:
         # paint245: ULEZ. An answer stored before paint245 carries no letter, so
         # it links to TfL without a reason.

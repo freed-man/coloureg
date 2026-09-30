@@ -55,6 +55,19 @@
         align-items: center;
         gap: 6px;
     }
+    /* paint246: the MOT history, under the MOT row, collapsed until asked for */
+    .mot-history { padding: 4px 0 12px; border-bottom: 0.5px solid rgba(0, 0, 0, 0.1); }
+    .mot-toggle {
+        width: 100%; display: flex; justify-content: space-between; align-items: center; gap: 12px;
+        padding: 10px 14px; background: #f8f9fa; border: 1px solid #dee2e6; border-radius: 6px;
+        font-family: inherit; font-size: 18px; font-weight: 500; color: #212529; text-align: left;
+    }
+    .mot-toggle-title { display: inline-flex; align-items: center; gap: 10px; }
+    .mot-toggle-action { display: inline-flex; align-items: center; gap: 6px; color: #0b5ed7; font-weight: 600; font-size: 16px; }
+    .mot-toggle[aria-expanded="true"] .when-closed, .mot-toggle[aria-expanded="false"] .when-open { display: none; }
+    .mot-test { border: 1px solid #dee2e6; border-radius: 6px; padding: 12px 14px; margin-top: 8px; font-size: 15px; }
+    .mot-test-line { margin: 6px 0 4px; }
+    .mot-defect { margin: 4px 0 0 14px; display: flex; gap: 8px; align-items: baseline; }
     .paint-card {
         font-family: 'IBM Plex Sans', sans-serif;
         overflow: hidden;
@@ -377,6 +390,25 @@
                             <span class="vehicle-status">{% if vc_mot.ok %}<i class="fas fa-check-circle text-success" aria-hidden="true"></i><span class="text-success">{{ vc_mot.label }}</span>{% elif vc_mot.ok is None %}<i class="fas fa-info-circle text-muted" aria-hidden="true"></i><span class="text-muted">{{ vc_mot.label }}</span>{% else %}<i class="fas fa-times-circle text-danger" aria-hidden="true"></i><span class="text-danger">{{ vc_mot.label }}</span>{% endif %}</span>
                             {% if vc_mot.detail %}<span class="vehicle-sub">{{ vc_mot.detail }}</span>{% endif %}
                         </span>
+                    </div>
+                    {% endif %}
+                    {% if vc_mot_tests %}
+                    {% comment %} paint246: the MOT history under the MOT row, collapsed until asked for. {% endcomment %}
+                    <div class="mot-history">
+                        <button class="mot-toggle collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#motHistory" aria-expanded="false" aria-controls="motHistory">
+                            <span class="mot-toggle-title"><img src="{% static 'images/mot.png' %}" alt="" height="30">MOT History ({{ vc_mot_tests|length }})</span>
+                            <span class="mot-toggle-action"><span class="when-closed">Show <i class="fas fa-chevron-down" aria-hidden="true"></i></span><span class="when-open">Hide <i class="fas fa-chevron-up" aria-hidden="true"></i></span></span>
+                        </button>
+                        <div class="collapse" id="motHistory">
+                            {% for t in vc_mot_tests %}
+                            <div class="mot-test">
+                                {% if t.passed %}<span class="badge bg-success">PASSED</span>{% else %}<span class="badge bg-danger">FAILED</span>{% endif %}
+                                <div class="mot-test-line"><strong>{{ t.date }}</strong>{% if t.mileage %}<span class="text-muted"> &middot; {{ t.mileage }}</span>{% if t.diff %}{% if t.diff_negative %}<span class="text-danger small"> <i class="fas fa-exclamation-triangle" aria-hidden="true"></i> {{ t.diff }}, mileage discrepancy</span>{% else %}<span class="text-muted small"> ({{ t.diff }})</span>{% endif %}{% endif %}{% endif %}</div>
+                                {% if t.majors %}<div class="mt-2"><span class="badge bg-danger">Major</span></div>{% for d in t.majors %}<div class="mot-defect text-danger"><i class="fas fa-times-circle" aria-hidden="true"></i><span>{{ d }}</span></div>{% endfor %}{% endif %}
+                                {% if t.advisories %}<div class="mt-2"><span class="badge bg-warning text-dark">Advisory</span></div>{% for d in t.advisories %}<div class="mot-defect"><i class="fas fa-exclamation-circle text-warning" aria-hidden="true"></i><span>{{ d }}</span></div>{% endfor %}{% endif %}
+                            </div>
+                            {% endfor %}
+                        </div>
                     </div>
                     {% endif %}
                     {% if vc_tax %}
