@@ -20,7 +20,7 @@ from datetime import date, datetime
 from django.db import close_old_connections
 
 from lookup.services.http import get_session
-from lookup.services.tax_rates import get_annual_tax
+from lookup.services.tax_rates import TAX_YEAR, get_annual_tax
 
 logger = logging.getLogger(__name__)
 
@@ -130,6 +130,7 @@ def facts(dvla, mot, lez=None):
         'fuel': dvla.get('fuelType') or '',
         'reg_month': dvla.get('monthOfFirstRegistration') or '',
         'engine_cc': dvla.get('engineCapacity'),
+        'type_approval': dvla.get('typeApproval') or '',          # paint248: M1 is a car
     }
     # paint246: the MOT tests, kept small: date, result, mileage, expiry, and each
     # defect's type and text.
@@ -153,6 +154,78 @@ def facts(dvla, mot, lez=None):
         elif status in ('busy', 'error'):
             out['lez_error'] = status
     return {k: v for k, v in out.items() if v not in (None, '')}
+
+
+# -- the tax estimate (paint248) -----------------------------------------------
+#
+# CHECKED AGAINST DVLA's V149 FOR 1 APRIL 2026 (every figure in tax_rates.py,
+# and the rules below). Shown only when every rule that decides it is known;
+# otherwise nothing is shown rather than a figure that might be wrong:
+#   * cars only (type approval M1): vans and motorcycles have their own rates;
+#   * only within the table's own tax year, so it never goes stale after April;
+#   * the dates that move a car between systems need the month (1 March 2001,
+#     1 April 2017) or the day (23 March 2006, for band K); the MOT service
+#     gives the day, DVLA only the month;
+#   * a vehicle built before 1 January of the tax year's start less 40 years
+#     is historic: exempt;
+#   * a car first registered on or after 1 April 2017 pays £440 more for 5
+#     years from its second licence if its list price was over £40,000 (£50,000
+#     for a zero-emission car first registered on or after 1 April 2025). The
+#     list price is not known here, so the higher figure is shown beside it
+#     while that can apply.
+SUPPLEMENT_12, SUPPLEMENT_6 = 640, 352          # V149: the standard rate with the £440 added
+
+
+def _money(value):
+    return f'£{value:,.2f}'.replace('.00', '')
+
+
+def tax_estimate(f, today):
+    year_start = int(TAX_YEAR[:4])
+    if not (date(year_start, 4, 1) <= today <= date(year_start + 1, 3, 31)):
+        return ''
+    try:
+        built = int(f.get('year'))
+    except (TypeError, ValueError):
+        built = None
+    if built and built < year_start - 40:
+        return '(historic vehicle: exempt from tax)'
+    if str(f.get('type_approval', '')).upper() != 'M1':
+        return ''
+    exact = _date(f.get('first_registered'))
+    if exact:
+        reg_year, reg_month = exact.year, exact.month
+    else:
+        try:
+            reg_year, reg_month = (int(x) for x in str(f.get('reg_month', '')).split('-')[:2])
+        except (TypeError, ValueError):
+            return ''
+    co2 = f.get('co2')
+    if reg_year < 2017 and co2 is not None and co2 > 225 and (reg_year, reg_month) == (2006, 3):
+        if not exact:
+            return ''                           # band K turns on the day in March 2006
+        if exact < date(2006, 3, 23):
+            co2 = 225
+    try:
+        est = get_annual_tax(co2, f.get('fuel', ''), reg_year, reg_month, f.get('engine_cc'))
+    except Exception:
+        return ''
+    if not est or not est.get('annual_rate'):
+        return ''
+    text = f"est. annual tax: {_money(est['annual_rate'])}"
+    if est.get('six_month_rate'):
+        text += f", 6 months: {_money(est['six_month_rate'])}"
+    registered = exact or date(reg_year, reg_month, 1)
+    if registered >= date(2017, 4, 1):
+        try:
+            ends = registered.replace(year=registered.year + 6)
+        except ValueError:                      # 29 February
+            ends = registered.replace(year=registered.year + 6, day=28)
+        if today < ends:
+            limit = 50000 if (str(f.get('fuel', '')).upper() == 'ELECTRICITY' and registered >= date(2025, 4, 1)) else 40000
+            text += (f"; {_money(SUPPLEMENT_12)}, 6 months: {_money(SUPPLEMENT_6)}, "
+                     f"if its list price was over {_money(limit)}")
+    return f'({text})'
 
 
 # -- display (motoreg's wording) ----------------------------------------------
@@ -195,7 +268,16 @@ def countdown(target, today, on_the_day):
 
 
 def display(f, today=None):
-    """Everything the results page shows, from the stored facts."""
+    """Everything the results page shows, from the stored facts. paint248: it
+    never raises: a fact it cannot read hides the new rows, never the page."""
+    try:
+        return _display(f, today)
+    except Exception:
+        logger.exception('vehicle checks could not be shown')
+        return {}
+
+
+def _display(f, today=None):
     today = today or date.today()
     f = f or {}
     out = {}
@@ -238,18 +320,13 @@ def display(f, today=None):
         else:
             out['vc_tax'] = {'ok': False, 'label': tstatus,
                              'detail': f'(expired {_shown(tdue)}, {countdown(tdue, today, "due today")})' if tdue else ''}
-        reg_year, reg_month = None, None
         try:
-            reg_year, reg_month = (int(x) for x in str(f.get('reg_month', '')).split('-')[:2])
-        except (TypeError, ValueError):
-            reg_year = f.get('year')
-        try:
-            est = get_annual_tax(f.get('co2'), f.get('fuel', ''), reg_year, reg_month, f.get('engine_cc'))
+            estimate = tax_estimate(f, today)
         except Exception:
-            est = None
-        if est and est.get('annual_rate'):
-            six = f", 6 months: £{est['six_month_rate']}" if est.get('six_month_rate') else ''
-            out['vc_tax']['estimate'] = f"(est. annual tax: £{est['annual_rate']}{six})"
+            logger.exception('tax estimate failed')
+            estimate = ''
+        if estimate:
+            out['vc_tax']['estimate'] = estimate
     # paint246: the MOT history, as motoreg shows it: newest first, the mileage
     # and its change since the test before, then Major and Advisory items.
     history = []

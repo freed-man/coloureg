@@ -344,10 +344,7 @@
                     {% if vc_year %}
                     <div class="vehicle-row">
                         <span class="vehicle-label">Year</span>
-                        <span class="vehicle-value vehicle-value-stack">
-                            <span>{{ vc_year }}</span>
-                            {% if vc_age %}<span class="vehicle-sub">{{ vc_age }}</span>{% endif %}
-                        </span>
+                        <span class="vehicle-value">{{ vc_year }}{% if vc_age %} {{ vc_age }}{% endif %}</span>
                     </div>
                     {% endif %}
                     {% if engine_description %}
@@ -377,10 +374,7 @@
                     {% if vc_v5c %}
                     <div class="vehicle-row">
                         <span class="vehicle-label">V5C issued</span>
-                        <span class="vehicle-value vehicle-value-stack">
-                            <span>{{ vc_v5c }}</span>
-                            <span class="vehicle-sub">{{ vc_v5c_ago }}</span>
-                        </span>
+                        <span class="vehicle-value">{{ vc_v5c }} {{ vc_v5c_ago }}</span>
                     </div>
                     {% endif %}
                     {% if vc_mot %}
