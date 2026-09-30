@@ -19,6 +19,7 @@ from datetime import date, datetime
 
 from django.db import close_old_connections
 
+from lookup.services.http import get_session
 from lookup.services.tax_rates import get_annual_tax
 
 logger = logging.getLogger(__name__)
@@ -26,6 +27,47 @@ logger = logging.getLogger(__name__)
 _POOL = ThreadPoolExecutor(max_workers=4, thread_name_prefix='vehicle-checks')
 WAIT_SECONDS = 4          # the most collect() waits, once the lookup reaches it
 ASKMID_URL = 'https://ownvehicle.askmid.com/'
+
+# paint245: ULEZ, as motoreg answers it: Transport Scotland's emissions checker,
+# asked the same way its own page asks. Scotland's LEZs and London's ULEZ set the
+# same standard for cars and vans (Euro 4 petrol, Euro 6 diesel), so its
+# compliant / not compliant answers London's question too; anything else links
+# to TfL's checker with the reason.
+LEZ_URL = 'https://vehicleemissionscheck.service.gov.scot/api'
+LEZ_TIMEOUT = 8
+TFL_ULEZ_URL = 'https://tfl.gov.uk/modes/driving/check-your-vehicle/'
+ULEZ_NOTICES = {
+    'u': 'not recognised by the emissions checker',
+    'busy': 'emissions checker busy',
+    'error': "emissions checker didn't answer",
+    'unclear': 'no automatic answer for this vehicle',
+}
+
+
+def fetch_lez(registration):
+    """(status, letter): ('ok', 'c'|'n'|'e'), ('not_found', 'u'), ('busy', ''), ('error', '')."""
+    try:
+        r = get_session().post(LEZ_URL, json={'vrn': registration}, timeout=LEZ_TIMEOUT,
+                               headers={'User-Agent': 'coloureg (vehicle details)'})
+    except Exception as exc:
+        logger.warning('LEZ checker unreachable: %s', exc)
+        return 'error', ''
+    if r.status_code == 429:
+        return 'busy', ''
+    if r.status_code != 200:
+        logger.warning('LEZ checker returned HTTP %s', r.status_code)
+        return 'error', ''
+    try:
+        letter = r.json()['vehicleResult'][0]['s']
+    except (ValueError, KeyError, IndexError, TypeError):
+        logger.warning('LEZ checker sent an unexpected reply')
+        return 'error', ''
+    if letter == 'u':
+        return 'not_found', 'u'
+    if letter not in ('c', 'e', 'n'):
+        logger.warning('LEZ checker sent an unknown status %r', letter)
+        return 'error', ''
+    return 'ok', letter
 
 
 def _in_thread(fn, registration):
@@ -38,11 +80,13 @@ def _in_thread(fn, registration):
         close_old_connections()
 
 
-def start(registration, get_dvla, get_mot):
-    """Ask DVLA and the MOT service in the background; returns the handles."""
+def start(registration, get_dvla, get_mot, get_lez=None):
+    """Ask DVLA, the MOT service and (paint245) the emissions checker in the
+    background; returns the handles."""
     try:
         return (_POOL.submit(_in_thread, get_dvla, registration),
-                _POOL.submit(_in_thread, get_mot, registration))
+                _POOL.submit(_in_thread, get_mot, registration),
+                _POOL.submit(_in_thread, get_lez, registration) if get_lez else None)
     except Exception:
         logger.warning('vehicle checks could not start', exc_info=True)
         return None
@@ -62,11 +106,12 @@ def collect(handles, wait=WAIT_SECONDS):
     if not handles:
         return {}
     deadline = datetime.now().timestamp() + wait
-    dvla, mot = (_result(f, deadline) for f in handles)
-    return facts(dvla if isinstance(dvla, dict) else None, mot if isinstance(mot, dict) else None)
+    dvla, mot, lez = (list(_result(f, deadline) for f in handles) + [None, None, None])[:3]
+    return facts(dvla if isinstance(dvla, dict) else None, mot if isinstance(mot, dict) else None,
+                 lez if isinstance(lez, tuple) else None)
 
 
-def facts(dvla, mot):
+def facts(dvla, mot, lez=None):
     """What is kept with the answer: DVLA's and the MOT service's own values."""
     dvla, mot = dvla or {}, mot or {}
     out = {
@@ -83,6 +128,12 @@ def facts(dvla, mot):
         'reg_month': dvla.get('monthOfFirstRegistration') or '',
         'engine_cc': dvla.get('engineCapacity'),
     }
+    if lez:
+        status, letter = lez
+        if letter:
+            out['lez'] = letter
+        elif status in ('busy', 'error'):
+            out['lez_error'] = status
     return {k: v for k, v in out.items() if v not in (None, '')}
 
 
@@ -182,5 +233,16 @@ def display(f, today=None):
             six = f", 6 months: £{est['six_month_rate']}" if est.get('six_month_rate') else ''
             out['vc_tax']['estimate'] = f"(est. annual tax: £{est['annual_rate']}{six})"
     if out:
+        # paint245: ULEZ. An answer stored before paint245 carries no letter, so
+        # it links to TfL without a reason.
+        letter = f.get('lez', '')
+        if letter == 'c':
+            out['vc_ulez'] = {'ok': True, 'label': 'Compliant'}
+        elif letter == 'n':
+            out['vc_ulez'] = {'ok': False, 'label': 'Not compliant'}
+        else:
+            notice = (ULEZ_NOTICES['u'] if letter == 'u' else ULEZ_NOTICES['unclear'] if letter
+                      else ULEZ_NOTICES.get(f.get('lez_error', ''), ''))
+            out['vc_ulez'] = {'ok': None, 'link': TFL_ULEZ_URL, 'notice': f'({notice})' if notice else ''}
         out['vc_insurance_url'] = ASKMID_URL
     return out

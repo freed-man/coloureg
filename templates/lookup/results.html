@@ -389,6 +389,17 @@
                         </span>
                     </div>
                     {% endif %}
+                    {% if vc_ulez %}
+                    <div class="vehicle-row">
+                        <span class="vehicle-label">ULEZ</span>
+                        <span class="vehicle-value vehicle-value-stack">
+                            {% if vc_ulez.ok %}<span class="vehicle-status"><i class="fas fa-check-circle text-success" aria-hidden="true"></i><span class="text-success">{{ vc_ulez.label }}</span></span>
+                            {% elif vc_ulez.ok is False %}<span class="vehicle-status"><i class="fas fa-times-circle text-danger" aria-hidden="true"></i><span class="text-danger">{{ vc_ulez.label }}</span></span>
+                            {% else %}<a href="{{ vc_ulez.link }}" target="_blank" rel="noopener noreferrer" class="text-decoration-none">Check on TfL <i class="fas fa-external-link-alt small" aria-hidden="true"></i></a>
+                            {% if vc_ulez.notice %}<span class="vehicle-sub">{{ vc_ulez.notice }}</span>{% endif %}{% endif %}
+                        </span>
+                    </div>
+                    {% endif %}
                     {% if vc_insurance_url %}
                     <div class="vehicle-row">
                         <span class="vehicle-label">Insurance</span>

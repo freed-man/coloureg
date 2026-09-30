@@ -418,6 +418,10 @@ def _CHECKS_MOT(registration):
     return _REAL_MOT(registration)
 
 
+def _CHECKS_LEZ(registration):
+    return vehicle_checks.fetch_lez(registration)       # paint245: the ULEZ answer
+
+
 def _timed_call(name, registration, fn):
     """Run an external call and log how long it took (paint27).
 
@@ -1099,7 +1103,7 @@ def index(request):
         # paint244: YEAR, V5C, MOT AND TAX need DVLA and the MOT service, which
         # the VDG path below only calls when VDG leaves a gap. Asked in the
         # background now; picked up when the answer is stored.
-        _checks = vehicle_checks.start(registration, _CHECKS_DVLA, _CHECKS_MOT)
+        _checks = vehicle_checks.start(registration, _CHECKS_DVLA, _CHECKS_MOT, _CHECKS_LEZ)
         vdg_data = None
         # Whether VDG gave us an ANSWER — including a definite "no such
         # vehicle" — as distinct from failing to respond at all. Read at the
