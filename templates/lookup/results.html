@@ -50,6 +50,15 @@
         font-weight: 500;
         font-size: 14px;
     }
+    /* paint250: a value and its bracketed detail on one line, the detail lighter */
+    .vehicle-inline {
+        display: inline-flex;
+        flex-wrap: wrap;
+        justify-content: flex-end;
+        align-items: baseline;
+        column-gap: 6px;
+        text-align: right;
+    }
     .vehicle-status {
         display: inline-flex;
         align-items: center;
@@ -346,25 +355,25 @@
                     {% if vc_year %}
                     <div class="vehicle-row">
                         <span class="vehicle-label">Year</span>
-                        <span class="vehicle-value">{{ vc_year }}{% if vc_age %} {{ vc_age }}{% endif %}</span>
+                        <span class="vehicle-value vehicle-inline"><span>{{ vc_year }}</span>{% if vc_age %}<span class="vehicle-sub">{{ vc_age }}</span>{% endif %}</span>
                     </div>
                     {% endif %}
                     {% if engine_description %}
                     <div class="vehicle-row">
                         <span class="vehicle-label">Engine</span>
-                        <span class="vehicle-value">{{ engine_description }}</span>
+                        <span class="vehicle-value vehicle-inline">{% if engine_main %}<span>{{ engine_main }}</span>{% endif %}{% if engine_extra %}<span class="vehicle-sub">{{ engine_extra }}</span>{% endif %}</span>
                     </div>
                     {% endif %}
                     {% if fuel_type %}
                     <div class="vehicle-row">
                         <span class="vehicle-label">Fuel</span>
-                        <span class="vehicle-value">{{ fuel_type }}</span>
+                        <span class="vehicle-value vehicle-inline">{% if fuel_main %}<span>{{ fuel_main }}</span>{% endif %}{% if fuel_extra %}<span class="vehicle-sub">{{ fuel_extra }}</span>{% endif %}</span>
                     </div>
                     {% endif %}
                     {% if transmission %}
                     <div class="vehicle-row">
                         <span class="vehicle-label">Transmission</span>
-                        <span class="vehicle-value">{{ transmission }}</span>
+                        <span class="vehicle-value vehicle-inline">{% if transmission_main %}<span>{{ transmission_main }}</span>{% endif %}{% if transmission_extra %}<span class="vehicle-sub">{{ transmission_extra }}</span>{% endif %}</span>
                     </div>
                     {% endif %}
                     <div class="vehicle-row">
@@ -376,13 +385,13 @@
                     {% if vc_v5c %}
                     <div class="vehicle-row">
                         <span class="vehicle-label">V5C issued</span>
-                        <span class="vehicle-value">{{ vc_v5c }} {{ vc_v5c_ago }}</span>
+                        <span class="vehicle-value vehicle-inline"><span>{{ vc_v5c }}</span><span class="vehicle-sub">{{ vc_v5c_ago }}</span></span>
                     </div>
                     {% endif %}
                     {% if vc_mot %}
                     <div class="vehicle-row{% if vc_mot_tests %} vehicle-row-joined{% endif %}">
                         <span class="vehicle-label">MOT</span>
-                        <span class="vehicle-value vehicle-value-stack">
+                        <span class="vehicle-value vehicle-inline">
                             <span class="vehicle-status">{% if vc_mot.ok %}<i class="fas fa-check-circle text-success" aria-hidden="true"></i><span class="text-success">{{ vc_mot.label }}</span>{% elif vc_mot.ok is None %}<i class="fas fa-info-circle text-muted" aria-hidden="true"></i><span class="text-muted">{{ vc_mot.label }}</span>{% else %}<i class="fas fa-times-circle text-danger" aria-hidden="true"></i><span class="text-danger">{{ vc_mot.label }}</span>{% endif %}</span>
                             {% if vc_mot.detail %}<span class="vehicle-sub">{{ vc_mot.detail }}</span>{% endif %}
                         </span>
@@ -411,8 +420,7 @@
                     <div class="vehicle-row">
                         <span class="vehicle-label">Tax</span>
                         <span class="vehicle-value vehicle-value-stack">
-                            <span class="vehicle-status">{% if vc_tax.ok %}<i class="fas fa-check-circle text-success" aria-hidden="true"></i><span class="text-success">{{ vc_tax.label }}</span>{% else %}<i class="fas fa-times-circle text-danger" aria-hidden="true"></i><span class="text-danger">{{ vc_tax.label }}</span>{% endif %}</span>
-                            {% if vc_tax.detail %}<span class="vehicle-sub">{{ vc_tax.detail }}</span>{% endif %}
+                            <span class="vehicle-inline"><span class="vehicle-status">{% if vc_tax.ok %}<i class="fas fa-check-circle text-success" aria-hidden="true"></i><span class="text-success">{{ vc_tax.label }}</span>{% else %}<i class="fas fa-times-circle text-danger" aria-hidden="true"></i><span class="text-danger">{{ vc_tax.label }}</span>{% endif %}</span>{% if vc_tax.detail %}<span class="vehicle-sub">{{ vc_tax.detail }}</span>{% endif %}</span>
                             {% if vc_tax.estimate %}<span class="vehicle-sub">{{ vc_tax.estimate }}</span>{% endif %}
                         </span>
                     </div>
@@ -420,7 +428,7 @@
                     {% if vc_ulez %}
                     <div class="vehicle-row">
                         <span class="vehicle-label">ULEZ</span>
-                        <span class="vehicle-value vehicle-value-stack">
+                        <span class="vehicle-value vehicle-inline">
                             {% if vc_ulez.ok %}<span class="vehicle-status"><i class="fas fa-check-circle text-success" aria-hidden="true"></i><span class="text-success">{{ vc_ulez.label }}</span></span>
                             {% elif vc_ulez.ok is False %}<span class="vehicle-status"><i class="fas fa-times-circle text-danger" aria-hidden="true"></i><span class="text-danger">{{ vc_ulez.label }}</span></span>
                             {% else %}<a href="{{ vc_ulez.link }}" target="_blank" rel="noopener noreferrer" class="text-decoration-none">Check on TfL <i class="fas fa-external-link-alt small" aria-hidden="true"></i></a>

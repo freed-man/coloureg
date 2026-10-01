@@ -212,7 +212,7 @@ def tax_estimate(f, today):
         return ''
     if not est or not est.get('annual_rate'):
         return ''
-    text = f"est. annual tax: {_money(est['annual_rate'])}"
+    text = f"annual tax: {_money(est['annual_rate'])}"          # paint250: DVLA's rate, not an estimate
     if est.get('six_month_rate'):
         text += f", 6 months: {_money(est['six_month_rate'])}"
     registered = exact or date(reg_year, reg_month, 1)
@@ -226,6 +226,30 @@ def tax_estimate(f, today):
             text += (f"; {_money(SUPPLEMENT_12)}, 6 months: {_money(SUPPLEMENT_6)}, "
                      f"if its list price was over {_money(limit)}")
     return f'({text})'
+
+
+# -- details in brackets (paint250) ---------------------------------------------
+#
+# VDG's engine and transmission carry a detail in brackets ("2.0L (148 bhp)",
+# "Manual (6 speed)"); the page shows it in the lighter style of the MOT and tax
+# details, on the same line.
+
+def split_bracket(text):
+    """('2.0L', '(148 bhp)'); ('', '(148 bhp)') for a bracket alone; (text, '')."""
+    t = (text or '').strip()
+    if t.startswith('(') and t.endswith(')'):
+        return '', t
+    i = t.find(' (')
+    if i > 0 and t.endswith(')'):
+        return t[:i], t[i + 1:]
+    return t, ''
+
+
+def split_details(vehicle_data):
+    out = {}
+    for key, name in (('engine_description', 'engine'), ('fuel_type', 'fuel'), ('transmission', 'transmission')):
+        out[f'{name}_main'], out[f'{name}_extra'] = split_bracket((vehicle_data or {}).get(key, ''))
+    return out
 
 
 # -- display (motoreg's wording) ----------------------------------------------
