@@ -55,6 +55,8 @@
         align-items: center;
         gap: 6px;
     }
+    /* paint249: the MOT history belongs to the MOT row, so no line between them */
+    .vehicle-row-joined { border-bottom: none; padding-bottom: 6px; }
     /* paint246: the MOT history, under the MOT row, collapsed until asked for */
     .mot-history { padding: 4px 0 12px; border-bottom: 0.5px solid rgba(0, 0, 0, 0.1); }
     .mot-toggle {
@@ -378,7 +380,7 @@
                     </div>
                     {% endif %}
                     {% if vc_mot %}
-                    <div class="vehicle-row">
+                    <div class="vehicle-row{% if vc_mot_tests %} vehicle-row-joined{% endif %}">
                         <span class="vehicle-label">MOT</span>
                         <span class="vehicle-value vehicle-value-stack">
                             <span class="vehicle-status">{% if vc_mot.ok %}<i class="fas fa-check-circle text-success" aria-hidden="true"></i><span class="text-success">{{ vc_mot.label }}</span>{% elif vc_mot.ok is None %}<i class="fas fa-info-circle text-muted" aria-hidden="true"></i><span class="text-muted">{{ vc_mot.label }}</span>{% else %}<i class="fas fa-times-circle text-danger" aria-hidden="true"></i><span class="text-danger">{{ vc_mot.label }}</span>{% endif %}</span>

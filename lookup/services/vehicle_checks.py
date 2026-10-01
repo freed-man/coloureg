@@ -294,7 +294,7 @@ def _display(f, today=None):
     v5c = _date(f.get('v5c'))
     if v5c:
         out['vc_v5c'] = _shown(v5c)
-        out['vc_v5c_ago'] = f'(approx. {span(v5c, today)} ago)'
+        out['vc_v5c_ago'] = f'({span(v5c, today)} ago)'          # paint249: no "approx.": the date is exact
     # MOT: motoreg's four cases.
     status, expiry, due = f.get('mot_status', ''), _date(f.get('mot_expiry')), _date(f.get('mot_due'))
     if status == 'Valid':
