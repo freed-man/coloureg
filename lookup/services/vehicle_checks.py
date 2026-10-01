@@ -223,8 +223,9 @@ def tax_estimate(f, today):
             ends = registered.replace(year=registered.year + 6, day=28)
         if today < ends:
             limit = 50000 if (str(f.get('fuel', '')).upper() == 'ELECTRICITY' and registered >= date(2025, 4, 1)) else 40000
-            text += (f"; {_money(SUPPLEMENT_12)}, 6 months: {_money(SUPPLEMENT_6)}, "
-                     f"if its list price was over {_money(limit)}")
+            # paint251: "or" and "when new" make the alternative read as one.
+            text += (f"; or {_money(SUPPLEMENT_12)}, 6 months: {_money(SUPPLEMENT_6)}, "
+                     f"if its list price was over {_money(limit)} when new")
     return f'({text})'
 
 
@@ -249,6 +250,18 @@ def split_details(vehicle_data):
     out = {}
     for key, name in (('engine_description', 'engine'), ('fuel_type', 'fuel'), ('transmission', 'transmission')):
         out[f'{name}_main'], out[f'{name}_extra'] = split_bracket((vehicle_data or {}).get(key, ''))
+    # paint251: DVLA's exact engine size goes first in the engine's bracket,
+    # "2.0L (1968cc, 148 bhp)". Not for an electric car, which has no cc.
+    facts_ = (vehicle_data or {}).get('vehicle_status') or {}
+    try:
+        cc = int(facts_.get('engine_cc') or 0)
+    except (TypeError, ValueError):
+        cc = 0
+    electric = (str(facts_.get('fuel', '')).upper() == 'ELECTRICITY'
+                or 'electric motor' in (out['engine_main'] + out['engine_extra']).lower())
+    if cc > 0 and not electric and (out['engine_main'] or out['engine_extra']):
+        inner = out['engine_extra'][1:-1] if out['engine_extra'] else ''
+        out['engine_extra'] = f"({cc}cc{', ' + inner if inner else ''})"
     return out
 
 
