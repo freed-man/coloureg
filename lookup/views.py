@@ -3063,6 +3063,41 @@ def _two_tone_json(make, paint_code, colour):
              'is_body': bool(p.get('is_body'))} for p in (parts or [])]
 
 
+# paint260: A MANUAL ANSWER WITH A CODE GETS ITS PICTURE. The answer email waits
+# for it, up to MANUAL_PICTURE_WAIT_S, then goes out like the copy-of-results
+# email, with the picture inline; if the picture fails or is slower than that,
+# the email goes without it (the picture still reaches the results page when
+# ready). A reply with no code gets no picture: a picture drawn from a colour
+# name alone would claim more certainty than the answer has.
+MANUAL_PICTURE_WAIT_S = 75
+MANUAL_PICTURE_POLL_S = 1.0
+
+
+def _manual_answer_picture(search, paint_code):
+    """The car's picture for a manual answer as a JPEG, or None. Never raises."""
+    try:
+        from lookup.models import CarPicture
+        from lookup.services import ai_pictures
+        # start_for files the picture under the registration and THIS code, so the
+        # row carries it first; a failed send puts the old value back.
+        Search.objects.filter(id=search.id).update(paint_code=paint_code)
+        search.paint_code = paint_code
+        pic = ai_pictures.start_for(search.id)
+        if pic is None:
+            return None
+        deadline = time.monotonic() + MANUAL_PICTURE_WAIT_S
+        while True:
+            status = CarPicture.objects.filter(id=pic.id).values_list('status', flat=True).first()
+            if status == CarPicture.READY:
+                return _email_picture(search)
+            if status != CarPicture.PENDING or time.monotonic() >= deadline:
+                return None
+            time.sleep(MANUAL_PICTURE_POLL_S)
+    except Exception:
+        logger.exception('manual answer picture failed for search %s', getattr(search, 'id', None))
+        return None
+
+
 def _start_car_picture(search_id):
     """paint218: queue the AI picture for a finished lookup. Never raises."""
     try:
@@ -4650,6 +4685,8 @@ def submit_manual_lookup(request):
         vdg_colour=search.colour,
     )
 
+    _previous_code = search.paint_code or ''           # paint260: put back if the send fails
+    _picture = None
     if no_code:
         # Third outcome: tell them plainly that no code exists, with the
         # explanation the admin wrote. Different email entirely — showing a
@@ -4673,8 +4710,11 @@ def submit_manual_lookup(request):
             colour_name=paint_description_clean,
         )
     else:
+        # paint260: the car picture, as the copy-of-results email carries it.
+        _picture = _manual_answer_picture(search, paint_code)
         sent = send_user_paint_code(
             to_email=search.email,
+            car_picture_jpeg=_picture,
             registration=search.registration,
             vehicle_title=search.vehicle_title,
             vin_masked=mask_vin(search.vin),
@@ -4695,7 +4735,8 @@ def submit_manual_lookup(request):
     if not sent:
         # Release the claim so the request can be retried after a transient email
         # failure (we set manual_lookup_completed=True optimistically above).
-        Search.objects.filter(id=search_id).update(manual_lookup_completed=False)
+        Search.objects.filter(id=search_id).update(manual_lookup_completed=False,
+                                                   paint_code=_previous_code)    # paint260
         return JsonResponse({
             'success': False,
             'error': f'Failed to send email to {search.email}. Please try again.',
@@ -4720,6 +4761,7 @@ def submit_manual_lookup(request):
         no_code_available=no_code,
         recovery_name_only=False,
         email_sent=True,
+        email_picture=bool(_picture),                                     # paint260
         manual_note=message,
     )
 
