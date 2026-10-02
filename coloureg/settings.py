@@ -523,7 +523,10 @@ if not DEBUG and SENTRY_DSN:
         # Drop events for paths under /admin/ or /admin-stats/
         request = event.get('request') or {}
         url = request.get('url') or ''
-        if '/admin/' in url or '/admin-stats/' in url:
+        # paint262: only Django's own admin pages are dropped. A crash on the
+        # stats page is a real bug the operator would otherwise see only as an
+        # error page, with nothing recorded to diagnose it from.
+        if '/admin/' in url:
             return None
 
         # Drop 404s — Django raises Http404 which becomes a logger event

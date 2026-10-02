@@ -445,7 +445,8 @@ def remember_name_only(registration, payload):
     try:
         caches['default'].set(_name_only_key(registration), clean, NAME_ONLY_TTL_SECONDS)
     except Exception:
-        pass
+        # paint262: logged without the registration (a plate is personal data).
+        logger.warning('name-only answer could not be remembered for the hour', exc_info=True)
 
 
 def get_name_only_payload(registration):

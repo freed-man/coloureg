@@ -1889,8 +1889,9 @@ def warm(request):
         with connection.cursor() as cursor:
             cursor.execute('SELECT 1')
             cursor.fetchone()
-    except Exception:
-        pass
+    except Exception as exc:
+        # paint262: still 204, but a database that does not answer is worth a line.
+        logger.warning('warm: the database did not answer (%s)', type(exc).__name__)
     return HttpResponse(status=204)
 
 
@@ -3104,7 +3105,9 @@ def _start_car_picture(search_id):
         from lookup.services import ai_pictures
         ai_pictures.start_for(search_id)
     except Exception:
-        pass
+        # paint262: still never raises, but no longer silent: without this a
+        # picture that never appeared left no trace of why.
+        logger.warning('car picture could not be started for search %s', search_id, exc_info=True)
 
 
 def _record_recovery(search_id, telemetry):
