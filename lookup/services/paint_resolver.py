@@ -94,7 +94,7 @@ def _enrich_from_lookup(result, make, model=None, vdg_colour=None,
             # seven days and return it to the customer as status "found". An
             # external audit found it by reading; running it confirmed all
             # four destinations: the row was '' and the other three were XXX.
-            # T80KAF, a 2026 Audi, was shown XXX on 22 Sep while the log line
+            # [car 38], a 2026 Audi, was shown XXX on 22 Sep while the log line
             # recorded the refusal as a success.
             #
             # Refused HERE because every provider answer passes through this
@@ -104,14 +104,14 @@ def _enrich_from_lookup(result, make, model=None, vdg_colour=None,
             #
             # BOTH FIELDS CLEARED. A placeholder means the source has no
             # answer, so a name travelling with it is not evidence either:
-            # BO55LDP was delivered XXX with "Blue" on a car registered GREY.
+            # [car 5] was delivered XXX with "Blue" on a car registered GREY.
             # paint146's intent was that a failed lookup at least offers the
             # customer a free manual one, and an empty result does exactly
             # that. Returned before the catalogue is consulted, because the
             # catalogue holds a junk row for XXX that would name it.
             #
             # Manual fulfilments never reach this function, so an operator's
-            # deliberate N/A (YD70XAA, an AJS motorcycle) is untouched.
+            # deliberate N/A ([car 29], an AJS motorcycle) is untouched.
             logger.info('placeholder code refused at source: %s %s',
                         (make or '')[:30], code)
             result['paint_code'] = ''
@@ -433,7 +433,7 @@ PL24_BACKSTOP_S = float(os.environ.get('PL24_BACKSTOP_S', '10'))
 #: Shipped at 15s and moved to 20s on 10 Sep, on the first evidence from the
 #: pipeline as it now runs rather than as it used to:
 #:
-#:   SO71HKE completed in 16.7s. The backstop fired at 15, pl24 answered
+#:   [car 25] completed in 16.7s. The backstop fired at 15, pl24 answered
 #:   shortly after with the same C3Y, and 5 credits bought 1.7 seconds. At 20s
 #:   that call never happens. It was the first backstop firing in production
 #:   and it was pure waste.
@@ -455,13 +455,13 @@ EZYVIN_BACKSTOP_S = float(os.environ.get('EZYVIN_BACKSTOP_S', '20'))
 #
 # The two are second chances for different reasons:
 #   VDG      — a failed first call has WARMED their upstream cache, so the
-#              second read is sub-second. GL68VPN timed out twice at 40s and
+#              second read is sub-second. [car 12] timed out twice at 40s and
 #              then returned B85 in 0.74s. Before the vehicle/paint split this
 #              mechanism supplied 214 of 866 answers (25%); the split removed it
 #              because nothing warms the paint route any more.
 #   One Auto — not a retry at all but a COLLECTION. 'still_fetching' means their
 #              job was running server-side when we stopped polling, and results
-#              are held 24 hours. PF68MYJ recorded still_fetching in coloureg
+#              are held 24 hours. [car 22] recorded still_fetching in coloureg
 #              and then answered in 685ms on the next call.
 #
 # 5s, because the call should be fast OR NOT AT ALL: a warm read is sub-second,
@@ -504,6 +504,8 @@ def release_recovery_slot():
 # service is on the same platform/region, so a slow connect means trouble), and
 # allow the read to run up to the overall budget for the scrape itself.
 _PL24_HTTP_TIMEOUT = (5.0, PL24_TIMEOUT)
+_PL24_RETRY_PAUSE_S = 1.0       # paint258: the pause before the one retry
+_PL24_RETRY_WITHIN_S = 10.0     # paint258: only a failure this fast is retried
 
 
 # Counter of retry-billing writes still in flight. Production does not need
@@ -690,7 +692,7 @@ def _vdg_retry(registration, telemetry=None, search_id=None, race_over=None):
         # A TIMEOUT LANDS HERE, and the second chance below must still run
         # (paint84). It previously sat inside this try, so an exception jumped
         # straight past it — leaving the stage unreachable on the one case that
-        # justified building it. GL68VPN timed out twice at 40s and then
+        # justified building it. [car 12] timed out twice at 40s and then
         # returned B85 in 0.74s; that is a timeout followed by a warm read, and
         # the code could not reach the warm read.
         #
@@ -802,7 +804,7 @@ def _vdg_retry(registration, telemetry=None, search_id=None, race_over=None):
         #
         # It matters when the FIRST call returned nothing at all. A VDG timeout
         # yields no vehicle and no VIN, but the retry (which needs only the
-        # registration) comes back with the full bundle. YF23KRN on 12 Aug is
+        # registration) comes back with the full bundle. [car 30] on 12 Aug is
         # the case: first pass died at 46s with nothing, retry returned C31 —
         # so a complete response was in hand, and the row still shows vin=''.
         # The VIN then reads blank on the results page and in the email.
@@ -849,7 +851,7 @@ _VW_COMMERCIAL_MODELS = (
 # "unknown make", so the lookup dies at its routing gate before a browser
 # opens. Mercedes-Benz resolves and returns paint (6 of 54 lookups); every
 # Mercedes-AMG lookup has failed (3 of 3), and partslink24 was confirmed by
-# hand to hold the code for WF70WZR.
+# hand to hold the code for [car 27].
 #
 # DELIBERATELY NOT HERE — checked, and the ownership guess was wrong:
 #   Cupra   pl24 has its OWN Cupra catalogue, not SEAT. 10/10 resolved anyway.
@@ -1203,7 +1205,7 @@ def is_special_order_code(code):
 def is_placeholder_code(make, code):
     """True when a code is a scraper artefact rather than a paint code.
 
-    paint146. `BO55LDP`, a 2013 Audi A8 registered GREY, was delivered paint
+    paint146. `[car 5]`, a 2013 Audi A8 registered GREY, was delivered paint
     code `XXX` with the description `Blue` — twice, once via One Auto in
     September and again via pl24 tonight. `XXX` is a wildcard the source uses
     where it has no answer, and the catalogue carries a junk row for it.
@@ -1228,7 +1230,7 @@ def is_placeholder_code(make, code):
     Measured over four months: blocks 1 of 1,943 delivered answers, and loses
     ZERO whose description matched the registered colour.
 
-    NOT APPLIED TO MANUAL FULFILMENTS — see the caller. `YD70XAA` is an AJS
+    NOT APPLIED TO MANUAL FULFILMENTS — see the caller. `[car 29]` is an AJS
     motorcycle where the operator entered `N/A` with 'Metallic Blue': no code
     exists for that bike, the colour does, and that is a real answer.
 
@@ -1256,7 +1258,7 @@ def _hex_family(hex_value):
 
     paint143. The gate matched on COLOUR WORDS IN THE NAME, so a row whose name
     does not happen to say its colour was refused however obviously right it
-    was. SG13VEW, 14 Sep: a Honda CR-V registered Red, mmw returned R-539P, the
+    was. [car 24], 14 Sep: a Honda CR-V registered Red, mmw returned R-539P, the
     catalogue holds R539P as 'Molten Lava Pearl' at #8E1F13. Plainly red, and
     invisible — molten, lava and pearl are not colour words. That is 21,645
     rows, 18% of the catalogue, carrying a hex and no colour word.
@@ -1377,7 +1379,7 @@ def mmw_code_validates(make, code, dvla_colour):
     answer is never served unverified. The check: does OUR catalogue's name for
     that code describe the same KIND of colour the car is registered as.
 
-    `WP09UOU` on 14 Sep is why this exists. mmw returned Z9Y for an Audi A3
+    `[car 28]` on 14 Sep is why this exists. mmw returned Z9Y for an Audi A3
     registered BLACK:
 
         Z9Y   Dark Grey Matt        no hex, no models, 1 source
@@ -1410,7 +1412,7 @@ def mmw_code_validates(make, code, dvla_colour):
     #   PREFIX   mmw sends A7N;      the catalogue has LA7N
     #   HYPHEN   mmw sends NH-731P;  the catalogue has NH731P
     #
-    # The hyphen case cost a real answer on 14 Sep: SA10RXD, a Honda CR-V this
+    # The hyphen case cost a real answer on 14 Sep: [car 23], a Honda CR-V this
     # pipeline had failed three times, came back NH-731P and was refused as
     # unknown. NH731P is in the catalogue as Crystal Black Pearl (#030405) on a
     # car registered BLACK — it would have validated. The catalogue is
@@ -1450,7 +1452,7 @@ def mmw_code_validates(make, code, dvla_colour):
             # reason to say yes.
             continue
         # paint143: the name says nothing. Fall back to the hex, which is what
-        # made SG13VEW's 'Molten Lava Pearl' refusable despite being #8E1F13 on
+        # made [car 24]'s 'Molten Lava Pearl' refusable despite being #8E1F13 on
         # a car registered Red.
         if _hex_family(row.hex) in want:
             return candidate
@@ -1567,27 +1569,42 @@ def _pl24_lookup(vin, make, category=None, search_id=None):
     if category:
         params['category'] = category
     headers = {'X-API-Key': PL24_API_KEY} if PL24_API_KEY else {}
-    try:
-        resp = get_session().get(
-            f'{PL24_BASE_URL}/lookup-paint',
-            params=params, headers=headers, timeout=_PL24_HTTP_TIMEOUT,
-        )
-    except requests.exceptions.Timeout as exc:
-        # coloureg's own timeout (PL24_TIMEOUT), shorter than pl24's 120s, so
-        # pl24's 504 and its reason can never arrive in this case.
-        _record_worker_result(
-            search_id, pl24_outcome='client_timeout',
-            pl24_error=(f'{type(exc).__name__}: coloureg gave up after '
-                        f'{PL24_TIMEOUT:g}s')[:200])
-        return None
-    except requests.exceptions.ConnectionError as exc:
-        _record_worker_result(search_id, pl24_outcome='client_connection_error',
-                              pl24_error=type(exc).__name__[:200])
-        return None
-    except requests.exceptions.RequestException as exc:
-        _record_worker_result(search_id, pl24_outcome='client_error',
-                              pl24_error=type(exc).__name__[:200])
-        return None
+    _started = time.monotonic()
+    for _attempt in (1, 2):
+        try:
+            resp = get_session().get(
+                f'{PL24_BASE_URL}/lookup-paint',
+                params=params, headers=headers, timeout=_PL24_HTTP_TIMEOUT,
+            )
+            break
+        except requests.exceptions.Timeout as exc:
+            # coloureg's own timeout (PL24_TIMEOUT), shorter than pl24's 120s, so
+            # pl24's 504 and its reason can never arrive in this case.
+            _record_worker_result(
+                search_id, pl24_outcome='client_timeout',
+                pl24_error=(f'{type(exc).__name__}: coloureg gave up after '
+                            f'{PL24_TIMEOUT:g}s')[:200])
+            return None
+        except requests.exceptions.ConnectionError as exc:
+            # paint258: ONE QUICK RETRY after a connection that failed fast. pl24
+            # is our own service on Railway's private network; a failed
+            # connection there is a restart or a dropped socket, and it cost
+            # three customers their answer in a fortnight (29 Sep: a Punto,
+            # with Ezyvin timing out too). Not the session-level retry that F12
+            # forbids: one explicit, logged attempt, only for pl24 (free, ours),
+            # only for a fast failure, never for a timeout.
+            if _attempt == 1 and time.monotonic() - _started < _PL24_RETRY_WITHIN_S:
+                logger.warning('pl24 connection failed (%s); retrying once', type(exc).__name__)
+                time.sleep(_PL24_RETRY_PAUSE_S)
+                continue
+            _record_worker_result(
+                search_id, pl24_outcome='client_connection_error',
+                pl24_error=(type(exc).__name__ + (' (after one retry)' if _attempt == 2 else ''))[:200])
+            return None
+        except requests.exceptions.RequestException as exc:
+            _record_worker_result(search_id, pl24_outcome='client_error',
+                                  pl24_error=type(exc).__name__[:200])
+            return None
     # paint144: READ THE BODY BEFORE GIVING UP ON THE STATUS. pl24 puts `slot`
     # on its 502 and 504 bodies too, and that is where it is most informative —
     # a failure tells you nothing until you know WHICH session failed. Bailing
@@ -1674,7 +1691,7 @@ def _oneauto_leg(vin, make, model, year, search_id, sink, race_over=None):
     Anything it learned — including what it SPENT — is lost unless the worker
     writes it itself.
 
-    That mattered immediately. GY12CYO, the first BMW through the new pool, had
+    That mattered immediately. [car 13], the first BMW through the new pool, had
     pl24 answer in 1.64s while One Auto needs ~6s; the row recorded
     oneauto_cost NULL even though the call was made. An unrecorded charge is
     invisible to the daily budget breaker, which is the one thing standing
@@ -1689,7 +1706,7 @@ def _oneauto_leg(vin, make, model, year, search_id, sink, race_over=None):
     )
     # SECOND CHANCE (paint73) — a COLLECTION rather than a retry. 'still_fetching'
     # means their job was running server-side when we stopped polling, and One
-    # Auto hold a result for 24 hours. PF68MYJ recorded still_fetching in
+    # Auto hold a result for 24 hours. [car 22] recorded still_fetching in
     # coloureg and then answered in 685ms on the very next call.
     #
     # ONLY on still_fetching. A 206 is a settled "no data" and a 200 has already
@@ -1798,7 +1815,7 @@ def resolve_paint(registration, vin, make, category=None, telemetry=None, model=
     # of ex.submit sites below. Asserting the literal 3 would pass while a
     # fourth leg reintroduced the starvation this fixed.
     #
-    # LF73YMU showed exactly that: One Auto polled to its 30s budget while pl24,
+    # [car 16] showed exactly that: One Auto polled to its 30s budget while pl24,
     # submitted by the backstop at 10s, sat waiting for a free worker. It only
     # started once One Auto released one, and the lookup took 36.7s to return a
     # code pl24 could have supplied in about one. The backstop had fired
@@ -1977,7 +1994,7 @@ def resolve_paint(registration, vin, make, category=None, telemetry=None, model=
             # no code, and the customer gets the manual-lookup offer for a car
             # we already paid to identify.
             #
-            # Y288SCT, a 2001 Fiat Punto on 10 Sep, is exactly that. The job
+            # [car 36], a 2001 Fiat Punto on 10 Sep, is exactly that. The job
             # finished and returned a code when run by hand; the pipeline gave
             # up at 20s with roughly 20s of race deadline still unused, and was
             # charged 5 credits for nothing.

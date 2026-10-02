@@ -35,8 +35,8 @@ VDG_LOOKUP_ENDPOINT = f'{VDG_BASE_URL}/lookup'
 # pl24 and One Auto — which both need a VIN — could not run either. Seven of
 # eight logged timeouts were BMW Group.
 #
-# MEASURED on five cold registrations (GL68VPN, BG73YXY, AK60ADO, NL75FVP,
-# PF19XGM): the vehicle half answers in 0.46-0.57s at £0.08 with QueryTimeMs
+# MEASURED on five cold registrations ([car 12], [car 3], [car 1], [car 20],
+# [car 21]): the vehicle half answers in 0.46-0.57s at £0.08 with QueryTimeMs
 # 5-8, while the paint half takes 10-26s cold and on BMW runs to a 502 from
 # VDG's own gateway at ~60s. Same total cost — £0.08 + £0.30 is the £0.38 the
 # bundle charged — and a miss costs £0.08 instead of £0.16.
@@ -59,7 +59,7 @@ VDG_PAINT_PACKAGE = 'PaintCodeDetails'
 # WHY 35 NOW, MEASURED. The 45 bought nothing. Across all traffic there is not a
 # single first-pass success in the 30-45s band: the slowest successful first pass
 # anywhere is 29.5s, and everything above 30s is a timeout. Meanwhile a BMW 320
-# (YF23KRN, 12 Aug) burned the full 45s, returned nothing, and was then answered
+# ([car 30], 12 Aug) burned the full 45s, returned nothing, and was then answered
 # by the recovery retry moments later with C31 — 46.2s of customer wait for a
 # code that was available almost immediately.
 #
@@ -726,7 +726,7 @@ def paint_lookup(registration, billing_sink=None, timeout=None):
     """Paint only. Slow, and the half that fails.
 
     Cold this takes 10-26s and on BMW runs to an HTTP 502 from VDG's own gateway
-    at ~60s (FN16UEY 60.45s, MF67UTK 60.44s, KN26UBX succeeded at 55.45s with
+    at ~60s ([car 10] 60.45s, [car 17] 60.44s, [car 15] succeeded at 55.45s with
     QueryTimeMs 24970). Warm it returns in under a second. A vehicle with no
     paint answers fast and is FULLY REFUNDED, so a miss is free.
 

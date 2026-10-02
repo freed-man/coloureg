@@ -8,8 +8,8 @@ the steering wheel is on, and saves it in car_pictures/ at the top of the repo
 it. Run from the repo folder, env.py makes that PRODUCTION's lookups and
 supplies the keys.
 
-    python manage.py car_pictures G66LWP
-    python manage.py car_pictures G66LWP VE67NLP          several cars
+    python manage.py car_pictures AB12CDE
+    python manage.py car_pictures AB12CDE CD34EFG          several cars
 
 Each picture is saved as car_pictures/REG.png.
 """

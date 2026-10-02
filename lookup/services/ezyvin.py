@@ -61,7 +61,7 @@ _HTTP_TIMEOUT_S = 15
 #: "Imola yellow (1T)", "Cyber Orange 3c (Pn4jf)", "Steel Grey (279)".
 #:
 #: The leading character may be an UNDERSCORE. Jaguar returned '(_PJABZ)' on
-#: Y607AOG — a field separator that leaked into the value. Requiring the first
+#: [car 32] — a field separator that leaked into the value. Requiring the first
 #: character to be alphanumeric made that whole match fail, so the code was
 #: dropped and only the name survived. _clean_code trims the underscore after.
 _RE_PAREN = re.compile(r'\(([A-Z0-9_][A-Z0-9/_\- ]{0,14})\)\s*$', re.I)
@@ -88,7 +88,7 @@ def _is_code(candidate):
 
     Not a rare shape. 54 rows of history carry a finish in brackets — 'Panther
     Black (Metallic)', 'Shadow Black (Mica)', 'Chili Red (Metallic)' — and every
-    one would have produced a bogus code on reaching this leg. BG14KVP in June
+    one would have produced a bogus code on reaching this leg. [car 2] in June
     already held code 'METALLIC' from a different path, so the shape had bitten
     once before this leg existed.
 
@@ -151,7 +151,7 @@ def _title_if_shouting(s):
 def _clean_code(code):
     """Trim a code to what a paint counter would recognise.
 
-    Jaguar returned '_PJABZ' with a leading underscore on Y607AOG (8 Sep) —
+    Jaguar returned '_PJABZ' with a leading underscore on [car 32] (8 Sep) —
     a field separator that leaked into the value. Strip the padding, keep the
     inside: 'Z2Z2/H5X' must survive intact because the slash is meaningful.
     """
@@ -413,7 +413,7 @@ def lookup(vin, cost_sink=None, race_over=None, budget=None):
         # not be counted together when judging whether this source earns its
         # place.
         #
-        # Seen ONCE, on `DA25ALO`, a 2025 Vauxhall Grandland Ultimate, on
+        # Seen ONCE, on `[car 6]`, a 2025 Vauxhall Grandland Ultimate, on
         # 10 Sep — 5 credits for nothing. (This comment previously said "a
         # Corsa EV". It was never a Corsa: no Corsa has ever reached Ezyvin.
         # Written from memory, corrected 14 Sep against the data.)

@@ -5,8 +5,8 @@ colour in the catalogue does not change a picture already drawn. This redraws
 it now, from the latest lookup of that registration that found a code, with
 today's catalogue colours, and replaces the stored file.
 
-    python manage.py redraw_car_picture WN23XYZ
-    python manage.py redraw_car_picture WN23XYZ AB12CDE
+    python manage.py redraw_car_picture CD34EFG
+    python manage.py redraw_car_picture CD34EFG AB12CDE
 
 Costs one picture and one wheel check, about 1.7 cents, per car.
 """

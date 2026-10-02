@@ -831,7 +831,7 @@ class PaintLookup(models.Model):
         #      pair that already resolved moved. Additive by construction: the
         #      fill at paint_resolver.py only runs `if code and not desc`, so a
         #      provider-supplied name is never overwritten.
-        #   2. RECOVERING. ML23UCP (DS4, 27 Aug) arrived name-only as
+        #   2. RECOVERING. [car 19] (DS4, 27 Aug) arrived name-only as
         #      'Pearlescent White' and delivered nothing. Under the alias it
         #      resolves to KWE via the model-narrowing rule — EFC lists only
         #      ds3 variants, KWE lists ds4 — which is the whole point of
@@ -1803,7 +1803,7 @@ class PaintLookup(models.Model):
             'magnetic metallic': 'PN4DQ',
             # 'Moondust Silver' (= 'Gris Lunaire') is one silver (#C0C1C3) under 7
             # codes the matcher can't collapse. PNZJB is PROVIDER-CONFIRMED — VDG-retry
-            # returned it for a Moondust Silver Ford (reg Y25SBS, code straight from the
+            # returned it for a Moondust Silver Ford (reg [car 37], code straight from the
             # provider, enriched_from='' so not DB-filled) — so it's anchored like
             # PNJAB, not a guess. (Parked earlier on a hex-spread doubt; the exact-name
             # codes all agree on #C0C1C3, the spread was just colorndrive's 'Gris
@@ -3073,7 +3073,7 @@ class SiteConfig(models.Model):
         paint93. is_category_unsupported above says ABSENCE MEANS NOTHING, and
         it is right to: a blank category is not evidence of anything. But blank
         is common — 124 of 2,070 real lookups, 6% — and bikes kept walking
-        through it. R852XRA (1998 Suzuki, 2 Sep) and ERZ223 (2002 Yamaha,
+        through it. [car 33] (1998 Suzuki, 2 Sep) and [car 40] (2002 Yamaha,
         7 Sep) both ran the full pipeline as if they were cars because VDG
         returned no ModelClassification for either.
 
@@ -3086,7 +3086,7 @@ class SiteConfig(models.Model):
         GATING BY WHEELPLAN, NOT BY MAKE. Measured over 71 lookups on
         bike-capable marques: 9 came back L3 and were gated correctly, and of
         the 13 with a blank category FOUR resolved to a real paint code —
-        FG20NMJ is a Honda Jazz, a car. A make list containing Yamaha or Suzuki
+        [car 9] is a Honda Jazz, a car. A make list containing Yamaha or Suzuki
         would have refused those four and every Suzuki Swift after them.
 
         '3 WHEEL' IS DELIBERATELY NOT GATED. It covers both a Piaggio MP3 and a

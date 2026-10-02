@@ -834,7 +834,7 @@ def index(request):
             return redirect('paige')
 
         # paint209: THE SAME BROWSER, THE SAME PLATE, WHILE ITS LOOKUP IS STILL
-        # RUNNING. ML19NKH, 24 Sep: searched again 12 seconds into a 15-second
+        # RUNNING. [car 18], 24 Sep: searched again 12 seconds into a 15-second
         # recovery. The cache is written only when a lookup finishes, so the
         # repeat ran a second full lookup and came back with another, equally
         # right, notation of the same paint (PAB, then 1AG). 33 such repeats in
@@ -900,7 +900,7 @@ def index(request):
             # nothing until the entry expired, and a gate added AFTER an entry
             # was cached never applied to it at all.
             #
-            # That is how ERZ223 slipped through. First looked up on 7 Sep,
+            # That is how [car 40] slipped through. First looked up on 7 Sep,
             # before the wheelplan gate existed, and cached with the verdict
             # False. Every repeat replayed that False, so a motorbike ran the
             # full pipeline again — two VDG paint calls and a One Auto call —
@@ -1231,8 +1231,8 @@ def index(request):
 
             # paint93: VDG answered, so the DVLA block below never runs — DVLA
             # is a FALLBACK for when VDG fails, not an every-lookup call. That
-            # is why the class gate has been blind: R852XRA (1998 Suzuki) and
-            # ERZ223 (2002 Yamaha) both had VDG identify the make and return NO
+            # is why the class gate has been blind: [car 33] (1998 Suzuki) and
+            # [car 40] (2002 Yamaha) both had VDG identify the make and return NO
             # ModelClassification, and nothing else was ever asked.
             #
             # So ask, but only when there is a hole to fill. 124 of 2,070 real
@@ -1249,7 +1249,7 @@ def index(request):
             # paint154: ALSO ask when the MAKE is missing, not only the category.
             #
             # VDG can return a vehicle — year, colour, VIN — with no make at all.
-            # `J105LTP`, a 1991 Mitsubishi Delica import, is the only instance in
+            # `[car 34]`, a 1991 Mitsubishi Delica import, is the only instance in
             # four months and 2,333 branch-one lookups, so this is rare rather
             # than routine. But the payload below ALREADY CONTAINS the make and
             # this branch was discarding it, while the VDG-failed branch takes it
@@ -1285,7 +1285,7 @@ def index(request):
                         make = fix_make_case(
                             str(_cls.get('make') or '').strip().title())
 
-            # paint207: VDG ANSWERED WITHOUT A MODEL. DK15FWO, 25 Sep: a 2015
+            # paint207: VDG ANSWERED WITHOUT A MODEL. [car 7], 25 Sep: a 2015
             # Mazda came back with VIN, make and year but an empty model, so
             # the page read "2015 Mazda". DVLA's enquiry service never returns
             # a model; the MOT history API does, and the fallback branch below
@@ -1590,7 +1590,7 @@ def index(request):
             # paint94: the DVLA wheelplan, so a cache-served repeat can decide
             # the CLASS gate for itself. Without it the cached branch had no way
             # to know a bike was a bike and replayed a verdict reached before
-            # the wheelplan gate existed — ERZ223 was cached on 7 Sep with
+            # the wheelplan gate existed — [car 40] was cached on 7 Sep with
             # make_not_automated False and kept serving that False afterwards.
             'wheelplan': wheelplan,
             # paint244: DVLA's and the MOT service's own facts (dates, statuses);
@@ -2244,7 +2244,7 @@ def _lookup_status(request, search_id):
         # the VDG retry alone. Caching that as an exhausted miss is wrong: we
         # never asked the source most likely to have the answer.
         #
-        # FX25DVB on 13 Aug is the case. First pass timed out at 35.8s, so no
+        # [car 11] on 13 Aug is the case. First pass timed out at 35.8s, so no
         # vehicle and no VIN; the retry also failed; the miss was cached. Two
         # retries seconds later were refused from the negative cache. The row
         # was then deleted by hand and the SAME lookup succeeded in 878ms —
@@ -2805,7 +2805,7 @@ def _record_paint_hit(search_id, paint_code, paint_description, source, telemetr
         search = Search.objects.get(id=search_id)
     except (Search.DoesNotExist, ValueError, TypeError):
         return
-    # paint146: a placeholder is not an answer. BO55LDP, a 2013 Audi A8
+    # paint146: a placeholder is not an answer. [car 5], a 2013 Audi A8
     # registered GREY, was delivered code `XXX` described as `Blue` — via One
     # Auto in September and again via pl24 tonight. `XXX` is the wildcard a
     # source returns when it has nothing, and the catalogue carries a junk row
@@ -2813,7 +2813,7 @@ def _record_paint_hit(search_id, paint_code, paint_description, source, telemetr
     # lookup at least offers them a free manual one.
     #
     # ONLY PROVIDER ANSWERS. Manual fulfilments are the operator's judgement:
-    # `YD70XAA` is an AJS motorcycle entered as `N/A` with 'Metallic Blue',
+    # `[car 29]` is an AJS motorcycle entered as `N/A` with 'Metallic Blue',
     # where no code exists and the colour does. That is a real answer.
     #
     # Measured over four months this blocks ONE of 1,943 delivered answers and
@@ -2841,12 +2841,12 @@ def _record_paint_hit(search_id, paint_code, paint_description, source, telemetr
     # Compared case-insensitively and against the prefixed form too, because
     # mmw sends the SHORT code the site holds (A7N) while the pipeline may
     # deliver the catalogue's (LA7N). Counting that as disagreement would
-    # understate mmw badly — measured live on WP09UOU, where mmw sent Z9Y and
+    # understate mmw badly — measured live on [car 28], where mmw sent Z9Y and
     # the right answer was LZ9Y.
     if search.mmw_code and paint_code:
         # NORMALISE PUNCTUATION BEFORE COMPARING. mmw sends whatever the site
         # holds and the catalogue punctuates differently, so a hyphen alone
-        # would read as disagreement — BJ18VLT sent B-570M, was delivered
+        # would read as disagreement — [car 4] sent B-570M, was delivered
         # B570M, and recorded mmw_agreed False. That is the same code.
         #
         # Under-reporting here is worse than it sounds: it understates mmw
@@ -2924,7 +2924,7 @@ def _record_paint_hit(search_id, paint_code, paint_description, source, telemetr
         search.provider = Search.PROVIDER_EZYVIN
     elif source == 'mmw':
         # paint142, and paint98 repeated. A win recorded as 'none' is a leg
-        # that cannot be seen in any per-source total — BJ18VLT was delivered
+        # that cannot be seen in any per-source total — [car 4] was delivered
         # B570M by mmw and stored provider 'none', so the dashboard showed a
         # code from nowhere.
         search.provider = Search.PROVIDER_MMW
@@ -3685,7 +3685,7 @@ def admin_stats(request):
                 # Lookups went on showing the answer you had just said was
                 # wrong. And the operator table is only consulted when the
                 # catalogue MISSES, so for a code the catalogue already holds
-                # the correction reached nobody at all: R6EDL's JBC1927 sits in
+                # the correction reached nobody at all: [car 39]'s JBC1927 sits in
                 # the catalogue as Zircon Mica, pl24 said "Zircon", and pl24's
                 # own name wins because enrichment only fills missing fields.
                 #
@@ -4177,7 +4177,7 @@ def admin_stats(request):
     # that rather than a decision about makeless lookups.
     #
     # The cost: a lookup where VDG ANSWERED with a vehicle but no make was
-    # invisible. `J105LTP` on 15 Sep is the only one in four months — a 1991
+    # invisible. `[car 34]` on 15 Sep is the only one in four months — a 1991
     # grey import with an 11-character chassis number, `P25W0607988`. VDG gave a
     # year, a colour and a VIN, charged £0.06, and the row could not be seen in
     # the table headed "All recent lookups".

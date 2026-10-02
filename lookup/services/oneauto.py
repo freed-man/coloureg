@@ -66,7 +66,7 @@ BUILD_DECODE_COST = 1.50
 
 # Total wall-clock budget for one lookup INCLUDING polls.
 #
-# 20s WAS WRONG and was measured to be so: PF68MYJ, a cold BMW, recorded
+# 20s WAS WRONG and was measured to be so: [car 22], a cold BMW, recorded
 # oneauto_outcome 'still_fetching' — polled to the budget and cut off, not
 # failed. The "~6s" figure that produced 20 came from vehicles that happened to
 # answer fast; the same coverage run had Nissan and Fiat still returning 202 at
