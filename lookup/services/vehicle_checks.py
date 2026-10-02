@@ -312,13 +312,18 @@ KM_TO_MILES = 0.621371
 _NICE_STEPS = (100, 200, 250, 500, 1000, 2000, 2500, 5000, 10000, 20000, 25000, 50000, 100000, 200000)
 
 
+VISIT_DAYS = 31        # paint264: tests within a month of the one before are one visit
+
+
 def mileage_chart(tests):
-    """paint263: positions as PERCENTAGES of the plot, not pixels. The page gives
-    the plot a fixed height (150px) and lets only its width follow the screen; the
-    line is a stretchable drawing (preserveAspectRatio="none", strokes that do not
-    stretch), while the points and labels are ordinary page elements placed by
-    percentage, so their size never changes. paint261 drew everything at 340x190
-    and scaled it, which on a wide screen made the chart and its labels huge."""
+    """The MOT mileage chart: positions as PERCENTAGES of a fixed-height plot
+    (paint263), with one marker per VISIT (paint264). Tests within a month of the
+    one before are one visit (a fail and its retest, the same day or weeks
+    later); the marker sits on the visit's last test and shows a green tick or a
+    red cross for each test in it, in order, so no key is needed. A month, not
+    the 10 working days of the free retest: repairs can wait for parts, and on a
+    long history tests weeks apart would sit on top of each other anyway; normal
+    MOTs are a year apart, so nothing unrelated is joined."""
     pts = []
     for t in tests or []:
         when = _date(t.get('d'))
@@ -329,11 +334,19 @@ def mileage_chart(tests):
         if when is None or reading < 0:
             continue
         km = str(t.get('u', '')).upper() == 'KM'
-        pts.append({'when': when, 'miles': round(reading * KM_TO_MILES) if km else reading, 'km': km,
-                    'passed': t.get('r') == 'PASSED', 'recorded': f"{reading:,} {'km' if km else 'miles'}"})
-    pts.sort(key=lambda p: p['when'])
+        pts.append({'when': when, 'stamp': str(t.get('d', '')), 'miles': round(reading * KM_TO_MILES) if km else reading,
+                    'km': km, 'passed': t.get('r') == 'PASSED', 'recorded': f"{reading:,} {'km' if km else 'miles'}"})
+    # Oldest first; on the same day a fail comes before the pass that followed it
+    # (unless the stored times say otherwise).
+    pts.sort(key=lambda p: (p['when'], p['stamp'], p['passed']))
     if len(pts) < 2:
         return None
+    visits = []
+    for p in pts:
+        if visits and (p['when'] - visits[-1]['tests'][-1]['when']).days <= VISIT_DAYS:
+            visits[-1]['tests'].append(p)
+        else:
+            visits.append({'tests': [p]})
     lo, hi = pts[0]['when'] - timedelta(days=45), pts[-1]['when'] + timedelta(days=45)
     days = max((hi - lo).days, 1)
     highest = max(p['miles'] for p in pts) or 1
@@ -343,38 +356,46 @@ def mileage_chart(tests):
     YP = lambda v: 100 - v / ymax * 100
     pct = lambda v: f'{v:.2f}'
     last_by_unit = {}
-    for p in pts:
-        p['xv'], p['yv'] = XP(p['when']), YP(p['miles'])
-        p['x'], p['y'], p['date'] = pct(p['xv']), pct(p['yv']), _shown(p['when'])
-        before = last_by_unit.get(p['km'])
-        p['drop'] = before is not None and p['miles'] < before
-        last_by_unit[p['km']] = p['miles']
-        p['label'] = f"{p['date']}, {'passed' if p['passed'] else 'failed'}, {p['recorded']}"
-        if p['drop']:
-            p['label'] += ', lower than the test before'
-    # The drawing's own units: 1000 wide, 100 high, stretched to the plot's size.
-    line = ' '.join(f"{p['xv'] * 10:.1f},{p['yv']:.2f}" for p in pts)
-    area = (f"M{pts[0]['xv'] * 10:.1f},100 L" + ' L'.join(f"{p['xv'] * 10:.1f},{p['yv']:.2f}" for p in pts)
-            + f" L{pts[-1]['xv'] * 10:.1f},100 Z")
+    for v in visits:
+        tests_ = v['tests']
+        last = tests_[-1]
+        v['xv'], v['yv'] = XP(last['when']), YP(last['miles'])
+        v['x'], v['y'] = pct(v['xv']), pct(v['yv'])
+        v['results'] = [t['passed'] for t in tests_]
+        before = last_by_unit.get(last['km'])
+        v['drop'] = before is not None and last['miles'] < before
+        last_by_unit[last['km']] = last['miles']
+        if all(t['when'] == tests_[0]['when'] for t in tests_):
+            first_line = f"{_shown(last['when'])} · " + ', then '.join('passed' if t['passed'] else 'failed' for t in tests_)
+        else:
+            first_line = ' · '.join(f"{_shown(t['when'])} {'passed' if t['passed'] else 'failed'}" for t in tests_)
+        v['lines'] = [first_line, last['recorded']] + (['Lower than the test before'] if v['drop'] else [])
+        v['label'] = ', '.join(v['lines'])
+    line = ' '.join(f"{v['xv'] * 10:.1f},{v['yv']:.2f}" for v in visits)
+    area = (f"M{visits[0]['xv'] * 10:.1f},100 L" + ' L'.join(f"{v['xv'] * 10:.1f},{v['yv']:.2f}" for v in visits)
+            + f" L{visits[-1]['xv'] * 10:.1f},100 Z")
     years = list(range(lo.year + 1, hi.year + 1))
     span_years = (hi - lo).days / 365.25
     every = 1 if span_years <= 6 else 2 if span_years <= 12 else 5
+    marks_every = 1 if span_years <= 12 else 2
+    year_marks = [pct(XP(date(y, 1, 1))) for y in years[::marks_every]]
     xticks = [{'label': str(y), 'x': XP(date(y, 1, 1))} for y in years[::every]]
     xticks = [{'label': t['label'], 'x': pct(t['x'])} for t in xticks if 4 <= t['x'] <= 96]
     if not xticks:
-        xticks = [{'label': str(pts[0]['when'].year), 'x': pts[0]['x']}]
+        xticks = [{'label': str(pts[0]['when'].year), 'x': visits[0]['x']}]
     fmt = lambda v: '0' if v == 0 else (f'{v / 1000:g}k' if v >= 1000 else str(v))
     yticks = [{'label': fmt(v), 'y': pct(YP(v))} for v in range(0, ymax + 1, step)]
     gap = (pts[-1]['when'] - pts[0]['when']).days / 365.25
     rise = pts[-1]['miles'] - pts[0]['miles']
     avg = round(rise / gap / 100) * 100 if gap >= 0.5 and rise > 0 else 0
-    for p in pts:
-        del p['when']
+    for v in visits:
+        for k in ('xv', 'yv', 'tests'):
+            del v[k]
     return {
-        'points': pts, 'line': line, 'area': area, 'xticks': xticks, 'yticks': yticks,
-        'avg': f'{avg:,}' if avg else '', 'has_fail': any(not p['passed'] for p in pts),
-        'summary': (f"Mileage at {len(pts)} MOT tests, from {pts[0]['recorded']} in {pts[0]['date'][-4:]} "
-                    f"to {pts[-1]['recorded']} in {pts[-1]['date'][-4:]}"),
+        'visits': visits, 'tests': len(pts), 'line': line, 'area': area, 'years': year_marks,
+        'xticks': xticks, 'yticks': yticks, 'avg': f'{avg:,}' if avg else '',
+        'summary': (f"Mileage at {len(pts)} MOT tests, from {pts[0]['recorded']} in {pts[0]['when'].year} "
+                    f"to {pts[-1]['recorded']} in {pts[-1]['when'].year}"),
     }
 
 

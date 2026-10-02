@@ -80,24 +80,22 @@
     .mileage-chart { padding: 0 0 4px; }
     .mileage-chart-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; flex-wrap: wrap; }
     .mileage-chart-title { font-weight: 600; font-size: 15px; }
-    .mileage-chart-avg, .mileage-chart-key { color: #6c757d; font-size: 13px; }
-    .mileage-chart-key { display: flex; gap: 14px; margin: 2px 0 2px; }
-    .mileage-chart-key .mk { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 5px; vertical-align: -1px; box-sizing: border-box; }
-    .mk-pass { background: #0b5ed7; } .mk-fail { border: 2px solid #dc3545; background: #fff; }
-    .mileage-chart-plot { position: relative; height: 150px; margin: 8px 6px 22px 34px; }
+    .mileage-chart-avg { color: #6c757d; font-size: 13px; }
+    /* paint264: one marker per visit (a tick or cross per test, no key), a dashed line where each year starts, 13px labels */
+    .mileage-chart-plot { position: relative; height: 150px; margin: 18px 16px 26px 40px; }
     .mc-svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
     .mc-grid { stroke: #e9ecef; stroke-width: 1; }
     .mc-area { fill: rgba(11, 94, 215, 0.08); }
     .mc-line { fill: none; stroke: #0b5ed7; stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
-    .mc-ylab, .mc-xlab { position: absolute; font-size: 11px; line-height: 1; color: #6c757d; white-space: nowrap; }
-    .mc-ylab { right: calc(100% + 6px); transform: translateY(-50%); }
-    .mc-xlab { top: calc(100% + 6px); transform: translateX(-50%); }
-    .mc-pt { position: absolute; width: 24px; height: 24px; margin: 0; padding: 0; border: 0; background: none; transform: translate(-50%, -50%); cursor: pointer; }
-    .mc-pt::before { content: ''; position: absolute; left: 50%; top: 50%; width: 9px; height: 9px; transform: translate(-50%, -50%); border-radius: 50%; box-sizing: border-box; }
-    .mc-pass::before { background: #0b5ed7; border: 2px solid #fff; }
-    .mc-fail::before { width: 10px; height: 10px; background: #fff; border: 2px solid #dc3545; }
-    .mc-pt:focus { outline: none; } .mc-pt:focus-visible::before { box-shadow: 0 0 0 2px #212529; }
-    .mc-tip { position: absolute; transform: translate(-50%, calc(-100% - 10px)); background: #212529; color: #fff; font-size: 13px; line-height: 1.35; padding: 5px 8px; border-radius: 6px; white-space: nowrap; pointer-events: none; z-index: 2; }
+    .mc-year { position: absolute; top: -10px; bottom: -5px; width: 0; border-left: 1px dashed #adb5bd; }
+    .mc-ylab, .mc-xlab { position: absolute; font-size: 13px; line-height: 1; color: #6c757d; white-space: nowrap; }
+    .mc-ylab { right: calc(100% + 8px); transform: translateY(-50%); }
+    .mc-xlab { top: calc(100% + 9px); transform: translateX(-50%); }
+    .mc-visit { position: absolute; display: inline-flex; gap: 2px; margin: 0; padding: 2px; border: 0; border-radius: 12px; background: #fff; transform: translate(-50%, -50%); cursor: pointer; line-height: 1; }
+    .mc-res { display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px; border-radius: 50%; color: #fff; font-size: 10px; box-shadow: 0 0 0 1.5px #fff; }
+    .mc-ok { background: #198754; } .mc-no { background: #dc3545; }
+    .mc-visit:focus { outline: none; } .mc-visit:focus-visible { box-shadow: 0 0 0 2px #212529; }
+    .mc-tip { position: absolute; transform: translate(-50%, calc(-100% - 14px)); background: #212529; color: #fff; font-size: 13px; line-height: 1.4; padding: 6px 9px; border-radius: 7px; white-space: nowrap; pointer-events: none; z-index: 2; }
     .mc-tip .mc-drop { color: #ffb3ba; }
     /* paint246: the MOT history, under the MOT row, collapsed until asked for */
     .mot-history { padding: 4px 0 12px; border-bottom: 0.5px solid rgba(0, 0, 0, 0.1); }
@@ -442,16 +440,16 @@
                             {% comment %} paint261/263: every inspection with a readable mileage, pass or fail, time to scale. A fixed-height plot: the line stretches, the points and labels keep their size. {% endcomment %}
                             <div class="mileage-chart">
                                 <div class="mileage-chart-head"><span class="mileage-chart-title">Mileage at each MOT</span>{% if c.avg %}<span class="mileage-chart-avg">about {{ c.avg }} miles a year</span>{% endif %}</div>
-                                <div class="mileage-chart-key"><span><span class="mk mk-pass" aria-hidden="true"></span>Passed</span>{% if c.has_fail %}<span><span class="mk mk-fail" aria-hidden="true"></span>Failed</span>{% endif %}</div>
                                 <div class="mileage-chart-plot" role="group" aria-label="{{ c.summary }}">
                                     <svg class="mc-svg" viewBox="0 0 1000 100" preserveAspectRatio="none" aria-hidden="true" focusable="false">
                                         {% for y in c.yticks %}<line class="mc-grid" x1="0" x2="1000" y1="{{ y.y }}" y2="{{ y.y }}" vector-effect="non-scaling-stroke"></line>{% endfor %}
                                         <path class="mc-area" d="{{ c.area }}"></path>
                                         <polyline class="mc-line" points="{{ c.line }}" vector-effect="non-scaling-stroke"></polyline>
                                     </svg>
+                                    {% for x in c.years %}<span class="mc-year" style="left: {{ x }}%" aria-hidden="true"></span>{% endfor %}
                                     {% for y in c.yticks %}<span class="mc-ylab" style="top: {{ y.y }}%" aria-hidden="true">{{ y.label }}</span>{% endfor %}
                                     {% for x in c.xticks %}<span class="mc-xlab" style="left: {{ x.x }}%" aria-hidden="true">{{ x.label }}</span>{% endfor %}
-                                    {% for p in c.points %}<button type="button" class="mc-pt {% if p.passed %}mc-pass{% else %}mc-fail{% endif %}" style="left: {{ p.x }}%; top: {{ p.y }}%" aria-label="{{ p.label }}" data-label="{{ p.label }}" data-drop="{% if p.drop %}1{% endif %}"></button>{% endfor %}
+                                    {% for v in c.visits %}<button type="button" class="mc-visit" style="left: {{ v.x }}%; top: {{ v.y }}%" aria-label="{{ v.label }}" data-lines="{{ v.lines|join:'|' }}" data-drop="{% if v.drop %}1{% endif %}">{% for ok in v.results %}<span class="mc-res {% if ok %}mc-ok{% else %}mc-no{% endif %}"><i class="fas fa-{% if ok %}check{% else %}times{% endif %}" aria-hidden="true"></i></span>{% endfor %}</button>{% endfor %}
                                     <div class="mc-tip" role="status" hidden></div>
                                 </div>
                             </div>
@@ -1548,27 +1546,26 @@ window.cregReportWait();
     document.querySelectorAll('.mileage-chart-plot').forEach(function (plot) {
         var tip = plot.querySelector('.mc-tip'), shown = null;
         if (!tip) { return; }
-        function show(pt) {
-            var parts = (pt.getAttribute('data-label') || '').split(', ');
+        function show(v) {
+            var lines = (v.getAttribute('data-lines') || '').split('|');
             tip.textContent = '';
-            var first = document.createElement('div'); first.textContent = parts.slice(0, 2).join(' \u00b7 ');
-            var second = document.createElement('div'); second.textContent = parts[2] || '';
-            tip.appendChild(first); tip.appendChild(second);
-            if (pt.getAttribute('data-drop')) {
-                var third = document.createElement('div'); third.className = 'mc-drop'; third.textContent = 'Lower than the test before';
-                tip.appendChild(third);
-            }
-            tip.hidden = false; shown = pt;
+            lines.forEach(function (text, i) {
+                var row = document.createElement('div');
+                row.textContent = text;
+                if (i === 2 && v.getAttribute('data-drop')) { row.className = 'mc-drop'; }
+                tip.appendChild(row);
+            });
+            tip.hidden = false; shown = v;
             var half = tip.offsetWidth / 2, width = plot.clientWidth || 1;
-            tip.style.left = Math.max(half - 34, Math.min(width - half, pt.offsetLeft)) + 'px';    /* never past the card's edge on a phone */
-            tip.style.top = pt.offsetTop + 'px';
+            tip.style.left = Math.max(half - 40, Math.min(width - half + 16, v.offsetLeft)) + 'px';    /* never past the card's edge on a phone */
+            tip.style.top = v.offsetTop + 'px';
         }
         function hide() { tip.hidden = true; shown = null; }
-        plot.querySelectorAll('.mc-pt').forEach(function (pt) {
-            pt.addEventListener('click', function (e) { e.stopPropagation(); if (shown === pt) { hide(); } else { show(pt); } });
-            pt.addEventListener('focus', function () { show(pt); });
-            pt.addEventListener('blur', hide);
-            pt.addEventListener('keydown', function (e) { if (e.key === 'Escape') { hide(); } });
+        plot.querySelectorAll('.mc-visit').forEach(function (v) {
+            v.addEventListener('click', function (e) { e.stopPropagation(); if (shown === v) { hide(); } else { show(v); } });
+            v.addEventListener('focus', function () { show(v); });
+            v.addEventListener('blur', hide);
+            v.addEventListener('keydown', function (e) { if (e.key === 'Escape') { hide(); } });
         });
         document.addEventListener('click', function () { if (shown) { hide(); } });
     });
