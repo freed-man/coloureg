@@ -249,6 +249,31 @@ def _same_colour(name, entry, our_name):
     return bool(ours_groups) and ours_groups == their_groups
 
 
+# paint259: MAKES WHOSE OWN CODES ARE TWO CHARACTERS. Short codes are left out
+# because for most makes they are short forms that clash with real codes (VW's
+# 2T is LC9X). Chery, Omoda and Jaecoo number their paints in two characters
+# (Omoda BW Selenite White, GV, SK, CL), so for them a two-character code is the
+# real code; one character never is. Measured on bsp's list of 28 Sep against the
+# repository catalogue: it lists 24 Omoda, 20 Jaecoo and 129 Chery two-character
+# codes, of which 20, 15 and 99 were missing. Every other rule still applies.
+TWO_CHARACTER_MAKES = {'chery', 'omoda', 'jaecoo'}
+
+
+def _too_short(mfr, code):
+    return len(code) <= (1 if mfr in TWO_CHARACTER_MAKES else 2)
+
+
+def _two_character_pair(name):
+    """paint259: a name made only of two-character codes, like "Kx-Cl" (Omoda X4,
+    KX body with a CL roof): a two-tone formula, which the top-up keeps out like
+    any other two-colour code. name_is_codes() misses it, because its tokens
+    have no digits; for these makes two characters ARE a code. Measured: 8 of the
+    128 codes the change would otherwise add were exactly this, all with no
+    swatch."""
+    tokens = [t for t in re.split(r'[\s\-+/.]+', name or '') if t]
+    return len(tokens) > 1 and all(len(t) == 2 and t.isalnum() for t in tokens)
+
+
 def plan_topup(src):
     plan = Plan(src.name)
     existing, active, makes, searched = {}, defaultdict(set), set(), defaultdict(set)
@@ -273,7 +298,7 @@ def plan_topup(src):
                 plan.tally['existing code left alone: already has a swatch'] += 1
             elif 'hex' in locked:
                 plan.tally['existing code left alone: swatch locked'] += 1
-            elif len(code) <= 2:
+            elif _too_short(mfr, code):
                 plan.tally['existing code left alone: a short code (two characters or fewer)'] += 1
             elif not _same_colour(name, entry, our_name):
                 plan.tally['existing code left alone: bsp may mean another colour'] += 1
@@ -285,8 +310,11 @@ def plan_topup(src):
                 else:
                     plan.tally['existing code left alone: no usable swatch'] += 1
             continue
-        if len(code) <= 2:
+        if _too_short(mfr, code):
             plan.tally['left alone: a short code (two characters or fewer)'] += 1
+            continue
+        if mfr in TWO_CHARACTER_MAKES and _two_character_pair(name):
+            plan.tally['left alone: a two-tone pair named only by its codes'] += 1
             continue
         variants = PaintLookup.normalize_code_variants(code)
         found = any(v in active[mfr] for v in variants) or (
