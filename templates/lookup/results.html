@@ -74,20 +74,29 @@
     .tax-table th, .tax-table td { padding: 3px 0 3px 12px; text-align: right; border-top: 1px solid rgba(0, 0, 0, 0.08); font-weight: 400; }
     .tax-table thead th { border-top: none; font-weight: 600; }
     .tax-table th[scope="row"], .tax-table thead th:first-child { text-align: left; padding-left: 0; }
-    /* paint261: the mileage chart at the top of the MOT history */
-    .mileage-chart { padding: 10px 2px 6px; }
+    /* paint263: the opened MOT history sits in a panel inset from its bar; the chart
+       has a fixed height, only its width follows the screen */
+    .mot-history-panel { margin: 6px 12px 0; padding: 10px 12px; border: 1px solid rgba(0, 0, 0, 0.08); border-radius: 10px; background: #fff; }
+    .mileage-chart { padding: 0 0 4px; }
     .mileage-chart-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; flex-wrap: wrap; }
-    .mileage-chart-title { font-weight: 600; font-size: 16px; }
-    .mileage-chart-avg, .mileage-chart-key { color: #6c757d; font-size: 14px; }
-    .mileage-chart-key { display: flex; gap: 14px; margin: 2px 0 4px; }
-    .mileage-chart-key .mk { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 5px; vertical-align: -1px; }
+    .mileage-chart-title { font-weight: 600; font-size: 15px; }
+    .mileage-chart-avg, .mileage-chart-key { color: #6c757d; font-size: 13px; }
+    .mileage-chart-key { display: flex; gap: 14px; margin: 2px 0 2px; }
+    .mileage-chart-key .mk { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 5px; vertical-align: -1px; box-sizing: border-box; }
     .mk-pass { background: #0b5ed7; } .mk-fail { border: 2px solid #dc3545; background: #fff; }
-    .mileage-chart-plot { position: relative; }
-    .mileage-chart-plot svg { display: block; width: 100%; height: auto; overflow: visible; }
-    .mc-grid { stroke: #e9ecef; stroke-width: 1; } .mc-tick { fill: #6c757d; font-size: 11px; }
-    .mc-area { fill: rgba(11, 94, 215, 0.08); } .mc-line { fill: none; stroke: #0b5ed7; stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
-    .mc-pt { cursor: pointer; stroke-width: 2; } .mc-pass { fill: #0b5ed7; stroke: #fff; } .mc-fail { fill: #fff; stroke: #dc3545; }
-    .mc-pt:focus { outline: none; stroke: #212529; }
+    .mileage-chart-plot { position: relative; height: 150px; margin: 8px 6px 22px 34px; }
+    .mc-svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
+    .mc-grid { stroke: #e9ecef; stroke-width: 1; }
+    .mc-area { fill: rgba(11, 94, 215, 0.08); }
+    .mc-line { fill: none; stroke: #0b5ed7; stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+    .mc-ylab, .mc-xlab { position: absolute; font-size: 11px; line-height: 1; color: #6c757d; white-space: nowrap; }
+    .mc-ylab { right: calc(100% + 6px); transform: translateY(-50%); }
+    .mc-xlab { top: calc(100% + 6px); transform: translateX(-50%); }
+    .mc-pt { position: absolute; width: 24px; height: 24px; margin: 0; padding: 0; border: 0; background: none; transform: translate(-50%, -50%); cursor: pointer; }
+    .mc-pt::before { content: ''; position: absolute; left: 50%; top: 50%; width: 9px; height: 9px; transform: translate(-50%, -50%); border-radius: 50%; box-sizing: border-box; }
+    .mc-pass::before { background: #0b5ed7; border: 2px solid #fff; }
+    .mc-fail::before { width: 10px; height: 10px; background: #fff; border: 2px solid #dc3545; }
+    .mc-pt:focus { outline: none; } .mc-pt:focus-visible::before { box-shadow: 0 0 0 2px #212529; }
     .mc-tip { position: absolute; transform: translate(-50%, calc(-100% - 10px)); background: #212529; color: #fff; font-size: 13px; line-height: 1.35; padding: 5px 8px; border-radius: 6px; white-space: nowrap; pointer-events: none; z-index: 2; }
     .mc-tip .mc-drop { color: #ffb3ba; }
     /* paint246: the MOT history, under the MOT row, collapsed until asked for */
@@ -428,20 +437,21 @@
                             <span class="mot-toggle-title"><img src="{% static 'images/mot.png' %}" alt="" height="30">MOT History ({{ vc_mot_tests|length }})</span>
                             <span class="mot-toggle-action"><span class="when-closed">Show <i class="fas fa-chevron-down" aria-hidden="true"></i></span><span class="when-open">Hide <i class="fas fa-chevron-up" aria-hidden="true"></i></span></span>
                         </button>
-                        <div class="collapse" id="motHistory">
+                        <div class="collapse" id="motHistory"><div class="mot-history-panel">
                             {% if vc_mileage_chart %}{% with c=vc_mileage_chart %}
-                            {% comment %} paint261: every inspection with a readable mileage, pass or fail, time to scale. {% endcomment %}
+                            {% comment %} paint261/263: every inspection with a readable mileage, pass or fail, time to scale. A fixed-height plot: the line stretches, the points and labels keep their size. {% endcomment %}
                             <div class="mileage-chart">
                                 <div class="mileage-chart-head"><span class="mileage-chart-title">Mileage at each MOT</span>{% if c.avg %}<span class="mileage-chart-avg">about {{ c.avg }} miles a year</span>{% endif %}</div>
                                 <div class="mileage-chart-key"><span><span class="mk mk-pass" aria-hidden="true"></span>Passed</span>{% if c.has_fail %}<span><span class="mk mk-fail" aria-hidden="true"></span>Failed</span>{% endif %}</div>
-                                <div class="mileage-chart-plot">
-                                    <svg viewBox="0 0 {{ c.w }} {{ c.h }}" role="img" aria-label="{{ c.summary }}" focusable="false">
-                                        {% for y in c.yticks %}<line class="mc-grid" x1="{{ c.left }}" x2="{{ c.right }}" y1="{{ y.y }}" y2="{{ y.y }}"></line><text class="mc-tick" x="{{ c.ylabel_x }}" y="{{ y.y }}" dy="4" text-anchor="end">{{ y.label }}</text>{% endfor %}
-                                        {% for x in c.xticks %}<text class="mc-tick" x="{{ x.x }}" y="{{ c.xlabel_y }}" text-anchor="middle">{{ x.label }}</text>{% endfor %}
+                                <div class="mileage-chart-plot" role="group" aria-label="{{ c.summary }}">
+                                    <svg class="mc-svg" viewBox="0 0 1000 100" preserveAspectRatio="none" aria-hidden="true" focusable="false">
+                                        {% for y in c.yticks %}<line class="mc-grid" x1="0" x2="1000" y1="{{ y.y }}" y2="{{ y.y }}" vector-effect="non-scaling-stroke"></line>{% endfor %}
                                         <path class="mc-area" d="{{ c.area }}"></path>
-                                        <polyline class="mc-line" points="{{ c.line }}"></polyline>
-                                        {% for p in c.points %}<circle class="mc-pt {% if p.passed %}mc-pass{% else %}mc-fail{% endif %}" cx="{{ p.x }}" cy="{{ p.y }}" r="{% if p.passed %}4{% else %}4.5{% endif %}" tabindex="0" aria-label="{{ p.label }}" data-label="{{ p.label }}" data-drop="{% if p.drop %}1{% endif %}"><title>{{ p.label }}</title></circle>{% endfor %}
+                                        <polyline class="mc-line" points="{{ c.line }}" vector-effect="non-scaling-stroke"></polyline>
                                     </svg>
+                                    {% for y in c.yticks %}<span class="mc-ylab" style="top: {{ y.y }}%" aria-hidden="true">{{ y.label }}</span>{% endfor %}
+                                    {% for x in c.xticks %}<span class="mc-xlab" style="left: {{ x.x }}%" aria-hidden="true">{{ x.label }}</span>{% endfor %}
+                                    {% for p in c.points %}<button type="button" class="mc-pt {% if p.passed %}mc-pass{% else %}mc-fail{% endif %}" style="left: {{ p.x }}%; top: {{ p.y }}%" aria-label="{{ p.label }}" data-label="{{ p.label }}" data-drop="{% if p.drop %}1{% endif %}"></button>{% endfor %}
                                     <div class="mc-tip" role="status" hidden></div>
                                 </div>
                             </div>
@@ -454,7 +464,7 @@
                                 {% if t.advisories %}<div class="mt-2"><span class="badge bg-warning text-dark">Advisory</span></div>{% for d in t.advisories %}<div class="mot-defect"><i class="fas fa-exclamation-circle text-warning" aria-hidden="true"></i><span>{{ d }}</span></div>{% endfor %}{% endif %}
                             </div>
                             {% endfor %}
-                        </div>
+                        </div></div>
                     </div>
                     {% endif %}
                     {% if vc_tax %}
@@ -1536,9 +1546,8 @@ window.cregReportWait();
         });
     });
     document.querySelectorAll('.mileage-chart-plot').forEach(function (plot) {
-        var svg = plot.querySelector('svg'), tip = plot.querySelector('.mc-tip');
-        if (!svg || !tip) { return; }
-        var vb = (svg.getAttribute('viewBox') || '0 0 1 1').split(/\s+/), W = parseFloat(vb[2]) || 1, H = parseFloat(vb[3]) || 1, shown = null;
+        var tip = plot.querySelector('.mc-tip'), shown = null;
+        if (!tip) { return; }
         function show(pt) {
             var parts = (pt.getAttribute('data-label') || '').split(', ');
             tip.textContent = '';
@@ -1550,10 +1559,9 @@ window.cregReportWait();
                 tip.appendChild(third);
             }
             tip.hidden = false; shown = pt;
-            var plotW = plot.clientWidth || 1, half = tip.offsetWidth / 2;
-            var x = parseFloat(pt.getAttribute('cx')) / W * plotW;
-            tip.style.left = Math.max(half, Math.min(plotW - half, x)) + 'px';    /* never past the card's edge on a phone */
-            tip.style.top = (parseFloat(pt.getAttribute('cy')) / H * 100) + '%';
+            var half = tip.offsetWidth / 2, width = plot.clientWidth || 1;
+            tip.style.left = Math.max(half - 34, Math.min(width - half, pt.offsetLeft)) + 'px';    /* never past the card's edge on a phone */
+            tip.style.top = pt.offsetTop + 'px';
         }
         function hide() { tip.hidden = true; shown = null; }
         plot.querySelectorAll('.mc-pt').forEach(function (pt) {
