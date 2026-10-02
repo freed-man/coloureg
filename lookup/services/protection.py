@@ -420,6 +420,44 @@ def is_recent_miss(registration):
         return False
 
 
+# paint254: A NAME-ONLY ANSWER IS REMEMBERED FOR AN HOUR. The 7-day cache keeps
+# only answers with a code, and a recent miss is written only when there is no
+# vehicle or no answer at all, so a name with no code was neither: every retry
+# ran VDG, pl24, Ezyvin (5 credits) and mmw again for the same name. Measured
+# across all lookups to 2 Oct: 62 ended name-only, 5 were repeated within the
+# hour. A repeat now replays the same page, manual-lookup offer included, for
+# nothing; a manual answer goes into the 7-day cache, which is read first.
+NAME_ONLY_TTL_SECONDS = 60 * 60
+
+
+def _name_only_key(registration):
+    return f'lookup_name_only:{registration}'
+
+
+def remember_name_only(registration, payload):
+    """Keep this name-only results payload for NAME_ONLY_TTL_SECONDS. Never raises."""
+    from django.core.cache import caches
+    if not registration:
+        return
+    clean = dict(payload or {})
+    clean.pop('search_id', None)
+    clean.pop('paint_pending', None)
+    try:
+        caches['default'].set(_name_only_key(registration), clean, NAME_ONLY_TTL_SECONDS)
+    except Exception:
+        pass
+
+
+def get_name_only_payload(registration):
+    """The remembered name-only payload (a copy), or None. Never raises."""
+    from django.core.cache import caches
+    try:
+        found = caches['default'].get(_name_only_key(registration))
+    except Exception:
+        return None
+    return dict(found) if found else None
+
+
 def record_miss(registration):
     """Remember that this reg just failed, for VRM_NEGATIVE_TTL_SECONDS.
 

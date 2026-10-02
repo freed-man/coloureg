@@ -215,6 +215,26 @@ def _enrich_from_lookup(result, make, model=None, vdg_colour=None,
                 result['enriched_from'] = 'name'
                 if _h and not result.get('paint_hex'):
                     result['paint_hex'] = _h
+        # paint256: A NAME YOU LOCKED IS THE NAME CUSTOMERS SEE. A 2019 Citroen
+        # C3 Aircross came back from pl24 and VDG as KVG "Black Meet Kettle
+        # Paint", a garbled translation, while the catalogue has KVG as "Ink
+        # Black Metallic". No rule can spot a garbled name (they are real words),
+        # but a name the operator has locked is a decision: it replaces the
+        # provider's, unless the provider's name states a DIFFERENT colour (a
+        # code can cover two paints, and then the provider is describing the
+        # other one). A provider name that states no colour ("Sonderlackierung")
+        # gives way too.
+        if code and desc:
+            _locked = PaintLookup.lookup(make, code)
+            if (_locked is not None and 'name' in (_locked.locked_fields or [])
+                    and _locked.name and _locked.name != desc):
+                _pf = _colour_families(desc)
+                if not _pf or (_pf & _colour_families(_locked.name)):
+                    logger.info('provider name %r gives way to the locked %r for %s %s',
+                                desc, _locked.name, (make or '')[:30], code)
+                    desc = _locked.name
+                    result['paint_description'] = _locked.name
+                    result['enriched_from'] = 'name'
 
         if code and not desc:
             # code -> name (+ swatch)
@@ -319,6 +339,20 @@ def _enrich_from_lookup(result, make, model=None, vdg_colour=None,
             # catalogue could not resolve that name the first time.
             if not found_code:
                 found_code = OperatorPaintCode.code_for_name(make, desc)
+            # paint254: SEVERAL CODES, ONE PAINT. A 2026 Ford Kuga came back from
+            # pl24 and Ezyvin as "Desert Island Blue" only, and the name matched
+            # 2Z1, 5JDC, FC1 and JDCEWHA, so the customer got no code, tried three
+            # times, and was answered by hand with JDCEWHA. All four are one paint:
+            # three cross-reference rows from one source with no models, and
+            # JDCEWHA with three sources and a model list. When every match is the
+            # same paint, the best-evidenced one is given; a tie stays unknown.
+            # After the operator's own codes (paint92), which always come first.
+            if _amb and len(_amb) > 1 and not found_code:
+                _pick = _best_of_same_paint(make, _amb, desc)
+                if _pick is not None:
+                    found_code = _pick.code
+                    hex_val = _pick.hex or hex_val
+                    logger.info('name %r matched %s, all one paint: %s given', desc, _amb, found_code)
             if found_code:
                 result['paint_code'] = found_code
                 # the CODE was supplied by our database, not the provider
@@ -978,6 +1012,46 @@ def _same_paint(a, b):
         except ValueError:
             return False
     return False
+
+
+def _best_of_same_paint(make, codes, name):
+    """paint254: the one code to give when a name matches several codes of one
+    paint, or None.
+
+    The Kuga's "Desert Island Blue" matched 2Z1, 5JDC, FC1 and JDCEWHA: three
+    cross-reference rows with no models from one source, and JDCEWHA, the only
+    one with a model list. That is the shape that is safe to resolve: exactly
+    ONE candidate is attested on cars; the rest are cross-references. Where
+    several candidates carry models, the name spans real codes from different
+    eras (Ford "Race Red", 13 codes; "Smoke", YHR and BMU), and choosing between
+    them is a guess the older rule (paint68) rightly refuses; the battery caught
+    my first version doing exactly that. All of these must hold:
+      * the provider's name is specific, not a bare colour word;
+      * no candidate's own names state different colours;
+      * every candidate is the same paint (same name, or practically the same
+        swatch);
+      * exactly one candidate has a model list;
+      * its colour agrees with the provider's name."""
+    from lookup.models import PaintLookup
+    if not name or is_bare_colour_name(name):
+        return None
+    rows = [PaintLookup.lookup(make, c) for c in codes]
+    if not rows or not all(rows):
+        return None
+    for r in rows:
+        fams = [f for f in (_colour_families(n) for n in (r.all_names or []) + [r.name or '']) if f]
+        if len(fams) > 1 and not set.intersection(*fams):
+            return None
+    if not all(_same_paint(rows[0], r) for r in rows[1:]):
+        return None
+    attested = [r for r in rows if r.models_list]
+    if len(attested) != 1:
+        return None
+    best = attested[0]
+    want, got = _colour_families(name), _colour_families(best.name or '')
+    if want and got and not (want & got):
+        return None
+    return best
 
 
 def is_bare_colour_name(name):
@@ -1664,6 +1738,18 @@ def _oneauto_leg(vin, make, model, year, search_id, sink, race_over=None):
     return result
 
 
+# paint255: a real VIN: 17 characters, digits and capital letters except I, O
+# and Q. Measured across all lookups to 2 Oct: 36 had anything else (13-character
+# Japanese chassis numbers, short numbers on classics); pl24 refused 6, Ezyvin
+# answered "not found" 12 times and timed out once after a minute, and not one
+# got a code from either. mmw works from the registration and still runs.
+_REAL_VIN = re.compile(r'[A-HJ-NPR-Z0-9]{17}')
+
+
+def vin_is_real(vin):
+    return bool(_REAL_VIN.fullmatch((vin or '').strip().upper()))
+
+
 def resolve_paint(registration, vin, make, category=None, telemetry=None, model=None,
                   search_id=None, vdg_colour=None, year=None):
     """Race the VDG bundle-retry and the pl24 scrape; return the first usable
@@ -1807,6 +1893,12 @@ def resolve_paint(registration, vin, make, category=None, telemetry=None, model=
             nonlocal f_pl24
             if f_pl24 is not None:
                 return None
+            # paint255: pl24 reads partslink24 by VIN, and refuses anything that
+            # is not a real 17-character VIN (a Japanese import's chassis number,
+            # a classic's short number). Not asked at all for those.
+            if not vin_is_real(vin):
+                _t['pl24_outcome'] = 'skipped_bad_vin' if (vin or '').strip() else 'skipped_no_vin'
+                return None
             _t['pl24_attempted'] = True
             _t['pl24_started_because'] = reason
             # Make AND category are both routed (not raw) at this boundary. The
@@ -1839,6 +1931,10 @@ def resolve_paint(registration, vin, make, category=None, telemetry=None, model=
         # caused it. Reverting is one line — delete this call and the drop-out
         # triggers below come back to life on their own.
         _start_pl24('immediate')
+        # paint255: recorded up front, because with pl24 skipped the "both empty"
+        # trigger never fires, so Ezyvin's own refusal might never be reached.
+        if (vin or '').strip() and not vin_is_real(vin):
+            _t['ezyvin_outcome'] = 'skipped_bad_vin'
 
         # THIRD LEG (paint95) — EZYVIN, AND IT IS NOT IN THE RACE.
         #
@@ -1865,6 +1961,12 @@ def resolve_paint(registration, vin, make, category=None, telemetry=None, model=
             """Bring Ezyvin in. Idempotent."""
             nonlocal f_ezyvin
             if f_ezyvin is not None or not vin:
+                return None
+            # paint255: Ezyvin decodes the VIN too, so a chassis number or a
+            # classic's short number cannot be answered; the Prius on 30 Sep
+            # waited a minute for its timeout. Never started for those.
+            if not vin_is_real(vin):
+                _t['ezyvin_outcome'] = 'skipped_bad_vin'
                 return None
             _t['ezyvin_attempted'] = True
             _t['ezyvin_started_because'] = reason
@@ -1905,7 +2007,7 @@ def resolve_paint(registration, vin, make, category=None, telemetry=None, model=
         ezyvin_backstop_at = time.monotonic() + EZYVIN_BACKSTOP_S
         ezyvin_name_only_result = None
         deadline = time.monotonic() + PL24_TIMEOUT
-        pending = {f_vdg, f_pl24}
+        pending = {f for f in (f_vdg, f_pl24) if f is not None}     # paint255: pl24 may be skipped
         pl24_code_result = None      # pl24 returned a real CODE (short-circuits)
         pl24_name_only_result = None  # pl24 returned a name but NO code (fallback)
 

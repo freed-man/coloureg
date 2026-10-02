@@ -65,6 +65,7 @@ from .services.protection import (
     should_alert_on_ip,
     credit_sliding_allowance,
     london_day_start,
+    get_name_only_payload, remember_name_only,
 )
 from .services.payments import (
     payments_active,
@@ -881,6 +882,12 @@ def index(request):
         # did not need. It also inverted the deliberate policy that a cached
         # repeat is free to us and still chargeable to the customer.
         cached_payload = get_cached_vrm_payload(registration)
+        # paint254: a name-only answer from the last hour, when there is no
+        # 7-day answer (a manual answer goes there, so it always wins).
+        _name_only_replay = False
+        if not cached_payload:
+            cached_payload = get_name_only_payload(registration)
+            _name_only_replay = bool(cached_payload)
         if cached_payload:
             # paint94: DECIDE THE GATE HERE, do not replay the stored verdict.
             #
@@ -942,7 +949,9 @@ def index(request):
                 # fall into `incomplete` — the bucket that means "the user left
                 # before recovery ran" — quietly corrupting the one statistic
                 # this marker exists to keep honest.
-                error_message=('make_not_automated' if _cached_gated else ''),
+                error_message=('make_not_automated' if _cached_gated
+                               else 'name-only cache hit (VDG skipped)' if _name_only_replay else ''),
+                recovery_name_only=_name_only_replay,                 # paint254
                 # THE ACCESS LABEL WAS MISSING HERE. The normal path stamps it
                 # from _access_label(); this branch never did, so a visitor
                 # holding an unlimited-access key lost the marker the moment
@@ -985,7 +994,8 @@ def index(request):
             # invariant in the battery guards against. Everything recovery
             # needs (make, vin, category) is already on the cached row.
             payload['paint_pending'] = (
-                not _cached_gated and not (cached_payload.get('paint_code') or '')
+                not _cached_gated and not _name_only_replay
+                and not (cached_payload.get('paint_code') or '')
             )
             request.session['vehicle_data'] = payload
             return redirect('results')
@@ -2272,6 +2282,7 @@ def _lookup_status(request, search_id):
         vehicle_data['paint_pending'] = False
         request.session['vehicle_data'] = vehicle_data
         request.session.modified = True
+        remember_name_only(vehicle_data.get('registration'), vehicle_data)     # paint254
         return JsonResponse({
             'status': 'name_only',
             'paint_description': paint_description,
