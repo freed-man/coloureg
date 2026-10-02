@@ -1561,10 +1561,19 @@ window.cregReportWait();
             tip.style.top = v.offsetTop + 'px';
         }
         function hide() { tip.hidden = true; shown = null; }
+        /* paint264: a mouse or finger press moves focus to the marker BEFORE its click
+           arrives, so opening on focus and toggling on click fought: the focus opened it
+           and the click closed it again (and closed the one open before). Now a press
+           marks the interaction as pointer: clicks toggle, and focus opens a label only
+           when it comes from the keyboard (Tab). */
+        var byPointer = false;
+        plot.addEventListener('pointerdown', function () { byPointer = true; }, true);
+        plot.addEventListener('mousedown', function () { byPointer = true; }, true);
+        document.addEventListener('keydown', function () { byPointer = false; }, true);
         plot.querySelectorAll('.mc-visit').forEach(function (v) {
             v.addEventListener('click', function (e) { e.stopPropagation(); if (shown === v) { hide(); } else { show(v); } });
-            v.addEventListener('focus', function () { show(v); });
-            v.addEventListener('blur', hide);
+            v.addEventListener('focus', function () { if (!byPointer) { show(v); } });
+            v.addEventListener('blur', function () { if (!byPointer && shown === v) { hide(); } });
             v.addEventListener('keydown', function (e) { if (e.key === 'Escape') { hide(); } });
         });
         document.addEventListener('click', function () { if (shown) { hide(); } });
