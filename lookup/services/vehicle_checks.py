@@ -15,7 +15,7 @@ this release have no facts, and simply show no new rows.
 """
 import logging
 from concurrent.futures import ThreadPoolExecutor
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 
 from django.db import close_old_connections
 
@@ -181,17 +181,54 @@ def _money(value):
 
 
 def tax_estimate(f, today):
+    parts = _tax_parts(f, today)
+    if not parts:
+        return ''
+    if parts.get('historic'):
+        return '(historic vehicle: exempt from tax)'
+    text = f"annual tax: {_money(parts['annual'])}"          # paint250: DVLA's rate, not an estimate
+    if parts.get('six'):
+        text += f", 6 months: {_money(parts['six'])}"
+    if parts.get('limit'):
+        # paint251: "or" and "when new" make the alternative read as one.
+        text += (f"; or {_money(SUPPLEMENT_12)}, 6 months: {_money(SUPPLEMENT_6)}, "
+                 f"if its list price was over {_money(parts['limit'])} when new")
+    return f'({text})'
+
+
+def tax_table(f, today):
+    """paint261: the same facts as tax_estimate(), as the small table opened with
+    the Tax row's "+": {'cols': [...], 'rows': [[label, 12 months, 6 months]]},
+    {'note': ...} for a historic vehicle, or None. The second row is the
+    expensive-car rate; DVLA's rule is the LIST PRICE (the published price with
+    factory options, before any discount), not what the owner paid."""
+    parts = _tax_parts(f, today)
+    if not parts:
+        return None
+    if parts.get('historic'):
+        return {'note': 'Historic vehicle: exempt from tax'}
+    rows = [['Standard', _money(parts['annual']), _money(parts['six']) if parts.get('six') else '']]
+    if parts.get('limit'):
+        rows.append([f"List price over £{parts['limit'] // 1000}k", _money(SUPPLEMENT_12), _money(SUPPLEMENT_6)])
+    cols = ['12 months', '6 months'] if all(r[2] for r in rows) else ['12 months']
+    return {'cols': cols, 'rows': [r[:1 + len(cols)] for r in rows]}
+
+
+def _tax_parts(f, today):
+    """The rules behind both: {'historic': True}, or {'annual', 'six', 'limit'}
+    (limit is 40000 or 50000 while the expensive-car rate can apply, else None),
+    or None when any deciding fact is missing (paint248)."""
     year_start = int(TAX_YEAR[:4])
     if not (date(year_start, 4, 1) <= today <= date(year_start + 1, 3, 31)):
-        return ''
+        return None
     try:
         built = int(f.get('year'))
     except (TypeError, ValueError):
         built = None
     if built and built < year_start - 40:
-        return '(historic vehicle: exempt from tax)'
+        return {'historic': True}
     if str(f.get('type_approval', '')).upper() != 'M1':
-        return ''
+        return None
     exact = _date(f.get('first_registered'))
     if exact:
         reg_year, reg_month = exact.year, exact.month
@@ -199,22 +236,20 @@ def tax_estimate(f, today):
         try:
             reg_year, reg_month = (int(x) for x in str(f.get('reg_month', '')).split('-')[:2])
         except (TypeError, ValueError):
-            return ''
+            return None
     co2 = f.get('co2')
     if reg_year < 2017 and co2 is not None and co2 > 225 and (reg_year, reg_month) == (2006, 3):
         if not exact:
-            return ''                           # band K turns on the day in March 2006
+            return None                         # band K turns on the day in March 2006
         if exact < date(2006, 3, 23):
             co2 = 225
     try:
         est = get_annual_tax(co2, f.get('fuel', ''), reg_year, reg_month, f.get('engine_cc'))
     except Exception:
-        return ''
+        return None
     if not est or not est.get('annual_rate'):
-        return ''
-    text = f"annual tax: {_money(est['annual_rate'])}"          # paint250: DVLA's rate, not an estimate
-    if est.get('six_month_rate'):
-        text += f", 6 months: {_money(est['six_month_rate'])}"
+        return None
+    parts = {'annual': est['annual_rate'], 'six': est.get('six_month_rate'), 'limit': None}
     registered = exact or date(reg_year, reg_month, 1)
     if registered >= date(2017, 4, 1):
         try:
@@ -222,11 +257,8 @@ def tax_estimate(f, today):
         except ValueError:                      # 29 February
             ends = registered.replace(year=registered.year + 6, day=28)
         if today < ends:
-            limit = 50000 if (str(f.get('fuel', '')).upper() == 'ELECTRICITY' and registered >= date(2025, 4, 1)) else 40000
-            # paint251: "or" and "when new" make the alternative read as one.
-            text += (f"; or {_money(SUPPLEMENT_12)}, 6 months: {_money(SUPPLEMENT_6)}, "
-                     f"if its list price was over {_money(limit)} when new")
-    return f'({text})'
+            parts['limit'] = 50000 if (str(f.get('fuel', '')).upper() == 'ELECTRICITY' and registered >= date(2025, 4, 1)) else 40000
+    return parts
 
 
 # -- details in brackets (paint250) ---------------------------------------------
@@ -266,6 +298,82 @@ def split_details(vehicle_data):
 
 
 # -- display (motoreg's wording) ----------------------------------------------
+
+# -- the mileage chart (paint261) ----------------------------------------------
+#
+# Every MOT inspection with a readable mileage, pass or fail, on a line drawn by
+# the site itself (an inline SVG; no charting library on the results page).
+# Time is to scale, so two tests in one year sit apart by their months. A
+# reading in km is drawn in miles; its tap label says what was recorded. A
+# fall against the test before (in the same unit) is flagged in the label, as
+# the test card flags it. Fewer than two readings: no chart.
+
+KM_TO_MILES = 0.621371
+CHART_W, CHART_H = 340, 190
+_CHART_PAD = (36, 10, 10, 22)            # left, right, top, bottom
+_NICE_STEPS = (100, 200, 250, 500, 1000, 2000, 2500, 5000, 10000, 20000, 25000, 50000, 100000, 200000)
+
+
+def mileage_chart(tests):
+    pts = []
+    for t in tests or []:
+        when = _date(t.get('d'))
+        try:
+            reading = int(str(t.get('o', '')).replace(',', '').strip())
+        except ValueError:
+            continue                      # no reading, or "unreadable": nothing to plot
+        if when is None or reading < 0:
+            continue
+        km = str(t.get('u', '')).upper() == 'KM'
+        pts.append({'when': when, 'miles': round(reading * KM_TO_MILES) if km else reading, 'km': km,
+                    'passed': t.get('r') == 'PASSED', 'recorded': f"{reading:,} {'km' if km else 'miles'}"})
+    pts.sort(key=lambda p: p['when'])
+    if len(pts) < 2:
+        return None
+    left, right, top, bottom = _CHART_PAD
+    width, height = CHART_W - left - right, CHART_H - top - bottom
+    lo, hi = pts[0]['when'] - timedelta(days=45), pts[-1]['when'] + timedelta(days=45)
+    days = max((hi - lo).days, 1)
+    highest = max(p['miles'] for p in pts) or 1
+    step = next((s_ for s_ in _NICE_STEPS if highest / s_ <= 4), _NICE_STEPS[-1])
+    ymax = step * max(1, -(-highest // step))
+    X = lambda d: round(left + (d - lo).days / days * width, 1)
+    Y = lambda v: round(top + height - v / ymax * height, 1)
+    last_by_unit = {}
+    for p in pts:
+        p['x'], p['y'], p['date'] = X(p['when']), Y(p['miles']), _shown(p['when'])
+        before = last_by_unit.get(p['km'])
+        p['drop'] = before is not None and p['miles'] < before
+        last_by_unit[p['km']] = p['miles']
+        p['label'] = f"{p['date']}, {'passed' if p['passed'] else 'failed'}, {p['recorded']}"
+        if p['drop']:
+            p['label'] += ', lower than the test before'
+    base = Y(0)
+    line = ' '.join(f"{p['x']},{p['y']}" for p in pts)
+    area = f"M{pts[0]['x']},{base} L" + ' L'.join(f"{p['x']},{p['y']}" for p in pts) + f" L{pts[-1]['x']},{base} Z"
+    years = [y for y in range(lo.year + 1, hi.year + 1)]
+    span_years = (hi - lo).days / 365.25
+    every = 1 if span_years <= 6 else 2 if span_years <= 12 else 5
+    xticks = [{'label': str(y), 'x': X(date(y, 1, 1))} for y in years[::every]]
+    xticks = [t for t in xticks if left + 12 <= t['x'] <= CHART_W - 14]
+    if not xticks:
+        xticks = [{'label': str(pts[0]['when'].year), 'x': pts[0]['x']}]
+    fmt = lambda v: '0' if v == 0 else (f'{v / 1000:g}k' if v >= 1000 else str(v))
+    yticks = [{'label': fmt(v), 'y': Y(v)} for v in range(0, ymax + 1, step)]
+    gap = (pts[-1]['when'] - pts[0]['when']).days / 365.25
+    rise = pts[-1]['miles'] - pts[0]['miles']
+    avg = round(rise / gap / 100) * 100 if gap >= 0.5 and rise > 0 else 0
+    for p in pts:
+        del p['when']
+    return {
+        'w': CHART_W, 'h': CHART_H, 'left': left, 'right': CHART_W - right, 'base': base,
+        'ylabel_x': left - 6, 'xlabel_y': CHART_H - 6,
+        'points': pts, 'line': line, 'area': area, 'xticks': xticks, 'yticks': yticks,
+        'avg': f'{avg:,}' if avg else '', 'has_fail': any(not p['passed'] for p in pts),
+        'summary': (f"Mileage at {len(pts)} MOT tests, from {pts[0]['recorded']} in {pts[0]['date'][-4:]} "
+                    f"to {pts[-1]['recorded']} in {pts[-1]['date'][-4:]}"),
+    }
+
 
 def _date(value):
     """DVLA writes 2027-01-12; the MOT service 2017.06.30 or an ISO timestamp."""
@@ -352,8 +460,9 @@ def _display(f, today=None):
     tstatus, tdue = f.get('tax_status', ''), _date(f.get('tax_due'))
     if tstatus:
         if tstatus == 'Taxed':
+            # paint261: "expires", like the MOT: the date is when this tax runs out.
             out['vc_tax'] = {'ok': True, 'label': 'Taxed',
-                             'detail': f'(due {_shown(tdue)}, {countdown(tdue, today, "due today")})' if tdue else ''}
+                             'detail': f'(expires {_shown(tdue)}, {countdown(tdue, today, "expires today")})' if tdue else ''}
         else:
             out['vc_tax'] = {'ok': False, 'label': tstatus,
                              'detail': f'(expired {_shown(tdue)}, {countdown(tdue, today, "due today")})' if tdue else ''}
@@ -364,6 +473,20 @@ def _display(f, today=None):
             estimate = ''
         if estimate:
             out['vc_tax']['estimate'] = estimate
+        try:
+            table = tax_table(f, today)
+        except Exception:
+            logger.exception('tax table failed')
+            table = None
+        if table:
+            out['vc_tax']['table'] = table
+    # paint261: what the "+" beside MOT and Tax opens: the detail without its
+    # brackets, "Expires 27/05/2027, 238 days remaining".
+    for key in ('vc_mot', 'vc_tax'):
+        detail = (out.get(key) or {}).get('detail') or ''
+        if detail:
+            inner = detail[1:-1] if detail.startswith('(') and detail.endswith(')') else detail
+            out[key]['more'] = inner[:1].upper() + inner[1:]
     # paint246: the MOT history, as motoreg shows it: newest first, the mileage
     # and its change since the test before, then Major and Advisory items.
     history = []
@@ -391,6 +514,13 @@ def _display(f, today=None):
             t['diff_negative'] = diff < 0
     if history:
         out['vc_mot_tests'] = history
+        try:
+            chart = mileage_chart(f.get('mot_tests'))
+        except Exception:
+            logger.exception('mileage chart failed')
+            chart = None
+        if chart:
+            out['vc_mileage_chart'] = chart
     if out:
         # paint245: ULEZ. An answer stored before paint245 carries no letter, so
         # it links to TfL without a reason.

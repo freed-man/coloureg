@@ -66,6 +66,30 @@
     }
     /* paint249: the MOT history belongs to the MOT row, so no line between them */
     .vehicle-row-joined { border-bottom: none; padding-bottom: 6px; }
+    /* paint261: the "+" beside MOT and Tax, the detail it opens, and the tax table */
+    .vc-more-btn { display: inline-flex; align-items: center; justify-content: center; width: 26px; height: 26px; margin-left: 8px; padding: 0; border: 1px solid rgba(0, 0, 0, 0.25); border-radius: 50%; background: none; color: #6c757d; font-size: 11px; vertical-align: middle; }
+    .vc-more { display: block; margin-top: 4px; text-align: right; }
+    .vc-more .vehicle-sub { display: block; }
+    .tax-table { margin: 6px 0 0 auto; border-collapse: collapse; font-size: 14px; color: #6c757d; }
+    .tax-table th, .tax-table td { padding: 3px 0 3px 12px; text-align: right; border-top: 1px solid rgba(0, 0, 0, 0.08); font-weight: 400; }
+    .tax-table thead th { border-top: none; font-weight: 600; }
+    .tax-table th[scope="row"], .tax-table thead th:first-child { text-align: left; padding-left: 0; }
+    /* paint261: the mileage chart at the top of the MOT history */
+    .mileage-chart { padding: 10px 2px 6px; }
+    .mileage-chart-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+    .mileage-chart-title { font-weight: 600; font-size: 16px; }
+    .mileage-chart-avg, .mileage-chart-key { color: #6c757d; font-size: 14px; }
+    .mileage-chart-key { display: flex; gap: 14px; margin: 2px 0 4px; }
+    .mileage-chart-key .mk { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 5px; vertical-align: -1px; }
+    .mk-pass { background: #0b5ed7; } .mk-fail { border: 2px solid #dc3545; background: #fff; }
+    .mileage-chart-plot { position: relative; }
+    .mileage-chart-plot svg { display: block; width: 100%; height: auto; overflow: visible; }
+    .mc-grid { stroke: #e9ecef; stroke-width: 1; } .mc-tick { fill: #6c757d; font-size: 11px; }
+    .mc-area { fill: rgba(11, 94, 215, 0.08); } .mc-line { fill: none; stroke: #0b5ed7; stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+    .mc-pt { cursor: pointer; stroke-width: 2; } .mc-pass { fill: #0b5ed7; stroke: #fff; } .mc-fail { fill: #fff; stroke: #dc3545; }
+    .mc-pt:focus { outline: none; stroke: #212529; }
+    .mc-tip { position: absolute; transform: translate(-50%, calc(-100% - 10px)); background: #212529; color: #fff; font-size: 13px; line-height: 1.35; padding: 5px 8px; border-radius: 6px; white-space: nowrap; pointer-events: none; z-index: 2; }
+    .mc-tip .mc-drop { color: #ffb3ba; }
     /* paint246: the MOT history, under the MOT row, collapsed until asked for */
     .mot-history { padding: 4px 0 12px; border-bottom: 0.5px solid rgba(0, 0, 0, 0.1); }
     .mot-toggle {
@@ -391,9 +415,9 @@
                     {% if vc_mot %}
                     <div class="vehicle-row{% if vc_mot_tests %} vehicle-row-joined{% endif %}">
                         <span class="vehicle-label">MOT</span>
-                        <span class="vehicle-value vehicle-inline">
-                            <span class="vehicle-status">{% if vc_mot.ok %}<i class="fas fa-check-circle text-success" aria-hidden="true"></i><span class="text-success">{{ vc_mot.label }}</span>{% elif vc_mot.ok is None %}<i class="fas fa-info-circle text-muted" aria-hidden="true"></i><span class="text-muted">{{ vc_mot.label }}</span>{% else %}<i class="fas fa-times-circle text-danger" aria-hidden="true"></i><span class="text-danger">{{ vc_mot.label }}</span>{% endif %}</span>
-                            {% if vc_mot.detail %}<span class="vehicle-sub">{{ vc_mot.detail }}</span>{% endif %}
+                        <span class="vehicle-value vehicle-value-stack">
+                            <span class="vehicle-inline"><span class="vehicle-status">{% if vc_mot.ok %}<i class="fas fa-check-circle text-success" aria-hidden="true"></i><span class="text-success">{{ vc_mot.label }}</span>{% elif vc_mot.ok is None %}<i class="fas fa-info-circle text-muted" aria-hidden="true"></i><span class="text-muted">{{ vc_mot.label }}</span>{% else %}<i class="fas fa-times-circle text-danger" aria-hidden="true"></i><span class="text-danger">{{ vc_mot.label }}</span>{% endif %}</span>{% if vc_mot.more %}<button type="button" class="vc-more-btn" aria-expanded="false" aria-controls="motMore" aria-label="More about the MOT"><i class="fas fa-plus" aria-hidden="true"></i></button>{% endif %}</span>
+                            {% if vc_mot.more %}<span class="vc-more" id="motMore" hidden><span class="vehicle-sub">{{ vc_mot.more }}</span></span>{% endif %}
                         </span>
                     </div>
                     {% endif %}
@@ -405,6 +429,23 @@
                             <span class="mot-toggle-action"><span class="when-closed">Show <i class="fas fa-chevron-down" aria-hidden="true"></i></span><span class="when-open">Hide <i class="fas fa-chevron-up" aria-hidden="true"></i></span></span>
                         </button>
                         <div class="collapse" id="motHistory">
+                            {% if vc_mileage_chart %}{% with c=vc_mileage_chart %}
+                            {% comment %} paint261: every inspection with a readable mileage, pass or fail, time to scale. {% endcomment %}
+                            <div class="mileage-chart">
+                                <div class="mileage-chart-head"><span class="mileage-chart-title">Mileage at each MOT</span>{% if c.avg %}<span class="mileage-chart-avg">about {{ c.avg }} miles a year</span>{% endif %}</div>
+                                <div class="mileage-chart-key"><span><span class="mk mk-pass" aria-hidden="true"></span>Passed</span>{% if c.has_fail %}<span><span class="mk mk-fail" aria-hidden="true"></span>Failed</span>{% endif %}</div>
+                                <div class="mileage-chart-plot">
+                                    <svg viewBox="0 0 {{ c.w }} {{ c.h }}" role="img" aria-label="{{ c.summary }}" focusable="false">
+                                        {% for y in c.yticks %}<line class="mc-grid" x1="{{ c.left }}" x2="{{ c.right }}" y1="{{ y.y }}" y2="{{ y.y }}"></line><text class="mc-tick" x="{{ c.ylabel_x }}" y="{{ y.y }}" dy="4" text-anchor="end">{{ y.label }}</text>{% endfor %}
+                                        {% for x in c.xticks %}<text class="mc-tick" x="{{ x.x }}" y="{{ c.xlabel_y }}" text-anchor="middle">{{ x.label }}</text>{% endfor %}
+                                        <path class="mc-area" d="{{ c.area }}"></path>
+                                        <polyline class="mc-line" points="{{ c.line }}"></polyline>
+                                        {% for p in c.points %}<circle class="mc-pt {% if p.passed %}mc-pass{% else %}mc-fail{% endif %}" cx="{{ p.x }}" cy="{{ p.y }}" r="{% if p.passed %}4{% else %}4.5{% endif %}" tabindex="0" aria-label="{{ p.label }}" data-label="{{ p.label }}" data-drop="{% if p.drop %}1{% endif %}"><title>{{ p.label }}</title></circle>{% endfor %}
+                                    </svg>
+                                    <div class="mc-tip" role="status" hidden></div>
+                                </div>
+                            </div>
+                            {% endwith %}{% endif %}
                             {% for t in vc_mot_tests %}
                             <div class="mot-test">
                                 {% if t.passed %}<span class="badge bg-success">PASSED</span>{% else %}<span class="badge bg-danger">FAILED</span>{% endif %}
@@ -420,8 +461,12 @@
                     <div class="vehicle-row">
                         <span class="vehicle-label">Tax</span>
                         <span class="vehicle-value vehicle-value-stack">
-                            <span class="vehicle-inline"><span class="vehicle-status">{% if vc_tax.ok %}<i class="fas fa-check-circle text-success" aria-hidden="true"></i><span class="text-success">{{ vc_tax.label }}</span>{% else %}<i class="fas fa-times-circle text-danger" aria-hidden="true"></i><span class="text-danger">{{ vc_tax.label }}</span>{% endif %}</span>{% if vc_tax.detail %}<span class="vehicle-sub">{{ vc_tax.detail }}</span>{% endif %}</span>
-                            {% if vc_tax.estimate %}<span class="vehicle-sub">{{ vc_tax.estimate }}</span>{% endif %}
+                            <span class="vehicle-inline"><span class="vehicle-status">{% if vc_tax.ok %}<i class="fas fa-check-circle text-success" aria-hidden="true"></i><span class="text-success">{{ vc_tax.label }}</span>{% else %}<i class="fas fa-times-circle text-danger" aria-hidden="true"></i><span class="text-danger">{{ vc_tax.label }}</span>{% endif %}</span>{% if vc_tax.more or vc_tax.table %}<button type="button" class="vc-more-btn" aria-expanded="false" aria-controls="taxMore" aria-label="More about the tax"><i class="fas fa-plus" aria-hidden="true"></i></button>{% endif %}</span>
+                            {% if vc_tax.more or vc_tax.table %}<span class="vc-more" id="taxMore" hidden>
+                                {% if vc_tax.more %}<span class="vehicle-sub">{{ vc_tax.more }}</span>{% endif %}
+                                {% if vc_tax.table.note %}<span class="vehicle-sub">{{ vc_tax.table.note }}</span>{% endif %}
+                                {% if vc_tax.table.rows %}<table class="tax-table"><thead><tr><th scope="col">To renew</th>{% for c in vc_tax.table.cols %}<th scope="col">{{ c }}</th>{% endfor %}</tr></thead><tbody>{% for r in vc_tax.table.rows %}<tr>{% for cell in r %}{% if forloop.first %}<th scope="row">{{ cell }}</th>{% else %}<td>{{ cell }}</td>{% endif %}{% endfor %}</tr>{% endfor %}</tbody></table>{% endif %}
+                            </span>{% endif %}
                         </span>
                     </div>
                     {% endif %}
@@ -1476,4 +1521,49 @@ window.cregReportWait();
 })();
 </script>
 {% endif %}
+<script>
+/* paint261: the "+" beside MOT and Tax, and the labels on the mileage chart's points */
+(function () {
+    document.querySelectorAll('.vc-more-btn').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            var box = document.getElementById(btn.getAttribute('aria-controls'));
+            var open = btn.getAttribute('aria-expanded') !== 'true';
+            btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+            btn.setAttribute('aria-label', (open ? 'Less' : 'More') + btn.getAttribute('aria-label').replace(/^(More|Less)/, ''));
+            if (box) { box.hidden = !open; }
+            var icon = btn.querySelector('i');
+            if (icon) { icon.className = open ? 'fas fa-minus' : 'fas fa-plus'; }
+        });
+    });
+    document.querySelectorAll('.mileage-chart-plot').forEach(function (plot) {
+        var svg = plot.querySelector('svg'), tip = plot.querySelector('.mc-tip');
+        if (!svg || !tip) { return; }
+        var vb = (svg.getAttribute('viewBox') || '0 0 1 1').split(/\s+/), W = parseFloat(vb[2]) || 1, H = parseFloat(vb[3]) || 1, shown = null;
+        function show(pt) {
+            var parts = (pt.getAttribute('data-label') || '').split(', ');
+            tip.textContent = '';
+            var first = document.createElement('div'); first.textContent = parts.slice(0, 2).join(' \u00b7 ');
+            var second = document.createElement('div'); second.textContent = parts[2] || '';
+            tip.appendChild(first); tip.appendChild(second);
+            if (pt.getAttribute('data-drop')) {
+                var third = document.createElement('div'); third.className = 'mc-drop'; third.textContent = 'Lower than the test before';
+                tip.appendChild(third);
+            }
+            tip.hidden = false; shown = pt;
+            var plotW = plot.clientWidth || 1, half = tip.offsetWidth / 2;
+            var x = parseFloat(pt.getAttribute('cx')) / W * plotW;
+            tip.style.left = Math.max(half, Math.min(plotW - half, x)) + 'px';    /* never past the card's edge on a phone */
+            tip.style.top = (parseFloat(pt.getAttribute('cy')) / H * 100) + '%';
+        }
+        function hide() { tip.hidden = true; shown = null; }
+        plot.querySelectorAll('.mc-pt').forEach(function (pt) {
+            pt.addEventListener('click', function (e) { e.stopPropagation(); if (shown === pt) { hide(); } else { show(pt); } });
+            pt.addEventListener('focus', function () { show(pt); });
+            pt.addEventListener('blur', hide);
+            pt.addEventListener('keydown', function (e) { if (e.key === 'Escape') { hide(); } });
+        });
+        document.addEventListener('click', function () { if (shown) { hide(); } });
+    });
+})();
+</script>
 {% endblock %}
