@@ -29,7 +29,16 @@ WAIT_SECONDS = 4          # the most collect() waits, once the lookup reaches it
 # paint247: the Motor Insurers' Bureau's own vehicle check (MIB Navigate), in
 # place of the old askMID address.
 INSURANCE_URL = 'https://enquiry.navigate.mib.org.uk/checkyourvehicle'
-MAJOR_TYPES = ('DANGEROUS', 'MAJOR', 'FAIL', 'PRS')     # motoreg's grouping; the rest are advisories
+MAJOR_TYPES = ('DANGEROUS', 'MAJOR', 'FAIL', 'PRS')     # motoreg's grouping (kept for reference; paint265 below)
+# paint265: grouped by what happened at the test, as the operator chose. FAIL:
+# dangerous, major, and the "fail" items of tests before 20 May 2018 (each failed
+# the test; a dangerous one says so). REPAIRED: a failing defect fixed at the
+# test centre within an hour, so the test passed (PRS). ADVISORY: minor defects,
+# advisories and the tester's own notes, none of which fail a test. Counted in the
+# cached histories on 2 Oct: 791 advisory, 154 major, 45 minor, 41 repaired, 39
+# old fail, 36 tester's notes, 34 dangerous.
+FAIL_TYPES = ('DANGEROUS', 'MAJOR', 'FAIL')
+REPAIRED_TYPES = ('PRS',)
 
 # paint245: ULEZ, as motoreg answers it: Transport Scotland's emissions checker,
 # asked the same way its own page asks. Scotland's LEZs and London's ULEZ set the
@@ -399,6 +408,42 @@ def mileage_chart(tests):
     }
 
 
+# paint265: when Transport Scotland's checker answers "exempt" (its codes are
+# not published; on 2 Oct its 3 exempt answers were all new cars, a 2024 hybrid,
+# a 2024 and a 2026 petrol), the car's own DVLA details decide, by the legal
+# cut-offs both London and Scotland use: new petrol cars have had to meet Euro 4
+# since 2006, new diesels Euro 6 since September 2015 (hybrids are held to the
+# diesel date, since "hybrid electric" can be a diesel hybrid), and a fully
+# electric car always passes. Anything older or unclear still links to TfL, so
+# this can never turn an exempt but non-compliant car into a tick.
+_PETROL_FROM, _DIESEL_FROM = date(2006, 1, 1), date(2015, 9, 1)
+
+
+def _ulez_by_age(f):
+    fuel = str(f.get('fuel', '')).upper().strip()
+    if fuel == 'ELECTRICITY':
+        return True
+    if fuel == 'PETROL':
+        cut = _PETROL_FROM
+    elif fuel == 'DIESEL' or 'HYBRID' in fuel or fuel == 'ELECTRIC DIESEL':
+        cut = _DIESEL_FROM
+    else:
+        return False                      # gas, bi-fuel, steam, unknown: TfL decides
+    first = _date(f.get('first_registered'))
+    if first is None:
+        try:
+            year, month = (int(x) for x in str(f.get('reg_month', '')).split('-')[:2])
+            first = date(year, month, 1)
+        except (TypeError, ValueError):
+            first = None
+    if first is not None:
+        return first >= cut
+    try:
+        return int(f.get('year')) > cut.year     # only the year known: a full year past the cut-off
+    except (TypeError, ValueError):
+        return False
+
+
 def _date(value):
     """DVLA writes 2027-01-12; the MOT service 2017.06.30 or an ISO timestamp."""
     text = str(value or '').strip()[:10].replace('.', '-')
@@ -525,8 +570,9 @@ def _display(f, today=None):
         history.append({
             'date': _shown(when) if when else t.get('d', ''), 'passed': t.get('r') == 'PASSED',
             'miles': miles, 'unit': unit, 'mileage': f'{miles:,} {unit}'.strip() if miles is not None else '',
-            'majors': [caps(x) for k, x in t.get('f', []) if k in MAJOR_TYPES],
-            'advisories': [caps(x) for k, x in t.get('f', []) if k not in MAJOR_TYPES],
+            'fails': [{'text': caps(x), 'dangerous': k == 'DANGEROUS'} for k, x in t.get('f', []) if k in FAIL_TYPES],
+            'repaired': [caps(x) for k, x in t.get('f', []) if k in REPAIRED_TYPES],
+            'advisories': [caps(x) for k, x in t.get('f', []) if k not in FAIL_TYPES + REPAIRED_TYPES],
         })
     for i, t in enumerate(history):
         older = history[i + 1] if i + 1 < len(history) else None
@@ -549,7 +595,7 @@ def _display(f, today=None):
         # paint245: ULEZ. An answer stored before paint245 carries no letter, so
         # it links to TfL without a reason.
         letter = f.get('lez', '')
-        if letter == 'c':
+        if letter == 'c' or (letter == 'e' and _ulez_by_age(f)):
             out['vc_ulez'] = {'ok': True, 'label': 'Compliant'}
         elif letter == 'n':
             out['vc_ulez'] = {'ok': False, 'label': 'Not compliant'}

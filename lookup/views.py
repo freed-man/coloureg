@@ -4777,7 +4777,7 @@ def submit_manual_lookup(request):
     # cached; the no-code outcome is never stored, so a vehicle whose code is
     # later published still gets a fresh attempt.
     if not no_code and paint_code:
-        store_vrm_payload(search.registration, {
+        _manual_payload = {
             'registration': search.registration,
             'make': search.make,
             'model': search.model,
@@ -4794,7 +4794,21 @@ def submit_manual_lookup(request):
             'fuel_type': '',
             'transmission': '',
             'engine_description': '',
-        })
+        }
+        # paint265: KEEP THE CAR'S DETAILS. This used to replace the cached answer
+        # with only the paint and the basics, so anyone looking the car up again that
+        # week lost its MOT, tax, ULEZ, MOT history, engine, fuel and transmission
+        # (2 cached answers since 1 Oct had no vehicle details at all). The answer
+        # cached by the lookup (or the name-only answer of the last hour) supplies
+        # them; the operator's paint answer goes on top.
+        _before = (get_cached_vrm_payload(search.registration, count_hit=False)
+                   or get_name_only_payload(search.registration) or {})
+        if _before.get('vehicle_status'):
+            _manual_payload['vehicle_status'] = _before['vehicle_status']
+        for _key in ('fuel_type', 'transmission', 'engine_description', 'model', 'year', 'colour', 'vehicle_title'):
+            if _before.get(_key) and not _manual_payload.get(_key):
+                _manual_payload[_key] = _before[_key]
+        store_vrm_payload(search.registration, _manual_payload)
         clear_miss(search.registration)
 
     if no_code:
