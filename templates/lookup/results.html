@@ -70,7 +70,6 @@
     .vc-more-btn { display: inline-flex; align-items: center; justify-content: center; width: 26px; height: 26px; margin-left: 8px; padding: 0; border: 1px solid rgba(0, 0, 0, 0.25); border-radius: 50%; background: none; color: #6c757d; font-size: 11px; vertical-align: middle; }
     .vc-more { display: block; margin-top: 4px; text-align: right; }
     .vc-more .vehicle-sub { display: block; }
-    .mot-dangerous { font-weight: 700; text-transform: uppercase; font-size: 0.8em; letter-spacing: 0.03em; }   /* paint265 */
     .tax-table { margin: 6px 0 0 auto; border-collapse: collapse; font-size: 14px; color: #6c757d; }
     .tax-table th, .tax-table td { padding: 3px 0 3px 12px; text-align: right; border-top: 1px solid rgba(0, 0, 0, 0.08); font-weight: 400; }
     .tax-table thead th { border-top: none; font-weight: 600; }
@@ -459,8 +458,8 @@
                             <div class="mot-test">
                                 {% if t.passed %}<span class="badge bg-success">PASSED</span>{% else %}<span class="badge bg-danger">FAILED</span>{% endif %}
                                 <div class="mot-test-line"><strong>{{ t.date }}</strong>{% if t.mileage %}<span class="text-muted"> &middot; {{ t.mileage }}</span>{% if t.diff %}{% if t.diff_negative %}<span class="text-danger small"> <i class="fas fa-exclamation-triangle" aria-hidden="true"></i> {{ t.diff }}, mileage discrepancy</span>{% else %}<span class="text-muted small"> ({{ t.diff }})</span>{% endif %}{% endif %}{% endif %}</div>
-                                {% comment %} paint265/266: grouped by what happened: Major (dangerous flagged; old "fail" items too), Repaired during the test, Advisory. "Major", not "Fail": the test's own FAILED badge already says it failed. {% endcomment %}
-                                {% if t.fails %}<div class="mt-2"><span class="badge bg-danger">Major</span></div>{% for d in t.fails %}<div class="mot-defect text-danger"><i class="fas fa-times-circle" aria-hidden="true"></i><span>{% if d.dangerous %}<strong class="mot-dangerous">Dangerous</strong> {% endif %}{{ d.text }}</span></div>{% endfor %}{% endif %}
+                                {% comment %} paint265-267: grouped by what happened: Major (dangerous items too, no separate flag; old "fail" items too), Repaired during the test, Advisory. "Major", not "Fail": the test's own FAILED badge already says it failed. {% endcomment %}
+                                {% if t.fails %}<div class="mt-2"><span class="badge bg-danger">Major</span></div>{% for d in t.fails %}<div class="mot-defect text-danger"><i class="fas fa-times-circle" aria-hidden="true"></i><span>{{ d.text }}</span></div>{% endfor %}{% endif %}
                                 {% if t.repaired %}<div class="mt-2"><span class="badge bg-secondary">Repaired during the test</span></div>{% for d in t.repaired %}<div class="mot-defect text-muted"><i class="fas fa-wrench" aria-hidden="true"></i><span>{{ d }}</span></div>{% endfor %}{% endif %}
                                 {% if t.advisories %}<div class="mt-2"><span class="badge bg-warning text-dark">Advisory</span></div>{% for d in t.advisories %}<div class="mot-defect"><i class="fas fa-exclamation-circle text-warning" aria-hidden="true"></i><span>{{ d }}</span></div>{% endfor %}{% endif %}
                             </div>

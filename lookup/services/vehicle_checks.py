@@ -417,16 +417,28 @@ def mileage_chart(tests):
 # electric car always passes. Anything older or unclear still links to TfL, so
 # this can never turn an exempt but non-compliant car into a tick.
 _PETROL_FROM, _DIESEL_FROM = date(2006, 1, 1), date(2015, 9, 1)
+_VAN_PETROL_FROM, _VAN_DIESEL_FROM = date(2007, 1, 1), date(2016, 9, 1)      # paint267
 
 
 def _ulez_by_age(f):
     fuel = str(f.get('fuel', '')).upper().strip()
     if fuel == 'ELECTRICITY':
         return True
+    # paint267: CARS AND LIGHT VANS ONLY. Motorbikes are outside Scotland's zones
+    # (so its checker calls them exempt), but London holds them to Euro 3, a
+    # different cut-off (generally bikes from July 2007); lorries, buses and
+    # coaches to Euro VI. Those, and anything whose type DVLA did not give, go
+    # to TfL.
+    kind = str(f.get('type_approval', '')).upper()
+    if kind not in ('M1', 'N1'):
+        return False
+    # Vans got there later: Euro 4 was required of new petrol vans of every size
+    # from January 2007, Euro 6 of new diesel vans from September 2016.
+    petrol_from, diesel_from = (_VAN_PETROL_FROM, _VAN_DIESEL_FROM) if kind == 'N1' else (_PETROL_FROM, _DIESEL_FROM)
     if fuel == 'PETROL':
-        cut = _PETROL_FROM
+        cut = petrol_from
     elif fuel == 'DIESEL' or 'HYBRID' in fuel or fuel == 'ELECTRIC DIESEL':
-        cut = _DIESEL_FROM
+        cut = diesel_from
     else:
         return False                      # gas, bi-fuel, steam, unknown: TfL decides
     first = _date(f.get('first_registered'))
