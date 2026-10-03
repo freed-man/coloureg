@@ -1145,6 +1145,22 @@ class PaintLookup(models.Model):
     BITONE_PREFIX = 'BI'
 
     @classmethod
+    def _via_bracketed_code(cls, manufacturer, paint_code):
+        """The row holding a code in brackets at the end of its code field, or None
+        (paint282). 1,669 rows carry a second code that way, "BLVC 471 (JNJ)" for
+        Zircon Blue under blmcrover, "G59 (GLU)", "T42 (YT42)", and for 914 of them
+        the bracketed code has no row of its own, so a lookup of JNJ found nothing.
+        Consulted only after every other way has failed, so a row of its own always
+        wins. Exactly one row must carry it: 24 bracketed codes sit inside two rows
+        of the same make, and those still find nothing rather than a guess."""
+        mfr = cls.normalize_manufacturer(manufacturer)
+        code = (paint_code or '').strip()
+        if not mfr or not re.fullmatch(r'[A-Za-z0-9]{2,4}', code):
+            return None
+        rows = list(cls.objects.filter(manufacturer=mfr, code__iendswith='(%s)' % code)[:2])
+        return rows[0] if len(rows) == 1 else None
+
+    @classmethod
     def _via_bitone_prefix(cls, manufacturer, paint_code):
         """The two-tone row a Renault or Dacia BI code names, or None (paint212).
 
@@ -1215,6 +1231,7 @@ class PaintLookup(models.Model):
             # Measured: Renault TED68 answered through its type prefix as D68
             # "Bluish Black Pearl" until bsp's own TED68 row took over.
             _held = None
+            _bracket_hit = False
             if swatch is not None and cls.is_topup_only(swatch):
                 _held, swatch = (swatch, paint_code), None
             if not swatch:
@@ -1270,6 +1287,14 @@ class PaintLookup(models.Model):
                     )
                     swatch = _bi
                     paint_code = _bi.code
+            if not swatch:
+                _br = cls._via_bracketed_code(manufacturer, paint_code)       # paint282
+                if _br and cls.is_topup_only(_br):
+                    _held = _held or (_br, paint_code)
+                elif _br:
+                    logger.info('paint code %s found in brackets in %r (%s)', paint_code, _br.code, manufacturer)
+                    swatch = _br
+                    _bracket_hit = True
             if not swatch and _held:
                 swatch, paint_code = _held
             if not swatch:
@@ -1279,6 +1304,11 @@ class PaintLookup(models.Model):
                 paint_code=paint_code,
                 swatch=swatch,
             )
+            if _bracket_hit:
+                # paint282: the code delivered stays the code shown. That row's code
+                # field holds two codes ("BLVC 471 (JNJ)"), which is not a code to
+                # print, to key a picture by, or to put in the cache.
+                canonical = None
             # hex may be '' (name-only rows) — normalise to None for the caller
             _name = swatch.name or None
             if cls.is_combination_name(_name):
