@@ -207,8 +207,9 @@ class Command(BaseCommand):
             reports_updated = reports.update(ip_address=None, session_key='', note='')
         if do_cache and stale_count:
             stale.delete()
+        cache_rows_deleted = 0
         if do_cache and expired_cache_count:
-            _expired_cache_rows(delete=True)
+            cache_rows_deleted = _expired_cache_rows(delete=True)
 
         # Independent of both cutoffs above — see the note at expired_sessions.
         if do_sessions and expired_session_count:
@@ -227,4 +228,9 @@ class Command(BaseCommand):
         self.stdout.write(self.style.SUCCESS(
             f'Deleted {expired_session_count} expired sessions '
             f'(each held a registration and an unmasked VIN).'
+        ))
+        # paint270: the live run said nothing about these (3 Oct: 190 cleared silently).
+        self.stdout.write(self.style.SUCCESS(
+            f'Deleted {cache_rows_deleted} expired cache rows '
+            f'(rate-limit counters and other short-lived entries).'
         ))
