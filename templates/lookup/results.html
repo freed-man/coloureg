@@ -300,19 +300,47 @@
         from { transform: rotateY(0deg)   rotateX(0deg); }
         to   { transform: rotateY(360deg) rotateX(720deg); }
     }
-    {% comment %}/* THE BAR (paint74). Two changes.
-       COLOUR: the site's own brand spectrum rather than flat blue, fixed to the
-       track width so it REVEALS left to right — red early, violet only near the
-       end — which reads as distance travelled rather than as a logo.
-       MOTION: it creeps continuously instead of jumping between stages. A
-       stepped bar sat still for the eight seconds between stages, and a still
-       bar reads as hung. It eases toward 96% and never arrives on its own —
-       only a real answer completes it. */{% endcomment %}
-    .pending-bar-fill {
-        background: linear-gradient(90deg, #e74c3c, #f39c12, #f1c40f, #2ecc71, #3498db, #9b59b6);
-        background-size: 240px 100%;
-        background-repeat: no-repeat;
-        transition: width 0.45s linear;
+    {% comment %}/* paint274: THE TERMINAL. A Fedora-style window: GNOME header in Adwaita Sans,
+       text in Adwaita Mono (Fedora's terminal font), served from our own static
+       files, cut down to the 100-odd characters used (about 32 KB for all three;
+       the full files are 360 KB each). OFL, no reserved font name; licence beside
+       the files. One row per line: nowrap, and the type shrinks on the narrowest
+       phones so the longest line still fits. */{% endcomment %}
+    @font-face { font-family: 'Adwaita Mono'; font-style: normal; font-weight: 400; font-display: swap;
+                 src: url('{% static "fonts/adwaita/adwaita-mono-400-subset.woff2" %}') format('woff2'); }
+    @font-face { font-family: 'Adwaita Mono'; font-style: normal; font-weight: 700; font-display: swap;
+                 src: url('{% static "fonts/adwaita/adwaita-mono-700-subset.woff2" %}') format('woff2'); }
+    @font-face { font-family: 'Adwaita Sans'; font-style: normal; font-weight: 700; font-display: swap;
+                 src: url('{% static "fonts/adwaita/adwaita-sans-700-subset.woff2" %}') format('woff2'); }
+    .cg-term { width: 100%; max-width: 380px; border-radius: 12px; overflow: hidden; border: 1px solid #111; text-align: left; }
+    .cg-term-bar { height: 38px; background: #303030; color: #fff; display: flex; align-items: center; justify-content: center;
+                   font-family: 'Adwaita Sans', system-ui, sans-serif; font-size: 13.5px; font-weight: 700; }
+    .cg-term-body { background: #1e1e1e; color: #fff; padding: 10px 12px 12px; min-height: 14.5em; line-height: 1.85;
+                    font-family: 'Adwaita Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+                    font-size: clamp(10.5px, 3.4vw, 13px); }
+    .cg-ln { white-space: nowrap; overflow: hidden; }
+    .cg-p { font-weight: 700; }
+    .cg-p .u { color: #8ae234; }
+    .cg-p .h { color: #729fcf; }
+    .cg-msg { text-transform: uppercase; font-size: .88em; letter-spacing: .06em; }
+    .cg-ln.done .cg-msg { opacity: .6; }
+    .cg-ln.bad .cg-msg { color: #f66151; opacity: 1; }
+    .cg-ln.half .cg-msg { color: #f8e45c; opacity: 1; }
+    .cg-mark { margin-left: 6px; }
+    .cg-mark.ok { color: #57e389; }
+    .cg-mark.bad { color: #f66151; }
+    .cg-mark.half { color: #f8e45c; }
+    .cg-dots { letter-spacing: .12em; margin-left: 1px; }
+    .cg-dots i { font-style: normal; animation: cg-pulse 1.2s ease-in-out infinite; }
+    .cg-dots i:nth-child(2) { animation-delay: .2s; }
+    .cg-dots i:nth-child(3) { animation-delay: .4s; }
+    @keyframes cg-pulse { 0%, 100% { opacity: .55; } 50% { opacity: 1; } }
+    .cg-cur { display: inline-block; width: .6em; height: 1.1em; vertical-align: -0.2em; margin-left: 4px; background: #fff;
+              animation: cg-blink 1s steps(1) infinite; }
+    @keyframes cg-blink { 50% { opacity: 0; } }
+    .cg-term-stay { font-size: 13px; color: #6c757d; margin: 0; }
+    @media (prefers-reduced-motion: reduce) {
+        .lookup-spinner, .cg-dots i, .cg-cur { animation: none; }
     }
 
     .paint-pending-message {
@@ -642,39 +670,27 @@
                 {# and poll /lookup-status; JS swaps in the found- or missed-state.  #}
                 <div id="paint-pending-state">
                     <div class="card-body">
-                        <div class="d-flex flex-column align-items-center justify-content-center py-4" style="gap: 18px;">
+                        <div class="d-flex flex-column align-items-center justify-content-center py-4" style="gap: 16px;">
                             <div class="lookup-spinner" aria-hidden="true">
                                 <span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="dot"></span>
                                 <span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="dot"></span>
                                 <span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="dot"></span>
                                 <span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="dot"></span>
                             </div>
-                            {% comment %} paint16: staged progress. The old single line gave no
-                               sense of whether anything was happening, so people
-                               refreshed or left during the (genuinely slow) deep
-                               search. These stages are REAL — each maps to work the
-                               pipeline actually does — and are described by function
-                               rather than by supplier, so nothing about our data
-                               sources is disclosed. Setting the expectation up front
-                               is what buys patience; people abandon when they can't
-                               tell if it's 2 seconds or 2 minutes.{% endcomment %}
-                            <p class="paint-pending-message" id="paint-pending-message" aria-live="polite">
-                                Found your {{ make }} build sheet<br><span id="pending-stage">Searching paint data&hellip;</span>
-                            </p>
-                            {% comment %} paint74: the substage line is gone. Three stacked
-                               messages under a rotating globe is more than anyone reads
-                               while waiting; the "please stay on this page" half now
-                               rides on the stage line itself, which is the part that
-                               actually needs saying.{% endcomment %}
-                            {% comment %}<!-- width:100% is load-bearing (paint75). The parent is
-                                 align-items:center, so a child with only max-width
-                                 shrinks to fit its content — and this track's only
-                                 content is a percentage-width fill, which has nothing
-                                 to resolve against. The track collapsed to zero and
-                                 the bar was invisible. -->{% endcomment %}
-                            <div style="margin: 14px auto 0; width: 100%; max-width: 240px; height: 4px; background: #eee; border-radius: 2px; overflow: hidden;">
-                                <div id="pending-bar" class="pending-bar-fill" style="height: 100%; width: 4%; border-radius: 2px;"></div>
+                            {% comment %} paint274: the staged copy is a terminal. One line per step, each ticked
+                               as the next begins; the build sheet and the connection are real and done
+                               before this page exists. The four timed stages keep paint16's timings and
+                               still name functions, never suppliers. The progress bar went: the lines show
+                               the progress, and the bar only crept towards 96% on a timer. {% endcomment %}
+                            <div class="cg-term" id="pending-term" data-make="{{ make|lower }}">
+                                <div class="cg-term-bar">coloureg@linux:~</div>
+                                <div class="cg-term-body" id="pending-terminal" aria-live="polite">
+                                    <div class="cg-ln done"><span class="cg-p"><span class="u">coloureg</span>:<span class="h">~</span>$</span> <span class="cg-msg">connecting to manufacturer server</span><span class="cg-mark ok">&#10003;</span></div>
+                                    <div class="cg-ln done"><span class="cg-p"><span class="u">coloureg</span>:<span class="h">~</span>$</span> <span class="cg-msg">{{ make|lower }} build sheet</span><span class="cg-mark ok">&#10003;</span></div>
+                                    <div class="cg-ln"><span class="cg-p"><span class="u">coloureg</span>:<span class="h">~</span>$</span> <span class="cg-msg">identifying colour records</span><span class="cg-dots" aria-hidden="true"><i>.</i><i>.</i><i>.</i></span></div>
+                                </div>
                             </div>
+                            <p class="cg-term-stay" id="pending-stay">(please stay on this page)</p>
                         </div>
                     </div>
                 </div>
@@ -807,6 +823,7 @@ the request directly. {% endcomment %}
                 .cp-dots span:nth-child(3) { animation-delay: .3s; }
                 @keyframes cp-bounce { 0%, 80%, 100% { transform: translateY(0); opacity: .35; } 40% { transform: translateY(-4px); opacity: 1; } }
                 @media (prefers-reduced-motion: reduce) { .cp-dots span { animation: none; opacity: .7; } }
+                .car-thumb-note { margin: 6px 0 0; text-align: center; color: #6c757d; font-size: 12px; line-height: 1.3; }   /* paint274 */
                 .car-lightbox { position: fixed; inset: 0; z-index: 1050; background: #fff; overflow: auto; }
                 .car-lightbox[hidden] { display: none; }
                 .car-lightbox-figure { position: relative; margin: 0; width: 100%; height: 100%; box-sizing: border-box;
@@ -834,6 +851,8 @@ the request directly. {% endcomment %}
                         <span id="car-thumb-zoom" class="car-thumb-zoom" aria-hidden="true" style="display: none;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="M15.5 15.5 21 21M8 10.5h5M10.5 8v5"/></svg></span>
                         {% endif %}
                     </button>
+                    {% comment %} paint274: the notice was only in the enlarged view, so most people never saw it. {% endcomment %}
+                    <p class="car-thumb-note" id="car-thumb-note"{% if not picture_ready_url %} style="display: none;"{% endif %}><svg width="13" height="13" viewBox="0 0 16 16" aria-hidden="true" style="vertical-align: -2px; margin-right: 4px;"><path d="M6 1.5c.4 2.9 1.6 4.1 4.5 4.5-2.9.4-4.1 1.6-4.5 4.5-.4-2.9-1.6-4.1-4.5-4.5 2.9-.4 4.1-1.6 4.5-4.5z" fill="currentColor"/></svg>illustration, not your actual vehicle</p>
                 </div>
             </div>
             <div id="car-lightbox" class="car-lightbox" role="dialog" aria-modal="true" aria-label="Picture of your car" hidden>
@@ -868,6 +887,8 @@ the request directly. {% endcomment %}
                         if (wait) { wait.style.display = 'none'; }
                         img.style.display = 'block';
                         zoom.style.display = 'flex';
+                        var note = document.getElementById('car-thumb-note');   // paint274
+                        if (note) { note.style.display = ''; }
                         btn.disabled = false;
                         ready = true;
                     };
@@ -1107,55 +1128,71 @@ window.cregReportWait();
        only 10s after the ceiling moved 65 -> 60.
     {% endcomment %}
     var STAGES = [
-        { at: 0,     text: 'Searching paint data&hellip;' },
-        { at: 10000, text: 'Checking colour records. Please stay on this page.' },
-        { at: 30000, text: 'Running a deeper extraction. This can take a little longer.' },
-        { at: 45000, text: 'Final checks, nearly done&hellip;' }
+        { at: 0,     text: 'identifying colour records' },
+        { at: 10000, text: 'extracting paint data' },
+        { at: 30000, text: 'running a deeper extraction' },
+        { at: 45000, text: 'final checks, nearly done' }
     ];
     var stageTimers = [];
-    var barTimer = null;
-
-    function runStages() {
-        var stageEl = el('pending-stage');
-        var barEl = el('pending-bar');
-        if (!stageEl && !barEl) return;
-        STAGES.forEach(function (st) {
-            stageTimers.push(setTimeout(function () {
-                if (stopped) return;
-                if (stageEl) stageEl.innerHTML = st.text;
-            }, st.at));
-        });
-
-        {% comment %}
-           The bar is decoupled from the stages (paint74) and eases continuously
-           toward 96%, never arriving on its own. Stepping it meant it sat still
-           for the twenty seconds between stages, and a still bar reads as hung.
-           Decoupling also means the stage wording and timings can be changed
-           freely without the bar looking wrong.
-        {% endcomment %}
-        if (barEl) {
-            var t0 = Date.now();
-            barTimer = setInterval(function () {
-                if (stopped) { clearInterval(barTimer); return; }
-                var secs = (Date.now() - t0) / 1000;
-                {% comment %}
-                   6% floor: the easing curve starts at zero, which would show
-                   an empty track for the first moment — and an empty bar reads
-                   as "nothing is happening" at exactly the wrong time.
-                {% endcomment %}
-                barEl.style.width = (6 + 90 * (1 - Math.exp(-secs / 18))).toFixed(1) + '%';
-            }, 400);
+    var TERM_PROMPT = '<span class="cg-p"><span class="u">coloureg</span>:<span class="h">~</span>$</span> ';
+    var TERM_DOTS = '<span class="cg-dots" aria-hidden="true"><i>.</i><i>.</i><i>.</i></span>';
+    var TERM_MARK = { ok: '<span class="cg-mark ok">&#10003;</span>', bad: '<span class="cg-mark bad">&#10007;</span>',
+                      half: '<span class="cg-mark half">~</span>' };
+    function termBody() { return el('pending-terminal'); }
+    function termSettle(mark) {
+        {% comment %} The line still working (dots) gets its mark: a tick when the next one starts. {% endcomment %}
+        var body = termBody();
+        if (!body) return;
+        var busy = body.querySelectorAll('.cg-ln:not(.done)');
+        for (var i = 0; i < busy.length; i++) {
+            var dots = busy[i].querySelector('.cg-dots');
+            if (dots) { dots.insertAdjacentHTML('afterend', TERM_MARK[mark || 'ok']); dots.parentNode.removeChild(dots); }
+            busy[i].className = 'cg-ln done';
         }
     }
-
+    function termLine(text, state) {
+        {% comment %} state: 'busy' (dots), or a mark: 'ok', 'bad', 'half'. {% endcomment %}
+        var body = termBody();
+        if (!body) return;
+        var cls = state === 'busy' ? 'cg-ln' : 'cg-ln done ' + state;
+        body.insertAdjacentHTML('beforeend', '<div class="' + cls + '">' + TERM_PROMPT + '<span class="cg-msg">' +
+            escapeHtml(text) + '</span>' + (state === 'busy' ? TERM_DOTS : TERM_MARK[state]) + '</div>');
+    }
+    function runStages() {
+        if (!termBody()) return;
+        {% comment %} The first stage is already on the page (server-rendered, so the terminal is never
+           empty, even without JavaScript); later ones are added on their timers. {% endcomment %}
+        STAGES.forEach(function (st) {
+            if (st.at === 0) return;
+            stageTimers.push(setTimeout(function () {
+                if (stopped) return;
+                termSettle('ok');
+                termLine(st.text, 'busy');
+            }, st.at));
+        });
+    }
     function stopStages() {
         stageTimers.forEach(clearTimeout);
         stageTimers = [];
-        if (barTimer) { clearInterval(barTimer); barTimer = null; }
-        var barEl = el('pending-bar');
-        if (barEl) barEl.style.width = '100%';
     }
-
+    var termQueued = false;
+    function termQueue(waiting) {
+        {% comment %} paint274: a 'busy' answer means every recovery slot was taken and the page will ask
+           again; saying so explains the wait. Settled when the retry is sent. {% endcomment %}
+        if (waiting && !termQueued) { termQueued = true; termSettle('ok'); termLine('queued, waiting for a free slot', 'busy'); }
+        if (!waiting && termQueued) {
+            var body = termBody(), ln = body && body.querySelectorAll('.cg-ln:not(.done)');
+            for (var i = 0; ln && i < ln.length; i++) {
+                if (ln[i].textContent.indexOf('queued') !== -1) {
+                    var d = ln[i].querySelector('.cg-dots');
+                    if (d) { d.insertAdjacentHTML('afterend', TERM_MARK.ok); d.parentNode.removeChild(d); }
+                    ln[i].className = 'cg-ln done';
+                }
+            }
+            termQueued = false;
+            termLine('resuming the search', 'busy');      // one working line again while the retry runs
+        }
+    }
     runStages();
 
     function escapeHtml(s) {
@@ -1395,7 +1432,12 @@ window.cregReportWait();
         section.style.display = '';
     }
 
-    function finish(fn) {
+    var TERM_ENDINGS = {
+        found:  { text: 'paint code found', mark: 'ok',   pause: 500 },
+        name:   { text: 'colour name found, no code', mark: 'half', pause: 900 },
+        missed: { text: 'no factory code on this build sheet', mark: 'bad', pause: 900 }
+    };
+    function finish(fn, ending) {
         if (stopped) return;
         stopped = true;
         stopStages();   // paint16: halt the staged copy the moment we have a real answer
@@ -1405,7 +1447,19 @@ window.cregReportWait();
            measured the spinner appearing, not the code.
         {% endcomment %}
         if (window.cregReportWait) { window.cregReportWait(); }
-        fn();
+        {% comment %} paint274: the terminal closes on the outcome (a tick, the amber ~ for a name with
+           no code, a red cross for none) and holds it briefly so it is read; the result then
+           replaces the card as before. Only after the answer exists, so it never slows one. {% endcomment %}
+        var end = TERM_ENDINGS[ending];
+        if (!end || !termBody()) { fn(); return; }
+        termSettle('ok');            // the step that was running did run; the outcome line says what came of it
+        termLine(end.text, end.mark);
+        if (ending === 'found') {
+            termBody().insertAdjacentHTML('beforeend', '<div class="cg-ln done">' + TERM_PROMPT + '<span class="cg-cur" aria-hidden="true"></span></div>');
+        }
+        var stay = el('pending-stay');
+        if (stay) stay.style.visibility = 'hidden';
+        setTimeout(fn, end.pause);
     }
 
     {% comment %}The /lookup-status endpoint DOES the recovery work synchronously (parallel{% endcomment %}
@@ -1432,6 +1486,7 @@ window.cregReportWait();
 
     function runRecovery() {
         if (stopped) return;
+        termQueue(false);             // paint274: the retry is going out
 
         var controller = new AbortController();
         var killer = setTimeout(function () { controller.abort(); }, MAX_WAIT_MS);
@@ -1446,9 +1501,9 @@ window.cregReportWait();
                 if (stopped) return;
                 var s = data && data.status;
                 if (s === 'found' || s === 'already_resolved') {
-                    finish(function () { showFound(data); });
+                    finish(function () { showFound(data); }, 'found');
                 } else if (s === 'name_only') {
-                    finish(function () { showNameOnly(data); });
+                    finish(function () { showNameOnly(data); }, 'name');
                 } else if (s === 'locked') {
                     {% comment %}
                        paint22: the recovery found a chargeable result while we
@@ -1466,10 +1521,11 @@ window.cregReportWait();
                     {% endcomment %}
                     busyRetries += 1;
                     var waitMs = ((data && data.retry_after) || 4) * 1000;
+                    termQueue(true);          // paint274
                     setTimeout(runRecovery, waitMs);
                 } else {
                     {% comment %}'not_found', 'error', or anything unexpected → manual offer.{% endcomment %}
-                    finish(showMissed);
+                    finish(showMissed, 'missed');
                 }
             })
             .catch(function () {
@@ -1497,7 +1553,7 @@ window.cregReportWait();
                    is not there, we must still show the manual offer rather than
                    loop.
                 {% endcomment %}
-                if (finalAttemptDone) { finish(showMissed); return; }
+                if (finalAttemptDone) { finish(showMissed, 'missed'); return; }
                 finalAttemptDone = true;
                 setTimeout(function () {
                     if (stopped) return;
@@ -1513,19 +1569,19 @@ window.cregReportWait();
                             if (stopped) return;
                             var s2 = data && data.status;
                             if (s2 === 'found' || s2 === 'already_resolved') {
-                                finish(function () { showFound(data); });
+                                finish(function () { showFound(data); }, 'found');
                             } else if (s2 === 'name_only') {
-                                finish(function () { showNameOnly(data); });
+                                finish(function () { showNameOnly(data); }, 'name');
                             } else if (s2 === 'locked') {
                                 stopped = true;
                                 window.location.reload();
                             } else {
-                                finish(showMissed);
+                                finish(showMissed, 'missed');
                             }
                         })
                         .catch(function () {
                             clearTimeout(k2);
-                            finish(showMissed);
+                            finish(showMissed, 'missed');
                         });
                 }, 3000);
             });
