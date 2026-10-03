@@ -301,34 +301,29 @@
         from { transform: rotateY(0deg)   rotateX(0deg); }
         to   { transform: rotateY(360deg) rotateX(720deg); }
     }
-    {% comment %}/* paint274: THE TERMINAL. A Fedora-style window: GNOME header in Adwaita Sans,
-       text in Adwaita Mono (Fedora's terminal font), served from our own static
-       files, cut down to the 100-odd characters used (about 32 KB for all three;
-       the full files are 360 KB each). OFL, no reserved font name; licence beside
-       the files. One row per line: nowrap, and the type shrinks on the narrowest
-       phones so the longest line still fits. */{% endcomment %}
-    @font-face { font-family: 'Adwaita Mono'; font-style: normal; font-weight: 400; font-display: swap;
-                 src: url('{% static "fonts/adwaita/adwaita-mono-400-subset.woff2" %}') format('woff2'); }
-    @font-face { font-family: 'Adwaita Mono'; font-style: normal; font-weight: 700; font-display: swap;
-                 src: url('{% static "fonts/adwaita/adwaita-mono-700-subset.woff2" %}') format('woff2'); }
-    @font-face { font-family: 'Adwaita Sans'; font-style: normal; font-weight: 700; font-display: swap;
-                 src: url('{% static "fonts/adwaita/adwaita-sans-700-subset.woff2" %}') format('woff2'); }
-    .cg-term { width: 100%; max-width: 380px; border-radius: 12px; overflow: hidden; border: 1px solid #111; text-align: left; }
-    .cg-term-bar { height: 38px; background: #303030; color: #fff; display: flex; align-items: center; justify-content: center;
-                   font-family: 'Adwaita Sans', system-ui, sans-serif; font-size: 13.5px; font-weight: 700; }
-    .cg-term-body { background: #1e1e1e; color: #fff; padding: 10px 12px 12px; min-height: 14.5em; line-height: 1.85;
-                    font-family: 'Adwaita Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
-                    font-size: clamp(10.5px, 3.4vw, 13px); }
+    {% comment %}/* paint277: THE TERMINAL, SIMPLER (option A): a black panel, green text, a plain
+       ">" prompt, in JetBrains Mono, the font the home page's status line names.
+       Served from our own static files, cut down to the characters used (about
+       10 KB for both weights); OFL, no reserved font name, licence beside them.
+       It has no tick or cross glyph, so those two come from the system font.
+       Replaces paint274's Fedora-style window (title bar, coloureg:~$ prompt,
+       Adwaita fonts). One row per line; the type shrinks on the narrowest phones. */{% endcomment %}
+    @font-face { font-family: 'JetBrains Mono'; font-style: normal; font-weight: 500; font-display: swap;
+                 src: url('{% static "fonts/jetbrains/jetbrains-mono-500-subset.woff2" %}') format('woff2'); }
+    @font-face { font-family: 'JetBrains Mono'; font-style: normal; font-weight: 700; font-display: swap;
+                 src: url('{% static "fonts/jetbrains/jetbrains-mono-700-subset.woff2" %}') format('woff2'); }
+    .cg-term { width: 100%; max-width: 350px; text-align: left; }
+    .cg-term-body { background: #111; color: #4ade80; border-radius: 8px; padding: 12px 14px; min-height: 14em; line-height: 2;
+                    font-family: 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace; font-weight: 500;
+                    font-size: clamp(10px, 3.2vw, 12px); }
     .cg-ln { white-space: nowrap; overflow: hidden; }
     .cg-p { font-weight: 700; }
-    .cg-p .u { color: #8ae234; }
-    .cg-p .h { color: #729fcf; }
-    .cg-msg { text-transform: uppercase; font-size: .88em; letter-spacing: .06em; }
+    .cg-msg { text-transform: uppercase; letter-spacing: .05em; }
     .cg-ln.done .cg-msg { opacity: .6; }
     .cg-ln.bad .cg-msg { color: #f66151; opacity: 1; }
     .cg-ln.half .cg-msg { color: #f8e45c; opacity: 1; }
     .cg-mark { margin-left: 6px; }
-    .cg-mark.ok { color: #57e389; }
+    .cg-mark.ok { color: #22c55e; }
     .cg-mark.bad { color: #f66151; }
     .cg-mark.half { color: #f8e45c; }
     .cg-dots { letter-spacing: .12em; margin-left: 1px; }
@@ -336,7 +331,7 @@
     .cg-dots i:nth-child(2) { animation-delay: .2s; }
     .cg-dots i:nth-child(3) { animation-delay: .4s; }
     @keyframes cg-pulse { 0%, 100% { opacity: .55; } 50% { opacity: 1; } }
-    .cg-cur { display: inline-block; width: .6em; height: 1.1em; vertical-align: -0.2em; margin-left: 4px; background: #fff;
+    .cg-cur { display: inline-block; width: .6em; height: 1.05em; vertical-align: -0.15em; margin-left: 4px; background: #4ade80;
               animation: cg-blink 1s steps(1) infinite; }
     @keyframes cg-blink { 50% { opacity: 0; } }
     .cg-term-stay { font-size: 13px; color: #6c757d; margin: 0; }
@@ -684,11 +679,10 @@
                                still name functions, never suppliers. The progress bar went: the lines show
                                the progress, and the bar only crept towards 96% on a timer. {% endcomment %}
                             <div class="cg-term" id="pending-term" data-make="{{ make|lower }}">
-                                <div class="cg-term-bar">coloureg@linux:~</div>
                                 <div class="cg-term-body" id="pending-terminal" aria-live="polite">
-                                    <div class="cg-ln done"><span class="cg-p"><span class="u">coloureg</span>:<span class="h">~</span>$</span> <span class="cg-msg">connecting to manufacturer server</span><span class="cg-mark ok">&#10003;</span></div>
-                                    <div class="cg-ln done"><span class="cg-p"><span class="u">coloureg</span>:<span class="h">~</span>$</span> <span class="cg-msg">{{ make|lower }} build sheet</span><span class="cg-mark ok">&#10003;</span></div>
-                                    <div class="cg-ln"><span class="cg-p"><span class="u">coloureg</span>:<span class="h">~</span>$</span> <span class="cg-msg">identifying colour records</span><span class="cg-dots" aria-hidden="true"><i>.</i><i>.</i><i>.</i></span></div>
+                                    <div class="cg-ln done"><span class="cg-p">&gt;</span> <span class="cg-msg">connecting to manufacturer server</span><span class="cg-mark ok">&#10003;</span></div>
+                                    <div class="cg-ln done"><span class="cg-p">&gt;</span> <span class="cg-msg">{{ make|lower }} build sheet</span><span class="cg-mark ok">&#10003;</span></div>
+                                    <div class="cg-ln"><span class="cg-p">&gt;</span> <span class="cg-msg">identifying colour records</span><span class="cg-dots" aria-hidden="true"><i>.</i><i>.</i><i>.</i></span></div>
                                 </div>
                             </div>
                             <p class="cg-term-stay" id="pending-stay">(please stay on this page)</p>
@@ -1149,7 +1143,7 @@ window.cregReportWait();
         { at: 45000, text: 'final checks, nearly done' }
     ];
     var stageTimers = [];
-    var TERM_PROMPT = '<span class="cg-p"><span class="u">coloureg</span>:<span class="h">~</span>$</span> ';
+    var TERM_PROMPT = '<span class="cg-p">&gt;</span> ';   // paint277: a plain prompt
     var TERM_DOTS = '<span class="cg-dots" aria-hidden="true"><i>.</i><i>.</i><i>.</i></span>';
     var TERM_MARK = { ok: '<span class="cg-mark ok">&#10003;</span>', bad: '<span class="cg-mark bad">&#10007;</span>',
                       half: '<span class="cg-mark half">~</span>' };
