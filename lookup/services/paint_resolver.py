@@ -1141,7 +1141,8 @@ def tidy_provider_name(name):
     key = lambda p: re.sub(r'\s+', ' ', p.lower().replace('gray', 'grey'))
     if len(parts) > 1 and len({key(p) for p in parts}) == 1:
         out = next((p for p in parts if 'grey' in p.lower()), parts[0])
-    stripped = re.sub(r'\s+paint$', '', out, flags=re.I).strip()
+    # paint279: "Paintwork" too ("Elixir Red Paintwork", pl24 and Ezyvin, 3 Oct).
+    stripped = re.sub(r'\s+paint(?:work)?$', '', out, flags=re.I).strip()
     if stripped and stripped != out and stripped.split()[-1].lower() not in _KEEP_PAINT_AFTER:
         out = stripped
     return out
