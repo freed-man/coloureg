@@ -816,6 +816,12 @@ class PaintLookup(models.Model):
         # Verified 19 Aug 2026: the codes AMG lookups delivered (799, 144) are
         # present under 'mercedes' and absent under 'mercedesamg'.
         'mercedesamg': 'mercedes',
+        # paint271: DVLA writes the GWM Ora's make as "GWM ORA", which normalises to
+        # 'gwmora', a key with no rows, while bsp's Ora codes were added under 'ora'
+        # (61 of them by the top-up of 28 Sep). Seen on a customer's 2024 Ora 03 on
+        # 2 Oct, which got no name or swatch for the operator to work from. No rows
+        # sit under 'gwmora', so the alias hides nothing.
+        'gwmora': 'ora',
         # DS is stored by the merge as 'dsautomobiles' (the marque's full legal
         # name), but every provider reports the make as bare 'DS'. That
         # normalises to 'ds', which has ZERO rows, so all 103 DS colours were
