@@ -888,6 +888,8 @@ def index(request):
         if not cached_payload:
             cached_payload = get_name_only_payload(registration)
             _name_only_replay = bool(cached_payload)
+        if cached_payload and not _name_only_replay:
+            cached_payload = _fill_cached_name(cached_payload)       # paint281
         if cached_payload:
             # paint94: DECIDE THE GATE HERE, do not replay the stored verdict.
             #
@@ -3131,6 +3133,27 @@ def _record_recovery(search_id, telemetry):
     fields = _apply_recovery_telemetry(search, telemetry)
     if fields:
         search.save(update_fields=fields)
+
+
+def _fill_cached_name(payload):
+    """paint281: a cached answer with a code but no name gets the name today's
+    catalogue gives that code. A catalogue fix (a new row, a corrected name) then
+    reaches cars already in the 7-day cache at once: a 2026 Jeep Avenger's 946,
+    cached nameless on 3 Oct before its row existed, kept replaying with no name.
+    Only fills a blank: a name already there (a provider's, or yours) is never
+    replaced. The stored entry is left as it is. Never raises."""
+    try:
+        code = (payload.get('paint_code') or '').strip()
+        if not code or (payload.get('paint_description') or '').strip():
+            return payload
+        _hex, name, _canonical = PaintLookup.lookup_with_canonical(
+            manufacturer=payload.get('make') or '', paint_code=code, model=payload.get('model') or '',
+            year=payload.get('year'), vdg_colour=payload.get('colour') or '')
+        if name:
+            return dict(payload, paint_description=name)
+    except Exception:
+        logger.warning('cached answer: could not fill its missing name', exc_info=True)
+    return payload
 
 
 def _record_name_only(search_id, paint_description, telemetry=None, source=''):
