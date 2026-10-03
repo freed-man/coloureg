@@ -41,7 +41,7 @@ import requests
 
 from .http import get_session
 
-from .vdg import paint_lookup, VdgError, _log_reg
+from .vdg import paint_lookup, VdgError, VdgNotFoundError, VdgTimeoutError, _log_reg
 # paint95: One Auto is NO LONGER SUBMITTED as a race leg, but the import and
 # _oneauto_leg below are deliberately kept. Re-enabling it is then one
 # ex.submit line rather than a rebuild, and its battery coverage — the coverage
@@ -470,6 +470,29 @@ EZYVIN_BACKSTOP_S = float(os.environ.get('EZYVIN_BACKSTOP_S', '20'))
 # customer is waiting on the last leg to finish — resolves that much sooner.
 SECOND_CHANCE_S = float(os.environ.get('SECOND_CHANCE_S', '5'))
 
+# paint272: WHAT AN ABANDONED PAINT CALL COSTS. When we stop waiting on a paint
+# call (our 35s timeout, a dropped connection, a 5xx from VDG's gateway) there is
+# no receipt, so nothing used to be recorded. But VDG keeps working on it: its
+# usage log for September shows every paint request still unanswered after 30s
+# re-sent on VDG's side (a twin request exactly 30s later, from our address), and
+# both charged at £0.27 when the paint is found. 117 slow first calls that month,
+# every one found paint and was charged twice; 109 lookups lost £0.81-£1.08 each
+# this way, about £100, recorded as £0.06. So an abandoned paint call is booked at
+# two paint prices. It errs high when VDG finds nothing (an empty answer is
+# refunded), which is the safe side for the daily budget breaker.
+ABANDONED_PAINT_ESTIMATE = 0.54
+
+
+def _abandoned(error):
+    """True when a paint call failed without a receipt but VDG may still charge it."""
+    if error is None or isinstance(error, VdgNotFoundError):
+        return False
+    if isinstance(error, VdgTimeoutError):
+        return True
+    text = str(error)
+    return isinstance(error, VdgError) and (text.startswith('VDG request failed')
+                                            or text.startswith('VDG returned 5'))
+
 # Concurrency cap on the recovery race (paint19).
 #
 # resolve_paint parks its calling thread for up to PL24_TIMEOUT seconds. Gunicorn
@@ -682,6 +705,7 @@ def _vdg_retry(registration, telemetry=None, search_id=None, race_over=None):
     second_sink = {}
     second = None
     data = None
+    first_error = second_error = None       # paint272: why a call left no receipt
     try:
         # PAINT package only (paint66). The retry never needed the vehicle
         # half — it exists because a cold first call warms VDG's upstream cache,
@@ -708,6 +732,7 @@ def _vdg_retry(registration, telemetry=None, search_id=None, race_over=None):
         if not isinstance(e, VdgError):
             logger.exception('VDG paint call failed unexpectedly for %s',
                              _log_reg(registration))
+        first_error = e
         data = None
 
     # SECOND CHANCE (paint73). The first call has warmed VDG's upstream cache
@@ -720,7 +745,13 @@ def _vdg_retry(registration, telemetry=None, search_id=None, race_over=None):
     # and a hit is the only outcome that has already cost the full price — a
     # paint-less call is refunded.
     first_data = data
-    if not (data and data.get('paint_returned')):
+    # paint272: NOT ONCE ANOTHER PROVIDER HAS A CODE. race_over is set only when a
+    # usable code exists (pl24, Ezyvin or VDG), so a second call then cannot help
+    # the customer, yet it is charged whenever VDG finds paint: in September 85 of
+    # the 109 lookups that paid for four paint calls already had pl24's code. A
+    # warm-read rescue still runs whenever nobody has answered yet.
+    skip_second = bool(race_over is not None and race_over.is_set())
+    if not (data and data.get('paint_returned')) and not skip_second:
         # RECORDED, not just done. Until now `data = second` overwrote silently,
         # so a row won on the second attempt looked identical to one won on the
         # first — and the question "does this £0.27 earn its keep" had no answer
@@ -733,7 +764,8 @@ def _vdg_retry(registration, telemetry=None, search_id=None, race_over=None):
         try:
             second = paint_lookup(registration, billing_sink=second_sink,
                                   timeout=SECOND_CHANCE_S)
-        except Exception:  # noqa: BLE001 — a second chance must never raise
+        except Exception as e:  # noqa: BLE001 — a second chance must never raise
+            second_error = e
             second = None
         if second and second.get('paint_returned'):
             logger.info('VDG second chance recovered paint for %s',
@@ -756,6 +788,16 @@ def _vdg_retry(registration, telemetry=None, search_id=None, race_over=None):
     second_cost = second_sink.get('transaction_cost')
     if second_cost is None and second:
         second_cost = second.get('transaction_cost')
+    # paint272: a call we abandoned left no receipt; book what VDG goes on to charge.
+    estimated = False
+    if first_cost is None and _abandoned(first_error):
+        first_cost, estimated = ABANDONED_PAINT_ESTIMATE, True
+    if second_cost is None and _abandoned(second_error):
+        second_cost, estimated = ABANDONED_PAINT_ESTIMATE, True
+    if estimated:
+        _t['vdg_retry_cost_estimated'] = True
+        logger.warning('VDG paint call abandoned without a receipt for %s; booking an estimate',
+                       _log_reg(registration))
     _costs = [c for c in (first_cost, second_cost) if c is not None]
     retry_cost = sum(_costs) if _costs else None
     if retry_cost is not None:
