@@ -420,6 +420,33 @@ _PETROL_FROM, _DIESEL_FROM = date(2006, 1, 1), date(2015, 9, 1)
 _VAN_PETROL_FROM, _VAN_DIESEL_FROM = date(2007, 1, 1), date(2016, 9, 1)      # paint267
 
 
+_BIKE_FROM = date(2007, 7, 1)     # paint268: Euro 3 motorbikes, as TfL dates them
+
+
+def _first_registered(f):
+    first = _date(f.get('first_registered'))
+    if first is None:
+        try:
+            year, month = (int(x) for x in str(f.get('reg_month', '')).split('-')[:2])
+            first = date(year, month, 1)
+        except (TypeError, ValueError):
+            first = None
+    return first
+
+
+def _bike_by_age(f):
+    """paint268: London's own answer for a motorbike, moped or quadricycle."""
+    if str(f.get('fuel', '')).upper().strip() == 'ELECTRICITY':
+        return True
+    first = _first_registered(f)
+    if first is not None:
+        return first >= _BIKE_FROM
+    try:
+        return int(f.get('year')) > _BIKE_FROM.year     # only the year known: a full year past it
+    except (TypeError, ValueError):
+        return False
+
+
 def _ulez_by_age(f):
     fuel = str(f.get('fuel', '')).upper().strip()
     if fuel == 'ELECTRICITY':
@@ -607,7 +634,18 @@ def _display(f, today=None):
         # paint245: ULEZ. An answer stored before paint245 carries no letter, so
         # it links to TfL without a reason.
         letter = f.get('lez', '')
-        if letter == 'c' or (letter == 'e' and _ulez_by_age(f)):
+        motorbike = str(f.get('type_approval', '')).upper().startswith('L')
+        if motorbike and letter in ('c', 'e', 'n'):
+            # paint268: Scotland's zones do not cover motorbikes, mopeds or
+            # quadricycles at all, so its answer for one says nothing about London
+            # (on 3 Oct it had called 2 motorbikes "compliant"). London holds them
+            # to Euro 3, generally those first registered from July 2007: decided
+            # from the bike's own details, anything earlier or unclear to TfL.
+            if _bike_by_age(f):
+                out['vc_ulez'] = {'ok': True, 'label': 'Compliant'}
+            else:
+                out['vc_ulez'] = {'ok': None, 'link': TFL_ULEZ_URL, 'notice': f"({ULEZ_NOTICES['unclear']})"}
+        elif letter == 'c' or (letter == 'e' and _ulez_by_age(f)):
             out['vc_ulez'] = {'ok': True, 'label': 'Compliant'}
         elif letter == 'n':
             out['vc_ulez'] = {'ok': False, 'label': 'Not compliant'}
