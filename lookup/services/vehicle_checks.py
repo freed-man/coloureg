@@ -387,7 +387,9 @@ def mileage_chart(tests):
             + f" L{visits[-1]['xv'] * 10:.1f},100 Z")
     years = list(range(lo.year + 1, hi.year + 1))
     span_years = (hi - lo).days / 365.25
-    every = 1 if span_years <= 6 else 2 if span_years <= 12 else 5
+    # paint270: labels are always a multiple of the dashed lines, so each sits on one
+    # (lines every 2 years on a long history, labels every 4: 2010, 2014, 2018...).
+    every = 1 if span_years <= 6 else 2 if span_years <= 12 else 4
     marks_every = 1 if span_years <= 12 else 2
     year_marks = [pct(XP(date(y, 1, 1))) for y in years[::marks_every]]
     xticks = [{'label': str(y), 'x': XP(date(y, 1, 1))} for y in years[::every]]
