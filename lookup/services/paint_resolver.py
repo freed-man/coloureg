@@ -1132,6 +1132,11 @@ def tidy_provider_name(name):
     spelling kept), and a trailing "Paint" that is not part of the name goes
     ("Pearl White Paint" -> "Pearl White"). Anything else is left as sent."""
     out = (name or '').strip()
+    # paint278: a bracketed note is not part of the name ("Steel Grey [India:Steel
+    # Silver", its bracket never closed, from Ezyvin on 3 Oct), and neither is
+    # trailing punctuation ("Titanium Grey Paint-", the same day).
+    out = re.sub(r'\s*\[[^\]]*(?:\]|$)', '', out).strip()
+    out = re.sub(r'[\s,;:\-\u2013\u2014]+$', '', out).strip()
     parts = [p.strip() for p in out.split('/') if p.strip()]
     key = lambda p: re.sub(r'\s+', ' ', p.lower().replace('gray', 'grey'))
     if len(parts) > 1 and len({key(p) for p in parts}) == 1:

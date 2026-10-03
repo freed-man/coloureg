@@ -1745,6 +1745,17 @@
                         <div class="lbl">DVLA colour</div>
                         <div class="val">{{ s.colour|default:"—" }}</div>
                     </div>
+                    {% comment %} paint278: the name the lookup returned, where it came from, and each
+                       source's own wording: the customer's email has the name, and it is the best
+                       place to start the research. {% endcomment %}
+                    {% if s.paint_description or s.pl24_name or s.ezyvin_name or s.vdg_paint_name %}
+                    <div>
+                        <div class="lbl">Name returned</div>
+                        <div class="val">{{ s.paint_description|default:"—" }}{% if s.paint_description and s.provider %} <span style="color: #666;">({{ s.source_label }})</span>{% endif %}
+                            {% if s.pl24_name or s.ezyvin_name or s.vdg_paint_name %}<div style="font-size: 12px; color: #666;">{% if s.pl24_name %}pl24: {{ s.pl24_name }}{% endif %}{% if s.ezyvin_name %}{% if s.pl24_name %} · {% endif %}Ezyvin: {{ s.ezyvin_name }}{% endif %}{% if s.vdg_paint_name %}{% if s.pl24_name or s.ezyvin_name %} · {% endif %}VDG: {{ s.vdg_paint_name }}{% endif %}</div>{% endif %}
+                        </div>
+                    </div>
+                    {% endif %}
                     <div>
                         <div class="lbl">Customer email</div>
                         <div class="val"><a href="mailto:{{ s.email }}" style="color: #003399;">{{ s.email }}</a></div>

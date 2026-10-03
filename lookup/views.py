@@ -2275,7 +2275,7 @@ def _lookup_status(request, search_id):
     # name-only telemetry flag records it (keeps admin stats honest).
     if result.get('name_only'):
         paint_description = result.get('paint_description', '')
-        _record_name_only(search_id, paint_description, telemetry)
+        _record_name_only(search_id, paint_description, telemetry, source=result.get('source', ''))   # paint278
         # Persist the name to the session so a reload re-shows it, but keep
         # paint_code empty and clear pending so further polls short-circuit.
         vehicle_data['paint_description'] = paint_description
@@ -3133,7 +3133,7 @@ def _record_recovery(search_id, telemetry):
         search.save(update_fields=fields)
 
 
-def _record_name_only(search_id, paint_description, telemetry=None):
+def _record_name_only(search_id, paint_description, telemetry=None, source=''):
     """Persist a name-only recovery: a colour name with NO code (e.g. Ford
     passenger, Jaguar, some Kia — partslink24 carries the name, not a code).
 
@@ -3150,7 +3150,11 @@ def _record_name_only(search_id, paint_description, telemetry=None):
         return
     search.paint_description = paint_description
     search.success = True
-    search.provider = Search.PROVIDER_PARTSLINK24
+    # paint278: THE SOURCE THE NAME CAME FROM. This said partslink24 always, from
+    # when pl24 was the only name source; Ezyvin supplies them too now, and a
+    # Kia PV5 on 3 Oct showed pl24 as its source though pl24 had found nothing.
+    search.provider = {'ezyvin': Search.PROVIDER_EZYVIN, 'vdg_retry': Search.PROVIDER_VDG_RETRY,
+                       'vdg': Search.PROVIDER_VDG}.get(source, Search.PROVIDER_PARTSLINK24)
     fields = ['paint_description', 'success', 'provider']
     fields += _apply_recovery_telemetry(search, telemetry)
     search.save(update_fields=fields)
