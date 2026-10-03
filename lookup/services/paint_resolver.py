@@ -185,6 +185,15 @@ def _enrich_from_lookup(result, make, model=None, vdg_colour=None,
                         desc, make)
             desc = ''
             result['paint_description'] = ''
+        # paint273: NOR IS ONE ENDING IN ITS OWN CODE. VDG writes Land Rover names
+        # as "Luxor (869)" or "Santorini Black (820)" (10 answers so far, all
+        # VDG, all Land Rover), so the page showed the code twice. The bracket
+        # goes; the name before it stays.
+        if desc and code:
+            _m = re.match(r'^(.*\S)\s*\(([^()]*)\)\s*$', desc)
+            if _m and re.sub(r'[\s-]', '', _m.group(2)).upper() == re.sub(r'[\s-]', '', code).upper():
+                desc = _m.group(1).strip()
+                result['paint_description'] = desc
         # paint243: TIDY A PROVIDER'S NAME. Ezyvin writes one name twice in two
         # spellings ("Wolf Gray Metallic/Wolf Grey Metallic") and adds a word
         # that is not part of it ("Pearl White Paint"). Only provider answers
@@ -482,6 +491,19 @@ SECOND_CHANCE_S = float(os.environ.get('SECOND_CHANCE_S', '5'))
 # refunded), which is the safe side for the daily budget breaker.
 ABANDONED_PAINT_ESTIMATE = 0.54
 
+# paint273: VDG'S SECOND CALL WAITS 23s, NOT 5s. It exists to collect an answer
+# VDG has already prepared, usually under a second. Measured on VDG's own
+# September log, 116 second calls fired at 35s: 12 were answered inside 5s, 12
+# more WITH PAINT after 5s but inside VDG's 30s (we had hung up), 78 not inside
+# 30s at all (VDG re-sent them; nothing comes back after that) and 14 empty. A
+# longer wait doubles its wins and costs nothing extra: VDG charges that call
+# whether we wait or not. 23s keeps it inside the race's 60s deadline (the
+# first call's 35s plus this, with a second and a half to spare), so an answer
+# still reaches the customer's page. It only fires when nobody has a code yet,
+# mmw included (see _mmw_has_code). Separate from SECOND_CHANCE_S, which One
+# Auto's dormant leg still reads.
+VDG_SECOND_CHANCE_S = float(os.environ.get('VDG_SECOND_CHANCE_S', '23'))
+
 
 def _abandoned(error):
     """True when a paint call failed without a receipt but VDG may still charge it."""
@@ -649,7 +671,8 @@ def _record_retry_billing(search_id, cost, balance, retry_code, retry_name=''):
             pass
 
 
-def _vdg_retry(registration, telemetry=None, search_id=None, race_over=None):
+def _vdg_retry(registration, telemetry=None, search_id=None, race_over=None,
+               mmw_future=None, make='', vdg_colour=''):
     """Second VDG bundle call. Returns a paint dict if paint came back, else
     None. Never raises — VDG errors degrade to None (no recovery).
 
@@ -750,7 +773,8 @@ def _vdg_retry(registration, telemetry=None, search_id=None, race_over=None):
     # the customer, yet it is charged whenever VDG finds paint: in September 85 of
     # the 109 lookups that paid for four paint calls already had pl24's code. A
     # warm-read rescue still runs whenever nobody has answered yet.
-    skip_second = bool(race_over is not None and race_over.is_set())
+    skip_second = (bool(race_over is not None and race_over.is_set())
+                   or _mmw_has_code(mmw_future, make, vdg_colour))      # paint273
     if not (data and data.get('paint_returned')) and not skip_second:
         # RECORDED, not just done. Until now `data = second` overwrote silently,
         # so a row won on the second attempt looked identical to one won on the
@@ -763,7 +787,7 @@ def _vdg_retry(registration, telemetry=None, search_id=None, race_over=None):
         after_race = bool(race_over is not None and race_over.is_set())
         try:
             second = paint_lookup(registration, billing_sink=second_sink,
-                                  timeout=SECOND_CHANCE_S)
+                                  timeout=VDG_SECOND_CHANCE_S)          # paint273
         except Exception as e:  # noqa: BLE001 — a second chance must never raise
             second_error = e
             second = None
@@ -1501,6 +1525,24 @@ def mmw_code_validates(make, code, dvla_colour):
     return None
 
 
+def _mmw_has_code(f_mmw, make, vdg_colour):
+    """paint273: True when mmw already holds a code the race would serve.
+
+    The race only serves mmw's code at the end, after VDG and pl24, so a lookup
+    mmw can answer used to wait for VDG's second call too: since 13 Sep it fired
+    in all 85 lookups mmw answered, mmw having replied within 1-6s. With that
+    call now waiting up to 23s, those customers would wait longer for the same
+    answer. The same test as _mmw_settle, minus its telemetry, and never blocks.
+    """
+    if f_mmw is None or not f_mmw.done():
+        return False
+    try:
+        row = f_mmw.result()
+        return bool(row and row.get('code') and mmw_code_validates(make, row['code'], vdg_colour))
+    except Exception:  # noqa: BLE001 — a free leg's answer must never break VDG's worker
+        return False
+
+
 def _mmw_settle(f_mmw, make, vdg_colour, telemetry):
     """Read mmw's held answer. Records agreement; returns a usable code or None.
 
@@ -1929,7 +1971,8 @@ def resolve_paint(registration, vin, make, category=None, telemetry=None, model=
         _t['mmw_attempted'] = True
         f_mmw = ex.submit(_mmw_lookup, registration, search_id)
 
-        f_vdg = ex.submit(_vdg_retry, registration, _t, search_id, race_over)
+        f_vdg = ex.submit(_vdg_retry, registration, _t, search_id, race_over,
+                          f_mmw, make, vdg_colour)      # paint273: mmw's code counts
         # Category is routed (not raw): VW commercial lines misfiled as M1 by
         # VDG are sent to pl24 as N1 so the lookup hits the right catalogue
         # first time. See _route_category.

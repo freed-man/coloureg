@@ -102,6 +102,26 @@ _SECRET_PARAMS = ('apikey', 'vrm')
 _SCRUB_RE = re.compile(r'\b(' + '|'.join(_SECRET_PARAMS) + r')=[^&\s\'"]+')
 
 
+def _failure_cause(exc):
+    """paint273: WHY a request failed, first, in a few words, scrubbed.
+
+    The stored error is cut at 200 characters and urllib3's text spends them on
+    the request URL, so the admin table showed "... (Caused by Pro" and never
+    the cause (G5OPT, 2 Oct). The innermost reason now leads: e.g.
+    "ProtocolError: ('Connection aborted.', RemoteDisconnected(...))".
+    """
+    reason = exc
+    for _ in range(4):                       # requests -> urllib3 MaxRetryError -> reason
+        inner = getattr(reason, 'reason', None)
+        if inner is None and reason.args and isinstance(reason.args[0], BaseException):
+            inner = reason.args[0]
+        if inner is None or inner is reason:
+            break
+        reason = inner
+    text = _scrub(reason) if reason is not exc else _scrub(exc)
+    return f'{type(reason).__name__}: {text}'[:160]
+
+
 def _scrub(exc):
     """Exception text with the API key and registration removed (F1).
 
@@ -158,7 +178,7 @@ def _make_request(registration, package, billing_sink=None, timeout=None):
         # the URL, so the everyday BMW path was never affected; this fires on
         # network-level failures, which is exactly when nobody is watching.
         # oneauto.py:204 already got this right by logging type(e).__name__.
-        raise VdgError(f'VDG request failed: {_scrub(e)}')
+        raise VdgError(f'VDG request failed: {_failure_cause(e)}')
 
     if response.status_code != 200:
         raise VdgError(f'VDG returned {response.status_code}')
