@@ -67,6 +67,7 @@
     /* paint249: the MOT history belongs to the MOT row, so no line between them */
     .vehicle-row-joined { border-bottom: none; padding-bottom: 6px; }
     /* paint261: the "+" beside MOT and Tax, the detail it opens, and the tax table */
+    .vc-more-hit { cursor: pointer; }   /* paint276 */
     .vc-more-btn { display: inline-flex; align-items: center; justify-content: center; width: 26px; height: 26px; margin-left: 8px; padding: 0; border: 1px solid rgba(0, 0, 0, 0.25); border-radius: 50%; background: none; color: #6c757d; font-size: 11px; vertical-align: middle; }
     .vc-more { display: block; margin-top: 4px; text-align: right; }
     .vc-more .vehicle-sub { display: block; }
@@ -1612,6 +1613,17 @@ window.cregReportWait();
 /* paint261: the "+" beside MOT and Tax, and the labels on the mileage chart's points */
 (function () {
     document.querySelectorAll('.vc-more-btn').forEach(function (btn) {
+        {% comment %} paint276: the whole status (tick, label and +) opens the details, not only the
+           +: a tap on "Exempt (new vehicle)" or "Taxed" is what people try. The + stays
+           the button keyboards and screen readers use; the rest just passes taps to it. {% endcomment %}
+        var inline = btn.closest('.vehicle-inline');
+        if (inline) {
+            inline.classList.add('vc-more-hit');
+            inline.addEventListener('click', function (e) {
+                if (e.target.closest('.vc-more-btn')) { return; }       // the + handles its own click
+                btn.click();
+            });
+        }
         btn.addEventListener('click', function () {
             var box = document.getElementById(btn.getAttribute('aria-controls'));
             var open = btn.getAttribute('aria-expanded') !== 'true';

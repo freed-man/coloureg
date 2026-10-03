@@ -4,6 +4,34 @@ from django.utils import timezone
 from .models import Search, OperatorPaintCode, PaintCodeReport
 
 
+import logging as _logging
+
+_admin_log = _logging.getLogger(__name__)
+
+
+def apply_code_correction(search):
+    """paint276: after a lookup's code or name is corrected in the admin.
+
+    1. The 7-day answer for the plate, if one is cached, now gives the corrected
+       code and name, so a repeat lookup this week does not hand out the old one
+       (the Mondeo of 3 Oct was corrected in the database, and the cache kept 8MJE).
+    2. The corrected code gets its own picture (pictures are filed by plate and
+       code). Never raises: a correction must always save.
+    """
+    try:
+        from lookup.services.protection import get_cached_vrm_payload, store_vrm_payload
+        payload = get_cached_vrm_payload(search.registration, count_hit=False)
+        if payload:
+            store_vrm_payload(search.registration, dict(
+                payload, paint_code=search.paint_code or '', paint_description=search.paint_description or '',
+                all_paint_codes=[], paint_name_only=False))
+    except Exception:
+        _admin_log.warning('correction: cached answer not updated for search %s', search.id, exc_info=True)
+    if (search.paint_code or '').strip():
+        from lookup.services import ai_pictures
+        ai_pictures.start_for(search.id)
+
+
 @admin.register(Search)
 class SearchAdmin(admin.ModelAdmin):
     list_display = (
@@ -38,6 +66,14 @@ class SearchAdmin(admin.ModelAdmin):
         'email',
         'ip_address',
     )
+    def save_model(self, request, obj, form, change):
+        """paint276: a corrected code or name reaches the cache and gets its picture."""
+        if 'paint_code' in form.changed_data:
+            obj.paint_code = (obj.paint_code or '').strip()
+        super().save_model(request, obj, form, change)
+        if change and {'paint_code', 'paint_description'} & set(form.changed_data):
+            apply_code_correction(obj)
+
     readonly_fields = (
         'timestamp',
         'ip_address',
@@ -51,8 +87,9 @@ class SearchAdmin(admin.ModelAdmin):
         'category',
         'vehicle_title',
         'vin',
-        'paint_code',
-        'paint_description',
+        # paint276: paint_code and paint_description are editable: a correction
+        # (checked with a dealer) is made here, and save_model below carries it
+        # to the 7-day answer and starts the corrected code's picture.
         'provider',
         'success',
         'error_message',
