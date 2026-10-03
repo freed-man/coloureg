@@ -25,6 +25,14 @@
 <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@1,400&display=swap" rel="stylesheet">
 <link href="https://fonts.cdnfonts.com/css/uk-number-plate" rel="stylesheet">
 <style>
+    {% comment %}/* paint280: JetBrains Mono was named here but never loaded, so the status line and
+       the Turnstile note showed in each device's own monospace (Consolas on Windows).
+       The results page's terminal serves it since paint277; the same two files here,
+       so both pages speak in one voice. */{% endcomment %}
+    @font-face { font-family: 'JetBrains Mono'; font-style: normal; font-weight: 500; font-display: swap;
+                 src: url('{% static "fonts/jetbrains/jetbrains-mono-500-subset.woff2" %}') format('woff2'); }
+    @font-face { font-family: 'JetBrains Mono'; font-style: normal; font-weight: 700; font-display: swap;
+                 src: url('{% static "fonts/jetbrains/jetbrains-mono-700-subset.woff2" %}') format('woff2'); }
     #particles-js {
         position: fixed;
         top: 0;
