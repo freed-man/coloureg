@@ -444,6 +444,12 @@ CACHES = {
     'default': {
         'BACKEND': 'django.core.cache.backends.db.DatabaseCache',
         'LOCATION': 'rate_limit_cache',
+        # paint269: Django's default is 300 entries, after which it deletes a
+        # third of them, LIVE ones included: proved on 3 Oct, an unexpired
+        # rate-limit counter was among them. A flood from many addresses would
+        # keep wiping the very counters that limit it. Expired entries are
+        # cleared by prune_old_data (--cache) instead.
+        'OPTIONS': {'MAX_ENTRIES': 20000},
     },
     # LOCAL is a per-process in-memory cache. It is intentionally NOT shared
     # between workers — each worker keeps its own copy. That is fine (and

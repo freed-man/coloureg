@@ -97,6 +97,13 @@
     .mc-visit:focus { outline: none; } .mc-visit:focus-visible { box-shadow: 0 0 0 2px #212529; }
     .mc-tip { position: absolute; transform: translate(-50%, calc(-100% - 14px)); background: #212529; color: #fff; font-size: 13px; line-height: 1.4; padding: 6px 9px; border-radius: 7px; white-space: nowrap; pointer-events: none; z-index: 2; }
     .mc-tip .mc-drop { color: #ffb3ba; }
+    /* paint269: compact markers when each visit has less than 28px (a long history on a phone):
+       a pass is a small green dot, a fail a small red cross, a fail and its pass a cross and a dot */
+    .mc-compact .mc-visit { padding: 1px; gap: 3px; align-items: center; }
+    .mc-compact .mc-res { width: 13px; height: 13px; font-size: 7px; }
+    .mc-compact .mc-ok { width: 9px; height: 9px; }
+    .mc-compact .mc-ok i { display: none; }
+    .mc-compact .mc-no + .mc-no, .mc-compact .mc-ok + .mc-ok { display: none; }
     /* paint246: the MOT history, under the MOT row, collapsed until asked for */
     .mot-history { padding: 4px 0 12px; border-bottom: 0.5px solid rgba(0, 0, 0, 0.1); }
     .mot-toggle {
@@ -1548,6 +1555,17 @@ window.cregReportWait();
     document.querySelectorAll('.mileage-chart-plot').forEach(function (plot) {
         var tip = plot.querySelector('.mc-tip'), shown = null;
         if (!tip) { return; }
+        /* paint269: compact markers only when the visits do not fit: measured on the
+           real width, again whenever it changes (also when the history is opened). */
+        var visitCount = plot.querySelectorAll('.mc-visit').length;
+        function fit() {
+            var width = plot.clientWidth;
+            if (!width || !visitCount) { return; }
+            plot.classList.toggle('mc-compact', width / visitCount < 28);
+        }
+        if (window.ResizeObserver) { new ResizeObserver(fit).observe(plot); }
+        else { window.addEventListener('resize', fit); document.addEventListener('shown.bs.collapse', fit); }
+        fit();
         function show(v) {
             var lines = (v.getAttribute('data-lines') || '').split('|');
             tip.textContent = '';

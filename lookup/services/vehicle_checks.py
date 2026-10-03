@@ -318,7 +318,9 @@ def split_details(vehicle_data):
 # the test card flags it. Fewer than two readings: no chart.
 
 KM_TO_MILES = 0.621371
-_NICE_STEPS = (100, 200, 250, 500, 1000, 2000, 2500, 5000, 10000, 20000, 25000, 50000, 100000, 200000)
+# paint269: 400, 4,000 and 40,000 too, so one high reading wastes less of the chart
+# (150,008 miles: 0 to 160k in 40k steps, not 0 to 200k in 50k).
+_NICE_STEPS = (100, 200, 250, 400, 500, 1000, 2000, 2500, 4000, 5000, 10000, 20000, 25000, 40000, 50000, 100000, 200000)
 
 
 VISIT_DAYS = 31        # paint264: tests within a month of the one before are one visit

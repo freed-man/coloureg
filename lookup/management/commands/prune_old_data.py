@@ -26,6 +26,22 @@ from lookup.models import PaintCodeReport, Search, VrmCache
 from lookup.services.protection import VRM_CACHE_TTL_DAYS
 
 
+def _expired_cache_rows(delete):
+    """paint269: count (or delete) the expired rows of the shared database cache."""
+    from django.conf import settings
+    from django.db import connection
+    conf = settings.CACHES.get('default', {})
+    if not conf.get('BACKEND', '').endswith('DatabaseCache'):
+        return 0
+    table = connection.ops.quote_name(conf['LOCATION'])
+    with connection.cursor() as cursor:
+        if delete:
+            cursor.execute(f'DELETE FROM {table} WHERE expires < %s', [timezone.now()])
+            return cursor.rowcount
+        cursor.execute(f'SELECT COUNT(*) FROM {table} WHERE expires < %s', [timezone.now()])
+        return cursor.fetchone()[0]
+
+
 class Command(BaseCommand):
     help = "Scrub personal fields from Search records older than 12 months."
 
@@ -108,6 +124,10 @@ class Command(BaseCommand):
         stale_cutoff = timezone.now() - timedelta(days=VRM_CACHE_TTL_DAYS)
         stale = VrmCache.objects.filter(updated_at__lt=stale_cutoff)
         stale_count = stale.count() if do_cache else 0
+        # paint269: the shared cache's expired entries (rate-limit counters, the
+        # recent-miss list, the hour's name-only answers). With its limit raised
+        # to 20,000 Django rarely culls them itself, so the weekly run does.
+        expired_cache_count = _expired_cache_rows(delete=False) if do_cache else 0
 
         # --- Expired sessions (paint19) --------------------------------------
         # django_session rows hold the whole vehicle_data payload, which
@@ -141,6 +161,7 @@ class Command(BaseCommand):
             self.stdout.write(f'  Newest record:          {newest.isoformat()}')
         self.stdout.write(f'  VrmCache cutoff:        {stale_cutoff.isoformat()}')
         self.stdout.write(f'  Stale cache entries:    {stale_count}')
+        self.stdout.write(f'  Expired cache rows:     {expired_cache_count}')
         self.stdout.write(f'  Expired sessions:       {expired_session_count}')
         _sel = ', '.join(n for n, on in (('searches', do_searches), ('cache', do_cache),
                                          ('sessions', do_sessions)) if on)
@@ -151,14 +172,14 @@ class Command(BaseCommand):
         # Reports belong in this test: leaving them out would repeat the
         # VrmCache bug above, never scrubbing them on a day with no old Searches.
         if (count == 0 and report_count == 0 and stale_count == 0
-                and expired_session_count == 0):
+                and expired_session_count == 0 and expired_cache_count == 0):
             self.stdout.write(self.style.SUCCESS('Nothing to scrub. Database is clean.'))
             return
 
         if dry_run:
             self.stdout.write(self.style.WARNING(
                 f'Dry run only. {count} records, {report_count} reports, '
-                f'{stale_count} cache entries and '
+                f'{stale_count} cache entries, {expired_cache_count} expired cache rows and '
                 f'{expired_session_count} expired sessions WOULD be processed. '
                 f'Run without --dry-run to apply.'
             ))
@@ -186,6 +207,8 @@ class Command(BaseCommand):
             reports_updated = reports.update(ip_address=None, session_key='', note='')
         if do_cache and stale_count:
             stale.delete()
+        if do_cache and expired_cache_count:
+            _expired_cache_rows(delete=True)
 
         # Independent of both cutoffs above — see the note at expired_sessions.
         if do_sessions and expired_session_count:
