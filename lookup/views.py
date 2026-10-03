@@ -3044,6 +3044,17 @@ def car_picture(request, search_id):
         return JsonResponse({'status': 'ready', 'url': pic.url})
     if pic is not None and pic.status == CarPicture.PENDING:
         return JsonResponse({'status': 'pending'})
+    if pic is None:
+        # paint275: NO PICTURE WAS EVER STARTED FOR THIS CODE. The Mondeo of 3 Oct
+        # got its picture for 8MJE; its code was then corrected to 8MJEWWA, and a
+        # picture is filed under the exact code, so the page found none. Started
+        # here, the first time a page asks, whatever changed the code. Only when
+        # no picture exists at all for it: a failed one is not retried from here,
+        # so a page left open cannot pay for the same failure every second. The
+        # daily limit and the one-per-plate-and-code rule still apply.
+        from lookup.services import ai_pictures
+        if ai_pictures.start_for(search.id) is not None:
+            return JsonResponse({'status': 'pending'})
     if pic is None and search.timestamp > timezone.now() - timedelta(seconds=PICTURE_WAIT_SECONDS):
         return JsonResponse({'status': 'pending'})       # the lookup is young: one is probably on its way
     return JsonResponse({'status': 'none'})

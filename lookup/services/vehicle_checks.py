@@ -538,6 +538,12 @@ def _display(f, today=None):
     today = today or date.today()
     f = f or {}
     out = {}
+    # paint275: WHEN DVLA ANSWERS NOTHING (a 2022 BMW looked up on 3 Oct: DVLA has
+    # no record of its plate), the MOT service's facts still stand: the year comes
+    # from its first-registration date, and the MOT row from its tests or due date
+    # (below). DVLA's own facts win whenever they are there.
+    if not f.get('year') and _date(f.get('first_registered')):
+        f = dict(f, year=_date(f.get('first_registered')).year)
     if f.get('year'):
         out['vc_year'] = str(f['year'])
         started = _date(f.get('first_registered'))
@@ -554,6 +560,17 @@ def _display(f, today=None):
         out['vc_v5c_ago'] = f'({span(v5c, today)} ago)'          # paint249: no "approx.": the date is exact
     # MOT: motoreg's four cases.
     status, expiry, due = f.get('mot_status', ''), _date(f.get('mot_expiry')), _date(f.get('mot_due'))
+    if not status:
+        # paint275: no DVLA status. The latest pass's expiry from the MOT history
+        # decides, as DVLA's own status would; with no tests, the MOT service's
+        # first-test due date does, through the new-vehicle case below.
+        passes = sorted(_date(t.get('x')) for t in (f.get('mot_tests') or [])
+                        if str(t.get('r', '')).upper() == 'PASSED' and _date(t.get('x')))
+        if passes:
+            expiry = passes[-1]
+            status = 'Valid' if expiry >= today else 'Not valid'
+        elif due:
+            status = 'No details held by DVLA'
     if status == 'Valid':
         out['vc_mot'] = {'ok': True, 'label': 'Valid',
                          'detail': f'(expires {_shown(expiry)}, {countdown(expiry, today, "expires today")})' if expiry else ''}

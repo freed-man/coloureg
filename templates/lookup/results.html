@@ -838,6 +838,20 @@ the request directly. {% endcomment %}
                                       border: none; border-radius: 50%; background: #f1f3f5; color: #333;
                                       display: flex; align-items: center; justify-content: center; cursor: pointer; }
                 .car-lightbox-close:hover { background: #e5e7eb; }
+                /* paint275: ON A WIDE SCREEN, A BIGGER PICTURE. There the picture is held back by
+                   the height, and white bands sit either side of it; the close button moves
+                   into the band (its corner, never the picture: at 16:10 or wider the band
+                   is at least 56px), so only 56px of height is reserved instead of 120.
+                   About 12% more picture on a laptop. Taller and narrower screens keep
+                   paint252's layout, button above the picture, which costs them nothing. */
+                @media (min-aspect-ratio: 16/10) {
+                    .car-lightbox-figure { padding: 12px 12px 10px; }
+                    .car-lightbox-figure img { max-height: calc(100vh - 56px); }
+                    .car-lightbox-figure figcaption { margin-top: 8px; }
+                }
+                @supports (height: 100dvh) {
+                    @media (min-aspect-ratio: 16/10) { .car-lightbox-figure img { max-height: calc(100dvh - 56px); } }
+                }
             </style>
             <div id="car-thumb-holder" style="display: none;">
                 <div id="car-thumb" class="car-thumb">
