@@ -166,13 +166,6 @@
         width: 100%;
         display: block;
     }
-    {% comment %}/* paint285: the swatch caption sits IN the band, bottom right, in the picture
-       caption's type (car-thumb-note), on a light pill so it reads on any colour:
-       white bands, black bands, two-tones. Absolutely placed, so the two-tone
-       halves (flex children) are untouched. */{% endcomment %}
-    .paint-swatch-bar, .paint-swatch-split { position: relative; }
-    .swatch-note { position: absolute; right: 10px; bottom: 8px; margin: 0; padding: 2px 9px; border-radius: 999px;
-                   background: rgba(255, 255, 255, .88); color: #444; line-height: 1.5; white-space: nowrap; }
     .paint-block {
         padding: 2rem 1.5rem;
         text-align: center;
@@ -565,7 +558,7 @@
                     {% comment %} paint199: NO COLOUR, NO BAR. The grey stand-in read as the car's
                        colour, and the paid page shows no bar in the same case, so a customer saw
                        grey before paying and nothing after. {% endcomment %}
-                    {% if locked_paint_hex %}<div class="paint-swatch-bar" style="background: {{ locked_paint_hex }};"><small class="car-thumb-note swatch-note"><svg width="13" height="13" viewBox="0 0 16 16" aria-hidden="true" style="vertical-align: -2px; margin-right: 4px;"><path d="M6 1.5c.4 2.9 1.6 4.1 4.5 4.5-2.9.4-4.1 1.6-4.5 4.5-.4-2.9-1.6-4.1-4.5-4.5 2.9-.4 4.1-1.6 4.5-4.5z" fill="currentColor"/></svg>approximate colour, mix from the code</small></div>{% endif %}
+                    {% if locked_paint_hex %}<div class="paint-swatch-bar" style="background: {{ locked_paint_hex }};"></div>{% endif %}
                     <div class="paint-block">
                         <div aria-hidden="true">
                             <div class="paint-code"><svg style="height: 64px; width: auto; display: block; margin: 0 auto;" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 180 48" aria-hidden="true" focusable="false" shape-rendering="crispEdges"><rect x="0" y="0" width="12" height="12" fill="#f9d2ce"/><rect x="12" y="0" width="12" height="12" fill="#f1946a"/><rect x="24" y="0" width="12" height="12" fill="#f5ab64"/><rect x="36" y="0" width="12" height="12" fill="#fbddab"/><rect x="48" y="0" width="12" height="12" fill="#f6c557"/><rect x="60" y="0" width="12" height="12" fill="#f6d15e"/><rect x="72" y="0" width="12" height="12" fill="#e8df81"/><rect x="84" y="0" width="12" height="12" fill="#d7ebba"/><rect x="96" y="0" width="12" height="12" fill="#8edf9e"/><rect x="120" y="0" width="12" height="12" fill="#69c4c4"/><rect x="132" y="0" width="12" height="12" fill="#d9edf7"/><rect x="144" y="0" width="12" height="12" fill="#90b2e1"/><rect x="156" y="0" width="12" height="12" fill="#b0acdc"/><rect x="168" y="0" width="12" height="12" fill="#ddc6e6"/><rect x="0" y="12" width="12" height="12" fill="#ef8a7f"/><rect x="12" y="12" width="12" height="12" fill="#f5b598"/><rect x="24" y="12" width="12" height="12" fill="#f5af6c"/><rect x="36" y="12" width="12" height="12" fill="#f9d08b"/><rect x="48" y="12" width="12" height="12" fill="#fadc9b"/><rect x="60" y="12" width="12" height="12" fill="#f6d260"/><rect x="72" y="12" width="12" height="12" fill="#f4f0c4"/><rect x="84" y="12" width="12" height="12" fill="#95ca48"/><rect x="96" y="12" width="12" height="12" fill="#b0e8bb"/><rect x="108" y="12" width="12" height="12" fill="#81dab7"/><rect x="120" y="12" width="12" height="12" fill="#56bdbd"/><rect x="132" y="12" width="12" height="12" fill="#cde7f4"/><rect x="144" y="12" width="12" height="12" fill="#578bd2"/><rect x="156" y="12" width="12" height="12" fill="#a19cd6"/><rect x="0" y="24" width="12" height="12" fill="#f3a49c"/><rect x="12" y="24" width="12" height="12" fill="#f08f63"/><rect x="24" y="24" width="12" height="12" fill="#f39c49"/><rect x="36" y="24" width="12" height="12" fill="#fbdfb1"/><rect x="48" y="24" width="12" height="12" fill="#f5c049"/><rect x="60" y="24" width="12" height="12" fill="#fcf0c9"/><rect x="72" y="24" width="12" height="12" fill="#e6dd79"/><rect x="84" y="24" width="12" height="12" fill="#afd876"/><rect x="96" y="24" width="12" height="12" fill="#7eda90"/><rect x="108" y="24" width="12" height="12" fill="#77d7b1"/><rect x="120" y="24" width="12" height="12" fill="#49b7b7"/><rect x="132" y="24" width="12" height="12" fill="#9bcee9"/><rect x="144" y="24" width="12" height="12" fill="#6a97d7"/><rect x="156" y="24" width="12" height="12" fill="#908bcf"/><rect x="168" y="24" width="12" height="12" fill="#dbc4e5"/><rect x="12" y="36" width="12" height="12" fill="#f9d1be"/><rect x="24" y="36" width="12" height="12" fill="#f5b16f"/><rect x="48" y="36" width="12" height="12" fill="#fceac1"/><rect x="72" y="36" width="12" height="12" fill="#f4f0c3"/><rect x="96" y="36" width="12" height="12" fill="#cff1d5"/><rect x="120" y="36" width="12" height="12" fill="#ceecec"/><rect x="144" y="36" width="12" height="12" fill="#d2e0f3"/><rect x="156" y="36" width="12" height="12" fill="#e9e8f5"/><rect x="168" y="36" width="12" height="12" fill="#e7d7ed"/></svg></div>
@@ -610,7 +603,6 @@
                             {% for part in two_tone %}
                             <span style="background: {{ part.hex }};"></span>
                             {% endfor %}
-                            <small class="car-thumb-note swatch-note"><svg width="13" height="13" viewBox="0 0 16 16" aria-hidden="true" style="vertical-align: -2px; margin-right: 4px;"><path d="M6 1.5c.4 2.9 1.6 4.1 4.5 4.5-2.9.4-4.1 1.6-4.5 4.5-.4-2.9-1.6-4.1-4.5-4.5 2.9-.4 4.1-1.6 4.5-4.5z" fill="currentColor"/></svg>approximate colour, mix from the code</small>
                         </div>
                         {% endif %}
                         <div class="paint-block">
@@ -629,7 +621,7 @@
                         </div>
                     {% elif all_paint_codes|length > 1 %}
                         {% for item in all_paint_codes %}
-                        {% if item.hex %}<div class="paint-swatch-bar" style="background: {{ item.hex }};"><small class="car-thumb-note swatch-note"><svg width="13" height="13" viewBox="0 0 16 16" aria-hidden="true" style="vertical-align: -2px; margin-right: 4px;"><path d="M6 1.5c.4 2.9 1.6 4.1 4.5 4.5-2.9.4-4.1 1.6-4.5 4.5-.4-2.9-1.6-4.1-4.5-4.5 2.9-.4 4.1-1.6 4.5-4.5z" fill="currentColor"/></svg>approximate colour, mix from the code</small></div>{% endif %}
+                        {% if item.hex %}<div class="paint-swatch-bar" style="background: {{ item.hex }};"></div>{% endif %}
                         <div class="paint-block">
                             <div class="paint-code">{{ item.code }}</div>
                             {% if item.canonical and item.canonical != item.code %}
@@ -641,7 +633,11 @@
                         </div>
                         {% endfor %}
                     {% else %}
-                        {% if paint_hex %}<div class="paint-swatch-bar" style="background: {{ paint_hex }};"><small class="car-thumb-note swatch-note"><svg width="13" height="13" viewBox="0 0 16 16" aria-hidden="true" style="vertical-align: -2px; margin-right: 4px;"><path d="M6 1.5c.4 2.9 1.6 4.1 4.5 4.5-2.9.4-4.1 1.6-4.5 4.5-.4-2.9-1.6-4.1-4.5-4.5 2.9-.4 4.1-1.6 4.5-4.5z" fill="currentColor"/></svg>approximate colour, mix from the code</small></div>{% endif %}
+                        {% comment %} paint290: the bands carry no caption of their own again (paint284 and 285
+                           had put one in each). The picture's caption now says the colour is not the
+                           car's actual one, and the sentence under this card says the colour shown is a
+                           guide. {% endcomment %}
+                        {% if paint_hex %}<div class="paint-swatch-bar" style="background: {{ paint_hex }};"></div>{% endif %}
                         <div class="paint-block">
                             <div class="paint-code">{{ paint_code }}</div>
                             {% if canonical_code and canonical_code != paint_code %}
@@ -870,14 +866,14 @@ the request directly. {% endcomment %}
                         {% endif %}
                     </button>
                     {% comment %} paint274: the notice was only in the enlarged view, so most people never saw it. {% endcomment %}
-                    <p class="car-thumb-note" id="car-thumb-note"{% if not picture_ready_url %} style="display: none;"{% endif %}><svg width="13" height="13" viewBox="0 0 16 16" aria-hidden="true" style="vertical-align: -2px; margin-right: 4px;"><path d="M6 1.5c.4 2.9 1.6 4.1 4.5 4.5-2.9.4-4.1 1.6-4.5 4.5-.4-2.9-1.6-4.1-4.5-4.5 2.9-.4 4.1-1.6 4.5-4.5z" fill="currentColor"/></svg>illustration, not your actual vehicle</p>
+                    <p class="car-thumb-note" id="car-thumb-note"{% if not picture_ready_url %} style="display: none;"{% endif %}><svg width="13" height="13" viewBox="0 0 16 16" aria-hidden="true" style="vertical-align: -2px; margin-right: 4px;"><path d="M6 1.5c.4 2.9 1.6 4.1 4.5 4.5-2.9.4-4.1 1.6-4.5 4.5-.4-2.9-1.6-4.1-4.5-4.5 2.9-.4 4.1-1.6 4.5-4.5z" fill="currentColor"/></svg>illustration, not your actual vehicle or colour</p>
                 </div>
             </div>
             <div id="car-lightbox" class="car-lightbox" role="dialog" aria-modal="true" aria-label="Picture of your car" hidden>
                 <figure class="car-lightbox-figure">
                     <button type="button" id="car-lightbox-close" class="car-lightbox-close" aria-label="Close"><svg width="22" height="22" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 5l14 14M19 5L5 19" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></svg></button>
                     <img id="car-lightbox-img" alt="Illustration of your car in its paint">
-                    <figcaption><svg width="15" height="15" viewBox="0 0 16 16" aria-hidden="true" style="vertical-align: -2px; margin-right: 4px;"><path d="M6 1.5c.4 2.9 1.6 4.1 4.5 4.5-2.9.4-4.1 1.6-4.5 4.5-.4-2.9-1.6-4.1-4.5-4.5 2.9-.4 4.1-1.6 4.5-4.5z" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/><path d="M12.5 9.5c.2 1.4.8 2 2.2 2.2-1.4.2-2 .8-2.2 2.2-.2-1.4-.8-2-2.2-2.2 1.4-.2 2-.8 2.2-2.2z" fill="none" stroke="currentColor" stroke-width="1.1" stroke-linejoin="round"/></svg>illustration, not your actual vehicle</figcaption>
+                    <figcaption><svg width="15" height="15" viewBox="0 0 16 16" aria-hidden="true" style="vertical-align: -2px; margin-right: 4px;"><path d="M6 1.5c.4 2.9 1.6 4.1 4.5 4.5-2.9.4-4.1 1.6-4.5 4.5-.4-2.9-1.6-4.1-4.5-4.5 2.9-.4 4.1-1.6 4.5-4.5z" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/><path d="M12.5 9.5c.2 1.4.8 2 2.2 2.2-1.4.2-2 .8-2.2 2.2-.2-1.4-.8-2-2.2-2.2 1.4-.2 2-.8 2.2-2.2z" fill="none" stroke="currentColor" stroke-width="1.1" stroke-linejoin="round"/></svg>illustration, not your actual vehicle or colour</figcaption>
                 </figure>
             </div>
             <script>
@@ -1107,7 +1103,6 @@ window.cregReportWait();
 {# runs the full (paid, pl24-serialised) recovery, which piles up and never      #}
 {# settles.                                                                       #}
 <script>
-    var SWATCH_NOTE = '<small class="car-thumb-note swatch-note"><svg width="13" height="13" viewBox="0 0 16 16" aria-hidden="true" style="vertical-align: -2px; margin-right: 4px;"><path d="M6 1.5c.4 2.9 1.6 4.1 4.5 4.5-2.9.4-4.1 1.6-4.5 4.5-.4-2.9-1.6-4.1-4.5-4.5 2.9-.4 4.1-1.6 4.5-4.5z" fill="currentColor"/></svg>approximate colour, mix from the code</small>';   // paint285
 (function () {
     var STATUS_URL = "{% url 'lookup_status' search_id %}";
     var REPORT_URL = "{% url 'report_paint_code' %}";
@@ -1225,14 +1220,14 @@ window.cregReportWait();
        draws it: the split swatch only when every paint has a colour (paint199),
        both codes as chips, body and roof tagged. {% endcomment %}
     function twoToneHtml(code, parts) {
-        var html = '', allHex = true, i;   // paint285: SWATCH_NOTE goes in the band
+        var html = '', allHex = true, i;
         for (i = 0; i < parts.length; i++) { if (!parts[i].hex) { allHex = false; } }
         if (allHex) {
             html += '<div class="paint-swatch-split">';
             for (i = 0; i < parts.length; i++) {
                 html += '<span style="background: ' + escapeHtml(parts[i].hex) + ';"></span>';
             }
-            html += SWATCH_NOTE + '</div>';
+            html += '</div>';
         }
         html += '<div class="paint-block"><div class="paint-code">' + escapeHtml(code) + '</div>';
         html += '<p class="paint-alt">Two-tone finish, two paints</p><div class="two-tone-parts">';
@@ -1252,7 +1247,7 @@ window.cregReportWait();
     function paintBlockHtml(code, hex, canonical, description) {
         var html = '';
         if (hex) {
-            html += '<div class="paint-swatch-bar" style="background: ' + escapeHtml(hex) + ';">' + SWATCH_NOTE + '</div>';
+            html += '<div class="paint-swatch-bar" style="background: ' + escapeHtml(hex) + ';"></div>';
         }
         html += '<div class="paint-block">';
         html += '<div class="paint-code">' + escapeHtml(code) + '</div>';

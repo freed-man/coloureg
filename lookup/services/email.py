@@ -293,13 +293,14 @@ def send_user_paint_code(to_email, registration, vehicle_title, vin_masked, colo
 
     # paint221: the car's AI picture, inline (cid:car) like the logo, when it
     # was ready as the email went out. Never waited for: the code is what was
-    # asked for. Labelled an illustration, as on the results page.
+    # asked for. Labelled an illustration, as on the results page (paint290: and
+    # not the car's actual colour, in the same words as there).
     if car_picture_jpeg:
         picture_html = (
             '<div style="text-align: center; margin: 0 0 24px;">'
             '<img src="cid:car" alt="Illustration of your car in its paint" width="480" '
             'style="width: 100%; max-width: 480px; height: auto; display: block; margin: 0 auto;">'
-            '<div style="color: #999; font-size: 12px; margin-top: 6px;">&#10022; illustration, not your actual vehicle</div>'
+            '<div style="color: #999; font-size: 12px; margin-top: 6px;">&#10022; illustration, not your actual vehicle or colour</div>'
             '</div>')
         extra_attachments = list(extra_attachments or []) + [{
             "filename": "car.jpg",

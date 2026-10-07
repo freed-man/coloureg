@@ -520,7 +520,12 @@ class Search(models.Model):
                 return 'VDG (2nd)'
             return 'VDG'
         if self.provider == self.PROVIDER_REMEMBERED:
-            return 'Remembered'        # paint288: the badge is a narrow pill (paint82); the full label is the choice's
+            # paint289: "Cache" in the Source column, the operator's word for an answer
+            # given again without a new search, whether from the 7-day cache or from an
+            # earlier lookup (paint288 showed "Remembered"). The stored value is still
+            # 'remembered', so the cost beside it (6p when the vehicle call ran) and the
+            # chart's own series still tell the two apart.
+            return 'Cache'
         return self.get_provider_display()
 
     #: Which attempt produced the answer, per provider. Both VDG and One Auto
