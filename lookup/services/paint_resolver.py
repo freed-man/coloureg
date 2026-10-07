@@ -33,6 +33,7 @@ import colorsys
 import concurrent.futures
 import logging
 import os
+import functools
 import re
 import threading
 import time
@@ -52,6 +53,49 @@ from . import ezyvin
 from . import oneauto
 
 
+_DE_COLOUR = re.compile(r'(rot|grau|blau|schwarz|wei(?:ss|\u00df)|silber|gr(?:ue|\u00fc)n|gelb|braun)\b', re.I)
+_EN_COLOUR = re.compile(r'\b(red|gr[ae]y|blue|black|white|silver|green|yellow|brown|orange|purple|gold|beige|bronze)\b', re.I)
+
+
+def _display_tidy(result, make):
+    """paint284: the name as it leaves for the page. Capitals for a name given all
+    in lower case or all in capitals ("bright blue", "BRIGHT BLUE"), and the code's
+    English name in place of a German one when its row has one ("Elixir-Rot
+    Metallic" became "Elixir Red..."). Combination names and mixed case are left as
+    they are. Never raises."""
+    try:
+        from lookup.models import PaintLookup
+        name = (result or {}).get('paint_description') or ''
+        if not name or name.startswith('Two-tone'):
+            return result
+        letters = re.sub(r'[^A-Za-z]', '', name)
+        if letters and (letters.islower() or letters.isupper()):
+            name = ' '.join(w.capitalize() if w.isalpha() else w for w in name.split())
+        code = (result.get('paint_code') or '').strip()
+        if code and _DE_COLOUR.search(name) and not _EN_COLOUR.search(name):
+            row = PaintLookup.all_objects.filter(manufacturer=PaintLookup.normalize_manufacturer(make or ''), code=code).first()
+            words = set(re.findall(r'[a-z]+', name.lower()))
+            english = [n for n in (getattr(row, 'all_names', None) or []) if _EN_COLOUR.search(n) and not _DE_COLOUR.search(n)]
+            if english:
+                name = max(english, key=lambda n: len(words & set(re.findall(r'[a-z]+', n.lower()))))
+        if name != result.get('paint_description'):
+            result = dict(result, paint_description=name)
+    except Exception:
+        logger.warning('display name tidy failed', exc_info=True)
+    return result
+
+
+def _tidy_on_exit(fn):
+    """paint284: the display tidy on whatever the catalogue check returns (it has
+    several ways out). functools.wraps keeps the check's own source visible to
+    inspect, which older battery checks read."""
+    @functools.wraps(fn)
+    def wrapper(result, make, *args, **kwargs):
+        return _display_tidy(fn(result, make, *args, **kwargs), make)
+    return wrapper
+
+
+@_tidy_on_exit
 def _enrich_from_lookup(result, make, model=None, vdg_colour=None,
                         telemetry=None):
     """Fill gaps in a provider result from the PaintLookup table, BEHIND the

@@ -513,7 +513,8 @@
                     {% endif %}
                     {% if vc_ulez %}
                     <div class="vehicle-row">
-                        <span class="vehicle-label">ULEZ</span>
+                        {% comment %} paint283: one label for both schemes the row answers. {% endcomment %}
+                        <span class="vehicle-label">London ULEZ / Scottish LEZ</span>
                         <span class="vehicle-value vehicle-inline">
                             {% if vc_ulez.ok %}<span class="vehicle-status"><i class="fas fa-check-circle text-success" aria-hidden="true"></i><span class="text-success">{{ vc_ulez.label }}</span></span>
                             {% elif vc_ulez.ok is False %}<span class="vehicle-status"><i class="fas fa-times-circle text-danger" aria-hidden="true"></i><span class="text-danger">{{ vc_ulez.label }}</span></span>
@@ -607,6 +608,7 @@
                         <div class="paint-block">
                             <div class="paint-code">{{ paint_code }}</div>
                             <p class="paint-alt">Two-tone finish, two paints</p>
+                            <p class="car-thumb-note"><svg width="13" height="13" viewBox="0 0 16 16" aria-hidden="true" style="vertical-align: -2px; margin-right: 4px;"><path d="M6 1.5c.4 2.9 1.6 4.1 4.5 4.5-2.9.4-4.1 1.6-4.5 4.5-.4-2.9-1.6-4.1-4.5-4.5 2.9-.4 4.1-1.6 4.5-4.5z" fill="currentColor"/></svg>approximate colour, mix from the code</p>
                             <div class="two-tone-parts">
                                 {% for part in two_tone %}
                                 <span class="tt-chip">
@@ -640,6 +642,8 @@
                             {% endif %}
                             {% if paint_description %}
                             <p class="paint-desc">{{ paint_description }}</p>
+                            {% comment %} paint284: the swatch is a guide; the code is what to mix. {% endcomment %}
+                            <p class="car-thumb-note"><svg width="13" height="13" viewBox="0 0 16 16" aria-hidden="true" style="vertical-align: -2px; margin-right: 4px;"><path d="M6 1.5c.4 2.9 1.6 4.1 4.5 4.5-2.9.4-4.1 1.6-4.5 4.5-.4-2.9-1.6-4.1-4.5-4.5 2.9-.4 4.1-1.6 4.5-4.5z" fill="currentColor"/></svg>approximate colour, mix from the code</p>
                             {% endif %}
                             {% comment %}paint159: `999` and `L999` mean the car
                             was painted to special order, so there is no

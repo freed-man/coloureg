@@ -215,7 +215,19 @@ def extract(body):
     worse here than no answer at all, because the customer buys paint with it.
     """
     ext = _walk_exterior(body)
+    # paint284: AN INTERIOR IS NOT A PAINT. Ezyvin put "Interior :Ivory (034EZ)" in
+    # the exterior field of a 1998 Jaguar XK8, and it was served as paint 034EZ.
+    if ext and re.match(r'\s*interior\b', ext, re.I):
+        ext = ''
     if not ext:
+        # paint284: NO EXTERIOR FIELD, BUT ONE "... PAINT" LINE. A 2022 Tesla Model Y
+        # came back with no exterior and its paint as a specification line,
+        # "Deep Blue Metallic Paint" (PPSB). Exactly one such line, ending in the
+        # word Paint, or nothing: two would be a guess.
+        paints = [d for d in _designations(body) if re.search(r'\bpaint\s*$', (d.get('name') or ''), re.I)]
+        if len(paints) == 1:
+            nm = re.sub(r'\s*\bpaint\s*$', '', paints[0]['name'], flags=re.I).strip()
+            return _clean_code(paints[0]['code']), nm
         return '', ''
 
     for opt in _designations(body):

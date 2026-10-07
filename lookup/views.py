@@ -3172,7 +3172,7 @@ def _record_name_only(search_id, paint_description, telemetry=None, source=''):
     except (Search.DoesNotExist, ValueError, TypeError):
         return
     search.paint_description = paint_description
-    search.success = True
+    search.success = False   # paint284: a name is not a code; only a code counts as a success
     # paint278: THE SOURCE THE NAME CAME FROM. This said partslink24 always, from
     # when pl24 was the only name source; Ezyvin supplies them too now, and a
     # Kia PV5 on 3 Oct showed pl24 as its source though pl24 had found nothing.
