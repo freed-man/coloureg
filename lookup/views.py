@@ -31,6 +31,7 @@ from django.views.decorators.http import require_POST, require_GET
 from django.views.decorators.csrf import csrf_exempt
 from django_ratelimit.core import is_ratelimited
 from lookup.services import vehicle_checks
+from lookup.services import remembered          # paint288
 from .models import (Search, PaintLookup, SiteConfig, VrmCache,
                      OperatorPaintCode, PaintCodeReport)
 from .services.vdg import (
@@ -43,6 +44,7 @@ from .services.vdg import (
 from .services.paint_resolver import (
     resolve_paint,
     _enrich_from_lookup,
+    _display_tidy,
     is_placeholder_code,
     is_special_order_code,
     PL24_TIMEOUT,
@@ -890,6 +892,7 @@ def index(request):
             _name_only_replay = bool(cached_payload)
         if cached_payload and not _name_only_replay:
             cached_payload = _fill_cached_name(cached_payload)       # paint281
+            cached_payload = _tidy_replayed_name(cached_payload, registration)    # paint288
         if cached_payload:
             # paint94: DECIDE THE GATE HERE, do not replay the stored verdict.
             #
@@ -963,6 +966,7 @@ def index(request):
                 # whether a lookup counted against anyone's allowance.
                 access_label=access_label or '',
                 lookup_duration_ms=int((time.time() - start_time) * 1000),
+                details=remembered.details_of(cached_payload),          # paint288
             )
             cache_search.save()
             _start_car_picture(cache_search.id)          # paint218: usually the stored picture
@@ -1100,6 +1104,38 @@ def index(request):
                 'lookup_price': dj_settings.LOOKUP_PRICE_PENCE / 100.0,
             })
 
+        # --- Remembered answers (paint288) ----------------------------------
+        # THE 7-DAY CACHE HAS NOTHING, BUT THE LOOKUPS TABLE MAY: this plate may
+        # have been answered inside the last 90 days. If so, and DVLA (asked
+        # free on every lookup anyway) says the make, year and colour are still
+        # the same, that answer is given again and the paint search is not run.
+        # Which earlier answer counts, and how it is read, is all in
+        # lookup/services/remembered.py.
+        #
+        # HERE, BELOW THE RECENT-MISS CHECK AND THE PER-PLATE WINDOW, because
+        # a remembered answer can cost a VDG vehicle call (6p) when no earlier
+        # lookup saved the car's details, and those two gates are what bound
+        # every paid call. The budget breaker, Turnstile and the per-visitor
+        # limit were all passed above.
+        #
+        # Two ways it is served:
+        #   details saved: no supplier is paid at all (_serve_remembered below).
+        #   no details saved (every lookup from before this release): the
+        #     normal vehicle call runs for all the car's fields, and the
+        #     remembered code is used in place of the paint search, further
+        #     down. DVLA has had that call's time to answer by then.
+        _mem = remembered.find(registration)
+        _checks = None
+        if _mem is not None:
+            _checks = vehicle_checks.start(registration, _CHECKS_DVLA, _CHECKS_MOT, _CHECKS_LEZ)
+            if _mem.has_details:
+                if _mem.confirm(vehicle_checks.dvla_reply(_checks, remembered.DVLA_WAIT_SECONDS)):
+                    return _serve_remembered(request, registration, _mem, _checks,
+                                             config, access_label, start_time)
+                logger.info('remembered answer not used for %s: %s',
+                            _log_reg(registration), _mem.why_not)
+                _mem = None
+
         search = Search(
             registration=registration,
             ip_address=get_client_ip(request),
@@ -1115,7 +1151,8 @@ def index(request):
         # paint244: YEAR, V5C, MOT AND TAX need DVLA and the MOT service, which
         # the VDG path below only calls when VDG leaves a gap. Asked in the
         # background now; picked up when the answer is stored.
-        _checks = vehicle_checks.start(registration, _CHECKS_DVLA, _CHECKS_MOT, _CHECKS_LEZ)
+        if _checks is None:        # paint288: already started above when there is a remembered answer
+            _checks = vehicle_checks.start(registration, _CHECKS_DVLA, _CHECKS_MOT, _CHECKS_LEZ)
         vdg_data = None
         # Whether VDG gave us an ANSWER — including a definite "no such
         # vehicle" — as distinct from failing to respond at all. Read at the
@@ -1467,6 +1504,25 @@ def index(request):
             search.provider = Search.PROVIDER_VDG
             search.enriched_from = _enriched.get('enriched_from', '')
 
+        # paint288: THE REMEMBERED ANSWER, for a plate whose earlier lookups
+        # saved no car details. The vehicle call above has just supplied them,
+        # so all that is left is the paint: given from memory, if DVLA confirms
+        # the car (make, year, colour) and the VIN just returned is not another
+        # car's. With a code in hand nothing below starts the paint search: the
+        # row is saved, cached for 7 days, charged and pictured as any answer.
+        # If either test fails the lookup simply carries on as it always did.
+        if not paint_code and _mem is not None:
+            if (_mem.confirm(vehicle_checks.dvla_reply(_checks, remembered.DVLA_WAIT_SECONDS))
+                    and remembered.vin_agrees(_mem.source.vin, vin)):
+                paint_code = _mem.paint_code
+                paint_description = _mem.paint_description
+                search.paint_code = paint_code
+                search.paint_description = paint_description
+                search.provider = Search.PROVIDER_REMEMBERED
+            else:
+                logger.info('remembered answer not used for %s: %s', _log_reg(registration),
+                            _mem.why_not or 'the VIN is another car\'s')
+
         # Save latest VDG balance
         if latest_balance is not None:
             search.vdg_balance_after_call = latest_balance
@@ -1599,6 +1655,7 @@ def index(request):
             # what the page says about them is worked out when it is shown.
             'vehicle_status': vehicle_checks.collect(_checks),
         }
+        _save_details(search, request.session['vehicle_data'])          # paint288
 
         # --- Unsupported make: stop here, deliberately ----------------------
         # The make is on SiteConfig.unsupported_makes, so recovery cannot
@@ -3156,6 +3213,95 @@ def _fill_cached_name(payload):
     return payload
 
 
+def _tidy_replayed_name(payload, registration):
+    """paint288: a replayed answer's name is tidied as a new answer's is
+    (_display_tidy: capitals for a name all in one case, and the code's English
+    name in place of a German one). Answers cached before that tidy existed
+    kept replaying untidied: a BMW's "Alpinweiss III" on one lookup, the English
+    name on the next. The operator's own answers are left exactly as typed
+    (paint181): 5 of 152 would have been reworded. The stored entry is left as
+    it is. Never raises."""
+    try:
+        tidied = _display_tidy(payload, payload.get('make') or '')
+        if not tidied or tidied.get('paint_description') == payload.get('paint_description'):
+            return payload
+        code = (payload.get('paint_code') or '').strip()
+        if code and Search.objects.filter(registration=registration, paint_code=code,
+                                          provider=Search.PROVIDER_MANUAL).exists():
+            return payload
+        return tidied
+    except Exception:
+        logger.warning('replayed answer: its name could not be tidied', exc_info=True)
+        return payload
+
+
+def _save_details(search, payload):
+    """paint288: keep the car's details with its lookup (what is kept, and what
+    never is, is in services/remembered.py), so an answer remembered from this
+    lookup needs no paid vehicle call. One small UPDATE of that column alone.
+    Never raises: a lookup that has already succeeded must not fail on this."""
+    try:
+        search.details = remembered.details_of(payload)
+        Search.objects.filter(pk=search.pk).update(details=search.details)
+    except Exception:
+        logger.warning('car details not saved for search %s', getattr(search, 'pk', None), exc_info=True)
+
+
+def _serve_remembered(request, registration, mem, checks, config, access_label, start_time):
+    """paint288: the results page for a remembered answer whose car details an
+    earlier lookup saved. No supplier is paid: the paint is the remembered
+    answer, the car is drawn from the saved details, and MOT, tax and ULEZ are
+    the free checks' answers of this minute. Recorded, charged, pictured and
+    put in the 7-day cache exactly as the cache-served branch above does."""
+    row = mem.details_row
+    payload = dict(row.details or {})
+    for key, value in (('make', row.make), ('model', row.model), ('year', row.year), ('colour', row.colour),
+                       ('vehicle_title', row.vehicle_title), ('category', row.category)):
+        if not payload.get(key):
+            payload[key] = value
+    vin = (mem.source.vin or row.vin or '').strip()
+    payload.update({
+        'registration': registration,
+        'vin': vin,
+        'vin_masked': mask_vin(vin),
+        'paint_code': mem.paint_code,
+        'paint_description': mem.paint_description,
+        'all_paint_codes': [],
+        'make_logo': payload.get('make_logo') or make_to_logo(payload.get('make') or ''),
+        # A code in hand beats the list of makes not automated, as on every other path.
+        'make_not_automated': False,
+    })
+    search = Search(
+        registration=registration,
+        ip_address=get_client_ip(request),
+        user_agent=request.META.get('HTTP_USER_AGENT', ''),
+        device=parse_device(request.META.get('HTTP_USER_AGENT', '')),
+        make=payload.get('make') or '',
+        model=payload.get('model') or '',
+        year=payload.get('year'),
+        colour=payload.get('colour') or '',
+        vehicle_title=payload.get('vehicle_title') or '',
+        category=payload.get('category') or '',
+        vin=vin,
+        paint_code=mem.paint_code,
+        paint_description=mem.paint_description,
+        provider=Search.PROVIDER_REMEMBERED,
+        success=True,
+        access_label=access_label or '',
+        lookup_duration_ms=int((time.time() - start_time) * 1000),
+        details=remembered.details_of(payload),
+    )
+    search.save()
+    _start_car_picture(search.id)
+    _apply_paywall(search, config)
+    payload['vehicle_status'] = vehicle_checks.collect(checks)
+    store_vrm_payload(registration, payload)
+    payload['search_id'] = search.id
+    payload['paint_pending'] = False
+    request.session['vehicle_data'] = payload
+    return redirect('results')
+
+
 def _record_name_only(search_id, paint_description, telemetry=None, source=''):
     """Persist a name-only recovery: a colour name with NO code (e.g. Ford
     passenger, Jaguar, some Kia — partslink24 carries the name, not a code).
@@ -3516,7 +3662,10 @@ def _make_tables(lookups, min_cars=10, limit=10):
              .annotate(cars=Count('registration', distinct=True),
                        answered=Count('registration', distinct=True,
                                       filter=Q(paint_code__gt='')
-                                      & ~Q(provider=Search.PROVIDER_MANUAL))))
+                                      # paint288: nor is a remembered answer (a copy,
+                                      # which may be a copy of a hand answer).
+                                      & ~Q(provider__in=[Search.PROVIDER_MANUAL,
+                                                         Search.PROVIDER_REMEMBERED]))))
     rows = []
     for r in tried:
         missed = r['cars'] - r['answered']
@@ -4176,6 +4325,9 @@ def admin_stats(request):
             s_pl24=Count('id', filter=Q(paint_code__gt='', provider=Search.PROVIDER_PARTSLINK24)),
             s_manual=Count('id', filter=Q(paint_code__gt='', provider=Search.PROVIDER_MANUAL)),
             s_cache=Count('id', filter=Q(paint_code__gt='', provider=Search.PROVIDER_CACHE)),
+            # paint288: remembered answers, or they vanish from the one picture of
+            # where codes come from (as Ezyvin's and mmw's wins once did).
+            s_remembered=Count('id', filter=Q(paint_code__gt='', provider=Search.PROVIDER_REMEMBERED)),
         )
         .order_by('date')
     )
@@ -4187,6 +4339,7 @@ def admin_stats(request):
     src_ezyvin, src_retry, src_retry2 = [], [], []
     src_mmw = []
     src_pl24, src_manual, src_cache = [], [], []
+    src_remembered = []
     # LOCAL dates, not UTC. TruncDate above buckets by the CURRENT timezone
     # (Europe/London), so `now.date()` — which is UTC — disagrees with it
     # whenever London is ahead: between 23:00 and midnight UTC through BST, a
@@ -4211,6 +4364,7 @@ def admin_stats(request):
         src_pl24.append(row.get('s_pl24', 0))
         src_manual.append(row.get('s_manual', 0))
         src_cache.append(row.get('s_cache', 0))
+        src_remembered.append(row.get('s_remembered', 0))
 
     # Top searched makes, and the makes the pipeline misses most (paint208)
     top_makes, failed_makes = _make_tables(real_lookups)
@@ -4440,6 +4594,7 @@ def admin_stats(request):
             'src_pl24': src_pl24,
             'src_manual': src_manual,
             'src_cache': src_cache,
+            'src_remembered': src_remembered,
         },
         'top_makes': top_makes,
         'manual_note_max': MANUAL_NOTE_MAX_CHARS,

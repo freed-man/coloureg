@@ -6,7 +6,8 @@ This implements the retention policy declared in the privacy notice. Run manuall
     python manage.py prune_old_data --dry-run # just show what would be changed
 
 Personal fields scrubbed: ip_address, user_agent, vin, email, customer_message,
-manual_note. Also deletes stale VrmCache entries (which cache a VIN in their
+manual_note, and (paint288) details, the saved copy of the car's details. Also
+deletes stale VrmCache entries (which cache a VIN in their
 payload and would otherwise retain it indefinitely, contradicting the notice).
 Aggregate fields preserved: registration, make, model, year, colour, vehicle_title,
 paint_code, paint_description, timestamp, success, lookup_duration_ms, etc.
@@ -98,6 +99,10 @@ class Command(BaseCommand):
             | ~Q(customer_message='')
             # ...and the note we wrote back, which frequently references them.
             | ~Q(manual_note='')
+            # paint288: the car details saved with the lookup. They hold no plate
+            # or VIN, but the privacy notice says any stored copy of the vehicle's
+            # details goes on this schedule, and after 90 days nothing reads them.
+            | (Q(details__isnull=False) & ~Q(details={}))
         )
         candidates = Search.objects.filter(timestamp__lt=cutoff).filter(has_personal)
         # paint197 (audit #3, P5): paint code reports hold the same kind of
@@ -199,6 +204,7 @@ class Command(BaseCommand):
                 email='',
                 customer_message='',
                 manual_note='',
+                details={},          # paint288
             )
 
         # Independent of the Search scrub above — see the note at the cutoff.

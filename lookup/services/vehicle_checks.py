@@ -113,6 +113,17 @@ def _result(future, deadline):
         return None
 
 
+def dvla_reply(handles, wait=WAIT_SECONDS):
+    """paint288: DVLA's own reply (a dict) from the checks already started, or
+    None when it has not answered in time or has no such vehicle. The remembered
+    answer's same-car test reads the make, year and colour from it, so DVLA is
+    asked once per lookup, not twice; collect() below still gets the same reply."""
+    if not handles:
+        return None
+    reply = _result(handles[0], datetime.now().timestamp() + wait)
+    return reply if isinstance(reply, dict) else None
+
+
 def collect(handles, wait=WAIT_SECONDS):
     """The raw facts, or {} when nothing came back in time."""
     if not handles:

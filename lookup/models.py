@@ -29,7 +29,13 @@ class Search(models.Model):
     PROVIDER_MMW = 'mmw'
     PROVIDER_MANUAL = 'manual'
     PROVIDER_CACHE = 'cache'
+    # paint288: an answer given again from an earlier lookup of the same plate,
+    # inside 90 days, once DVLA has confirmed the car is the same one
+    # (lookup/services/remembered.py). Like 'cache' it is a COPY of an answer,
+    # not a new one: COPIED_PROVIDERS below is how the code tells the two apart.
+    PROVIDER_REMEMBERED = 'remembered'
     PROVIDER_NONE = 'none'
+    COPIED_PROVIDERS = (PROVIDER_CACHE, PROVIDER_REMEMBERED)
     PROVIDER_CHOICES = [
         # paint78: the labels, corrected for the vehicle/paint split.
         #
@@ -94,6 +100,7 @@ class Search(models.Model):
         (PROVIDER_MMW, 'MMW'),
         (PROVIDER_MANUAL, 'Manual'),
         (PROVIDER_CACHE, 'Cache'),
+        (PROVIDER_REMEMBERED, 'Remembered (3 months)'),       # paint288
         (PROVIDER_NONE, 'None'),
     ]
 
@@ -127,6 +134,15 @@ class Search(models.Model):
     vin = models.CharField(max_length=17, blank=True, default='')
     paint_code = models.CharField(max_length=50, blank=True, default='')
     paint_description = models.CharField(max_length=200, blank=True, default='')
+    # paint288: THE CAR'S DETAILS AS THE RESULTS PAGE SHOWED THEM, for the fields
+    # this row has no column for (engine, fuel, transmission and the like), so an
+    # answer remembered from this lookup can draw its page without paying for the
+    # vehicle call again. What it never holds is listed in services/remembered.py
+    # (NOT_SAVED): not the registration or VIN, not the paint answer, not MOT or
+    # tax. Empty on lookups from before this field existed. Nullable so the code
+    # still live while a deploy's migration has already run can keep saving rows;
+    # read it as `row.details or {}`. Cleared by the 12-month scrub.
+    details = models.JSONField(default=dict, null=True, blank=True)
 
     # Flow/outcome tracking
     provider = models.CharField(
@@ -503,6 +519,8 @@ class Search(models.Model):
             if self.vdg_second_chance == self.SECOND_CHANCE_WON:
                 return 'VDG (2nd)'
             return 'VDG'
+        if self.provider == self.PROVIDER_REMEMBERED:
+            return 'Remembered'        # paint288: the badge is a narrow pill (paint82); the full label is the choice's
         return self.get_provider_display()
 
     #: Which attempt produced the answer, per provider. Both VDG and One Auto

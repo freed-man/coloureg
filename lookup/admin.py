@@ -157,6 +157,9 @@ class SearchAdmin(admin.ModelAdmin):
         'access_label',
         'customer_message',
         'enriched_from',
+        # paint288: the car details saved with the lookup. Written by the lookup
+        # itself and read back for a remembered answer, so readonly.
+        'details',
     )
     fieldsets = (
         ('Search Info', {
@@ -263,6 +266,12 @@ class SearchAdmin(admin.ModelAdmin):
             'classes': ('collapse',),
             'fields': ('customer_message', 'manual_note', 'no_code_available',
                        'enriched_from'),
+        }),
+        # paint288. What a remembered answer draws its page from: the car details
+        # this row has no column for. Empty on lookups from before paint288.
+        ('Saved car details', {
+            'classes': ('collapse',),
+            'fields': ('details',),
         }),
     )
     date_hierarchy = 'timestamp'
