@@ -2320,11 +2320,10 @@
                 and this one is neither.{% endcomment %}
                 { label: 'MMW',         data: CHART.src_mmw,     backgroundColor: '#7e57c2' },
                 { label: 'Manual',      data: CHART.src_manual,  backgroundColor: '#b8860b' },
-                { label: 'Cache',       data: CHART.src_cache,   backgroundColor: '#999' },
-                {% comment %}paint288: answers given again from an earlier lookup of the
-                same plate (inside 90 days). Last, beside Cache: both are copies of
-                an answer, not new ones.{% endcomment %}
-                { label: 'Remembered',  data: CHART.src_remembered, backgroundColor: '#5d6d7e' }
+                {% comment %}paint291: Cache now counts the remembered answers of paint288
+                too (they had a series of their own): one word for any answer given
+                again without a new search.{% endcomment %}
+                { label: 'Cache',       data: CHART.src_cache,   backgroundColor: '#999' }
             ]
         },
         options: {

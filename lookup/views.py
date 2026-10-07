@@ -4324,10 +4324,12 @@ def admin_stats(request):
                                           vdg_second_chance=Search.SECOND_CHANCE_WON)),
             s_pl24=Count('id', filter=Q(paint_code__gt='', provider=Search.PROVIDER_PARTSLINK24)),
             s_manual=Count('id', filter=Q(paint_code__gt='', provider=Search.PROVIDER_MANUAL)),
-            s_cache=Count('id', filter=Q(paint_code__gt='', provider=Search.PROVIDER_CACHE)),
-            # paint288: remembered answers, or they vanish from the one picture of
-            # where codes come from (as Ezyvin's and mmw's wins once did).
-            s_remembered=Count('id', filter=Q(paint_code__gt='', provider=Search.PROVIDER_REMEMBERED)),
+            # paint291: ONE "Cache" SERIES FOR EVERY ANSWER GIVEN AGAIN WITHOUT A NEW
+            # SEARCH: the 7-day cache's and the remembered ones of paint288, which had a
+            # series of their own. "Cache" is the operator's one word for both, in the
+            # Source column (paint289) and now here. Each row still records which kind
+            # it was (provider 'cache' or 'remembered').
+            s_cache=Count('id', filter=Q(paint_code__gt='', provider__in=Search.COPIED_PROVIDERS)),
         )
         .order_by('date')
     )
@@ -4339,7 +4341,6 @@ def admin_stats(request):
     src_ezyvin, src_retry, src_retry2 = [], [], []
     src_mmw = []
     src_pl24, src_manual, src_cache = [], [], []
-    src_remembered = []
     # LOCAL dates, not UTC. TruncDate above buckets by the CURRENT timezone
     # (Europe/London), so `now.date()` — which is UTC — disagrees with it
     # whenever London is ahead: between 23:00 and midnight UTC through BST, a
@@ -4364,7 +4365,6 @@ def admin_stats(request):
         src_pl24.append(row.get('s_pl24', 0))
         src_manual.append(row.get('s_manual', 0))
         src_cache.append(row.get('s_cache', 0))
-        src_remembered.append(row.get('s_remembered', 0))
 
     # Top searched makes, and the makes the pipeline misses most (paint208)
     top_makes, failed_makes = _make_tables(real_lookups)
@@ -4594,7 +4594,6 @@ def admin_stats(request):
             'src_pl24': src_pl24,
             'src_manual': src_manual,
             'src_cache': src_cache,
-            'src_remembered': src_remembered,
         },
         'top_makes': top_makes,
         'manual_note_max': MANUAL_NOTE_MAX_CHARS,
