@@ -51,7 +51,9 @@ class Command(BaseCommand):
             if row is None:
                 self.stdout.write(f'{item}: not in the catalogue, skipped')
                 continue
-            pic = ai_pictures.draw(PROMPT.format(name=row.name, make=make.strip().title(), code=row.code))
+            # paint287: an OPAQUE card. On a transparent request the model made three of six
+            # cards see-through in the middle (Alpine White, Magnetic, Super Red: 'unreadable').
+            pic = ai_pictures.draw(PROMPT.format(name=row.name, make=make.strip().title(), code=row.code), background='opaque')
             total += pic.cost or 0
             got = card_hex(pic.data) if getattr(pic, 'data', None) else ''
             self.stdout.write(f'{row.manufacturer} {row.code} {row.name!r}: catalogue {row.hex or "-"}, card {got or "unreadable (" + str(pic.status) + ")"}')

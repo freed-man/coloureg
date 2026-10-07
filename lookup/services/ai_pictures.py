@@ -220,12 +220,14 @@ def cost_of(model, usage):
     return ((tokens_in - picture_in) * rates[0] + picture_in * rates[1] + tokens_out * rates[2]) / 1e6
 
 
-def draw(prompt, key=None):
-    """One picture, transparent PNG, medium quality."""
+def draw(prompt, key=None, background='transparent'):
+    """One picture, PNG, medium quality. Transparent for cars; paint286's flat
+    paint cards ask for 'opaque' (paint287: a white card on a transparent
+    request came back see-through, and so unreadable)."""
     status, data, seconds, message = _post(
         OPENAI_IMAGES_URL, {'Authorization': f'Bearer {key or openai_key()}'},
         {'model': AI_MODEL, 'prompt': prompt, 'size': '1536x1024', 'quality': QUALITY,
-         'n': 1, 'background': 'transparent', 'output_format': 'png'})
+         'n': 1, 'background': background, 'output_format': 'png'})
     pic = Picture(seconds=seconds, status=status, message=message)
     if status == 200:
         items = [i.get('b64_json') for i in (data.get('data') or [])
