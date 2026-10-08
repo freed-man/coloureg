@@ -19,6 +19,20 @@ WHICH EARLIER ANSWER COUNTS (find):
   * A provider's answer is read by TODAY'S rules, the ones every new answer
     passes (_enrich_from_lookup). 9 of the 54 held a slash-joined code from
     before paint162 ("2T2T/C9X"); read today it is the C9X a new lookup gives.
+  * ONLY WHAT THE PROVIDER SAID IS KEPT (paint293). A lookup's row holds the
+    provider's half of the answer and, often, a half our own catalogue supplied
+    at the time (`enriched_from`): the name for a provider's code, or the code
+    for a provider's name. paint288 read both halves back together, so the
+    catalogue's half was frozen as it stood that day: Vauxhall 4CU stayed
+    "Power Red" on blue cars after paint239 taught a new lookup to say Ultra
+    Blue Pearl, and five black Audis kept "Dark Grey Matt". Now the catalogue's
+    half is derived again, and where it was the CODE and today's rules give a
+    different one (or none), nothing is remembered.
+  * A provider's answer whose name states a colour the car's registered colour
+    does not share is not served from memory (paint293): the normal lookup
+    runs. Replayed on the lookups of 10 Jul to 7 Oct, that is 29 of 2,359
+    plates, and it costs those what every lookup cost before paint288. The
+    operator's answer is never second-guessed this way.
   * Every lookup that counts must agree on the code. If two disagree (two
     sources, or a correction made on one lookup and not the other) nothing is
     remembered and the normal lookup runs, exactly as before this existed.
@@ -130,19 +144,34 @@ class Remembered:
 
 def _reading(row):
     """(code, name) as this lookup's answer would be given today, or None when
-    today's rules refuse it. The operator's answer is given as typed."""
+    today's rules refuse it. The operator's answer is given as typed.
+
+    paint293: only the provider's half is read back; the half our catalogue
+    supplied at the time is derived again (see the note at the top)."""
     from lookup.models import Search
     code = (row.paint_code or '').strip()
     name = (row.paint_description or '').strip()
     if row.provider == Search.PROVIDER_MANUAL:
         return (code, name) if code else None
     from lookup.services.paint_resolver import _enrich_from_lookup
-    out = _enrich_from_lookup({'paint_code': code, 'paint_description': name},
+    ours = (row.enriched_from or '').strip()      # the half our catalogue supplied on the day, if any
+    out = _enrich_from_lookup({'paint_code': '' if ours == Search.ENRICHED_CODE else code,
+                               'paint_description': '' if ours == Search.ENRICHED_NAME else name},
                               row.make, row.model, vdg_colour=row.colour) or {}
-    code = (out.get('paint_code') or '').strip()
-    if not code or out.get('placeholder_refused'):
+    today = (out.get('paint_code') or '').strip()
+    if not today or out.get('placeholder_refused'):
         return None
-    return code, (out.get('paint_description') or '').strip()
+    if ours == Search.ENRICHED_CODE and _code_key(today) != _code_key(code):
+        return None                    # the name gives a different code today: search afresh
+    return today, (out.get('paint_description') or '').strip()
+
+
+def contradicts(name, colour):
+    """True when a paint's name states a colour and the car's registered colour
+    states another. Unknown on either side is not a contradiction."""
+    from lookup.services.paint_resolver import _colour_families
+    said, registered = _colour_families(name or ''), _colour_families(colour or '')
+    return bool(said and registered and not (said & registered))
 
 
 def find(registration, now=None):
@@ -177,6 +206,8 @@ def _find(registration, now):
     answer = _reading(source)
     if answer is None:
         return None
+    if source.provider != Search.PROVIDER_MANUAL and contradicts(answer[1], source.colour):
+        return None                    # paint293: something is off; let the normal lookup run
     for row in counted:
         if row is source or _code_key(row.paint_code) == _code_key(source.paint_code):
             continue

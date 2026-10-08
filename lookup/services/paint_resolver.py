@@ -162,6 +162,25 @@ def _enrich_from_lookup(result, make, model=None, vdg_colour=None,
             result['paint_description'] = ''
             result['placeholder_refused'] = True
             return result
+        if _INTERIOR_NAME.match(result.get('paint_description') or ''):
+            # paint293: AN INTERIOR IS NOT A PAINT, WHOEVER SAYS SO. Ezyvin put
+            # "Interior :Ivory (034EZ)" in the exterior field of a 1998 Jaguar
+            # XK8 and it was served as paint 034EZ on 5 Oct. paint284 refused it
+            # in Ezyvin's own reader, which stops the next one from Ezyvin and
+            # nothing else: the answer already given sits on its row, and a
+            # remembered answer (paint288) is read back through THIS function,
+            # where nothing objected, so that car would have been told 034EZ
+            # again for three months. Refused here, where every provider's
+            # answer and every remembered one passes.
+            #
+            # Both fields cleared and routed as not found, the way a placeholder
+            # is: the code beside such a name is a trim code, not a paint.
+            logger.info('interior named as a paint, refused: %s', (make or '')[:30])
+            result['paint_code'] = ''
+            result['paint_description'] = ''
+            result['placeholder_refused'] = True
+            result['interior_refused'] = True
+            return result
         if is_special_order_code(code):
             # paint159: never name a special-order code. Whatever the catalogue
             # holds against it is somebody else's bespoke car, picked up by a
@@ -1098,6 +1117,9 @@ _PLACEHOLDER_CODE = re.compile(
 #: car's sticker, so it is kept and shown — it just does not identify a paint.
 _SPECIAL_ORDER_CODES = {'999', 'L999', '0999'}
 
+#: paint293: a "paint name" that says it is the interior ("Interior :Ivory").
+_INTERIOR_NAME = re.compile(r'\s*interior\b', re.I)
+
 
 # paint243: a name that is only a colour word, with at most a shade before it
 # and a finish after it: "Grey", "Blue Metallic", "Black Pearl", "Pearl White".
@@ -1281,7 +1303,10 @@ def resolve_slashed_code(make, code, dvla_colour=None):
     # Matt on a car DVLA calls Black), which is a defensible answer rather than
     # a wrong one; that is the price of catching the T9 class.
     if dvla_colour:
-        _row = PaintLookup.lookup(make, hits[0])
+        # paint293: read as the page will read it, by this car's colour. `L8/Z9Y`
+        # on a black Audi was left unsplit because the short Z9Y row says Dark
+        # Grey Matt; the row that names this car's paint is LZ9Y, Phantom Black.
+        _row = PaintLookup.lookup(make, hits[0], vdg_colour=dvla_colour)
         _want = _colour_families(dvla_colour)
         _got = _colour_families(_row.name) if _row else set()
         if _want and _got and not (_want & _got):

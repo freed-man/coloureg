@@ -1025,9 +1025,12 @@ class PaintLookup(models.Model):
 
         `(manufacturer, code)` is unique in this table (one code = one colour
         within a make), so the only real work is trying code variants in order.
-        The `model`, `year`, `vdg_colour` params are accepted for call-site
-        compatibility with the old PaintSwatch.lookup signature but are not
-        needed to disambiguate (there is at most one row per code).
+        The `model` and `year` params are accepted for call-site compatibility
+        with the old PaintSwatch.lookup signature but are not needed to
+        disambiguate (there is at most one row per code). `vdg_colour`, the
+        car's registered colour, is read in ONE case only (paint293): a VW or
+        Audi code held both short and with the L, as two different colours.
+        See _l_row_for_this_car.
 
         VW/Audi leading-L fallback: if the plain code(s) don't match, retry each
         variant with a leading 'L' (see LEADING_L_MAKES). This is tried ONLY
@@ -1065,7 +1068,7 @@ class PaintLookup(models.Model):
         for code in variants:
             match = rows.get(code)
             if match and not cls.is_topup_only(match):
-                return match
+                return cls._l_row_for_this_car(mfr_norm, code, match, vdg_colour) or match
 
         # 2) VW/Audi leading-L fallback (only when the plain form is absent).
         l_rows, l_variants = {}, []
@@ -1094,6 +1097,47 @@ class PaintLookup(models.Model):
             if l_rows.get(code):
                 return l_rows[code]
         return None
+
+    @classmethod
+    def _l_row_for_this_car(cls, mfr_norm, code, short_row, car_colour):
+        """paint293: the L row instead of the short one, when the car's own
+        colour says so. None leaves the answer as it is.
+
+        The VW group writes one paint two ways, Z9Y on the sticker and LZ9Y in
+        the catalogue, and the L form is tried only when the short form has no
+        row. But some short forms DO have a row, and it is a different paint:
+        Audi Z9Y is held as "Dark Grey Matt" (one source, no models) beside
+        LZ9Y "Phantom Black Pearl" (three sources, 51 models). partslink24
+        sends the code with no name, so five black Audis between 14 Sep and
+        7 Oct were named Dark Grey Matt and shown that row's swatch, while VDG
+        named cars of the same code Phantom Black Pearl.
+
+        NOT "always prefer the L row": production holds 7 such pairs for these
+        two makes, and either form can be the right one (Audi 3000 is Stone
+        White and L3000 a blue). The car decides. Only when all of these hold:
+          * the make is one where the L form is tried at all;
+          * the car's registered colour is known and names a colour;
+          * the short row's name names a colour, and it is NOT the car's (a name
+            that states no colour is unknown, not wrong: left alone);
+          * the L row exists, is an established row, and its name IS the car's
+            colour.
+        One more query, and only for a car whose colour the short row
+        contradicts, so the everyday lookup costs what it did."""
+        if mfr_norm not in cls.LEADING_L_MAKES or not car_colour:
+            return None
+        from lookup.services.paint_resolver import _colour_families
+        want = _colour_families(car_colour)
+        have = _colour_families(short_row.name or '')
+        if not want or not have or (want & have):
+            return None
+        l_row = cls.objects.filter(manufacturer=mfr_norm, code='L' + code).first()
+        if l_row is None or cls.is_topup_only(l_row):
+            return None
+        if not (want & _colour_families(l_row.name or '')):
+            return None
+        logger.info('paint %s %s read as %s by the car\'s colour %r: %r, not %r',
+                    mfr_norm, code, l_row.code, car_colour, l_row.name, short_row.name)
+        return l_row
 
     @classmethod
     def find_canonical_code(cls, manufacturer, paint_code, swatch=None):

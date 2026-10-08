@@ -518,6 +518,9 @@ SENTRY_DSN = os.environ.get('SENTRY_DSN', '')
 
 if not DEBUG and SENTRY_DSN:
     import sentry_sdk
+    from sentry_sdk.scrubber import EventScrubber
+
+    from coloureg.crash_reports import strip_secrets
 
     def _before_send(event, hint):
         """Filter out events we don't want to log to Sentry.
@@ -544,7 +547,11 @@ if not DEBUG and SENTRY_DSN:
                 if exc_type.__name__ == 'Http404':
                     return None
 
-        return event
+        # paint292: NO SECRET LEAVES IN A REPORT. Last, so that it sees
+        # everything the report holds: the failing call's variables and the
+        # outbound calls made before it, where the VDG key and the database
+        # password were both found (coloureg/crash_reports.py).
+        return strip_secrets(event)
 
     sentry_sdk.init(
         dsn=SENTRY_DSN,
@@ -557,4 +564,8 @@ if not DEBUG and SENTRY_DSN:
         environment='production',
         # Filter out noise (404s, admin path crashes)
         before_send=_before_send,
+        # paint292: the library's own filter goes by a variable's name, and by
+        # default only at the top level, so `params['apikey']` and
+        # `kwargs['password']` passed it. Told to look inside dicts and lists.
+        event_scrubber=EventScrubber(recursive=True),
     )
