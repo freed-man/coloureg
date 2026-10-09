@@ -1475,9 +1475,11 @@ class PaintLookup(models.Model):
     # is the small, zero-leak-risk alternative to a full cross-ref canonical merge.
     #   - Keys are LIGHT-normalized only (lowercase + single-spaced); they are NOT
     #     run through normalize_name(), because that strips finish words and would
-    #     merge a solid into its pearl. Ford 'panther black solid' -> PNJAB vs
-    #     'panther black pearl' -> 17V is the case that needs this, and the two
-    #     entries below are what keep them apart.
+    #     merge a solid into its pearl. So a line answers the wordings written
+    #     out and no others. Ford Panther Black was the case this was built for:
+    #     its 'metallic' and 'pearl' lines gave 17V until paint295, when it was
+    #     decided to be the one paint the plain name gives (see the note in the
+    #     table). No line in the table separates two finishes today.
     #
     #   - CORRECTED 8 Aug: 'santorini black pearl' -> PAB (was PBF, then briefly
     #     removed entirely). Two separate errors, worth keeping both on record:
@@ -1913,15 +1915,23 @@ class PaintLookup(models.Model):
             # Lunaire Metallic' variants.)
             'moondust silver': 'PNZJB',
             'moondust silver metallic': 'PNZJB',
-            # Panther Black is genuinely TWO paints (51 RGB apart), so it's a split,
-            # not one canonical: solid #222327 -> PNJAB (provider-confirmed), pearl
-            # #090C11 -> 17V. Plain name defaults to the confirmed solid; the
-            # 'metallic'/'pearl' finishes route to the pearl. (The pearl code is the
-            # clearest pearl-cluster code but is not itself provider-confirmed.)
+            # Panther Black is ONE paint here: PNJAB for every wording (paint295,
+            # the operator's decision of 9 Oct). Until then the 'metallic' and
+            # 'pearl' wordings gave 17V, on the reasoning that the catalogue
+            # holds a solid (#222327, PNJAB) and a pearl (#090C11, 17V), and that
+            # reasoning was never confirmed by a provider. Measured on five
+            # months of lookups: no provider sent 17V for any car, and the
+            # catalogue lists it for the Ranger only, yet 13 lookups of Fiestas,
+            # Focuses, Mondeos, Kugas and a C-Max were given it, because
+            # partslink24 words this name 'Panther Black (Metallic)'. Where VDG
+            # or Ezyvin sent a code of its own for the paint it was PNJAB (four
+            # lookups, a Ranger among them). And seven cars were named by two
+            # providers at once: one wrote '(Metallic)', the other the plain
+            # name or PNJAB itself.
             'panther black': 'PNJAB',
             'panther black solid': 'PNJAB',
-            'panther black metallic': '17V',
-            'panther black pearl': '17V',
+            'panther black metallic': 'PNJAB',
+            'panther black pearl': 'PNJAB',
             # 'Kinetic Blue' comes back name-only from partslink24 and maps to 5
             # codes the matcher can't collapse (9DSE has no hex; BDU #004A81 and
             # CDUCWWA #00487B are both EcoSport-tagged dark blues; BDUWWA/VBM are a
@@ -1968,8 +1978,10 @@ class PaintLookup(models.Model):
         """Lowercase + trim + collapse internal whitespace, and drop parentheses so a
         provider finish in parens ('Scuba (Metallic)') lands on the same key as the
         bare form ('scuba metallic'). Deliberately does NOT strip finish words (cf.
-        normalize_name) so 'pearl'/'metallic' survive to distinguish paint variants
-        (e.g. Panther Black solid vs pearl)."""
+        normalize_name) so 'pearl'/'metallic' survive, and a hand written line
+        answers the wordings written out and no others. (Ford Panther Black was
+        the example given here, solid against pearl. Since paint295 it is one
+        paint, and no line in the table separates two finishes.)"""
         s = (colour_name or '').strip().lower().replace('(', ' ').replace(')', ' ')
         # Strip provider wrapper boilerplate only — finish words must survive here.
         for w in PaintLookup.PROVIDER_WRAPPER_WORDS:
@@ -1995,10 +2007,12 @@ class PaintLookup(models.Model):
 
         The suffix is NOT simply noise, which is why this is a FALLBACK and not
         a normalisation. Stripping it unconditionally was measured against real
-        traffic and changed five working answers: 'Panther Black (Metallic)'
-        resolves to 17V today but to PNJAB once stripped, and 'Blue Candy (Foe)'
-        goes from DDSEWTA to DDSE. The decorated name is matching a more
-        specific row in those cases, and that row is the right one.
+        traffic and changed five working answers. 'Blue Candy (Foe)' goes from
+        DDSEWTA to DDSE: the decorated name is matching a more specific row,
+        and that row is the right one. (Ford 'Panther Black (Metallic)' was
+        named here as well, 17V decorated and PNJAB stripped. That was a hand
+        written rule, not a more specific row, and since paint295 both wordings
+        give PNJAB.)
 
         So: try the name EXACTLY as given first, and only if that yields nothing
         try again without the suffix. Measured on real data that is 11 newly
