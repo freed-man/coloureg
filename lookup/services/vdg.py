@@ -187,6 +187,10 @@ def _make_request(registration, package, billing_sink=None, timeout=None):
         data = response.json()
     except ValueError:
         raise VdgError('VDG returned invalid JSON')
+    # paint294: valid JSON that is not an object (a list, a bare string) is
+    # no answer either, and there is no receipt in it to read.
+    if not isinstance(data, dict):
+        raise VdgError('VDG returned invalid JSON')
 
     # Record what VDG billed BEFORE any of the status checks below can raise
     # (paint18). VDG charges for a call whether or not it can answer it, and
@@ -196,9 +200,19 @@ def _make_request(registration, package, billing_sink=None, timeout=None):
     # breaker (which sums vdg_transaction_cost) could not see it. Failed
     # lookups are exactly what an abuser generates, so the blind spot sat
     # precisely where it mattered most.
-    response_info = data.get('ResponseInformation', {})
-    is_success = response_info.get('IsSuccessStatusCode', False)
-    status_message = response_info.get('StatusMessage', '')
+    #
+    # paint294: READ SO THAT NOTHING HERE CAN RAISE FIRST. The default in
+    # `.get('ResponseInformation', {})` only covers a MISSING key. A reply
+    # carrying `"ResponseInformation": null` handed back None, the next line
+    # raised on it, and that was before _record_billing: the receipt in the
+    # same reply was thrown away, which is the very thing this block exists
+    # to prevent. Anything that is not an object is now read as an empty one,
+    # so the call is recorded and then fails below as "VDG status:".
+    response_info = data.get('ResponseInformation')
+    if not isinstance(response_info, dict):
+        response_info = {}
+    is_success = bool(response_info.get('IsSuccessStatusCode', False))
+    status_message = str(response_info.get('StatusMessage') or '')
 
     # Read the status first so the log line can say WHAT we were charged for,
     # but record the billing before any raise below can discard it.

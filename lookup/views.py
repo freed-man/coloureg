@@ -2145,6 +2145,10 @@ def results(request):
 # How long the page is told to wait before retrying a 'busy' response.
 RECOVERY_BUSY_RETRY_S = 4
 
+#: paint294: what a row says while its paint search is held back by the daily
+#: budget. Taken off again when the search does run (_apply_recovery_telemetry).
+BUDGET_PAUSED_NOTE = 'paint search not run: daily budget reached'
+
 
 @require_GET
 def lookup_status(request, search_id):
@@ -2233,6 +2237,29 @@ def _lookup_status(request, search_id):
         })
 
     if not vehicle_data.get('paint_pending'):
+        return JsonResponse({'status': 'not_found'})
+
+    # paint294: THE DAILY BUDGET IS CHECKED HERE TOO. index() checks it before
+    # the vehicle call, which costs about 6p; the paint search below is where
+    # the money goes (VDG's paint call, twice when it is slow, and the reserve:
+    # up to about 1.50 a car) and it ran without asking. So the lookups already
+    # on a results page when the budget was reached each went on to spend the
+    # larger part.
+    #
+    # Checked before the claim, so the row is not marked as searched and the
+    # pending flag stays: the page shows the manual offer, and a reload once
+    # the budget allows it runs the search. ONLY FOR A POLL THAT WOULD START
+    # THE SEARCH. One that finds the search already running (a second tab, a
+    # refresh) spends nothing, and goes on to wait for the answer as before.
+    _budget_config = SiteConfig.get()
+    if (budget_exceeded(_budget_config)
+            and not Search.objects.filter(id=search_id, recovery_attempted=True).exists()):
+        _maybe_alert_budget(_budget_config)
+        logger.warning('paint search not run for search_id=%s: daily budget reached', search_id)
+        # The note goes on a row that says nothing else and is still waiting;
+        # it comes off when the search does run (_apply_recovery_telemetry).
+        Search.objects.filter(id=search_id, error_message='', recovery_attempted=False).update(
+            error_message=BUDGET_PAUSED_NOTE)
         return JsonResponse({'status': 'not_found'})
 
     vin = vehicle_data.get('vin', '')
@@ -2326,6 +2353,18 @@ def _lookup_status(request, search_id):
             record_miss(reg_missed)
         return JsonResponse({'status': 'not_found'})
 
+    # A VDG retry carries the whole bundle, so it can supply a VIN the first
+    # pass never returned: the timeout case (paint61). Only ever FILLS a gap:
+    # if the first pass gave us a VIN, that one stands, because it is the
+    # identity the rest of this request was built on.
+    # paint294: moved above the name-only branch, which returns before the place
+    # this used to sit. VDG's answer may now be a name-only one, and the VIN it
+    # brought is worth keeping all the same.
+    _recovered_vin = (result.get('vin') or '').strip()
+    if _recovered_vin and not (vehicle_data.get('vin') or '').strip():
+        vehicle_data['vin'] = _recovered_vin
+        _persist_recovered_vin(search_id, _recovered_vin)
+
     # Name-only: pl24 returned a colour NAME but no code (e.g. Ford passenger,
     # Jaguar, older Land Rover, some Kia — partslink24 carries the name, not a
     # code). This is a partial result: we show the customer the colour name and
@@ -2363,15 +2402,6 @@ def _lookup_status(request, search_id):
         year=vehicle_data.get('year'),
         vdg_colour=vehicle_data.get('colour', ''),
     )
-
-    # A VDG retry carries the whole bundle, so it can supply a VIN the first
-    # pass never returned — the timeout case (paint61). Only ever FILLS a gap:
-    # if the first pass gave us a VIN, that one stands, because it is the
-    # identity the rest of this request was built on.
-    _recovered_vin = (result.get('vin') or '').strip()
-    if _recovered_vin and not (vehicle_data.get('vin') or '').strip():
-        vehicle_data['vin'] = _recovered_vin
-        _persist_recovered_vin(search_id, _recovered_vin)
 
     _record_paint_hit(search_id, paint_code, paint_description, source, telemetry,
                       enriched_from=enriched_from)
@@ -2816,6 +2846,21 @@ def _apply_recovery_telemetry(search, telemetry):
     if telemetry.get('pl24_started_because'):
         search.pl24_started_because = telemetry['pl24_started_because'][:24]
         fields.append('pl24_started_because')
+    # paint294: THE REASON PL24 IS SKIPPED. The search works it out (no VIN
+    # at all, or one that is not a real 17-character VIN) and it was never
+    # saved: five searches since 2 Oct show a blank where the reason belongs.
+    # The search sets this only when pl24 was skipped, so no worker of pl24's
+    # is writing the same column and there is nothing here to overwrite.
+    if telemetry.get('pl24_outcome'):
+        search.pl24_outcome = telemetry['pl24_outcome'][:40]
+        fields.append('pl24_outcome')
+    # paint294: THE SEARCH HAS RUN, so a note saying the daily budget held it
+    # back (_lookup_status) no longer describes this row. Taken off here, where
+    # every outcome of a search is recorded, and only when the row says exactly
+    # that: any other message on it is left as it is.
+    if search.error_message == BUDGET_PAUSED_NOTE:
+        search.error_message = ''
+        fields.append('error_message')
     dur = telemetry.get('duration_ms')
     if dur is not None:
         search.recovery_duration_ms = int(dur)
@@ -3306,13 +3351,13 @@ def _record_name_only(search_id, paint_description, telemetry=None, source=''):
     """Persist a name-only recovery: a colour name with NO code (e.g. Ford
     passenger, Jaguar, some Kia — partslink24 carries the name, not a code).
 
-    Counts as a SUCCESS for the customer's purposes — we found their colour — so
-    `success=True` and `provider=partslink24` (the SOURCE the name came from).
-    The `recovery_name_only` flag (set via the telemetry helper) is KEPT so the
-    distinction "name only vs. real code" survives in the data: admin stats can
-    separate them if needed, and a future learned code=name DB must only learn
-    from rows that actually had a code. The OUTCOME column shows a plain green
-    tick regardless. Best-effort — a DB hiccup must not break the response."""
+    `provider` is the SOURCE the name came from (paint278) and `success` is
+    False (paint284: a name is not a code). The `recovery_name_only` flag is
+    set here for every source (paint294; the telemetry helper sets it from
+    pl24's answer alone), so the distinction "name only vs. real code"
+    survives in the data: admin stats can separate them, and a future learned
+    code=name DB must only learn from rows that actually had a code.
+    Best-effort: a DB hiccup must not break the response."""
     try:
         search = Search.objects.get(id=search_id)
     except (Search.DoesNotExist, ValueError, TypeError):
@@ -3326,6 +3371,15 @@ def _record_name_only(search_id, paint_description, telemetry=None, source=''):
                        'vdg': Search.PROVIDER_VDG}.get(source, Search.PROVIDER_PARTSLINK24)
     fields = ['paint_description', 'success', 'provider']
     fields += _apply_recovery_telemetry(search, telemetry)
+    # paint294: THE FLAG IS SET HERE, WHATEVER THE SOURCE. The telemetry helper
+    # sets it from pl24's answer alone, from when pl24 was the only source of
+    # names. A name from Ezyvin (a Mazda on 6 Oct) or from VDG left it off, so
+    # the row did not read as a name-only answer, and a second poll waiting on
+    # that row (_wait_for_recovery_result reads this flag) was told "not
+    # found" while the first was told the name.
+    search.recovery_name_only = True
+    if 'recovery_name_only' not in fields:
+        fields.append('recovery_name_only')
     search.save(update_fields=fields)
 
 

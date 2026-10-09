@@ -467,6 +467,8 @@ MMW_API_KEY = os.environ.get('MMW_API_KEY', '')
 #: session, then 1.2s and 1.0s). This is a hang detector, not a patience
 #: setting — it starts at t=0 and nothing waits on it, so a generous value
 #: costs nothing and a tight one throws away answers.
+#: (paint294: the END of a search may now wait on it, for MMW_SETTLE_WAIT_S at
+#: most, whatever this is set to.)
 _MMW_HTTP_TIMEOUT = (5.0, 12.0)
 
 # How long resolve_paint waits for pl24 before giving up. Set just ABOVE pl24's
@@ -589,9 +591,32 @@ def _abandoned(error):
 #
 # A plain semaphore would not help: a thread blocked waiting on it is just as
 # parked. So callers TRY to acquire and are told to come back if they cannot,
-# leaving the thread free immediately. The default of 10 keeps 6 threads clear
-# for ordinary traffic and the healthcheck.
-MAX_CONCURRENT_RECOVERIES = int(os.environ.get('MAX_CONCURRENT_RECOVERIES', '10'))
+# leaving the thread free immediately.
+#
+# paint294: THE LIMIT IS PER WORKER, AND 10 COULD NEVER BIND. This module is
+# loaded once in each gunicorn worker, so each worker has its own slots, and a
+# worker has 8 threads (WEB_THREADS, which the Dockerfile's start command reads
+# too). Ten slots against eight threads meant the limit was never reached: all
+# eight threads of a worker could park in paint searches at once, which is the
+# very state this cap exists to prevent. The default is now two fewer than the
+# worker's threads, so two stay free in every worker for ordinary pages and the
+# healthcheck. MAX_CONCURRENT_RECOVERIES in the environment still wins.
+def _recovery_slots_for(threads):
+    """How many paint searches one worker may run at once, given its threads."""
+    try:
+        return max(1, int(threads) - 2)
+    except (TypeError, ValueError):
+        return 6
+
+
+def _recovery_slots_from(environ):
+    """The limit as the environment sets it: MAX_CONCURRENT_RECOVERIES when it
+    is there, else two fewer than WEB_THREADS (8 when that is not set)."""
+    return int(environ.get('MAX_CONCURRENT_RECOVERIES')
+               or _recovery_slots_for(environ.get('WEB_THREADS') or 8))
+
+
+MAX_CONCURRENT_RECOVERIES = _recovery_slots_from(os.environ)
 _recovery_slots = threading.BoundedSemaphore(MAX_CONCURRENT_RECOVERIES)
 
 
@@ -831,11 +856,13 @@ def _vdg_retry(registration, telemetry=None, search_id=None, race_over=None,
     # and a hit is the only outcome that has already cost the full price — a
     # paint-less call is refunded.
     first_data = data
-    # paint272: NOT ONCE ANOTHER PROVIDER HAS A CODE. race_over is set only when a
+    # paint272: NOT ONCE ANOTHER PROVIDER HAS A CODE. race_over is set when a
     # usable code exists (pl24, Ezyvin or VDG), so a second call then cannot help
     # the customer, yet it is charged whenever VDG finds paint: in September 85 of
     # the 109 lookups that paid for four paint calls already had pl24's code. A
     # warm-read rescue still runs whenever nobody has answered yet.
+    # paint294: it is set as well once the search has ENDED, whatever it ended
+    # with, because nobody is left to read a second call's answer then either.
     skip_second = (bool(race_over is not None and race_over.is_set())
                    or _mmw_has_code(mmw_future, make, vdg_colour))      # paint273
     if not (data and data.get('paint_returned')) and not skip_second:
@@ -1343,6 +1370,40 @@ def is_special_order_code(code):
     return (code or '').strip().upper() in _SPECIAL_ORDER_CODES
 
 
+#: paint294: codes ONE make uses for "painted to special order". BMW's 490 comes
+#: with the name "Sonderlackierung" (German for special paint) on every car it
+#: was given to: six lookups on five cars from 25 Jul to 1 Sep, registered
+#: bronze, purple, maroon, green, and red and black. Limited to BMW because 16
+#: other makes in the catalogue use 490 for a real colour (Volvo's is Chameleon
+#: Blue). Keyed by the catalogue's own spelling of the make.
+_SPECIAL_ORDER_BY_MAKE = {'bmw': frozenset({'490'})}
+
+
+def marks_special_order(make, code):
+    """True when a code says the car was painted to special order: `999` and its
+    spellings for any make, and the codes a single make uses that way.
+
+    paint294. FOR THE PAINT SEARCH ONLY, SO FAR. Such a code is true and still
+    not an answer: it tells the customer the paint exists, not which one it
+    is. So the search no longer stops on it (see resolve_paint). A yellow BMW
+    on 7 Oct shows what that is worth: partslink24 said 490, mmw said 490, and
+    VDG held the car's real code, C4H. VDG happened to answer first; had
+    partslink24 been quicker, the customer would have been given 490.
+
+    What the PAGE does with such a code is still is_special_order_code's
+    decision, and that is unchanged here: 490 keeps the name it is shown with
+    today until the page's handling of special order codes is redone.
+    """
+    code = (code or '').strip().upper()
+    if not code:
+        return False
+    if code in _SPECIAL_ORDER_CODES:
+        return True
+    from lookup.models import PaintLookup
+    return code in _SPECIAL_ORDER_BY_MAKE.get(
+        PaintLookup.normalize_manufacturer(str(make or '')), ())
+
+
 def is_placeholder_code(make, code):
     """True when a code is a scraper artefact rather than a paint code.
 
@@ -1607,18 +1668,37 @@ def _mmw_has_code(f_mmw, make, vdg_colour):
     mmw can answer used to wait for VDG's second call too: since 13 Sep it fired
     in all 85 lookups mmw answered, mmw having replied within 1-6s. With that
     call now waiting up to 23s, those customers would wait longer for the same
-    answer. The same test as _mmw_settle, minus its telemetry, and never blocks.
+    answer. The colour check _mmw_settle makes, then the reading the end of the
+    search gives that code (paint294, below). Never blocks.
     """
     if f_mmw is None or not f_mmw.done():
         return False
     try:
         row = f_mmw.result()
-        return bool(row and row.get('code') and mmw_code_validates(make, row['code'], vdg_colour))
+        code = row and row.get('code') and mmw_code_validates(make, row['code'], vdg_colour)
+        if not code:
+            return False
+        # paint294: BY THE READING THE SEARCH WILL GIVE IT. Passing the colour
+        # check is not the whole of it: at the end of the search mmw's code is
+        # read by the refusal rules like any other answer. A special order
+        # code is held back there, and a placeholder that slipped past the
+        # colour check (a junk XXX row can carry a swatch) is refused.
+        # Neither is a reason to skip the call that may find the real code.
+        read = _enrich_from_lookup({'paint_code': code, 'paint_description': '',
+                                    'all_paint_codes': [], 'source': 'mmw'},
+                                   make, None, vdg_colour=vdg_colour)
+        return _weigh(make, read) == 'code'
     except Exception:  # noqa: BLE001 — a free leg's answer must never break VDG's worker
         return False
 
 
-def _mmw_settle(f_mmw, make, vdg_colour, telemetry):
+#: paint294: how long the end of a search waits for mmw when mmw is the only
+#: source still running. Measured on 1,045 answers since 14 Sep: half within
+#: 1.5s, 99% within 4.6s, 3 over 8s. The search's own deadline still caps it.
+MMW_SETTLE_WAIT_S = float(os.environ.get('MMW_SETTLE_WAIT_S', '8'))
+
+
+def _mmw_settle(f_mmw, make, vdg_colour, telemetry, wait=0.0):
     """Read mmw's held answer. Records agreement; returns a usable code or None.
 
     paint140, corrected in paint195. Called in ONE place: at the end, where a
@@ -1631,15 +1711,20 @@ def _mmw_settle(f_mmw, make, vdg_colour, telemetry):
     Ford suffixes. The battery was testing the dead copy. Removed, so a
     future fix cannot land in it and pass while changing nothing.
 
-    NEVER BLOCKS. mmw started at t=0 and everything else has already finished
-    by the time this runs, so the future is done or it hung; either way waiting
-    on it would make a free leg cost time.
+    WAITS ONLY AS LONG AS IT IS TOLD TO (paint294). This never blocked, on the
+    reasoning that mmw started at t=0 and everything else had finished by now.
+    That holds for an ordinary search and fails for the quickest ones: a car
+    with no usable VIN asks neither pl24 nor Ezyvin, VDG's paint call for it
+    comes back in a fraction of a second, and the search ended "not found"
+    while mmw, which needs about a second and a half, was still on its way.
+    Since 14 Sep, 9 of the 18 searches on such cars finished within 0.4s. The
+    caller now passes how long it will wait; with wait=0 this is as it was.
     """
-    if f_mmw is None or not f_mmw.done():
+    if f_mmw is None:
         return None
     try:
-        row = f_mmw.result()
-    except Exception:  # noqa: BLE001 — a free leg cannot be allowed to raise
+        row = f_mmw.result(timeout=max(0.0, wait or 0.0))
+    except Exception:  # noqa: BLE001 (not back in time, or a free leg that raised)
         return None
     if not row or not row.get('code'):
         return None
@@ -1926,6 +2011,70 @@ def vin_is_real(vin):
     return bool(_REAL_VIN.fullmatch((vin or '').strip().upper()))
 
 
+def _weigh(make, answer):
+    """paint294: what a provider's answer is worth once the refusal rules
+    (_enrich_from_lookup) have read it. Decides whether the search may stop.
+
+        'code'     a code of the provider's own. The search stops; this is the
+                   answer.
+        'special'  a special order code (marks_special_order). True, and no
+                   use if another source can say which paint it was: held.
+        'name'     a colour name, with or without a code OUR catalogue worked
+                   out from it (enriched_from 'code'). Held: a provider's own
+                   code for this very car is better than a match on a name.
+        ''         nothing usable: empty, or refused (a placeholder, an
+                   interior). The search carries on as if nothing had arrived.
+    """
+    if not answer or answer.get('placeholder_refused'):
+        return ''
+    code = (answer.get('paint_code') or '').strip()
+    if code and marks_special_order(make, code):
+        return 'special'
+    if code and answer.get('enriched_from') != 'code':
+        return 'code'
+    if code or (answer.get('paint_description') or '').strip():
+        return 'name'
+    return ''
+
+
+def _ezyvin_leg(vin, sink, race_over, budget, search_id):
+    """Run the reserve and WRITE WHAT IT LEARNED TO THE ROW, whoever wins.
+
+    paint294. The same problem and the same fix as _oneauto_leg and pl24's own
+    worker (paint26): the search returns the moment a source has a code, so a
+    reserve still in flight finishes after the caller has read its telemetry
+    and saved. Its outcome and its credits stayed in a dict nobody read again.
+    Measured: 16 of the 356 times the reserve was started, the row shows no
+    outcome and no credits (15 were started by the backstop while a slow leg
+    was about to answer). Up to 80 credits the dashboard never counted.
+
+    The caller still copies the same values when it is there to read them; it
+    writes them only when it has them, so it cannot blank what is written here.
+    Best-effort throughout: recording must never break a search.
+    """
+    result = None
+    try:
+        result = ezyvin.lookup(vin, sink, race_over, budget)
+    except Exception:  # noqa: BLE001 - a reserve that raises is a miss, and the row says so
+        logger.warning('Ezyvin leg failed', exc_info=True)
+        if not sink.get('outcome'):
+            sink['outcome'] = 'client_error'
+    if search_id is not None:
+        fields = {}
+        if sink.get('credits') is not None:
+            fields['ezyvin_credits'] = sink['credits']
+        if sink.get('outcome'):
+            fields['ezyvin_outcome'] = str(sink['outcome'])[:40]
+        if result:
+            if result.get('code'):
+                fields['ezyvin_code'] = str(result['code'])[:50]
+            if result.get('description'):
+                fields['ezyvin_name'] = str(result['description'])[:200]
+        if fields:
+            _record_worker_result(search_id, **fields)
+    return result
+
+
 def resolve_paint(registration, vin, make, category=None, telemetry=None, model=None,
                   search_id=None, vdg_colour=None, year=None):
     """Race the VDG bundle-retry and the pl24 scrape; return the first usable
@@ -1951,11 +2100,18 @@ def resolve_paint(registration, vin, make, category=None, telemetry=None, model=
          wins (cheaper, already paid for). This holds even if both futures
          complete in the same wait() batch — we inspect the VDG future before the
          pl24 future within a batch, not relying on set-iteration order.
-      2. A pl24 name-only result (colour name, no code) is a FALLBACK: it is held
-         aside and returned ONLY if neither path produces a real code before the
-         deadline. A late real code must still be able to beat it, so name-only
-         never short-circuits the wait.
-      3. Otherwise None (a true miss).
+      2. Anything less is a FALLBACK, whichever source sent it (paint294; this
+         was true of pl24's name-only answer alone): a colour name with no
+         code, a code our catalogue worked out from such a name, a special
+         order code. It is held aside and returned ONLY if no source produces a
+         real code before the deadline. A late real code must still be able to
+         beat it, so a fallback does not short-circuit the wait. One exception:
+         once VDG's name gives a code, a source still silent at the reserve's
+         backstop is no longer waited for (see the top of the loop). The order
+         among fallbacks is set out where the loop ends.
+      3. An answer the refusal rules reject (a placeholder, an interior) is no
+         answer at all, and the search carries on (paint294).
+      4. Otherwise None (a true miss).
 
     Timeout: the total wait is hard-bounded by PL24_TIMEOUT. We deliberately do
     NOT use the ThreadPoolExecutor as a context manager, because its __exit__
@@ -2110,8 +2266,10 @@ def resolve_paint(registration, vin, make, category=None, telemetry=None, model=
         _start_pl24('immediate')
         # paint255: recorded up front, because with pl24 skipped the "both empty"
         # trigger never fires, so Ezyvin's own refusal might never be reached.
-        if (vin or '').strip() and not vin_is_real(vin):
-            _t['ezyvin_outcome'] = 'skipped_bad_vin'
+        # paint294: and "no VIN at all" is recorded as well. Three searches
+        # since 2 Oct left the reserve's column blank for exactly that reason.
+        if not vin_is_real(vin):
+            _t['ezyvin_outcome'] = 'skipped_bad_vin' if (vin or '').strip() else 'skipped_no_vin'
 
         # THIRD LEG (paint95) — EZYVIN, AND IT IS NOT IN THE RACE.
         #
@@ -2170,8 +2328,8 @@ def resolve_paint(registration, vin, make, category=None, telemetry=None, model=
                 _t['ezyvin_outcome'] = 'skipped_no_time'
                 f_ezyvin = None
                 return None
-            f_ezyvin = ex.submit(ezyvin.lookup, vin, _ez_sink, race_over,
-                                 _ez_budget)
+            f_ezyvin = ex.submit(_ezyvin_leg, vin, _ez_sink, race_over,
+                                 _ez_budget, search_id)
             return f_ezyvin
         _ez_sink = {}
         # A LATE BACKSTOP, deliberately. Its job is to catch a HUNG leg, not to
@@ -2182,11 +2340,19 @@ def resolve_paint(registration, vin, make, category=None, telemetry=None, model=
         # ~2.2s on a hit, so a 25s backstop still answers inside the 60s
         # deadline with room to spare.
         ezyvin_backstop_at = time.monotonic() + EZYVIN_BACKSTOP_S
-        ezyvin_name_only_result = None
         deadline = time.monotonic() + PL24_TIMEOUT
         pending = {f for f in (f_vdg, f_pl24) if f is not None}     # paint255: pl24 may be skipped
-        pl24_code_result = None      # pl24 returned a real CODE (short-circuits)
-        pl24_name_only_result = None  # pl24 returned a name but NO code (fallback)
+        # paint294: WHAT IS HELD WHILE THE SEARCH GOES ON, by source. An answer
+        # that is not a code of the provider's own (a colour name, a code our
+        # catalogue worked out from that name, a special order code) waits
+        # here, and is given only if no source produces a code of its own.
+        held = {}
+        # paint294: the reserve has been started, or could not be. Either way
+        # it is not tried again and its backstop stops shortening the waits.
+        reserve_done = False
+        # paint294: the VIN that VDG's paint call supplied, kept whichever
+        # answer is given in the end (see _give).
+        vdg_vin = ''
 
         def _result_or_none(fut):
             try:
@@ -2194,14 +2360,60 @@ def resolve_paint(registration, vin, make, category=None, telemetry=None, model=
             except Exception:  # noqa: BLE001  (any worker failure -> no paint)
                 return None
 
+        def _read(answer):
+            """paint294: one answer as the refusal rules leave it, with what it
+            is worth (see _weigh) and the notes the reading made for the row."""
+            notes = {}
+            read = _enrich_from_lookup(dict(answer), make, model,
+                                       vdg_colour=vdg_colour, telemetry=notes)
+            kind = _weigh(make, read)
+            if kind == 'name':
+                # A name with no code is a name-only answer WHOEVER sent it.
+                # Only pl24's and Ezyvin's were marked; VDG's reached the page
+                # as "found" with a blank code (two Fords on 12 Sep).
+                read['name_only'] = not (read.get('paint_code') or '').strip()
+            return kind, read, notes
+
+        def _give(entry):
+            """Hand an answer back. Its notes go to the row; mmw counts as used
+            only when the answer given is mmw's."""
+            _kind, read, notes = entry
+            _t.update(notes)
+            if read.get('source') != 'mmw':
+                _t.pop('mmw_used', None)      # _mmw_settle set it; another answer is being given
+            # A VDG paint call can supply a VIN the first pass never returned
+            # (paint61), and the caller fills a blank one from the answer it is
+            # given. When VDG's answer always ended the search, that answer WAS
+            # the one given. Now it may be held and another given in its place,
+            # so the VIN is carried across.
+            if vdg_vin and not (read.get('vin') or '').strip():
+                read['vin'] = vdg_vin
+            return read
+
+        def _gives_code(entry):
+            """True for a held name our catalogue turned into one code."""
+            return bool(entry and entry[0] == 'name'
+                        and (entry[1].get('paint_code') or '').strip())
 
         while pending:
             remaining = deadline - time.monotonic()
             if remaining <= 0:
                 break  # deadline hit — stop waiting, abandon stragglers
-            # And for Ezyvin's, so a pair of slow-but-alive legs cannot leave
-            # the reserve unstarted either.
-            if f_ezyvin is None:
+            # paint294: ONCE VDG'S NAME GIVES A CODE, PL24 IS WAITED FOR ONLY
+            # UNTIL THE BACKSTOP. A search like that used to end the moment
+            # VDG answered. It now waits, so that pl24's own code can beat a
+            # match on a name; but a pl24 still silent at the 20 second mark is
+            # the hung leg the backstop exists for, and the remedy for it here
+            # is the code already in hand, not a paid call and not the rest of
+            # the minute. A reserve already called in is paid for, so that one
+            # is heard out first.
+            if (_gives_code(held.get('vdg_retry'))
+                    and time.monotonic() >= ezyvin_backstop_at
+                    and (f_ezyvin is None or f_ezyvin not in pending)):
+                break
+            # Wake at the reserve's backstop too, so a pair of slow-but-alive
+            # legs cannot leave the reserve unstarted.
+            if not reserve_done:
                 remaining = min(remaining,
                                 max(0.05, ezyvin_backstop_at - time.monotonic()))
             done, pending = concurrent.futures.wait(
@@ -2209,50 +2421,73 @@ def resolve_paint(registration, vin, make, category=None, telemetry=None, model=
                 return_when=concurrent.futures.FIRST_COMPLETED,
             )
             if not done:
-                # Nothing completed in this slice. If that was the backstop
-                # waking us, bring pl24 in and keep waiting; otherwise the real
-                # deadline has passed.
-                if f_ezyvin is None and time.monotonic() >= ezyvin_backstop_at:
-                    started = _start_ezyvin('backstop')
-                    if started is not None:
-                        pending = pending | {started}
-                        continue
-                break
+                # Nothing completed in this slice: the backstop woke us, or
+                # the deadline has passed (the top of the loop ends the search
+                # then).
+                #
+                # paint294: A RESERVE THAT CANNOT START NO LONGER ENDS THE
+                # SEARCH. This branch read "the reserve did not start" as "time
+                # is up" and stopped, so a car with no usable VIN (the reserve
+                # needs one) had its search cut at the 20 second backstop
+                # with VDG's paint call still running: one such search stopped
+                # at exactly 20.0s. The search now carries on to its deadline.
+                if not reserve_done and time.monotonic() >= ezyvin_backstop_at:
+                    reserve_done = True
+                    # Not when VDG's name already gives a code: the check at
+                    # the top of the loop ends the search with that code.
+                    if not _gives_code(held.get('vdg_retry')):
+                        started = _start_ezyvin('backstop')
+                        if started is not None:
+                            pending = pending | {started}
+                continue
 
+            # paint294: EVERY ANSWER IS READ BY THE REFUSAL RULES AS IT
+            # ARRIVES, and only a code of the provider's own ends the search.
+            #
+            # It used to be read after the search had ended. So an answer that
+            # was then refused (the placeholder XXX, an interior named as a
+            # paint) had already stopped the other sources, and the customer was
+            # told "not found" with VDG or the reserve never heard. And VDG's
+            # answer ended the search whatever it held: 26 times since 11 Sep
+            # it was a colour name with no code. pl24's name-only answer has
+            # always been held back for exactly this reason; VDG's now is too.
+            #
             # Enforce the VDG-over-pl24 preference within this batch: if the VDG
-            # future is among the just-completed ones and produced paint, that
+            # future is among the just-completed ones and produced a code, that
             # wins outright — regardless of whether pl24 also completed here.
             if f_vdg in done:
                 vdg_result = _result_or_none(f_vdg)
                 if vdg_result is not None:
                     _t['vdg_retry_returned'] = True
-                    race_over.set()   # a usable code exists from here on
-                    return _enrich_from_lookup(vdg_result, make, model,
-                                               vdg_colour=vdg_colour, telemetry=_t)
+                    vdg_vin = (vdg_result.get('vin') or '').strip()
+                    entry = _read(vdg_result)
+                    if entry[0] == 'code':
+                        race_over.set()   # a usable code exists from here on
+                        return _give(entry)
+                    if entry[0]:
+                        held['vdg_retry'] = entry
 
-            # VDG didn't (yet) yield paint. Inspect pl24 if it completed in this
-            # batch. A real CODE wins immediately (subject only to a VDG code,
-            # already handled above). A name-only result (colour name, no code)
-            # is held aside as a FALLBACK — we do NOT return it here, because a
-            # real code from a still-pending VDG-retry must be able to beat it.
+            # VDG didn't (yet) yield a code. Inspect pl24 if it completed in
+            # this batch. A real CODE wins immediately (subject only to a VDG
+            # code, already handled above). Anything less is held aside as a
+            # FALLBACK: we do NOT return it here, because a real code from a
+            # still-pending leg must be able to beat it.
             if f_pl24 is not None and f_pl24 in done:
                 p = _result_or_none(f_pl24)
                 if p is not None:
-                    if p.get('name_only'):
-                        _t['pl24_name_only'] = True
-                        pl24_name_only_result = p
-                    else:
+                    entry = _read(p)
+                    if entry[0] == 'code':
                         _t['pl24_returned'] = True
-                        pl24_code_result = p
+                        race_over.set()   # a usable code exists from here on
+                        return _give(entry)
+                    # pl24_returned is left alone for a held answer: on the row it
+                    # has always meant "pl24's code was the answer", and the caller
+                    # sets it if a held one of pl24's turns out to be.
+                    if entry[0] == 'name':
+                        _t['pl24_name_only'] = True
+                    if entry[0]:
+                        held['pl24'] = entry
 
-            # A real pl24 code is good enough to stop on (VDG had its chance above
-            # in this batch). A name-only result is NOT — keep waiting for a code
-            # while anything is still pending; the loop exits naturally when
-            # nothing remains and we fall through to the name-only fallback.
-            if pl24_code_result is not None:
-                race_over.set()   # a usable code exists from here on
-                return _enrich_from_lookup(pl24_code_result, make, model,
-                                           vdg_colour=vdg_colour, telemetry=_t)
             # THE RESERVE. Started only once BOTH paid-and-free legs have
             # finished with nothing, so by the time it is inspected there is
             # nothing left to beat it — but it is read last regardless, because
@@ -2269,76 +2504,114 @@ def resolve_paint(registration, vin, make, category=None, telemetry=None, model=
                 if ez is not None:
                     _t['ezyvin_code'] = (ez.get('code') or '')[:50]
                     _t['ezyvin_name'] = (ez.get('description') or '')[:200]
-                if ez is not None and ez.get('code'):
-                    _t['ezyvin_returned'] = True
-                    race_over.set()
-                    return _enrich_from_lookup(
-                        {'paint_code': ez['code'],
-                         'paint_description': ez['description'],
-                         'all_paint_codes': [],
-                         'source': 'ezyvin'},
-                        make, model, vdg_colour=vdg_colour, telemetry=_t,
-                    )
-                # A NAME with no code is still real manufacturer data, and four
-                # Mazdas measured on 8 Sep came back exactly that way —
-                # 'MARINER BLUE', 'DEEP CRYSTAL BLUE MICA'. Held as a fallback
-                # so _enrich_from_lookup can try to resolve it through our own
-                # table, same as pl24's.
-                if ez is not None and ez.get('description'):
-                    _t['ezyvin_name_only'] = True
-                    ezyvin_name_only_result = ez
+                if ez is not None and (ez.get('code') or ez.get('description')):
+                    entry = _read({'paint_code': ez.get('code') or '',
+                                   'paint_description': ez.get('description') or '',
+                                   'all_paint_codes': [],
+                                   'source': 'ezyvin'})
+                    if entry[0] == 'code':
+                        _t['ezyvin_returned'] = True
+                        race_over.set()
+                        return _give(entry)
+                    if entry[0] == 'name':
+                        # A NAME with no code is still real manufacturer data,
+                        # and four Mazdas measured on 8 Sep came back exactly
+                        # that way: 'MARINER BLUE', 'DEEP CRYSTAL BLUE MICA'.
+                        # Held as a fallback, same as pl24's.
+                        _t['ezyvin_name_only'] = True
+                    if entry[0]:
+                        held['ezyvin'] = entry
             # BOTH LEGS DONE, NEITHER HAD A CODE — the trigger. Checked here
             # rather than on a single drop-out because Ezyvin is charged on any
             # 200: firing when one leg is empty while the other still delivers
             # would spend on 44% of deliveries that never needed it.
-            if (f_ezyvin is None and f_pl24 is not None
-                    and f_vdg not in pending and f_pl24 not in pending):
+            #
+            # paint294: NOT WHEN VDG'S NAME ALREADY GIVES A CODE. Holding VDG's
+            # name back would otherwise have sent every one of those searches
+            # to the reserve: 26 since 11 Sep, all Fords, for which pl24 had
+            # the same name and no code either. For 24 of them our catalogue
+            # turned the name into one code at no cost. (Where the reserve WAS
+            # asked about a name the catalogue could also turn into a code, on
+            # other searches, the two agreed on the paint 17 times of 22, on
+            # the repository's copy of the catalogue.) So those get the answer
+            # they got, once pl24 has had its say (see the top of the loop).
+            # The reserve is now asked when the name gives NO code, which is
+            # new: two Fords on 12 Sep ("Smoke") went without a code and the
+            # reserve was never tried.
+            if (not reserve_done and f_pl24 is not None
+                    and f_vdg not in pending and f_pl24 not in pending
+                    and not _gives_code(held.get('vdg_retry'))):
+                reserve_done = True
                 started = _start_ezyvin('both_empty')
                 if started is not None:
                     pending = pending | {started}
 
-        # No real code from any path. Fall back to a colour NAME if one was
-        # offered — a partial answer, but real manufacturer data and often
-        # enough for someone at a paint counter.
+        # NO SOURCE GAVE A CODE OF ITS OWN. What is left, best first (paint294
+        # put these in one place):
         #
-        # pl24's name is preferred over One Auto's because pl24 reads the
-        # manufacturer's own catalogue for THIS vehicle, while One Auto's
-        # Stellantis names arrive stripped of their code ('OKENITE WHITE PAINT-')
-        # and are a marketing name rather than a catalogue entry.
+        #   1. VDG's name, when our catalogue turns it into one code. This is
+        #      what those searches were given before, at once; now only after
+        #      pl24 has had its chance to give the car's own code.
+        #   2. mmw's code, corroborated against the registered colour.
+        #   3. pl24's name, then Ezyvin's, when the catalogue turns it into a
+        #      code.
+        #   4. A bare colour name: VDG's, pl24's, Ezyvin's.
+        #   5. A special order code. It is true, and it does not say which
+        #      paint: a colour name from another source tells the customer
+        #      more, and the name-only page it leads to offers the manual
+        #      lookup such a car needs.
         #
-        # Either way _enrich_from_lookup may upgrade it to a full code: it runs
-        # the name through code_from_name, which returns a code ONLY when the
+        # The first three are in the order they had, with one difference:
+        # where pl24's name gives no code and Ezyvin's does, Ezyvin's code is
+        # now given, where pl24's bare name was.
+        #
+        # A name may be upgraded to a full code because _enrich_from_lookup
+        # runs it through code_from_name, which returns a code ONLY when the
         # candidates collapse to a single paint. Names are 1:many with codes
         # ('Race Red' matches 13, 'Black Pearl' 481), so it declines far more
         # often than it resolves — deliberately, because a wrong code is worse
         # than none when the customer is about to buy paint.
+        if _gives_code(held.get('vdg_retry')):
+            return _give(held['vdg_retry'])
+
         # paint140: mmw is the LAST code source, after VDG, pl24 and Ezyvin have
-        # all failed to produce one. Free, already answered, and only served if
-        # the catalogue corroborates it against the registered colour.
+        # all failed to produce one. Free, and only served if the catalogue
+        # corroborates it against the registered colour.
         #
         # Placed above the name-only fallback deliberately: a validated CODE is
         # worth more to the customer than a colour name with no code, which is
         # what that fallback delivers.
-        _mmw_code = _mmw_settle(f_mmw, make, vdg_colour, _t)
+        #
+        # paint294: WAITED FOR, BRIEFLY, when it is still on its way (see
+        # _mmw_settle), and never past the search's own deadline.
+        _mmw_code = _mmw_settle(
+            f_mmw, make, vdg_colour, _t,
+            wait=min(MMW_SETTLE_WAIT_S, deadline - time.monotonic()))
         if _mmw_code:
-            return _enrich_from_lookup(
-                {'paint_code': _mmw_code, 'paint_description': '',
-                 'all_paint_codes': [], 'source': 'mmw'},
-                make, model, vdg_colour=vdg_colour, telemetry=_t)
+            entry = _read({'paint_code': _mmw_code, 'paint_description': '',
+                           'all_paint_codes': [], 'source': 'mmw'})
+            if entry[0] == 'code':
+                return _give(entry)
+            if entry[0] == 'special':
+                held['mmw'] = entry
 
-        fallback = pl24_name_only_result
-        if fallback is None and ezyvin_name_only_result is not None:
-            ez = ezyvin_name_only_result
-            fallback = {
-                'paint_code': '',
-                'paint_description': ez.get('description', ''),
-                'all_paint_codes': [],
-                'source': 'ezyvin',
-                'name_only': True,
-            }
-        return _enrich_from_lookup(fallback, make, model, vdg_colour=vdg_colour,
-                                   telemetry=_t)
+        for _source in ('pl24', 'ezyvin'):
+            if _gives_code(held.get(_source)):
+                return _give(held[_source])
+        for _source in ('vdg_retry', 'pl24', 'ezyvin'):
+            if held.get(_source) and held[_source][0] == 'name':
+                return _give(held[_source])
+        for _source in ('vdg_retry', 'pl24', 'ezyvin', 'mmw'):
+            if held.get(_source):
+                return _give(held[_source])       # what is left is a special order code
+        _t.pop('mmw_used', None)      # mmw answered, and its answer was not one to give
+        return None
     finally:
+        # paint294: THE RACE IS OVER ON EVERY WAY OUT, not only when a code
+        # won. A search that ended with nothing left this flag unset, and VDG's
+        # worker reads it to decide whether to make its second paid call: with
+        # the flag unset it went ahead, for an answer nobody was left to read.
+        race_over.set()
         # Do NOT block on stragglers. wait=False means we don't join running
         # threads; cancel_futures cancels any not-yet-started work. A pl24 thread
         # still mid-request is abandoned and ends when its own HTTP timeout fires.
