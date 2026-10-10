@@ -2103,6 +2103,31 @@ class PaintLookup(models.Model):
             'kinetic blue': 'BDU',
             'kinetic blue metallic': 'BDU',
         },
+        # paint310: FOUR FACTORY NAMES THAT ARE ONLY COLOUR WORDS (the
+        # operator's decision of 10 Oct). Since paint301 a name that is only a
+        # colour word gives no code from the catalogue's matcher, because such
+        # a name usually does not say which paint it is. These four do: each is
+        # the maker's own name for one paint, and on every real lookup that
+        # carried the name beside a supplier's own code, the code was this one
+        # (Audi 12 of 12, Mini 3 of 3, Volvo 3 of 3, Tesla 3 of 3, measured on
+        # the lookups to 7 Oct). A hand line is read before the colour word
+        # rule, so each answers again when the name arrives without its code.
+        # Only the wordings suppliers have sent are written out: Tesla's
+        # "Pearl White Paint" reads as 'pearl white' here, and its "Pearl
+        # White Multi-Coat" is not a colour word name and never stopped
+        # answering.
+        'audi': {
+            'light silver metallic': 'LY7W',
+        },
+        'mini': {
+            'light white': 'B15',
+        },
+        'volvo': {
+            'silver metallic': '426',
+        },
+        'tesla': {
+            'pearl white': 'PPSW',
+        },
     }
 
     # partslink24 wraps colour names in provider boilerplate: Jaguar/Land Rover
@@ -2526,11 +2551,12 @@ class PaintLookup(models.Model):
             # by hand for such a name is a decision, and still answers.
             # The lookup then goes on as for any name without a code.
             #
-            # NOT TOUCHED: the operator's own table. _enrich_from_lookup reads
-            # it when this returns nothing, so a code he recorded under such a
-            # name is still given for that name (6 of his 152 hand answers to
-            # 7 Oct carry a name that is only a colour word; no real lookup
-            # has needed one of them). Whether that should stop is his to say.
+            # THE OPERATOR'S OWN TABLE FOLLOWS THE SAME RULE since paint310
+            # (his decision of 10 Oct): OperatorPaintCode.code_for_name gives
+            # no code for such a name either. Until then _enrich_from_lookup
+            # was still handed the code he had recorded under one (6 of his
+            # 152 hand answers to 7 Oct carry a name that is only a colour
+            # word; no real lookup had needed one of them).
             #
             # MEASURED on the lookups of 2 May to 7 Oct: replaying all 2,842
             # paint searches, the 5 Ford "Blue Metallic" ones are the only
@@ -2539,7 +2565,8 @@ class PaintLookup(models.Model):
             # codes bore out every time (Audi "Light Silver Metallic" LY7W 12
             # of 12, Mini "Light White" B15 and Volvo "Silver Metallic" 426, 3
             # of 3 each): each came with its code on every real lookup, so
-            # none of them changed, and none has a hand line yet.
+            # none of them changed. paint310 gave each a hand line, and
+            # Tesla "Pearl White" (PPSW) with them.
             from lookup.services.paint_resolver import is_bare_colour_name
             if is_bare_colour_name(cls._light_normalize_name(colour_name)):
                 return None, None, None
@@ -2609,9 +2636,15 @@ class PaintLookup(models.Model):
             # PRIMARY name matches the query — paints actually named this, not
             # ones that only alias it. (normalize_name on the stored primary name
             # so the comparison matches the same way the query was normalised.)
+            # paint310: GREY AND GRAY ARE ONE WORD HERE TOO. The rows above were
+            # found with both spellings of the query (name_variants), and this
+            # step then compared each row's first name with the query as
+            # typed, so "Wolf Gray" did not count a row named "Wolf Grey" as
+            # actually named that. The step was skipped and the model had to
+            # decide, or nothing did.
             primary_rows = [
                 r for r in rows
-                if cls.normalize_name(r.name or '') == name_norm
+                if cls.normalize_name(r.name or '') in name_variants
             ]
             if primary_rows and len(primary_rows) < len(rows):
                 resolved = cls._collapse_to_single_code(primary_rows, name_norm)
@@ -3304,6 +3337,19 @@ class OperatorPaintCode(models.Model):
         were entered deliberately, so neither is a typo to be discarded.
         """
         if not make or not colour_name:
+            return None
+        # paint310: A NAME THAT IS ONLY A COLOUR WORD GIVES NO CODE HERE EITHER
+        # (the operator's decision of 10 Oct). "Black Pearl" or "Black
+        # Metallic" can be several paints of one make, and an entry of this
+        # table is the code typed for ONE car. The catalogue's matcher has
+        # refused such a name since paint301 (PaintLookup.code_from_name),
+        # and this table was then read as the fallback and answered it. Read
+        # on the lightly normalised name, as there, so a bracket or a
+        # supplier's wrapper word does not hide one. The entry itself is
+        # untouched: name_for_code still names the code, and the hand tables,
+        # which are read before this, still answer the names written in them.
+        from lookup.services.paint_resolver import is_bare_colour_name
+        if is_bare_colour_name(PaintLookup._light_normalize_name(colour_name)):
             return None
         norm = PaintLookup.normalize_name(colour_name)
         if not norm:

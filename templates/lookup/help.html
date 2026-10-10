@@ -349,7 +349,10 @@
                     <i class="fas fa-envelope me-2"></i>Send a message
                 </button>
 
-                <div class="collapse mt-3" id="contactForm">
+                {% comment %} paint310: after a send that failed, the form comes back open
+                   with what the customer typed, once, so the message is not lost
+                   (contact_draft, set by submit_contact and read once by help_page). {% endcomment %}
+                <div class="collapse{% if contact_draft %} show{% endif %} mt-3" id="contactForm">
                     <div class="card">
                         <div class="card-body p-4">
                             <form method="POST" action="{% url 'submit_contact' %}#contact-section">
@@ -358,16 +361,16 @@
                                     <label class="form-label small fw-semibold">Type</label>
                                     <select name="type" class="form-select" required>
                                         <option value="general">General</option>
-                                        <option value="technical">Technical</option>
+                                        <option value="technical"{% if contact_draft.type == 'technical' %} selected{% endif %}>Technical</option>
                                     </select>
                                 </div>
                                 <div class="mb-3">
                                     <label class="form-label small fw-semibold">Email</label>
-                                    <input type="email" name="email" class="form-control" placeholder="your@email.com" required>
+                                    <input type="email" name="email" class="form-control" placeholder="your@email.com" value="{{ contact_draft.email }}" required>
                                 </div>
                                 <div class="mb-3">
                                     <label class="form-label small fw-semibold">Message</label>
-                                    <textarea name="message" rows="5" maxlength="5000" class="form-control" placeholder="What's on your mind?" required></textarea>
+                                    <textarea name="message" rows="5" maxlength="5000" class="form-control" placeholder="What's on your mind?" required>{{ contact_draft.message }}</textarea>
                                 </div>
                                 <button type="submit" class="btn btn-dark">Send message</button>
                             </form>

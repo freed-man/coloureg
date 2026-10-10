@@ -160,7 +160,9 @@ def _enrich_from_lookup(result, make, model=None, vdg_colour=None,
                         code, _slashed, (make or '')[:30])
             code = _slashed
             result['paint_code'] = code
-        if is_placeholder_code(make, code):
+        # paint310: and a slash string one of whose halves is a placeholder,
+        # when no half is a paint (_slash_holds_placeholder, below).
+        if is_placeholder_code(make, code) or _slash_holds_placeholder(make, code):
             # paint184: A PLACEHOLDER IS REFUSED WHERE IT ARRIVES, not after.
             #
             # paint146 refused it in _record_paint_hit, which cleans the ROW —
@@ -1355,6 +1357,15 @@ def resolve_slashed_code(make, code, dvla_colour=None):
         # Costs nothing: all 266 delivered codes that resolved still resolve.
         if not part or len(part) < 2:
             continue
+        # paint310: A PLACEHOLDER IS NOT A HALF. Audi and Ford hold a junk row
+        # for `XXX`, so in `XXX/Y9C` both halves "resolved", the two were
+        # different paints, and the string was left alone and given whole.
+        # The half that is_placeholder_code refuses by itself is passed over
+        # here as a single character is, and the other half answers. (A
+        # placeholder shaped code that is a real paint, with a model list,
+        # is not refused by that test and still counts.)
+        if is_placeholder_code(make, part):
+            continue
         _plain = PaintLookup.objects.filter(manufacturer=mfr, code__iexact=part).first()
         _lrow = None if _plain else PaintLookup.objects.filter(manufacturer=mfr, code__iexact='L' + part).first()
         if _plain or _lrow:
@@ -1510,6 +1521,41 @@ def special_order_code_spellings():
     the two tables above, so a code added there is found here too.
     """
     return sorted(set(_SPECIAL_ORDER_CODES).union(*_SPECIAL_ORDER_BY_MAKE.values()))
+
+
+def _slash_holds_placeholder(make, code):
+    """paint310: True for a slash string that is still a slash string after
+    resolve_slashed_code and one of whose halves is a placeholder.
+
+    `Q0/XXX` on a 2013 Audi (4 Sep, from the supplier dropped in paint95): Q0
+    is a trim code the catalogue does not hold, XXX is the source saying it
+    has no paint, and the string was given to the customer as the code,
+    because is_placeholder_code reads the string whole and `Q0/XXX` is not
+    of placeholder shape. partslink24 words the same car's data "Exterior
+    color / Paint Code: Q0 / XXX" (paint242).
+
+    By the time this is asked resolve_slashed_code has run: had another half
+    been a catalogue code, the string would have become that half (it passes
+    over a placeholder half since paint310). So a string that still holds a
+    slash and a placeholder half names no paint, and it is refused the way
+    the bare placeholder is. A string that is itself a catalogue row is left
+    alone (abarth `103/B` and its like carry the slash inside one code).
+    Never raises.
+    """
+    code = (code or '').strip()
+    if '/' not in code:
+        return False
+    try:
+        parts = [x.strip() for x in code.split('/') if x.strip()]
+        if not any(_PLACEHOLDER_CODE.match(x) for x in parts):
+            return False
+        from lookup.models import PaintLookup
+        mfr = PaintLookup.normalize_manufacturer(str(make or ''))
+        if PaintLookup.objects.filter(manufacturer=mfr, code__iexact=code).exists():
+            return False
+        return any(is_placeholder_code(make, x) for x in parts)
+    except Exception:
+        return False
 
 
 def is_placeholder_code(make, code):

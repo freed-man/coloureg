@@ -3616,6 +3616,11 @@ def _record_name_only(search_id, paint_description, telemetry=None, source=''):
 EMAIL_NOT_SENT_MESSAGE = 'We could not send the email. Please check the address and try again.'
 CONTACT_NOT_SENT_MESSAGE = 'Your message could not be sent. Please try again in a few minutes.'
 
+#: paint310: what the operator reads on the dashboard when he presses Save on a
+#: report without changing the code or the name. Never shown to a customer.
+REPORT_UNCHANGED_MESSAGE = ('Nothing was changed, so nothing was saved. If the code was right, '
+                            'press "Code is fine". If it was wrong, type the right code and press Save.')
+
 
 @require_POST
 def submit_email(request):
@@ -3885,6 +3890,12 @@ SUPPORTED_MAKES = [
 
 def help_page(request):
     contact_submitted = request.session.pop('contact_submitted', None)
+    # paint310: what the customer typed into the contact form when the send
+    # failed, shown back in the form ONCE (popped here, so it is gone from the
+    # session as soon as this page is drawn).
+    contact_draft = request.session.pop('contact_draft', None)
+    if not isinstance(contact_draft, dict):
+        contact_draft = None
     # Split the published list against the live gate.
     #
     # THE MANUAL COLUMN IS THE WHOLE GATE LIST, not the part of it that happens
@@ -3913,6 +3924,7 @@ def help_page(request):
 
     return render(request, 'lookup/help.html', {
         'contact_submitted': contact_submitted,
+        'contact_draft': contact_draft,
         'payments_on': payments_active(),
         'makes_auto': _makes_auto,
         'makes_manual': _makes_manual,
@@ -3975,6 +3987,14 @@ def submit_contact(request):
         request.session['contact_submitted'] = email
     else:
         messages.error(request, CONTACT_NOT_SENT_MESSAGE)
+        # paint310: THE MESSAGE IS NOT LOST. The error above came back with an
+        # empty form, so the customer had to type it all again. What they
+        # typed is kept in their own session for the one page that follows
+        # (help_page pops it) and nowhere else: not on a row, not in a log.
+        # It has passed the checks above (an address of valid form, 5,000
+        # characters at most), and the template escapes it.
+        request.session['contact_draft'] = {
+            'type': contact_type, 'email': email, 'message': message}
 
     return redirect('help')
 
@@ -4240,6 +4260,22 @@ def admin_stats(request):
             messages.error(request, 'That report no longer exists.')
             return redirect(_back)
         actioned = request.POST.get('action') == 'report_actioned'
+        # paint310: SAVE WITH NOTHING CHANGED SAVES NOTHING. Both boxes come
+        # filled in with what the customer was given, so pressing Save without
+        # touching them marked the report upheld with no correction, and since
+        # paint306 an upheld report with no correction pauses the plate's
+        # remembered answer for 90 days. When the code was right the button
+        # is "Code is fine"; when it was wrong, the right code goes in the
+        # box. So an unchanged Save is turned back with a message and the
+        # report stays open. (A report on a lookup with no make cannot take a
+        # correction at all and is left as it was.)
+        if actioned and rep.search and rep.search.make:
+            _code = (request.POST.get('fixed_code') or '').strip()
+            _name = (request.POST.get('fixed_name') or '').strip()
+            if (not _code or (_code.upper() == (rep.code or '').upper()
+                              and _name == (rep.colour_name or ''))):
+                messages.error(request, REPORT_UNCHANGED_MESSAGE)
+                return redirect(_back)
         # IGNORED, never deleted. A dismissed report still records that someone
         # disagreed, and nine dismissals against one code is itself a signal
         # however unconvincing each was alone — which is what the per-code
