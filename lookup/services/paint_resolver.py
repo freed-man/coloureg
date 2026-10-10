@@ -2337,6 +2337,63 @@ def vin_is_real(vin):
     return bool(_REAL_VIN.fullmatch((vin or '').strip().upper()))
 
 
+def _settle_code_list(read, make, model=None, vdg_colour=None):
+    """paint306: SEVERAL CODES IN ONE ANSWER ARE READ BY THE SAME RULES AS ONE
+    (audit of 8 Oct, W15).
+
+    VDG can send a list of codes. The first was read by the refusal rules
+    (_enrich_from_lookup: the slash rule, placeholders, finish words, an
+    interior named as a paint) and became the answer; the list itself went to
+    the page exactly as sent. So the page could show a block for a placeholder
+    or an unresolved slash string beside the answer, and when the first entry
+    was refused the whole answer was thrown away although the next entry was
+    the car's code.
+
+    `read` is the answer as the refusal rules left it. Each entry of its list
+    is read the same way; a refused one is dropped, and so is a repeat of a
+    code already kept. The first that survives is the answer (its code, name
+    and marks), and the list is rebuilt from the survivors: two or more make
+    a list, one alone is an ordinary single answer with no list. An answer
+    with no list, or a list of one, comes back untouched. Never raises.
+
+    No real answer has been seen with more than one code (0 of 366 cached
+    answers on 8 Oct), so this is here for the day one arrives."""
+    try:
+        items = [i for i in (read.get('all_paint_codes') or []) if isinstance(i, dict)]
+        if len(items) < 2:
+            return read
+        from lookup.models import PaintLookup
+        kept, seen = [], set()
+        for item in items:
+            code = str(item.get('code') or '').strip()
+            if not code:
+                continue
+            one = _enrich_from_lookup({'paint_code': code, 'paint_description': str(item.get('description') or '').strip()},
+                                      make, model, vdg_colour=vdg_colour) or {}
+            today = (one.get('paint_code') or '').strip()
+            if not today or one.get('placeholder_refused'):
+                continue
+            key = PaintLookup.code_key(today)
+            if key in seen:
+                continue
+            seen.add(key)
+            kept.append(one)
+        out = dict(read)
+        if kept and (out.get('placeholder_refused')
+                     or PaintLookup.code_key(out.get('paint_code')) != PaintLookup.code_key(kept[0].get('paint_code'))):
+            # The answer is the first entry that survives, read as it was above.
+            for key in ('placeholder_refused', 'special_order', 'enriched_from', 'paint_hex', 'name_only'):
+                out.pop(key, None)
+            out.update(kept[0])
+        out['all_paint_codes'] = ([{'code': (o.get('paint_code') or '').strip(),
+                                    'description': (o.get('paint_description') or '').strip()} for o in kept]
+                                  if len(kept) > 1 else [])
+        return out
+    except Exception:
+        logger.warning('a list of several codes could not be settled', exc_info=True)
+        return read
+
+
 def _weigh(make, answer):
     """paint294: what a provider's answer is worth once the refusal rules
     (_enrich_from_lookup) have read it. Decides whether the search may stop.
@@ -2701,6 +2758,7 @@ def resolve_paint(registration, vin, make, category=None, telemetry=None, model=
             notes = {}
             read = _enrich_from_lookup(dict(answer), make, model,
                                        vdg_colour=vdg_colour, telemetry=notes)
+            read = _settle_code_list(read, make, model, vdg_colour)      # paint306 (W15)
             kind = _weigh(make, read)
             if kind == 'name':
                 # A name with no code is a name-only answer WHOEVER sent it.

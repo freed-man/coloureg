@@ -49,6 +49,36 @@ its page. Never the registration or VIN (the row's own columns hold those, and
 the 5-year scrub clears the VIN there), never the paint answer (the row's
 own columns are the answer, so a correction is never contradicted), and never
 MOT, tax or ULEZ (asked afresh every time).
+
+paint306, seven changes from the audit of 8 Oct, measured first on the lookups
+of 2 May to 10 Oct (2,495 plates with a coded lookup in the window, 2,435 of
+them remembered before this release):
+  * NOTHING IS REMEMBERED WHEN ANY LOOKUP IN THE WINDOW SAYS NO CODE EXISTS,
+    wherever that lookup sits. The operator's answer is written on the
+    customer's own row, which keeps the time of the lookup, not of the answer:
+    "no code exists" typed today on a lookup of last week sat BEFORE a
+    provider's code of yesterday and was not seen. And two hand answers of one
+    plate that give different codes remember nothing (the older was ignored).
+    No plate was in either state.
+  * A CUSTOMER'S "WRONG CODE" REPORT (reports_for). While a report is waiting
+    to be judged, or was upheld with no correction typed, nothing is
+    remembered for the plate. A correction typed on a report is the operator's
+    answer for that lookup and is read as one: exactly as typed. A report he
+    ignored changes nothing.
+  * A SPECIAL ORDER CODE IS NOT SERVED FROM MEMORY (999 in its spellings, a
+    BMW's 490): the search runs, because another source may now hold the car's
+    real code. 7 plates held one, each from a supplier. One the operator
+    typed himself stands, as every answer of his does.
+  * A HAND ANSWER TYPED WITHOUT A NAME gets the catalogue's name for its code,
+    as a 7-day replay does. No hand answer has been typed without one.
+  * AN OLDER LOOKUP WHOSE CODE OUR CATALOGUE WORKED OUT FROM A NAME is read,
+    when it is not the answer itself, by what that name gives today. It used
+    to count as a disagreement whenever today's code was not the stored one,
+    even when today's code WAS the answer, and blocked the plate for 90 days.
+  * THE SAME CAR, MORE STRICTLY (identity_of). A lookup now also saves DVLA's
+    engine size, fuel and month of first registration, and where the saved
+    details hold them DVLA must say the same today. Lookups saved before this
+    release hold none and are confirmed by make, year and colour as before.
 """
 import logging
 import re
@@ -74,9 +104,42 @@ NOT_SAVED = frozenset({
 })
 
 
+#: paint306: where the saved details keep DVLA's own marks of the car.
+IDENTITY_KEY = 'dvla'
+
+
+def _mark(value):
+    """One of DVLA's values as it is compared: text, trimmed, lower case; '' for none."""
+    return '' if value is None else str(value).strip().lower()
+
+
+def identity_of(status):
+    """paint306: DVLA's engine size, fuel and month of first registration from
+    the vehicle checks' facts of a lookup, or None when DVLA did not answer
+    (its year is the sign that it did). A value DVLA does not hold for the car
+    (an electric car has no engine size) is kept as '', so that "none then and
+    none now" is agreement."""
+    if not isinstance(status, dict) or not status.get('year'):
+        return None
+    return {'engine_cc': _mark(status.get('engine_cc')), 'fuel': _mark(status.get('fuel')),
+            'reg_month': _mark(status.get('reg_month'))}
+
+
+def _identity_now(dvla):
+    return {'engine_cc': _mark(dvla.get('engineCapacity')), 'fuel': _mark(dvla.get('fuelType')),
+            'reg_month': _mark(dvla.get('monthOfFirstRegistration'))}
+
+
 def details_of(payload):
-    """The part of a results payload saved on its lookup."""
-    return {k: v for k, v in dict(payload or {}).items() if k not in NOT_SAVED}
+    """The part of a results payload saved on its lookup. paint306: with DVLA's
+    marks of the car, when this lookup's own checks hold them; a payload drawn
+    from saved details keeps the marks those details held."""
+    payload = dict(payload or {})
+    out = {k: v for k, v in payload.items() if k not in NOT_SAVED}
+    marks = identity_of(payload.get('vehicle_status'))
+    if marks:
+        out[IDENTITY_KEY] = marks
+    return out
 
 
 def _code_key(code):
@@ -99,9 +162,14 @@ def vin_agrees(remembered_vin, vin_now):
     return not (a and b and a != b)
 
 
-def same_car(row, dvla):
+def same_car(row, dvla, marks=None):
     """(True, '') when DVLA's make, year and colour today all equal the
-    remembered lookup's; otherwise (False, why). Unknown is not agreement."""
+    remembered lookup's; otherwise (False, why). Unknown is not agreement.
+
+    paint306: and, when the saved details hold DVLA's marks of the car
+    (`marks`, see identity_of), its engine size, fuel and month of first
+    registration today must equal them too. A plate moved to another car of
+    the same make, year and colour passed the three alone."""
     if not isinstance(dvla, dict):
         return False, 'DVLA gave no answer'
     make = _make_key(row.make)
@@ -115,6 +183,11 @@ def same_car(row, dvla):
     colour = _colour_key(row.colour)
     if not colour or colour != _colour_key(dvla.get('colour')):
         return False, 'the colour differs'
+    if isinstance(marks, dict) and marks:
+        now = _identity_now(dvla)
+        for key, what in (('engine_cc', 'the engine size'), ('fuel', 'the fuel'), ('reg_month', 'the month of first registration')):
+            if key in marks and _mark(marks.get(key)) != now[key]:
+                return False, what + ' differs'
     return True, ''
 
 
@@ -138,21 +211,43 @@ class Remembered:
     def confirm(self, dvla):
         """Is it still the same car? Asked once; the answer is kept."""
         if self.confirmed is None:
-            self.confirmed, self.why_not = same_car(self.source, dvla)
+            marks = (self.details_row.details or {}).get(IDENTITY_KEY) if self.details_row is not None else None
+            self.confirmed, self.why_not = same_car(self.source, dvla, marks)
         return self.confirmed
 
 
-def _reading(row):
+def _catalogue_name(row, code):
+    """paint306: the catalogue's name for a hand answer typed without one, as
+    a 7-day replay fills it (views._fill_cached_name). Never for a special
+    order code, whose name is blank on purpose. '' when there is none."""
+    try:
+        from lookup.models import PaintLookup
+        from lookup.services.paint_resolver import marks_special_order
+        if marks_special_order(row.make, code):
+            return ''
+        _hex, name, _canonical = PaintLookup.lookup_with_canonical(
+            manufacturer=row.make or '', paint_code=code, model=row.model or '',
+            year=row.year, vdg_colour=row.colour or '')
+        return (name or '').strip()
+    except Exception:
+        logger.warning('remembered answer: a hand answer\'s name could not be filled', exc_info=True)
+        return ''
+
+
+def _reading(row, by_hand=False):
     """(code, name) as this lookup's answer would be given today, or None when
-    today's rules refuse it. The operator's answer is given as typed.
+    today's rules refuse it. The operator's answer is given as typed
+    (`by_hand`: also a lookup he corrected from a customer's report).
 
     paint293: only the provider's half is read back; the half our catalogue
     supplied at the time is derived again (see the note at the top)."""
     from lookup.models import Search
     code = (row.paint_code or '').strip()
     name = (row.paint_description or '').strip()
-    if row.provider == Search.PROVIDER_MANUAL:
-        return (code, name) if code else None
+    if by_hand or row.provider == Search.PROVIDER_MANUAL:
+        if not code:
+            return None
+        return code, name or _catalogue_name(row, code)
     from lookup.services.paint_resolver import _enrich_from_lookup
     ours = (row.enriched_from or '').strip()      # the half our catalogue supplied on the day, if any
     out = _enrich_from_lookup({'paint_code': '' if ours == Search.ENRICHED_CODE else code,
@@ -164,6 +259,48 @@ def _reading(row):
     if ours == Search.ENRICHED_CODE and _code_key(today) != _code_key(code):
         return None                    # the name gives a different code today: search afresh
     return today, (out.get('paint_description') or '').strip()
+
+
+def _name_gives_today(row):
+    """paint306: the code a lookup's NAME gives today, for a lookup whose code
+    our catalogue worked out from that name on the day; '' when it gives none
+    or is refused. (What _reading works out before it compares the result with
+    the stored code.)"""
+    from lookup.models import Search
+    from lookup.services.paint_resolver import _enrich_from_lookup
+    if (row.enriched_from or '').strip() != Search.ENRICHED_CODE:
+        return ''
+    out = _enrich_from_lookup({'paint_code': '', 'paint_description': (row.paint_description or '').strip()},
+                              row.make, row.model, vdg_colour=row.colour) or {}
+    return '' if out.get('placeholder_refused') else (out.get('paint_code') or '').strip()
+
+
+#: paint306: what a customer's report means for the plate's memory.
+REPORT_PAUSES, REPORT_CORRECTED = 'pauses', 'corrected'
+_CORRECTED_NOTE = 'corrected to '        # how views.admin_stats records a correction on the report
+
+
+def reports_for(registration, since):
+    """paint306: the "wrong code" reports on this plate's lookups in the
+    window, as {lookup id: REPORT_PAUSES or REPORT_CORRECTED}. A report still
+    waiting to be judged pauses; so does one upheld with no correction typed
+    (the code was wrong and nothing replaced it). One upheld with a correction
+    marks its lookup as answered by hand. An ignored report is left out. A
+    report whose lookup is gone is filed under None."""
+    from lookup.models import PaintCodeReport
+    out = {}
+    for search_id, status, note in (PaintCodeReport.objects
+                                    .filter(registration=registration, created_at__gte=since)
+                                    .order_by('created_at', 'id')
+                                    .values_list('search_id', 'status', 'operator_note')):
+        if status == PaintCodeReport.STATUS_IGNORED:
+            continue
+        corrected = status == PaintCodeReport.STATUS_ACTIONED and (note or '').startswith(_CORRECTED_NOTE)
+        if corrected and out.get(search_id) != REPORT_PAUSES:
+            out[search_id] = REPORT_CORRECTED
+        elif not corrected:
+            out[search_id] = REPORT_PAUSES
+    return out
 
 
 def contradicts(name, colour):
@@ -193,7 +330,21 @@ def _find(registration, now):
     coded = [r for r in rows if (r.paint_code or '').strip()]
     if not coded:
         return None
-    manual = [r for r in coded if r.provider == Search.PROVIDER_MANUAL]
+    # paint306 (R1): "no code exists" on ANY lookup of the plate in the window.
+    # The check further down looked only at lookups after the answer's, and the
+    # operator's verdict is written on the customer's row, which may be older.
+    if any(r.no_code_available for r in rows):
+        return None
+    # paint306 (R2): customers' reports on these lookups.
+    reports = reports_for(registration, now - timedelta(days=REMEMBER_DAYS))
+    if REPORT_PAUSES in reports.values():
+        return None
+    corrected = {r.id for r in coded if reports.get(r.id) == REPORT_CORRECTED}
+    by_hand = lambda r: r.provider == Search.PROVIDER_MANUAL or r.id in corrected
+    manual = [r for r in coded if by_hand(r)]
+    # paint306 (R1): two hand answers that give different codes.
+    if len({_code_key(r.paint_code) for r in manual}) > 1:
+        return None
     if manual:
         source = manual[-1]
         counted = coded[coded.index(source):]
@@ -203,15 +354,30 @@ def _find(registration, now):
             return None                # only copies are left: the answer itself is older than the window
         source = given[-1]
         counted = coded
-    answer = _reading(source)
+    answer = _reading(source, by_hand(source))
     if answer is None:
         return None
-    if source.provider != Search.PROVIDER_MANUAL and contradicts(answer[1], source.colour):
+    if not by_hand(source) and contradicts(answer[1], source.colour):
         return None                    # paint293: something is off; let the normal lookup run
+    # paint306 (R5): a special order code names no paint. Served from memory it
+    # kept the search from running for 90 days, and the search is what might
+    # now find the car's real code. The operator's own answer is not
+    # second-guessed here either: one he typed himself stands (none of the 7
+    # was his).
+    from lookup.services.paint_resolver import marks_special_order
+    if not by_hand(source) and marks_special_order(source.make, answer[0]):
+        return None
     for row in counted:
         if row is source or _code_key(row.paint_code) == _code_key(source.paint_code):
             continue
-        other = _reading(row)
+        other = _reading(row, by_hand(row))
+        if other is None and not by_hand(row):
+            # paint306 (R7): a lookup whose code our catalogue worked out from a
+            # name, and whose name gives another code today, is read by what
+            # the name gives today. When that is the answer, the two agree.
+            today = _name_gives_today(row)
+            if today and _code_key(today) == _code_key(answer[0]):
+                continue
         if other is None or _code_key(other[0]) != _code_key(answer[0]):
             return None                # two lookups of this plate disagree
     after = rows[rows.index(source) + 1:]
