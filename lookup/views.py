@@ -951,6 +951,7 @@ def index(request):
         if cached_payload and not _name_only_replay:
             cached_payload = _fill_cached_name(cached_payload)       # paint281
             cached_payload = _tidy_replayed_name(cached_payload, registration)    # paint288
+            cached_payload = _reread_catalogue_name(cached_payload, registration)   # paint303
         if cached_payload:
             # paint94: DECIDE THE GATE HERE, do not replay the stored verdict.
             #
@@ -2258,6 +2259,29 @@ RECOVERY_BUSY_RETRY_S = 4
 #: budget. Taken off again when the search does run (_apply_recovery_telemetry).
 BUDGET_PAUSED_NOTE = 'paint search not run: daily budget reached'
 
+#: paint303: what the status call answers when the paint search was NOT RUN
+#: (maintenance is on, or the daily budget is reached). The page's script
+#: draws its own line for it and treats a 'busy' answer that outlasts its
+#: retries the same way. A page loaded before this release reads any status
+#: it does not know as "not found", as it did before.
+PAUSED_STATUS = 'paused'
+
+
+def _found_fields(make, model, year, colour, paint_code):
+    """paint303: what the catalogue says of a code that is about to be drawn
+    by the page's script: its swatch, its name, its longer form and, for a
+    two-tone, its two paints. One place, so every reply that carries a code
+    carries the same fields (the "already answered" reply had none of them:
+    audit of 8 Oct, F6)."""
+    paint_hex, paint_name, canonical_code = PaintLookup.lookup_with_canonical(
+        manufacturer=make, paint_code=paint_code, model=model, year=year, vdg_colour=colour)
+    return {
+        'paint_hex': paint_hex,
+        'paint_name': paint_name,
+        'canonical_code': canonical_code,
+        'two_tone': _two_tone_json(make, paint_code, colour),   # paint228
+    }
+
 
 @require_GET
 def lookup_status(request, search_id):
@@ -2318,8 +2342,12 @@ def _lookup_status(request, search_id):
 
     # Maintenance switch: if lookups are paused, do NOT run the recovery race
     # (VDG-retry / pl24) — that would spend money. Report no result.
+    # paint303: 'paused', not 'not_found' (audit of 8 Oct, F11). The page drew
+    # "No factory paint data was found on this build sheet" for a search that
+    # was never run. It now says that lookups are paused, in the home page's
+    # own words, and still offers the manual lookup.
     if SiteConfig.get().maintenance_mode:
-        return JsonResponse({'status': 'not_found'})
+        return JsonResponse({'status': PAUSED_STATUS})
 
     # --- Paywall choke point (paint27) -------------------------------------
     # Checked ONCE, here, before any exit that could carry paint data.
@@ -2342,10 +2370,24 @@ def _lookup_status(request, search_id):
         # paint299: this reply is drawn by the page's script like a "found"
         # one, so a special order code leaves it the same way: marked, and
         # without a name (a session from before this release can hold one).
+        # paint303: AND WITH THE SAME FIELDS AS A "FOUND" REPLY (audit of 8 Oct,
+        # F6). This reply had the code and the name and nothing else, so the
+        # script drew no swatch, no "also" code and no two-tone, where a reload
+        # of the same page drew them all. It is the reply a slow search gets:
+        # the page stops listening at 75 seconds, asks once more, and the
+        # answer, found meanwhile, comes back from here (paint63).
+        _known = _found_fields(vehicle_data.get('make', ''), vehicle_data.get('model', ''),
+                               vehicle_data.get('year'), vehicle_data.get('colour', ''),
+                               vehicle_data.get('paint_code'))
         return JsonResponse(_special_order_shown(vehicle_data.get('make', ''), {
             'status': 'already_resolved',
             'paint_code': vehicle_data.get('paint_code'),
             'paint_description': vehicle_data.get('paint_description', ''),
+            'paint_hex': _known['paint_hex'],
+            'paint_name': _known['paint_name'],
+            'canonical_code': _known['canonical_code'],
+            'all_paint_codes': list(vehicle_data.get('all_paint_codes') or []),
+            'two_tone': _known['two_tone'],
         }))
 
     if not vehicle_data.get('paint_pending'):
@@ -2372,7 +2414,7 @@ def _lookup_status(request, search_id):
         # it comes off when the search does run (_apply_recovery_telemetry).
         Search.objects.filter(id=search_id, error_message='', recovery_attempted=False).update(
             error_message=BUDGET_PAUSED_NOTE)
-        return JsonResponse({'status': 'not_found'})
+        return JsonResponse({'status': PAUSED_STATUS})        # paint303: see the maintenance switch above
 
     vin = vehicle_data.get('vin', '')
     make = vehicle_data.get('make', '')
@@ -3402,6 +3444,48 @@ def _fill_cached_name(payload):
     return payload
 
 
+def _reread_catalogue_name(payload, registration):
+    """paint303: a replayed answer whose NAME OUR CATALOGUE SUPPLIED on the day
+    gets the name the catalogue gives that code today (audit of 8 Oct, W18).
+
+    The 7-day cache stores the page as it was given. The swatch beside the
+    name is read afresh on every page, so after a catalogue fix (a rename, a
+    hidden row) the two could disagree for up to a week: the two black Audis
+    of 7 Oct would have shown Phantom Black's swatch beside "Dark Grey Matt".
+    Remembered answers have read the name again since paint293
+    (remembered._reading); this is the same reading for the 7-day cache.
+
+    Only when the lookup that got the answer says so: the plate's newest
+    lookup with this code that is not itself a copy, marked "name from
+    database". A supplier's own name and the operator's own answer are left
+    exactly as they are. If today's rules read the code differently, or
+    refuse it, the answer is left alone too. A catalogue that has no name for
+    the code today gives none, as a new lookup would get. The stored entry is
+    left as it is. Never raises."""
+    try:
+        code = (payload.get('paint_code') or '').strip()
+        name = (payload.get('paint_description') or '').strip()
+        make = payload.get('make') or ''
+        if not code or not name or marks_special_order(make, code):
+            return payload
+        row = (Search.objects.filter(registration=registration, paint_code=code)
+               .exclude(provider__in=Search.COPIED_PROVIDERS)
+               .order_by('-timestamp', '-id').first())
+        if row is None or row.enriched_from != Search.ENRICHED_NAME:
+            return payload
+        today = _enrich_from_lookup({'paint_code': code, 'paint_description': ''}, make,
+                                    payload.get('model') or None,
+                                    vdg_colour=payload.get('colour') or '') or {}
+        if today.get('placeholder_refused') or (today.get('paint_code') or '').strip() != code:
+            return payload
+        name_today = (today.get('paint_description') or '').strip()
+        if name_today != name:
+            return dict(payload, paint_description=name_today)
+    except Exception:
+        logger.warning('cached answer: its catalogue name could not be read again', exc_info=True)
+    return payload
+
+
 def _tidy_replayed_name(payload, registration):
     """paint288: a replayed answer's name is tidied as a new answer's is
     (_display_tidy: capitals for a name all in one case, and the code's English
@@ -3527,6 +3611,12 @@ def _record_name_only(search_id, paint_description, telemetry=None, source=''):
     search.save(update_fields=fields)
 
 
+#: paint303: the two lines a customer reads when an email could not be sent.
+#: Wording approved by the operator on 10 Oct 2026.
+EMAIL_NOT_SENT_MESSAGE = 'We could not send the email. Please check the address and try again.'
+CONTACT_NOT_SENT_MESSAGE = 'Your message could not be sent. Please try again in a few minutes.'
+
+
 @require_POST
 def submit_email(request):
     search_id = request.POST.get('search_id')
@@ -3538,9 +3628,11 @@ def submit_email(request):
     # validated; neither is required, and a bad upload is silently ignored
     # rather than failing the request.
     customer_message = request.POST.get('customer_message', '').strip()[:2000]
-    photo = process_image_upload(
-        request.FILES.get('photo'), filename_prefix='customer-photo'
-    )
+    # paint303: THE PHOTO IS NOT TOUCHED HERE ANY MORE (audit of 8 Oct, F3). It
+    # was opened and re-encoded on this line, before the address, the session,
+    # the lock and the hourly limit had been looked at, so a request that was
+    # about to be refused still had up to 10 MB of picture processed for it.
+    # It is processed further down, at the one place that uses it.
 
     if not search_id or not email:
         messages.error(request, 'Email address is required.')
@@ -3655,7 +3747,13 @@ def submit_email(request):
             search.email_sent = True
             search.email_picture = bool(_email_args.get('car_picture_jpeg'))   # paint230
             search.save(update_fields=['email_sent', 'email_picture'])
+        _customer_emailed = bool(sent)
     else:
+        # paint303 (F3): the photo, processed only now that the request has
+        # passed every check and is going to the operator.
+        photo = process_image_upload(
+            request.FILES.get('photo'), filename_prefix='customer-photo'
+        )
         admin_sent = send_admin_failure_notification(
             registration=search.registration,
             vehicle_title=search.vehicle_title,
@@ -3690,6 +3788,21 @@ def submit_email(request):
             # the in-memory row can be a minute stale by now.
             search.email_sent = True
             search.save(update_fields=['email_sent'])
+        _customer_emailed = bool(user_sent)
+
+    # paint303: THE PAGE SAYS "SENT" ONLY WHEN THE EMAIL WAS ACCEPTED (audit of
+    # 8 Oct, F1). This line told the page to say "Paint code sent to ..."
+    # whatever the email service had answered, so a customer whose email was
+    # refused (a mistyped address, the service down) was told it was on its
+    # way and waited for nothing. Now a send the service did not accept shows
+    # an error and the form again, to try once more. All 234 emails asked for
+    # up to 7 Oct were accepted, so no customer has met it.
+    # For a request to the manual queue it goes by the customer's own email
+    # ("we're on it"): the request itself is on the row either way, and the
+    # dashboard's queue lists it from the row, not from the notification.
+    if not _customer_emailed:
+        messages.error(request, EMAIL_NOT_SENT_MESSAGE)
+        return redirect('results')
 
     request.session['email_submitted'] = email
     return redirect('results')
@@ -3850,8 +3963,18 @@ def submit_contact(request):
     admin_sent = send_admin_contact_message(contact_type, email, message)
     user_sent = send_user_contact_confirmation(email)
 
-    if admin_sent and user_sent:
+    # paint303: A FAILED SEND SAYS SO (audit of 8 Oct, F2). When either email
+    # was not accepted this view said nothing at all: the page came back with
+    # an empty form, the message was kept nowhere, and the customer could not
+    # tell whether it had gone.
+    # "Message received" is shown when the message reached the operator, which
+    # is what it claims. When it did not, the error. (When it did and only the
+    # customer's confirmation was refused, the message has still arrived:
+    # asking for it again would only send it twice.)
+    if admin_sent:
         request.session['contact_submitted'] = email
+    else:
+        messages.error(request, CONTACT_NOT_SENT_MESSAGE)
 
     return redirect('help')
 

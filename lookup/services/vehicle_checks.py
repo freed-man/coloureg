@@ -516,9 +516,17 @@ def _plural(n, word):
 
 
 def span(start, today):
-    """Time since start, e.g. '3 years, 8 months'."""
-    days = (today - start).days
-    years, months = days // 365, (days % 365) // 30
+    """Time since start, e.g. '3 years, 8 months'.
+
+    paint303: WHOLE CALENDAR MONTHS, THEN YEARS (audit of 8 Oct, F4). It took
+    the days, counted years of 365 and then months of 30 in what was left:
+    up to 364 days, which is 12 "months". So a car a few days short of its
+    third birthday read "2 years, 12 months old", and leap days moved a
+    birthday a day or two early. Now the whole months between the two dates
+    are counted first (a month is complete on the same day of the month) and
+    split into years and months, so the months are never more than 11."""
+    whole = (today.year - start.year) * 12 + (today.month - start.month) - (1 if today.day < start.day else 0)
+    years, months = divmod(max(whole, 0), 12)
     if years and months:
         return f"{_plural(years, 'year')}, {_plural(months, 'month')}"
     if years:
