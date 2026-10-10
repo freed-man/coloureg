@@ -140,6 +140,10 @@ def facts(dvla, mot, lez=None):
     out = {
         'year': dvla.get('yearOfManufacture'),
         'first_registered': mot.get('registrationDate') or '',
+        # paint311: the MOT service's date of first use. For a car imported used
+        # it is the day the car was first registered anywhere, where the date
+        # above is the day it was registered HERE (see first_registration).
+        'first_used': mot.get('firstUsedDate') or '',
         'v5c': dvla.get('dateOfLastV5CIssued') or '',
         'mot_status': dvla.get('motStatus') or '',
         'mot_expiry': dvla.get('motExpiryDate') or '',
@@ -160,6 +164,8 @@ def facts(dvla, mot, lez=None):
             continue
         tests.append({
             'd': str(t.get('completedDate') or '')[:10], 'r': t.get('testResult') or '',
+            # paint311: the time of day, so two tests on one day keep their order.
+            't': str(t.get('completedDate') or '')[11:19],
             'o': str(t.get('odometerValue') or ''), 'u': t.get('odometerUnit') or '',
             'x': str(t.get('expiryDate') or '')[:10],
             'f': [[str(d.get('type') or ''), str(d.get('text') or '')[:300]]
@@ -249,14 +255,13 @@ def _tax_parts(f, today):
         return {'historic': True}
     if str(f.get('type_approval', '')).upper() != 'M1':
         return None
-    exact = _date(f.get('first_registered'))
-    if exact:
-        reg_year, reg_month = exact.year, exact.month
-    else:
-        try:
-            reg_year, reg_month = (int(x) for x in str(f.get('reg_month', '')).split('-')[:2])
-        except (TypeError, ValueError):
-            return None
+    # paint311: the FIRST registration, which for an imported car is not the
+    # day it was registered here (first_registration, below).
+    first, to_the_day = first_registration(f)
+    if first is None:
+        return None
+    exact = first if to_the_day else None
+    reg_year, reg_month = first.year, first.month
     co2 = f.get('co2')
     if reg_year < 2017 and co2 is not None and co2 > 225 and (reg_year, reg_month) == (2006, 3):
         if not exact:
@@ -277,7 +282,18 @@ def _tax_parts(f, today):
         except ValueError:                      # 29 February
             ends = registered.replace(year=registered.year + 6, day=28)
         if today < ends:
-            parts['limit'] = 50000 if (str(f.get('fuel', '')).upper() == 'ELECTRICITY' and registered >= date(2025, 4, 1)) else 40000
+            # paint311: AN ELECTRIC CAR REGISTERED BEFORE 1 APRIL 2025 NEVER
+            # PAYS THE SUPPLEMENT. It was given the 40,000 limit here, so the
+            # page showed "List price over £40k: £640" beside its £200, for a
+            # car that pays £200 whatever it cost (GOV.UK, vehicle tax for
+            # electric vehicles: registered 1 April 2017 to 31 March 2025,
+            # the standard rate; the supplement is for those registered on or
+            # after 1 April 2025, over £50,000). 17 of 484 cached answers on
+            # 10 Oct were such cars.
+            if str(f.get('fuel', '')).upper() == 'ELECTRICITY':
+                parts['limit'] = 50000 if registered >= date(2025, 4, 1) else None
+            else:
+                parts['limit'] = 40000
     return parts
 
 
@@ -356,7 +372,7 @@ def mileage_chart(tests):
         if when is None or reading < 0:
             continue
         km = str(t.get('u', '')).upper() == 'KM'
-        pts.append({'when': when, 'stamp': str(t.get('d', '')), 'miles': round(reading * KM_TO_MILES) if km else reading,
+        pts.append({'when': when, 'stamp': str(t.get('d', '')) + ' ' + str(t.get('t', '')), 'miles': round(reading * KM_TO_MILES) if km else reading,
                     'km': km, 'passed': t.get('r') == 'PASSED', 'recorded': f"{reading:,} {'km' if km else 'miles'}"})
     # Oldest first; on the same day a fail comes before the pass that followed it
     # (unless the stored times say otherwise).
@@ -438,15 +454,44 @@ _VAN_PETROL_FROM, _VAN_DIESEL_FROM = date(2007, 1, 1), date(2016, 9, 1)      # p
 _BIKE_FROM = date(2007, 7, 1)     # paint268: Euro 3 motorbikes, as TfL dates them
 
 
+def first_registration(f):
+    """paint311: when the vehicle was FIRST registered, anywhere: (date, True)
+    when the day is known, (the first of the month, False) when only DVLA's
+    month is, (None, False) when nothing is.
+
+    The MOT service's registration date gives the day, and for a car that has
+    always been here it is the first registration. For a car IMPORTED USED it
+    is the day it was registered in the UK, which can be years after it was
+    first registered: DVLA's month of first registration is then earlier. The
+    age, the tax rules (which system a car is taxed under goes by its first
+    registration) and the ULEZ cut-offs all read the UK date, so such a car
+    looked newer than it is. 1 of the 446 cached answers holding both dates
+    on 10 Oct differed.
+
+    So: when DVLA's month is EARLIER than the MOT service's date, DVLA's month
+    is the first registration. The MOT service's date of first use gives its
+    day when it falls in that month (saved since paint311; answers saved
+    before hold none). In every other case the MOT service's date stands, as
+    before: the same month, a later DVLA month (not an import by this test),
+    or no DVLA month at all."""
+    here = _date(f.get('first_registered'))
+    try:
+        year, month = (int(x) for x in str(f.get('reg_month', '')).split('-')[:2])
+        dvla = date(year, month, 1)
+    except (TypeError, ValueError):
+        dvla = None
+    if here is not None and (dvla is None or dvla >= here.replace(day=1)):
+        return here, True
+    if dvla is None:
+        return None, False
+    used = _date(f.get('first_used'))
+    if used is not None and (used.year, used.month) == (dvla.year, dvla.month):
+        return used, True
+    return dvla, False
+
+
 def _first_registered(f):
-    first = _date(f.get('first_registered'))
-    if first is None:
-        try:
-            year, month = (int(x) for x in str(f.get('reg_month', '')).split('-')[:2])
-            first = date(year, month, 1)
-        except (TypeError, ValueError):
-            first = None
-    return first
+    return first_registration(f)[0]
 
 
 def _bike_by_age(f):
@@ -483,13 +528,7 @@ def _ulez_by_age(f):
         cut = diesel_from
     else:
         return False                      # gas, bi-fuel, steam, unknown: TfL decides
-    first = _date(f.get('first_registered'))
-    if first is None:
-        try:
-            year, month = (int(x) for x in str(f.get('reg_month', '')).split('-')[:2])
-            first = date(year, month, 1)
-        except (TypeError, ValueError):
-            first = None
+    first = _first_registered(f)                # paint311: the first registration, not the UK one
     if first is not None:
         return first >= cut
     try:
@@ -565,7 +604,7 @@ def _display(f, today=None):
         f = dict(f, year=_date(f.get('first_registered')).year)
     if f.get('year'):
         out['vc_year'] = str(f['year'])
-        started = _date(f.get('first_registered'))
+        started = _first_registered(f)              # paint311: an imported car's age runs from its first registration
         if not started:
             try:
                 started = date(int(f['year']), 1, 1)
@@ -608,12 +647,16 @@ def _display(f, today=None):
     tstatus, tdue = f.get('tax_status', ''), _date(f.get('tax_due'))
     if tstatus:
         if tstatus == 'Taxed':
-            # paint261: "expires", like the MOT: the date is when this tax runs out.
+            # paint311: "DUE", NOT "EXPIRES" (the operator, 10 Oct). DVLA's date
+            # is the day tax becomes due, the first of the month after the
+            # last month paid for: tax "due 01/03/2027" runs out on the last
+            # day of February, so "expires 01/03/2027" (paint261) was a day
+            # late. The MOT's date IS its last day and still says "expires".
             out['vc_tax'] = {'ok': True, 'label': 'Taxed',
-                             'detail': f'(expires {_shown(tdue)}, {countdown(tdue, today, "expires today")})' if tdue else ''}
+                             'detail': f'(due {_shown(tdue)}, {countdown(tdue, today, "due today")})' if tdue else ''}
         else:
             out['vc_tax'] = {'ok': False, 'label': tstatus,
-                             'detail': f'(expired {_shown(tdue)}, {countdown(tdue, today, "due today")})' if tdue else ''}
+                             'detail': f'(due {_shown(tdue)}, {countdown(tdue, today, "due today")})' if tdue else ''}
         try:
             estimate = tax_estimate(f, today)
         except Exception:
@@ -629,7 +672,7 @@ def _display(f, today=None):
         if table:
             out['vc_tax']['table'] = table
     # paint261: what the "+" beside MOT and Tax opens: the detail without its
-    # brackets, "Expires 27/05/2027, 238 days remaining".
+    # brackets, "Expires 27/05/2027, 238 days remaining" (for tax, "Due ...").
     for key in ('vc_mot', 'vc_tax'):
         detail = (out.get(key) or {}).get('detail') or ''
         if detail:
@@ -638,7 +681,14 @@ def _display(f, today=None):
     # paint246: the MOT history, as motoreg shows it: newest first, the mileage
     # and its change since the test before, then Major and Advisory items.
     history = []
-    for t in sorted(f.get('mot_tests') or [], key=lambda t: t.get('d', ''), reverse=True):
+    # paint311: TWO TESTS ON ONE DAY IN THE RIGHT ORDER. The list was sorted by
+    # the day alone and otherwise left as the MOT service sent it, which is
+    # usually newest first and sometimes not: of 415 same day pairs in the
+    # cached answers on 10 Oct, 9 showed the fail above the pass that followed
+    # it. Now by the day, then the time of day (saved since paint311), and
+    # where there is no time the pass is the later test, as the chart has
+    # always read it.
+    for t in sorted(f.get('mot_tests') or [], key=lambda t: (t.get('d', ''), t.get('t', ''), t.get('r') == 'PASSED'), reverse=True):
         when = _date(t.get('d'))
         unit = {'MI': 'miles', 'KM': 'km'}.get(str(t.get('u', '')).upper(), str(t.get('u', '')).lower())
         try:
