@@ -46,7 +46,7 @@ answering. Across 225 plates looked up more than once, none ever changed.
 WHAT A LOOKUP SAVES (details_of): the car details the results page shows that
 the row has no column for, so a remembered answer needs no paid call to draw
 its page. Never the registration or VIN (the row's own columns hold those, and
-the 12-month scrub clears the VIN there), never the paint answer (the row's
+the 5-year scrub clears the VIN there), never the paint answer (the row's
 own columns are the answer, so a correction is never contradicted), and never
 MOT, tax or ULEZ (asked afresh every time).
 """

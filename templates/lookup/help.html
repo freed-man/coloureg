@@ -5,7 +5,16 @@
 {% block meta_description %}Frequently asked questions about coloureg — how to find your paint code, where it's located on your car, what makes are supported, and what it costs.{% endblock %}
 
 {% block extra_schema %}
-<script type="application/ld+json">
+<script type="application/ld+json">{% comment %} paint307: THE COST QUESTION FOLLOWS THE PAYMENTS SWITCH.
+   The last entry below, "Why does coloureg cost ...?", was sent to search engines
+   whatever the switch said, while the eighth question a visitor reads on this
+   page with payments off is "Is coloureg free?" (audit of 8 Oct, G3; reproduced
+   on a scratch copy). It is now drawn only with payments on, when the page asks
+   the same question. With payments off there are seven entries and no price:
+   the visible "Is coloureg free?" answer names the coming price, so it is not
+   copied here. The price is lookup_price, which is LOOKUP_PRICE_PENCE.
+   The tags sit at the ends of lines, and this note on the script tag's own
+   line, so that with payments on the block is byte for byte what it was. {% endcomment %}
 {
   "@context": "https://schema.org",
   "@type": "FAQPage",
@@ -55,7 +64,7 @@
       "name": "Do you store my data?",
       "acceptedAnswer": {
         "@type": "Answer",
-        "text": "Yes, briefly. We log each search (registration, time, IP) for usage analytics and abuse prevention. If you submit your email for a manual lookup, we store it to send you the result. We don't sell or share your data with third parties. See our privacy notice for full details."
+        "text": "Yes. We keep a record of each search (registration, time, IP) to run the site, answer questions about a result and prevent abuse. If you submit your email for a manual lookup, we store it to send you the result. We never sell your data or use it for advertising. It is passed only to the services that help us run the site. For full details, including how long we keep it, see our privacy notice."
       }
     },
     {
@@ -65,7 +74,7 @@
         "@type": "Answer",
         "text": "Manual lookups involve searching manufacturer records by hand, using details the automated search can't reach. We usually email your paint code within 1 hour, though it can take a little longer during busy periods."
       }
-    },
+    }{% if payments_on %},
     {
       "@type": "Question",
       "name": "Why does coloureg cost £{{ lookup_price|floatformat:2 }}?",
@@ -73,7 +82,7 @@
         "@type": "Answer",
         "text": "Every lookup runs against live manufacturer and vehicle databases that charge us for each search, plus the servers, data feeds, domains and software that keep coloureg fast and accurate. The £{{ lookup_price|floatformat:2 }} keeps it running and independent — no ads, no signup, and we never sell your data. If we can't find your code, you don't pay."
       }
-    }
+    }{% endif %}
   ]
 }
 </script>
@@ -277,7 +286,12 @@
                         <span class="faq-icon">▼</span>
                     </button>
                     <div class="faq-answer" id="faq-6" style="display: none;">
-                        <p>Yes, briefly. We log each search (<code>registration</code>, <code>time</code>, <code>IP</code>) for usage analytics and abuse prevention. If you submit your <code>email</code> for a manual lookup, we store it to send you the result. We don't sell or share your data with third parties.{% if payments_on %} Payments are handled entirely by Stripe — we never see or store your card details.{% endif %} For full details, see our <a href="{% url 'privacy' %}" style="color: #003399;">privacy notice</a>.</p>
+                        {% comment %} paint300: the old answer said "Yes, briefly" and that data is not shared
+                           with third parties, while the privacy notice keeps the personal fields for 5 years and
+                           lists the services they are passed to. Now the operator's approved wording, which agrees
+                           with the notice. The same answer is given to search engines in the structured data at
+                           the top of this file: change the two together. {% endcomment %}
+                        <p>Yes. We keep a record of each search (<code>registration</code>, <code>time</code>, <code>IP</code>) to run the site, answer questions about a result and prevent abuse. If you submit your <code>email</code> for a manual lookup, we store it to send you the result. We never sell your data or use it for advertising. It is passed only to the services that help us run the site.{% if payments_on %}{% comment %} paint307: the payment processor is no longer named here. The site names no supplier, and the operator's answer for this one was "no name" (10 Oct, G4). It read "by Stripe". {% endcomment %} Payments are handled entirely by our payment processor — we never see or store your card details.{% endif %} For full details, including how long we keep it, see our <a href="{% url 'privacy' %}" style="color: #003399;">privacy notice</a>.</p>
                     </div>
                 </div>
 

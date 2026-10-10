@@ -931,6 +931,7 @@
             <span style="width: {% widthratio success_with_code total_searches 100 %}%; background: #1D9E75;"></span>
             <span style="width: {% widthratio genuine_miss_count total_searches 100 %}%; background: #C8102E;"></span>
             <span style="width: {% widthratio incomplete_count total_searches 100 %}%; background: #B9C0C9;"></span>
+            <span style="width: {% widthratio budget_held_count total_searches 100 %}%; background: #5B7FB5;"></span>
             <span style="width: {% widthratio no_vehicle_count total_searches 100 %}%; background: #E4E7EB;"></span>
         </div>
         {% endif %}
@@ -978,6 +979,21 @@
                         <span class="oc-detail">vehicle found but the code search never finished — typically the tab was closed first</span>
                     </div>
                     <span class="oc-num">{{ incomplete_count }}</span>
+                </div>
+
+                {% comment %}paint305 (M14): a search the daily budget held back has a
+                   line of its own. Since paint294 the paint search is not started
+                   once the day's budget is reached, and such a lookup was counted
+                   in "Search never completed" above, which means the customer
+                   left. It is excluded from the rate like that line, because
+                   nothing was searched; the same lookups as before, now split
+                   between the two lines.{% endcomment %}
+                <div class="oc-row">
+                    <div>
+                        <span class="oc-dot" style="background: #5B7FB5;"></span><span class="oc-label">Held back by the budget</span><span class="oc-tag excl">excluded</span>
+                        <span class="oc-detail">vehicle found, but the daily budget was reached before the code search could run</span>
+                    </div>
+                    <span class="oc-num">{{ budget_held_count }}</span>
                 </div>
             </div>
         </div>
@@ -1337,6 +1353,11 @@
         .outcome-tick { color: #2e7d32; font-weight: 600; font-size: 16px; }
         .outcome-partial { color: #2e7d32; font-weight: 600; font-size: 17px; }
         .db-badge { display: inline-block; font-size: 10px; font-weight: 600; color: #185FA5; background: #E6F1FB; border: 0.5px solid #85B7EB; border-radius: 4px; padding: 1px 5px; vertical-align: middle; letter-spacing: 0.5px; }
+        {% comment %}/* paint297: "check", beside a paint name that states a colour the car
+           is not registered as (Search.colour_check). The DB badge's shape in
+           amber: worth a look, not an error. For the operator only: nothing a
+           customer sees carries it. */{% endcomment %}
+        .db-badge.check-badge { color: #7a5600; background: #FFF4D6; border-color: #E0B24A; }
         .outcome-cross { color: #c62828; font-weight: 600; font-size: 16px; }
         {% comment %}/* Unsupported make. A FOURTH outcome, not a shade of failure: we did
            not search and fail, we chose not to search. Grey rather than red or
@@ -1703,12 +1724,15 @@
                Labelled PAINT CODE and PAINT NAME rather than "correct" —
                pre-filled with what was sent, so most of the time you are
                confirming rather than correcting. {% endcomment %}
+            {% comment %} paint305 (F9): both boxes stop at what the columns they are
+               saved to can hold (50 and 200 characters). They had no limit, and
+               neither had the server, which now refuses a longer value too. {% endcomment %}
             <form method="POST" class="mlq-form mt-2">
                 {% csrf_token %}
                 <input type="hidden" name="report_id" value="{{ r.id }}">
-                <input type="text" name="fixed_code" value="{{ r.code }}"
+                <input type="text" name="fixed_code" value="{{ r.code }}" maxlength="{{ correction_code_max }}"
                        placeholder="PAINT CODE" style="flex: 0 0 150px;">
-                <input type="text" name="fixed_name" value="{{ r.colour_name }}"
+                <input type="text" name="fixed_name" value="{{ r.colour_name }}" maxlength="{{ correction_name_max }}"
                        placeholder="PAINT NAME" style="flex: 1 1 260px;">
                 <button type="submit" name="action" value="report_actioned"
                         class="send-btn">Save</button>
@@ -1745,6 +1769,15 @@
                         <div class="lbl">DVLA colour</div>
                         <div class="val">{{ s.colour|default:"—" }}</div>
                     </div>
+                    {% comment %} paint299: a request left on a SPECIAL ORDER CODE (999, a BMW's 490) is in this
+                       queue too, and it is the only kind of row here that has a code. The card says
+                       so, or it would look like a car nothing was found for. {% endcomment %}
+                    {% if s.paint_code %}
+                    <div>
+                        <div class="lbl">Code returned</div>
+                        <div class="val">{{ s.paint_code }} <span style="color: #666;">(special order code{% if s.provider and s.provider != 'none' %}, {{ s.source_label }}{% endif %})</span></div>
+                    </div>
+                    {% endif %}
                     {% comment %} paint278: the name the lookup returned, where it came from, and each
                        source's own wording: the customer's email has the name, and it is the best
                        place to start the research. {% endcomment %}
@@ -1756,12 +1789,28 @@
                         </div>
                     </div>
                     {% endif %}
+                    {% comment %} paint304: THE ADDRESS IS PERCENT ENCODED INSIDE THE LINK. A mail program reads
+                       everything after a "?" in a mailto: link as fields of the draft, and an address may
+                       hold one: "a?cc=x%40evil.test&subject=S&body=B@example.com" passes the email check,
+                       and clicking it opened a draft to "a" with a cc, a subject and a body its sender
+                       chose (audit of 8 Oct, P5). Encoded, the whole of it is the recipient. Only the "@"
+                       is left as it is, so an ordinary address makes the link it always made. The text
+                       shown is the address itself, escaped for the page as before. {% endcomment %}
                     <div>
                         <div class="lbl">Customer email</div>
-                        <div class="val"><a href="mailto:{{ s.email }}" style="color: #003399;">{{ s.email }}</a></div>
+                        <div class="val"><a href="mailto:{{ s.email|urlencode:'@' }}" style="color: #003399;">{{ s.email }}</a></div>
                     </div>
                 </div>
-                <form class="mlq-form" data-search-id="{{ s.id }}">
+                {% comment %}paint305 (F7): method="post". The page's script sends this
+                   form itself (a fetch to the manual lookup address, further
+                   down) and stops the browser's own send. With no method here the
+                   browser's own send is a GET: whenever that script had not run,
+                   pressing Send reloaded the page with the paint code, the name,
+                   the note and the form's token in the address bar, where they
+                   stay in the browser's history. As a post they travel in the
+                   body, and the dashboard, which is sent no action it knows,
+                   only draws itself again. The script's send is unchanged.{% endcomment %}
+                <form method="post" class="mlq-form" data-search-id="{{ s.id }}">
                     {% csrf_token %}
                     {% comment %} paint16: paint_code is no longer `required`. Submitting it
                        blank records the third outcome — "we searched every source and
@@ -1832,7 +1881,7 @@
                     </td>
                     <td>
                         {% if s.paint_description %}
-                        <span class="recent-paint-desc">{{ s.paint_description }}</span>{% if s.enriched_from == 'name' %} <span class="db-badge" title="Name filled from coloureg's paint database">DB</span>{% endif %}
+                        <span class="recent-paint-desc">{{ s.paint_description }}</span>{% if s.enriched_from == 'name' %} <span class="db-badge" title="Name filled from coloureg's paint database">DB</span>{% endif %}{% if s.colour_check %} <span class="db-badge check-badge" title="The paint's name states a colour the car is not registered as. Worth a look.">check</span>{% endif %}
                         {% else %}
                         <span class="recent-empty">—</span>
                         {% endif %}
@@ -1939,7 +1988,7 @@
                 {% if s.paint_code or s.paint_description %}
                 <div class="recent-card-paint">
                     {% if s.paint_code %}<span class="recent-paint-code">{{ s.paint_code }}</span>{% if s.enriched_from == 'code' %} <span class="db-badge" title="Code filled from coloureg's paint database">DB</span>{% endif %}{% endif %}
-                    {% if s.paint_description %}<span class="recent-paint-desc">{{ s.paint_description }}</span>{% if s.enriched_from == 'name' %} <span class="db-badge" title="Name filled from coloureg's paint database">DB</span>{% endif %}{% endif %}
+                    {% if s.paint_description %}<span class="recent-paint-desc">{{ s.paint_description }}</span>{% if s.enriched_from == 'name' %} <span class="db-badge" title="Name filled from coloureg's paint database">DB</span>{% endif %}{% if s.colour_check %} <span class="db-badge check-badge" title="The paint's name states a colour the car is not registered as. Worth a look.">check</span>{% endif %}{% endif %}
                 </div>
                 {% endif %}
                 {% comment %}
@@ -2230,6 +2279,18 @@
         if (card && e.target === card) { e.preventDefault(); toggleNoteCard(card); }
     });
 
+    {% comment %}paint305 (F7): THE CHARTS ARE DRAWN ONLY WHEN CHART.JS LOADED.
+       When it did not load (the CDN out of reach, or its integrity check
+       failing), the block above has already put a notice where the charts
+       go, so the first line that asks for a chart's canvas found nothing and
+       this script STOPPED there, before the manual lookup queue below was
+       wired up: the note button did nothing, and Send reloaded the page with
+       the code, the name, the note and the form's token in the address, and
+       sent nothing. Reproduced in a browser with the CDN blocked.
+       Everything from here to the closing bracket marked paint305 is the
+       three charts. Their lines keep the indent they had, so that wrapping
+       them changed two lines and moved none.{% endcomment %}
+    if (typeof Chart !== 'undefined') {
     // Chart data arrives as JSON in a separate application/json block (see
     // the view). json_script escapes it properly, so a value carrying a quote
     // or an angle bracket can never break out into executable code the way a
@@ -2255,7 +2316,12 @@
                 { label: 'Manufacturer has none', data: CHART.nocode,       backgroundColor: '#b8860b' },
                 { label: 'Not automated',        data: CHART.not_automated, backgroundColor: '#8a8a8a' },
                 { label: 'Plate not recognised', data: CHART.bad_plate,     backgroundColor: '#d9d9d9' },
-                { label: 'Left before finishing', data: CHART.abandoned,    backgroundColor: '#efefef' }
+                { label: 'Left before finishing', data: CHART.abandoned,    backgroundColor: '#efefef' },
+                {% comment %}paint305 (M14): the searches the daily budget held back
+                (paint294), which were drawn inside "Left before finishing". The
+                customer did not leave: the search was not started. Their own
+                series, in the colour of their line in the outcomes panel.{% endcomment %}
+                { label: 'Held back by the budget', data: CHART.budget_held, backgroundColor: '#5b7fb5' }
             ]
         },
         options: {
@@ -2390,6 +2456,7 @@
         }
     });
     {% endif %}
+    }   {% comment %}paint305 (F7): the end of "only when Chart.js loaded".{% endcomment %}
 
     {% comment %}/* ============== Manual lookup queue: send / dismiss with animation ============== */{% endcomment %}
     (function() {

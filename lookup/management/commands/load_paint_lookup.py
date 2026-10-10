@@ -8,21 +8,34 @@ runtime database (Neon Postgres in production). One row per (manufacturer, code)
 Modes:
     --replace   Delete all existing PaintLookup rows, then bulk-insert fresh.
                 Use for a refresh after re-scraping/re-merging.
-    --upsert    Insert new rows, update changed rows, leave unchanged alone.
-                Slower but preserves any manual corrections made via the admin.
+    --upsert    Merge the file into the table: add the rows the table lacks,
+                and for a row it has, overwrite every field the file has a
+                value for. It leaves alone a field named in the row's
+                locked_fields, a hidden (suppressed) row, the operator's own
+                names, and a value the file has nothing for. A hand edit that
+                is NOT locked is overwritten like any other value.
+                A PREVIEW unless --apply is added (paint308): it prints what
+                it would create and change, and writes nothing.
     (default)   Insert only if the table is empty. Otherwise no-op. Safe for
                 automated deploys — won't double-load on every release.
 
 Usage:
     python manage.py load_paint_lookup
     python manage.py load_paint_lookup --replace
-    python manage.py load_paint_lookup --upsert
+    python manage.py load_paint_lookup --upsert              preview, nothing written
+    python manage.py load_paint_lookup --upsert --apply      write
     python manage.py load_paint_lookup --file /path/to/paint_lookup.json
+
+paint308: --upsert used to write at once, and to describe itself as preserving
+manual corrections. It keeps the LOCKED ones and overwrites the rest. New
+sources are added with topup_catalogue (paint236), which never changes what the
+table already has.
 """
 
 import json
 import os
 import time
+from collections import Counter
 
 from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
@@ -102,7 +115,14 @@ class Command(BaseCommand):
         parser.add_argument(
             '--upsert',
             action='store_true',
-            help='Update existing rows in place (preserves admin edits).',
+            help='Merge the file in: add missing rows, and overwrite every '
+                 'field the file has a value for, unlocked hand edits '
+                 'included. Locked fields and hidden rows are left alone. '
+                 'Only a preview unless --apply is given.',
+        )
+        parser.add_argument(
+            '--apply', action='store_true',
+            help='With --upsert: write. Without it, --upsert only previews.',
         )
         parser.add_argument(
             '--batch-size',
@@ -118,6 +138,7 @@ class Command(BaseCommand):
         path = options['file']
         replace = options['replace']
         upsert = options['upsert']
+        apply = options.get('apply', False)
         batch_size = options['batch_size']
 
         if replace and upsert:
@@ -147,7 +168,11 @@ class Command(BaseCommand):
         if replace:
             self._do_replace(records, batch_size)
         elif upsert:
-            self._do_upsert(records, batch_size)
+            self._do_upsert(records, batch_size, apply)
+            if not apply:
+                self.stdout.write(self.style.WARNING(
+                    'PREVIEW ONLY: nothing was written. Add --apply to write.'))
+                return
         else:
             self.stdout.write('Mode: initial load (empty table → bulk insert)')
             self._bulk_insert(records, batch_size)
@@ -201,8 +226,25 @@ class Command(BaseCommand):
             self.stdout.write(f'  Deleted {deleted:,} existing rows')
             self._bulk_insert(records, batch_size)
 
-    def _do_upsert(self, records, batch_size):
-        self.stdout.write('Mode: upsert (preserve admin edits)')
+    def _do_upsert(self, records, batch_size, apply=False):
+        # paint308: A PREVIEW UNLESS --apply, AND A BANNER THAT IS TRUE.
+        #
+        # This mode wrote on the one flag, the only catalogue writer left with
+        # no preview, and its banner, its help line and the top of this file
+        # all said it preserves hand edits. It preserves LOCKED fields
+        # (paint160), hidden rows and operator names (paint161) and a value the
+        # file has nothing for (paint167). A hand edit that is not locked is
+        # overwritten: reproduced on a scratch copy, where a swatch and a name
+        # corrected by hand and left unlocked went back to the file's values
+        # under the words "preserve admin edits".
+        #
+        # Without --apply everything below is worked out exactly as before and
+        # nothing is saved: the counts, how many rows would lose which field,
+        # and a few of the rows themselves are printed instead.
+        self.stdout.write('Mode: upsert, WRITING' if apply else
+                          'Mode: upsert PREVIEW, nothing written (add --apply to write)')
+        self.stdout.write('  It overwrites every field the file has a value for, unless the '
+                          'field is locked or the row is hidden. An unlocked hand edit is not kept.')
         existing = {
             (r.manufacturer, r.code): r for r in PaintLookup.all_objects.all()
         }
@@ -226,6 +268,7 @@ class Command(BaseCommand):
         # a better models_list from a later scrape.
         locked_skipped = 0
         suppressed_skipped = 0
+        by_field, sample = Counter(), []       # paint308: for the preview
         for r in records:
             key = (r['manufacturer'], r['code'])
             new_inst = build_instance(r)
@@ -265,6 +308,12 @@ class Command(BaseCommand):
                             if getattr(new_inst, f) or not getattr(old, f)]
                 if writable and any(getattr(old, f) != getattr(new_inst, f)
                                     for f in writable):
+                    # paint308: what this row loses, read before it is changed.
+                    diffs = [(f, getattr(old, f), getattr(new_inst, f))
+                             for f in writable if getattr(old, f) != getattr(new_inst, f)]
+                    by_field.update(f for f, _old, _new in diffs)
+                    if len(sample) < self.SAMPLE:
+                        sample.append((key, diffs))
                     for f in writable:
                         setattr(old, f, getattr(new_inst, f))
                     _merge_operator_names(old)
@@ -280,22 +329,34 @@ class Command(BaseCommand):
                 to_create.append(new_inst)
 
         with transaction.atomic():
-            if to_create:
+            if apply and to_create:
                 PaintLookup.all_objects.bulk_create(to_create, batch_size=batch_size)
-            if to_update:
+            if apply and to_update:
                 # bulk_update writes every name in `fields`, locked ones
                 # included — but a locked field was never reassigned above, so
                 # the value written is the one already in the database. Correct,
                 # and worth saying: it reads like a leak and is not.
                 PaintLookup.all_objects.bulk_update(to_update, fields, batch_size=batch_size)
 
-        self.stdout.write(f'  Created: {len(to_create):,}')
-        self.stdout.write(f'  Updated: {len(to_update):,}')
+        self.stdout.write(f'  {"Created" if apply else "Would create"}: {len(to_create):,}')
+        self.stdout.write(f'  {"Updated" if apply else "Would update"}: {len(to_update):,}')
         self.stdout.write(f'  Unchanged: {unchanged:,}')
         if locked_skipped:
             self.stdout.write(f'  Rows with locked fields: {locked_skipped:,}')
         if suppressed_skipped:
             self.stdout.write(f'  Suppressed, left absent: {suppressed_skipped:,}')
+        if not apply:
+            # paint308: the preview's own lines. How many rows would have each
+            # field overwritten, then a few rows of each kind.
+            if by_field:
+                self.stdout.write('  Rows that would have a field overwritten: '
+                                  + ', '.join(f'{f} {n:,}' for f, n in by_field.most_common()))
+            for new in to_create[:self.SAMPLE]:
+                self.stdout.write(f'    e.g. new: {new.manufacturer} {new.code} "{new.name}" '
+                                  f'{new.hex or "(no swatch)"}')
+            for (mfr, code), diffs in sample:
+                self.stdout.write(f'    e.g. change: {mfr} {code}: ' + '; '.join(
+                    f'{f} {self._short(was)} -> {self._short(now)}' for f, was, now in diffs))
         # paint161: ORPHANS. --upsert only ever visits rows the incoming file
         # mentions, so a row the new scrape has dropped is never touched and
         # never reported. That is usually right — losing a retired scraper
@@ -317,6 +378,15 @@ class Command(BaseCommand):
                     self.stdout.write(f'      {mfr:<18}{code}')
                 if len(orphans) > 200:
                     self.stdout.write(f'      ... and {len(orphans) - 200:,} more')
+
+    #: paint308: how many rows of each kind the --upsert preview lists.
+    SAMPLE = 8
+
+    @staticmethod
+    def _short(value):
+        """A value as the preview prints it: quoted, and cut if it is long."""
+        text = repr(value)
+        return text if len(text) <= 48 else text[:45] + '...'
 
     def _bulk_insert(self, records, batch_size):
         start = time.time()

@@ -1,4 +1,4 @@
-"""Scrub personal data from Search records older than 12 months.
+"""Scrub personal data from Search records older than 5 years.
 
 This implements the retention policy declared in the privacy notice. Run manually:
 
@@ -44,12 +44,26 @@ def _expired_cache_rows(delete):
 
 
 class Command(BaseCommand):
-    help = "Scrub personal fields from Search records older than 12 months."
+    help = "Scrub personal fields from Search records older than 5 years."
 
     # The cutoff window. Update this if the retention policy changes — but
     # remember to update the privacy notice's "How long we keep it" section
     # at the same time so they stay in sync.
-    RETENTION_DAYS = 365
+    #
+    # paint300: 5 years. It was 365 days (12 months). The operator's decision
+    # of 9 Oct 2026, for every lookup since launch: the personal fields are
+    # kept for 5 years so that questions, complaints or disputes about a
+    # result can be dealt with, and misuse of the site spotted. The privacy
+    # notice changed in the same release and now says "After 5 years".
+    #
+    # Why 1827 and not 5 x 365 = 1825. Five calendar years are 1826 or 1827
+    # days long, because they hold one or two leap days: 2 May 2026 to
+    # 2 May 2031 holds one (29 Feb 2028), 1 Mar 2027 to 1 Mar 2032 holds two.
+    # 1827 is the longer, so no lookup is due for the scrub before it is five
+    # calendar years old, and every one is due at most a day after. The
+    # oldest lookup is from 2 May 2026 (the export of 7 Oct 2026), so nothing
+    # is due before 3 May 2031. Paint code reports use the same number.
+    RETENTION_DAYS = 1827
 
     def add_arguments(self, parser):
         parser.add_argument(
@@ -58,7 +72,7 @@ class Command(BaseCommand):
             help='Show how many records would be scrubbed without making changes.',
         )
         # SELECTABLE TARGETS. The three jobs here have nothing in common but
-        # the schedule: scrubbing personal fields off year-old Search rows is a
+        # the schedule: scrubbing personal fields off five-year-old Search rows is a
         # retention obligation, deleting stale VrmCache rows is housekeeping,
         # and clearing expired sessions is both — those rows hold the full
         # unmasked VIN. Being able to run one without the others matters when
@@ -122,7 +136,8 @@ class Command(BaseCommand):
         #
         # This is computed BEFORE the "nothing to scrub" early return below, and
         # its cutoff is the cache TTL (7 days), not the Search retention window
-        # (365 days). It used to sit after that return and therefore never ran:
+        # (5 years since paint300; it was 365 days when the rest of this note was
+        # written). It used to sit after that return and therefore never ran:
         # the oldest Search rows date from May 2026, so `count` was 0 on every
         # invocation and the command printed "Database is clean" while 400-day-
         # old VINs sat untouched. It would not have run until May 2027.
@@ -146,7 +161,7 @@ class Command(BaseCommand):
         # behind, exactly the VrmCache problem in a place nobody had looked.
         #
         # Cutoff is the session's own expiry (Django writes expire_date at
-        # save), not the 365-day Search window: an expired session is dead
+        # save), not the 5-year Search window: an expired session is dead
         # weight the moment it lapses and there is no reason to keep it.
         expired_sessions = Session.objects.filter(expire_date__lt=timezone.now())
         expired_session_count = expired_sessions.count() if do_sessions else 0

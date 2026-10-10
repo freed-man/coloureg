@@ -3,6 +3,7 @@ import base64
 import html as html_lib
 import logging
 import os
+from urllib.parse import quote
 import resend
 from django.conf import settings
 
@@ -20,6 +21,25 @@ def _esc(value):
     input boundary, so subjects are intentionally left un-escaped.
     """
     return html_lib.escape(str(value)) if value else ''
+
+
+def _mailto(address):
+    """paint304: an email address as it goes INSIDE a mailto: link.
+
+    A mail program reads everything after a "?" in a mailto: link as fields of
+    the draft, and an email address may hold one: Django's own check accepts
+    "a?cc=x%40evil.test&subject=S&body=B@example.com". Written into the link as
+    it stood (escaped for HTML, which changes nothing a mail program sees), a
+    click on it opened the operator's reply addressed to "a", with a cc, a
+    subject and a body the sender had chosen (audit of 8 Oct, P5).
+
+    So the address is percent encoded here: "?", "&", "=", "%", "#" and the
+    rest can no longer end the address or start a field, and the whole of it is
+    the recipient. Only "@" is left as it is, so an ordinary address makes the
+    link it always made. The text SHOWN beside the link is still _esc(address).
+    Returns '' for a missing address, as _esc does.
+    """
+    return _esc(quote(str(address), safe='@')) if address else ''
 
 
 def _client():
@@ -527,7 +547,12 @@ def send_admin_ip_alert(ip, count, threshold, rows):
         if m:
             makes[m] = makes.get(m, 0) + 1
     top = sorted(makes.items(), key=lambda kv: -kv[1])
-    mix = ', '.join(f'{m} {n}' for m, n in top[:5]) or '&mdash;'
+    # paint305 (F8): PLAIN WORDS WHEN NO LOOKUP CARRIED A MAKE. This held the
+    # HTML code for a long dash, and the cell below escapes whatever it is
+    # given (as it must: makes come from outside), so the email showed the
+    # code itself as text, ampersand and semicolon included. The other emails
+    # that use that code add it after escaping; here it went in before.
+    mix = ', '.join(f'{m} {n}' for m, n in top[:5]) or 'none recorded'
     regs = ', '.join(dict.fromkeys(
         (r.get('registration') or '').strip() for r in rows if r.get('registration')))
     uas = {(r.get('user_agent') or '')[:120] for r in rows if r.get('user_agent')}
@@ -733,7 +758,7 @@ def send_admin_paint_report(report, total_for_code=1, vehicle_title='',
     }, context='paint_report')
 
 
-def send_admin_failure_notification(registration, vehicle_title, vin_full, colour, user_email, customer_message='', extra_attachments=None, found_name=''):
+def send_admin_failure_notification(registration, vehicle_title, vin_full, colour, user_email, customer_message='', extra_attachments=None, found_name='', special_order_code=''):
     """Email admin when paint code wasn't found and user requested manual lookup.
 
     `customer_message` is optional free text the customer added to the request
@@ -742,9 +767,22 @@ def send_admin_failure_notification(registration, vehicle_title, vin_full, colou
     prominently rather than buried. `extra_attachments` carries any photo they
     uploaded (e.g. of the paint label), which arrives attached to this email —
     nothing is stored server-side.
+
+    paint299: `special_order_code` is set when the request was left on a
+    lookup that DID find a code, one that says the car was painted to special
+    order (999, a BMW's 490). Those requests come here too, by the operator's
+    decision of 9 Oct, and without this row the email would read as if nothing
+    had been found. Only the operator reads this email.
     """
 
     found_block = _found_name_block(found_name)
+    special_order_row = ''
+    if special_order_code:
+        special_order_row = f"""
+                    <tr style="border-bottom: 1px solid #eee;">
+                        <td style="padding: 10px 16px 10px 0; color: #666; font-size: 13px; vertical-align: top;">Code</td>
+                        <td style="padding: 10px 0; color: #1a1a1a; font-size: 14px;">{_esc(special_order_code)}, a special order code: it does not say which paint</td>
+                    </tr>"""
     message_block = ''
     if customer_message and customer_message.strip():
         message_block = f"""
@@ -778,10 +816,10 @@ def send_admin_failure_notification(registration, vehicle_title, vin_full, colou
                     <tr style="border-bottom: 1px solid #eee;">
                         <td style="padding: 10px 16px 10px 0; color: #666; font-size: 13px;">Colour</td>
                         <td style="padding: 10px 0; color: #1a1a1a; font-size: 14px;">{_esc(colour) or '—'}</td>
-                    </tr>
+                    </tr>{special_order_row}
                     <tr>
                         <td style="padding: 10px 16px 10px 0; color: #666; font-size: 13px; vertical-align: top;">User</td>
-                        <td style="padding: 10px 0; word-break: break-all; overflow-wrap: break-word;"><a href="mailto:{_esc(user_email)}" style="color: #003399; font-size: 14px; word-break: break-all; overflow-wrap: break-word;">{_esc(user_email)}</a></td>
+                        <td style="padding: 10px 0; word-break: break-all; overflow-wrap: break-word;"><a href="mailto:{_mailto(user_email)}" style="color: #003399; font-size: 14px; word-break: break-all; overflow-wrap: break-word;">{_esc(user_email)}</a></td>
                     </tr>
                 </table>
 
@@ -886,7 +924,7 @@ def send_admin_contact_message(contact_type, user_email, message):
                     </tr>
                     <tr style="border-bottom: 1px solid #eee;">
                         <td style="padding: 10px 16px 10px 0; color: #666; font-size: 13px; vertical-align: top;">From</td>
-                        <td style="padding: 10px 0; word-break: break-all; overflow-wrap: break-word;"><a href="mailto:{_esc(user_email)}" style="color: #003399; font-size: 14px; word-break: break-all; overflow-wrap: break-word;">{_esc(user_email)}</a></td>
+                        <td style="padding: 10px 0; word-break: break-all; overflow-wrap: break-word;"><a href="mailto:{_mailto(user_email)}" style="color: #003399; font-size: 14px; word-break: break-all; overflow-wrap: break-word;">{_esc(user_email)}</a></td>
                     </tr>
                 </table>
 

@@ -40,9 +40,13 @@ import time
 
 import requests
 
-from .http import get_session
+from .http import failure_chain, failure_kind, get_session
 
-from .vdg import paint_lookup, VdgError, VdgNotFoundError, VdgTimeoutError, _log_reg
+from .vdg import (paint_lookup, VdgError, VdgNotFoundError, VdgNotSentError,
+                  VdgTimeoutError, _log_reg)
+# paint302: VDG's list of finish words that are not paint codes, read here for
+# every provider's answer (see _is_finish_word_not_code).
+from .vdg import _FINISH_WORD_CODES
 # paint95: One Auto is NO LONGER SUBMITTED as a race leg, but the import and
 # _oneauto_leg below are deliberately kept. Re-enabling it is then one
 # ex.submit line rather than a rebuild, and its battery coverage — the coverage
@@ -57,12 +61,36 @@ _DE_COLOUR = re.compile(r'(rot|grau|blau|schwarz|wei(?:ss|\u00df)|silber|gr(?:ue
 _EN_COLOUR = re.compile(r'\b(red|gr[ae]y|blue|black|white|silver|green|yellow|brown|orange|purple|gold|beige|bronze)\b', re.I)
 
 
+def _stated_colours(name, words):
+    """paint302: the colours a name states through the colour words of ONE
+    language (`words` is _DE_COLOUR or _EN_COLOUR), as the families of
+    _COLOUR_FAMILY, so "rot" and "red" are one colour, and "grau", "grey",
+    "silber" and "silver" another. The German pattern finds its word at the
+    end of a longer one, which is how German names carry it ("Tornadorot",
+    "Phantomschwarz"); reading the name a word at a time cannot see those."""
+    found = (w.lower().replace('\u00df', 'ss').replace('\u00fc', 'ue') for w in words.findall(name or ''))
+    return {_COLOUR_FAMILY[w] for w in found if w in _COLOUR_FAMILY}
+
+
 def _display_tidy(result, make):
     """paint284: the name as it leaves for the page. Capitals for a name given all
     in lower case or all in capitals ("bright blue", "BRIGHT BLUE"), and the code's
     English name in place of a German one when its row has one ("Elixir-Rot
     Metallic" became "Elixir Red..."). Combination names and mixed case are left as
-    they are. Never raises."""
+    they are. Never raises.
+
+    paint302: ONLY AN ENGLISH NAME OF THE SAME COLOUR. The English name was
+    the one sharing most words with the German, whatever colour it stated, and
+    a row can list the names of two paints: BMW 209 "Nachtblau" became
+    "Orange", Mercedes 334 "Hellblau" became "Cardinal Red", Opel 22T "Schwarz"
+    became "Ocean Blue Perleffekt". Measured on the repository's catalogue: of
+    the 7,079 German names a row lists beside an English one, 386 went to a
+    name of another colour (the audit counted 105: its test reads whole words,
+    and so cannot see the colour inside "Nachtblau"). Now 72 of those go to
+    the row's English name of the right colour, and 314 stay German, because
+    the row has none. In the lookups to 7 Oct the swap had changed 58
+    different names (161 answers), every one to its own colour; all 58 read
+    as they did."""
     try:
         from lookup.models import PaintLookup
         name = (result or {}).get('paint_description') or ''
@@ -76,6 +104,9 @@ def _display_tidy(result, make):
             row = PaintLookup.all_objects.filter(manufacturer=PaintLookup.normalize_manufacturer(make or ''), code=code).first()
             words = set(re.findall(r'[a-z]+', name.lower()))
             english = [n for n in (getattr(row, 'all_names', None) or []) if _EN_COLOUR.search(n) and not _DE_COLOUR.search(n)]
+            # paint302: of those, only the ones that state the German name's colour.
+            _colour = _stated_colours(name, _DE_COLOUR)
+            english = [n for n in english if _colour & _stated_colours(n, _EN_COLOUR)]
             if english:
                 name = max(english, key=lambda n: len(words & set(re.findall(r'[a-z]+', n.lower()))))
         if name != result.get('paint_description'):
@@ -181,11 +212,20 @@ def _enrich_from_lookup(result, make, model=None, vdg_colour=None,
             result['placeholder_refused'] = True
             result['interior_refused'] = True
             return result
-        if is_special_order_code(code):
+        if marks_special_order(make, code):
             # paint159: never name a special-order code. Whatever the catalogue
             # holds against it is somebody else's bespoke car, picked up by a
             # scraper that found the name sitting next to the placeholder.
             # The CODE is kept: it really is on the sticker.
+            #
+            # paint299: BMW'S 490 TOO. This asked is_special_order_code, which
+            # knows 999 and its spellings only. So 490 kept the name it arrived
+            # with ("Sonderlackierung", German for special paint) on all six
+            # lookups that were given it (25 Jul to 1 Sep, on five cars
+            # registered bronze, purple, maroon, green, and red and black), and
+            # that name went to the row, the page and the email as if it were
+            # the colour's. It now asks marks_special_order, the one definition
+            # the search, the page, the email form and the replays all use.
             result['paint_description'] = ''
             result['special_order'] = True
             return result
@@ -571,8 +611,18 @@ VDG_SECOND_CHANCE_S = float(os.environ.get('VDG_SECOND_CHANCE_S', '23'))
 
 
 def _abandoned(error):
-    """True when a paint call failed without a receipt but VDG may still charge it."""
-    if error is None or isinstance(error, VdgNotFoundError):
+    """True when a paint call failed without a receipt but VDG may still charge it.
+
+    paint296: NOT A CALL THAT WAS NEVER SENT. When no connection to VDG could
+    be made, VDG never saw the request, so there is nothing for it to charge.
+    That used to count as abandoned, because a refused connection and a
+    dropped one both read "VDG request failed". Measured against local
+    sockets on 9 Oct: a refused connection, a name that does not resolve and
+    a connect timeout were each booked at 54p, twice per paint search. While
+    VDG could not be reached every search booked 1.08 pounds that was never
+    spent, and a 30 pound daily budget would have paused the site after 28.
+    """
+    if error is None or isinstance(error, (VdgNotFoundError, VdgNotSentError)):
         return False
     if isinstance(error, VdgTimeoutError):
         return True
@@ -912,6 +962,12 @@ def _vdg_retry(registration, telemetry=None, search_id=None, race_over=None,
         _t['vdg_retry_cost_estimated'] = True
         logger.warning('VDG paint call abandoned without a receipt for %s; booking an estimate',
                        _log_reg(registration))
+    # paint296: a call that never left is said so, and nothing is booked for it.
+    _unsent = [e for e in (first_error, second_error) if isinstance(e, VdgNotSentError)]
+    if _unsent:
+        _t['vdg_retry_not_sent'] = True
+        logger.warning('VDG paint call not sent for %s (%s); nothing booked for it',
+                       _log_reg(registration), str(_unsent[-1])[:120])
     _costs = [c for c in (first_cost, second_cost) if c is not None]
     retry_cost = sum(_costs) if _costs else None
     if retry_cost is not None:
@@ -1272,6 +1328,8 @@ def resolve_slashed_code(make, code, dvla_colour=None):
     # table, NOT through lookup(), because lookup() already splits on '/'
     # internally — so asking it would always say yes and nothing would ever be
     # resolved. That is exactly what happened on the first attempt here.
+    # (paint302: lookup() no longer splits a slash. The raw table is still the
+    # place to ask: lookup() also tries a shortened form and the L prefix.)
     #
     # Ordering matters: this is what protects abarth 103/B and its 4,565
     # siblings, where the slash is part of a legitimate code.
@@ -1318,9 +1376,34 @@ def resolve_slashed_code(make, code, dvla_colour=None):
         # longest.
         _rows = [found[part][0] for part in hits]
         if not all(_same_paint(_rows[0], r) for r in _rows[1:]):
-            return code
-        _vag = [part for part in hits if found[part][1]]
-        hits = [max(_vag or hits, key=len)]
+            # paint302: BEFORE THE STRING IS LEFT ALONE, THE TOP-UP HALVES STAND
+            # ASIDE. A row the catalogue top-up added answers only where no
+            # established row would (paint236), and until paint302 lookup()
+            # kept that promise for a slash string by splitting it itself: the
+            # established half went on answering as it had before the top-up.
+            # With that split gone (see PaintLookup.lookup) the promise is
+            # kept here. Halves that are different paints, one of them known
+            # only through a top-up row: the string resolves as it did before
+            # that row existed, by its established halves alone.
+            #
+            # NOT WHEN THE HALVES ARE ALL ONE PAINT (the lines below): there
+            # the longest is still given, top-up row or not, and Ford
+            # "2431C/2PJE/ZJNC" is why. In production 2431C and ZJNC are top-up
+            # rows named Moondust Silver and 2PJE is the established row, named
+            # Satin Silver by a single source; the string counts as one paint
+            # and gives 2431C. Setting the top-up rows aside there as well
+            # (the audit's W12) would give 2PJE "Satin Silver", and mmw sent
+            # that string for 10 cars, every one of which pl24 named Moondust
+            # Silver (VDG and Ezyvin, when they had a code of their own for
+            # one, said PNZJB, which is Moondust Silver too). So that part is
+            # left as it was, for the operator to decide.
+            hits = [part for part in hits if not PaintLookup.is_topup_only(found[part][0])]
+            _rows = [found[part][0] for part in hits]
+            if not hits or not all(_same_paint(_rows[0], r) for r in _rows[1:]):
+                return code
+        if len(hits) > 1:
+            _vag = [part for part in hits if found[part][1]]
+            hits = [max(_vag or hits, key=len)]
     if len(hits) != 1:
         return code
     # AND IT MUST AGREE WITH THE REGISTERED COLOUR, the same guard the mmw gate
@@ -1366,6 +1449,13 @@ def is_special_order_code(code):
     NOT evidence-based, unlike is_placeholder_code. `renault/999` has a hex and
     six models, so an evidence test would keep it — but six models is six cars
     that had special-order paint, not six cars sharing a colour.
+
+    paint299: NOTHING ON THE SITE ASKS THIS ANY MORE. It knows the codes every
+    make uses and not the ones a single make uses (BMW's 490), and while the
+    page asked this and the search asked marks_special_order, the two
+    disagreed about a BMW given 490. Everything now asks marks_special_order,
+    below. This is kept as the any-make half of that rule, which the
+    battery's paint159 checks still read on its own.
     """
     return (code or '').strip().upper() in _SPECIAL_ORDER_CODES
 
@@ -1383,16 +1473,23 @@ def marks_special_order(make, code):
     """True when a code says the car was painted to special order: `999` and its
     spellings for any make, and the codes a single make uses that way.
 
-    paint294. FOR THE PAINT SEARCH ONLY, SO FAR. Such a code is true and still
-    not an answer: it tells the customer the paint exists, not which one it
-    is. So the search no longer stops on it (see resolve_paint). A yellow BMW
-    on 7 Oct shows what that is worth: partslink24 said 490, mmw said 490, and
+    paint294, for the paint search. Such a code is true and still not an
+    answer: it tells the customer the paint exists, not which one it is. So
+    the search no longer stops on it (see resolve_paint). A yellow BMW on
+    7 Oct shows what that is worth: partslink24 said 490, mmw said 490, and
     VDG held the car's real code, C4H. VDG happened to answer first; had
     partslink24 been quicker, the customer would have been given 490.
 
-    What the PAGE does with such a code is still is_special_order_code's
-    decision, and that is unchanged here: 490 keeps the name it is shown with
-    today until the page's handling of special order codes is redone.
+    paint299: THE ONE DEFINITION, FOR EVERYTHING. The page, the status call,
+    the email form, the emails, the replays (7-day cache and remembered
+    answers), the car picture and the dashboard's manual queue all ask this
+    function, as the search does. Until then the page asked
+    is_special_order_code, which does not know 490, so a BMW given 490 was
+    shown it with a name and a swatch as if it were a colour. What each of
+    them does with the answer: no colour name and no swatch (the catalogue's
+    row for such a code is some other car's bespoke paint), the note that
+    offers a free manual lookup, and an email request that goes to the
+    operator's manual queue the way a not found request does (decided 9 Oct).
     """
     code = (code or '').strip().upper()
     if not code:
@@ -1402,6 +1499,17 @@ def marks_special_order(make, code):
     from lookup.models import PaintLookup
     return code in _SPECIAL_ORDER_BY_MAKE.get(
         PaintLookup.normalize_manufacturer(str(make or '')), ())
+
+
+def special_order_code_spellings():
+    """paint299: every code marks_special_order says yes to for at least one
+    make (999, L999, 0999 and 490 today), sorted. It is NOT the test: 490 is
+    in it and is a real colour on a Volvo. It is for narrowing a database
+    query to the few rows worth reading (the dashboard's manual queue), each
+    of which marks_special_order then decides with the row's make. Built from
+    the two tables above, so a code added there is found here too.
+    """
+    return sorted(set(_SPECIAL_ORDER_CODES).union(*_SPECIAL_ORDER_BY_MAKE.values()))
 
 
 def is_placeholder_code(make, code):
@@ -1520,6 +1628,53 @@ def _colour_families(text):
     return {_COLOUR_FAMILY[w] for w in words if w in _COLOUR_FAMILY}
 
 
+#: paint302: the words of _COLOUR_FAMILY that name a GEM or a METAL, for
+#: _gate_colour_families below and nothing else. Silver, gold and bronze are
+#: metals and are NOT here: they are words DVLA registers a car's colour by.
+#: Nor are graphite, anthracite, slate and charcoal, which are greys by name:
+#: a Volkswagen registered grey has "Blue Anthracite Pearl" (C7V), sent by mmw
+#: on 1 of its 832 lookups, and it passes because anthracite says grey.
+_GEM_AND_METAL_WORDS = frozenset({
+    'sapphire', 'ruby', 'emerald', 'jade', 'onyx', 'amber',
+    'titanium', 'platinum', 'cobalt', 'copper', 'brass', 'pewter', 'gunmetal',
+    'quicksilver',
+})
+
+
+def _gate_colour_families(text):
+    """paint302: the colour families a catalogue name states, AS THE MMW GATE
+    READS IT: a gem or a metal word counts only when the name has no plain
+    colour word.
+
+    _colour_families reads every word alike, so "Black Sapphire" stated black
+    AND blue (sapphire is in the table as a blue), and mmw's code for it
+    passed the gate on a car registered blue. A black named after a gem is
+    not a blue. When a name has a plain colour word, that word is the colour:
+    "Black Sapphire" is black, "Platinum White" white, "Copper Red" red. A
+    name with only the gem or the metal ("Sapphire", "Titanium Metallic") is
+    read by it, as before.
+
+    FOR THE GATE ONLY. _colour_families is shared with every other rule that
+    compares colours (the slash rule's colour guard, the dashboard's "check"
+    mark, what memory refuses, the catalogue commands) and reads as it did.
+    Measured: the repository's catalogue has 466 names that pair a gem or a
+    metal with a plain colour word of another family (sapphire with black 89,
+    platinum with white 32, onyx with green 27, copper with orange 23). Of
+    the 483 different codes mmw sent with a registered colour to 7 Oct, not
+    one gets another verdict from this, and so none of the 104 answers that
+    were mmw's own.
+
+    IT MAKES THE GATE STRICTER, AND THAT CAN REFUSE A RIGHT CODE. Chrysler PS3
+    is "Sapphire Silver", and a car with it was registered blue by DVLA: that
+    name is now read as silver alone. A refusal costs a free answer (the
+    search goes on without it); a wrong pass sends someone the wrong paint.
+    """
+    words = [w for w in re.sub(r'[^a-z]+', ' ', (text or '').lower()).split()
+             if w in _COLOUR_FAMILY]
+    plain = {_COLOUR_FAMILY[w] for w in words if w not in _GEM_AND_METAL_WORDS}
+    return plain or {_COLOUR_FAMILY[w] for w in words}
+
+
 def _is_colour_word_not_code(make, code):
     """paint197 (audit #3, P3): a colour word delivered as a paint code.
 
@@ -1563,15 +1718,59 @@ def _is_finish_word_not_code(make, code):
     not which paint it is. Real codes keep a word normalize_name does not
     drop (PN3BG, KTA). As with P3, a make whose catalogue holds the word as a
     code keeps it.
+
+    paint302: AND THE WORDS VDG'S CLIENT REFUSES, WHOEVER SENDS THEM. vdg.py
+    has a list of its own (_FINISH_WORD_CODES, 17 words) that it applies to
+    VDG's answers alone. Five of those words are not finish words to
+    normalize_name, so from pl24, Ezyvin or mmw they passed as a code of the
+    provider's own, which ends the search: STANDARD, METAL, BASECOAT,
+    NON-METALLIC and NONMETALLIC (the audit of 8 Oct, reproduced). None has
+    arrived yet: of that list only METALLIC is in five months of lookups, and
+    this rule already refused it. The list is read here the way VDG's client
+    reads it, the whole word in any case, so there is one list and every
+    provider's answer meets it. A make whose catalogue holds one of the words
+    as a code would keep it, as above; none does.
     """
     c = (code or '').strip()
     if not c or not c.replace(' ', '').replace('-', '').isalpha():
         return False
     from lookup.models import PaintLookup
-    if PaintLookup.normalize_name(c):
+    if PaintLookup.normalize_name(c) and c.upper() not in _FINISH_WORD_CODES:
         return False
     mfr = PaintLookup.normalize_manufacturer(make)
     return not PaintLookup.objects.filter(manufacturer=mfr, code__iexact=c).exists()
+
+
+#: paint302: the makes whose codes mmw writes with two extra digits.
+_MMW_PADDED_MAKES = frozenset({'volvo', 'polestar'})
+
+
+def mmw_unpadded_code(make, code):
+    """paint302: mmw's code for a Volvo or a Polestar without the two extra
+    digits it writes: "71700" is 717. Any other code, and any other make's,
+    comes back as it was given.
+
+    Measured on the lookups to 7 Oct: 16 Volvo and Polestar lookups hold a
+    code from mmw beside the code that was given. In 7 the two are the same
+    three digits. In the other 9, mmw's is those three digits and "00" (71700
+    three times, 74000 twice, 72000, 73500, 73900, and 36800 on a Polestar).
+    All 9 were recorded as mmw disagreeing with the answer, and the colour
+    check would have thrown each of them away had mmw's code been needed: the
+    catalogue holds 717, not 71700. (It has not been needed yet: of the 49
+    paint searches on these two makes 3 ended without a code, and mmw had
+    none for those.)
+
+    ONLY FIVE DIGITS ENDING 00, AND ONLY THESE TWO MAKES, because that is all
+    the evidence covers. Both callers try the code as sent FIRST: Volvo's own
+    91300, a truck colour, is five digits ending 00 and still answers as
+    itself.
+    """
+    from lookup.models import PaintLookup
+    c = str(code or '').strip()
+    if (len(c) == 5 and c.isdigit() and c.endswith('00')
+            and PaintLookup.normalize_manufacturer(str(make or '')) in _MMW_PADDED_MAKES):
+        return c[:3]
+    return code
 
 
 def mmw_code_validates(make, code, dvla_colour):
@@ -1606,6 +1805,21 @@ def mmw_code_validates(make, code, dvla_colour):
     if not want:
         return None
 
+    # paint302: A SLASH STRING IS RESOLVED FIRST, BY THE SLASH RULE. mmw joins
+    # some codes ("7236/BRQA", "2431C/2PJE/ZJNC": 4 different strings in 24 of
+    # the 832 lookups it had a code for, to 7 Oct). The string used to be
+    # handed whole to lookup(), which split it and answered with the first
+    # half it knew, while the half GIVEN was chosen afterwards by
+    # resolve_slashed_code: the colour could be checked on one half and
+    # another given. lookup() no longer splits (see there). The rule picks the
+    # half here, and that half is what is checked and what is returned (it was
+    # the string as sent). A string the rule leaves alone, two halves that are
+    # different paints or none it knows, finds no row below and is refused:
+    # Skoda "F9R/F9E" on a black car passed on its first half, Black Magic,
+    # though F9E is Candy White and the rule cannot tell which was meant.
+    if '/' in code:
+        code = resolve_slashed_code(make, code, dvla_colour)
+
     # Try the code as sent, then the notations the catalogue uses. mmw returns
     # whatever the SITE holds, and that differs from the catalogue in at least
     # two ways — refusing to look further rejects correct answers on
@@ -1638,6 +1852,12 @@ def mmw_code_validates(make, code, dvla_colour):
     _variants = [code, _bare, f'L{code}', f'L{_bare}']
     if _bare.upper().startswith('B0N') and len(_bare) > 3:
         _variants.append('E' + _bare[3:])
+    # paint302: a Volvo or Polestar code with mmw's two extra digits is tried
+    # without them, after the code as sent (see mmw_unpadded_code). 71700 found
+    # nothing, so the gate refused it on a black Volvo where it passes 717.
+    _unpadded = mmw_unpadded_code(make, _bare)
+    if _unpadded != _bare:
+        _variants.append(_unpadded)
     for candidate in _variants:
         row = PaintLookup.lookup(make, candidate)
         if not row:
@@ -1645,7 +1865,9 @@ def mmw_code_validates(make, code, dvla_colour):
         # THE NAME FIRST, ALWAYS. A colour word the manufacturer wrote is
         # better evidence than a hex we classified, so the hex never overrides
         # it and never gets a vote when the name has one.
-        named = _colour_families(row.name) if row.name else set()
+        # paint302: and a gem or a metal word in the name gives way to a plain
+        # colour word beside it (see _gate_colour_families).
+        named = _gate_colour_families(row.name) if row.name else set()
         if named:
             if named & want:
                 return candidate
@@ -1696,6 +1918,92 @@ def _mmw_has_code(f_mmw, make, vdg_colour):
 #: source still running. Measured on 1,045 answers since 14 Sep: half within
 #: 1.5s, 99% within 4.6s, 3 over 8s. The search's own deadline still caps it.
 MMW_SETTLE_WAIT_S = float(os.environ.get('MMW_SETTLE_WAIT_S', '8'))
+
+
+#: paint298: when the reserve is about to be bought and a supplier's colour
+#: name is in hand, mmw is given until THIS many seconds after the search
+#: began to answer, so its code can be tested against that name. Not a wait
+#: from the moment of asking: a search already past this mark does not wait
+#: at all, and most are (mmw is asked at the very start and 99% of its
+#: answers are back within 4.6s; VDG and pl24 are rarely both done sooner).
+#: The cost, when mmw is slow or not answering and a name is in hand: the
+#: reserve is asked up to this many seconds later than it used to be.
+MMW_NAME_TEST_BY_S = float(os.environ.get('MMW_NAME_TEST_BY_S', '5'))
+
+
+def mmw_code_matches_name(make, model, vdg_colour, mmw_code, names):
+    """paint298, THE OPERATOR'S RULE FOR THE RESERVE. True when mmw's code may
+    stand in for the paid reserve: a supplier named the colour, and our
+    catalogue lists mmw's code under that name.
+
+    WHY. The reserve (Ezyvin, 5 credits, about 45p a call) was bought whenever
+    VDG and pl24 had both finished without a code of their own, before mmw's
+    free answer was looked at. Measured on production, 22 Sep to 9 Oct: 259
+    reserve calls, about 145 pounds a month. The operator does not trust mmw
+    on its own word ("i don't fully trust mwm answers"), so the saving he
+    chose is the narrow one, in his words: "if we have a name from vdg or pl24
+    and code from mmw, compare if that code matches that name, if not then we
+    do ezyvin and if that fails only then do mmw". Two witnesses, then: a
+    supplier's NAME for this car, and mmw's CODE, joined by our catalogue.
+
+    THE TEST, all of which must hold:
+      1. `names`: what VDG or pl24 called the colour, having no code of their
+         own for it. No name, no test. A name that is only a colour word
+         ("Blue Metallic") is not one: it says no more than the registered
+         colour does, which test 2 has already used, so it is no second
+         witness. One of the 47 searches the rule first held on, replayed on
+         the lookups of 22 Sep to 7 Oct, held on such a name alone (a Ford,
+         "Blue Metallic"); there the reserve is bought as before.
+      2. mmw's code passes the colour check every mmw answer has to pass
+         before it is used (mmw_code_validates: our catalogue's row for it is
+         the colour the car is registered as).
+      3. Read by the refusal rules, it is a code to give (not a placeholder,
+         not a special order code).
+      4. The code that would be GIVEN (after the slash rules have chosen a
+         half of "7236/BRQA"), or the notation of it the colour check
+         matched, is among the codes the catalogue lists under one of the
+         names (PaintLookup.codes_listed_under: the hand table, the
+         catalogue's rows, the operator's own table).
+
+    MEASURED ON PRODUCTION (measure298.py, read only, 9 Oct): the rule held in
+    56 of the 259 searches that bought the reserve (46 with both suppliers
+    empty, 10 at the backstop), about 43 pounds a month. In those 56 the
+    reserve had answered with only a name 35 times, the same code 17 times,
+    nothing twice and another code twice (Ford "Sea Grey (Metallic)": 6DYE
+    here, PN3FV from the reserve). In 37 more, mmw's code passed the colour
+    check and the catalogue did not list it under the name (Ford "Frozen
+    White" and 7VTA, "Moondust Silver (Metallic)" and 2431C/2PJE/ZJNC): there
+    the reserve is still bought, which is the rule doing its job.
+
+    TWO THINGS STRICTER THAN WHAT WAS MEASURED, both on the side of buying the
+    reserve as before. The script counted a match on ANY half of a slash
+    string mmw sent; here the half that is given must be the one listed (in
+    all 9 slash strings production saw, it was). And the script took a bare
+    colour word as a name (test 1 above); an independent review of this
+    change found that one, on the replay.
+
+    Never raises: any failure is "no match", and the reserve is bought.
+    """
+    try:
+        from lookup.models import PaintLookup
+        names = [n.strip() for n in (names or ()) if isinstance(n, str) and n.strip()
+                 and not is_bare_colour_name(n.strip())]
+        raw = (mmw_code or '').strip() if isinstance(mmw_code, str) else ''
+        if not names or not raw or not make:
+            return False
+        checked = mmw_code_validates(make, raw, vdg_colour)
+        if not checked:
+            return False
+        read = _enrich_from_lookup({'paint_code': checked, 'paint_description': '',
+                                    'all_paint_codes': [], 'source': 'mmw'},
+                                   make, model, vdg_colour=vdg_colour)
+        if _weigh(make, read) != 'code':
+            return False
+        ours = {PaintLookup.code_key(checked), PaintLookup.code_key(read.get('paint_code'))} - {''}
+        return any(ours & PaintLookup.codes_listed_under(make, name) for name in names)
+    except Exception:  # noqa: BLE001 - a test that fails must cost a reserve call, not a search
+        logger.warning('mmw name test failed', exc_info=True)
+        return False
 
 
 def _mmw_settle(f_mmw, make, vdg_colour, telemetry, wait=0.0):
@@ -1821,15 +2129,36 @@ def _pl24_lookup(vin, make, category=None, search_id=None):
                 params=params, headers=headers, timeout=_PL24_HTTP_TIMEOUT,
             )
             break
-        except requests.exceptions.Timeout as exc:
-            # coloureg's own timeout (PL24_TIMEOUT), shorter than pl24's 120s, so
-            # pl24's 504 and its reason can never arrive in this case.
-            _record_worker_result(
-                search_id, pl24_outcome='client_timeout',
-                pl24_error=(f'{type(exc).__name__}: coloureg gave up after '
-                            f'{PL24_TIMEOUT:g}s')[:200])
-            return None
-        except requests.exceptions.ConnectionError as exc:
+        except requests.exceptions.RequestException as exc:
+            # paint296: ONE CLAUSE, AND THE KIND IS READ FROM THE FAILURE.
+            # There were three: Timeout, ConnectionError, anything else. On the
+            # shared session a read timeout is a ConnectionError (see
+            # http.failure_kind), so pl24 taking the full 60 seconds was stored
+            # as "client_connection_error", the name a refused connection has.
+            # Each case now gets its own name and says what happened.
+            _kind = failure_kind(exc)
+            _cause = type(failure_chain(exc)[-1]).__name__
+            _connect_s, _read_s = _PL24_HTTP_TIMEOUT
+            if _kind == 'timeout':
+                # coloureg's own timeout (PL24_TIMEOUT), shorter than pl24's 120s, so
+                # pl24's 504 and its reason can never arrive in this case.
+                _record_worker_result(
+                    search_id, pl24_outcome='client_timeout',
+                    pl24_error=(f'{_cause}: no reply, coloureg gave up after '
+                                f'{_read_s:g}s')[:200])
+                return None
+            if isinstance(exc, requests.exceptions.ConnectTimeout):
+                # Connecting took the whole connect allowance. Not retried: the
+                # retry is for a failure that comes back at once.
+                _record_worker_result(
+                    search_id, pl24_outcome='client_timeout',
+                    pl24_error=(f'{_cause}: could not connect within '
+                                f'{_connect_s:g}s')[:200])
+                return None
+            if not isinstance(exc, requests.exceptions.ConnectionError):
+                _record_worker_result(search_id, pl24_outcome='client_error',
+                                      pl24_error=type(exc).__name__[:200])
+                return None
             # paint258: ONE QUICK RETRY after a connection that failed fast. pl24
             # is our own service on Railway's private network; a failed
             # connection there is a restart or a dropped socket, and it cost
@@ -1841,13 +2170,10 @@ def _pl24_lookup(vin, make, category=None, search_id=None):
                 logger.warning('pl24 connection failed (%s); retrying once', type(exc).__name__)
                 time.sleep(_PL24_RETRY_PAUSE_S)
                 continue
+            # paint296: the cause by name (it always said "ConnectionError").
             _record_worker_result(
                 search_id, pl24_outcome='client_connection_error',
-                pl24_error=(type(exc).__name__ + (' (after one retry)' if _attempt == 2 else ''))[:200])
-            return None
-        except requests.exceptions.RequestException as exc:
-            _record_worker_result(search_id, pl24_outcome='client_error',
-                                  pl24_error=type(exc).__name__[:200])
+                pl24_error=(_cause + (' (after one retry)' if _attempt == 2 else ''))[:200])
             return None
     # paint144: READ THE BODY BEFORE GIVING UP ON THE STATUS. pl24 puts `slot`
     # on its 502 and 504 bodies too, and that is where it is most informative —
@@ -1956,7 +2282,7 @@ def _oneauto_leg(vin, make, model, year, search_id, sink, race_over=None):
     # ONLY on still_fetching. A 206 is a settled "no data" and a 200 has already
     # answered; asking again would spend time on a question already decided.
     # Measured to be free: billing is per VIN, not per call — a repeat call on
-    # WBAJA92070BV21477 moved the balance not at all.
+    # the same VIN moved the balance not at all.
     if result is None and sink.get('outcome') == 'still_fetching':
         # Recorded for the same reason as VDG's, though this one is FREE —
         # One Auto bills per VIN, not per call. Worth measuring anyway: if it
@@ -2109,6 +2435,11 @@ def resolve_paint(registration, vin, make, category=None, telemetry=None, model=
          once VDG's name gives a code, a source still silent at the reserve's
          backstop is no longer waited for (see the top of the loop). The order
          among fallbacks is set out where the loop ends.
+         paint298: and the paid reserve is not bought to improve on a fallback
+         when mmw's code is listed in our catalogue under the colour name VDG
+         or pl24 gave (mmw_code_matches_name, the operator's rule). With both
+         suppliers finished that code is the answer; at the backstop it ends
+         the search, as VDG's name code does.
       3. An answer the refusal rules reject (a placeholder, an interior) is no
          answer at all, and the search carries on (paint294).
       4. Otherwise None (a true miss).
@@ -2353,6 +2684,10 @@ def resolve_paint(registration, vin, make, category=None, telemetry=None, model=
         # paint294: the VIN that VDG's paint call supplied, kept whichever
         # answer is given in the end (see _give).
         vdg_vin = ''
+        # paint298: what VDG and pl24 CALLED the colour, as they sent it, when
+        # they had no code of their own for it. The reserve rule tests mmw's
+        # code against these (see _mmw_stands_in).
+        said = {}
 
         def _result_or_none(fut):
             try:
@@ -2395,6 +2730,30 @@ def resolve_paint(registration, vin, make, category=None, telemetry=None, model=
             return bool(entry and entry[0] == 'name'
                         and (entry[1].get('paint_code') or '').strip())
 
+        def _mmw_stands_in():
+            """paint298: the reserve is about to be bought. True when the
+            operator's rule says mmw's code does instead (see
+            mmw_code_matches_name), and the row is told why no reserve call
+            was made. Asked at the two moments the reserve is started, and
+            nowhere else: before them a supplier still running may yet give
+            the car's own code, which beats a match on a name.
+
+            mmw is waited for only until MMW_NAME_TEST_BY_S after the search
+            began, and only when there is a name to test its code against."""
+            names = [n for n in (said.get('pl24'), said.get('vdg_retry')) if n]
+            if not names or f_mmw is None:
+                return False
+            try:
+                row = f_mmw.result(timeout=max(
+                    0.0, min(_start + MMW_NAME_TEST_BY_S, deadline) - time.monotonic()))
+            except Exception:  # noqa: BLE001 - not back in time, or a free leg that raised
+                return False
+            if not mmw_code_matches_name(make, model, vdg_colour,
+                                         (row or {}).get('code'), names):
+                return False
+            _t['ezyvin_outcome'] = 'skipped_name_match'
+            return True
+
         while pending:
             remaining = deadline - time.monotonic()
             if remaining <= 0:
@@ -2436,6 +2795,18 @@ def resolve_paint(registration, vin, make, category=None, telemetry=None, model=
                     # Not when VDG's name already gives a code: the check at
                     # the top of the loop ends the search with that code.
                     if not _gives_code(held.get('vdg_retry')):
+                        # paint298: NOR WHEN MMW'S CODE MATCHES THE NAME ONE
+                        # SUPPLIER HAS ALREADY GIVEN. Then the search ENDS
+                        # here, with that code, for the reason given at the
+                        # top of the loop: a supplier still silent at the
+                        # backstop is the hung leg, and the remedy is the code
+                        # in hand, not a paid call and not the rest of the
+                        # minute. (A car with no usable VIN never gets here
+                        # with a name: pl24 is not asked for it, so the only
+                        # supplier that could name its colour is the one still
+                        # running.)
+                        if _mmw_stands_in():
+                            break
                         started = _start_ezyvin('backstop')
                         if started is not None:
                             pending = pending | {started}
@@ -2466,6 +2837,8 @@ def resolve_paint(registration, vin, make, category=None, telemetry=None, model=
                         return _give(entry)
                     if entry[0]:
                         held['vdg_retry'] = entry
+                    if entry[0] == 'name':
+                        said['vdg_retry'] = (vdg_result.get('paint_description') or '').strip()
 
             # VDG didn't (yet) yield a code. Inspect pl24 if it completed in
             # this batch. A real CODE wins immediately (subject only to a VDG
@@ -2485,6 +2858,7 @@ def resolve_paint(registration, vin, make, category=None, telemetry=None, model=
                     # sets it if a held one of pl24's turns out to be.
                     if entry[0] == 'name':
                         _t['pl24_name_only'] = True
+                        said['pl24'] = (p.get('paint_description') or '').strip()
                     if entry[0]:
                         held['pl24'] = entry
 
@@ -2538,13 +2912,21 @@ def resolve_paint(registration, vin, make, category=None, telemetry=None, model=
             # The reserve is now asked when the name gives NO code, which is
             # new: two Fords on 12 Sep ("Smoke") went without a code and the
             # reserve was never tried.
+            #
+            # paint298: NOR WHEN MMW'S CODE MATCHES THE NAME A SUPPLIER GAVE
+            # (the operator's rule, see mmw_code_matches_name). Nothing is
+            # pending then, so the loop ends and the order below gives mmw's
+            # corroborated code, which is the code that was tested. Where the
+            # test does not hold the reserve is bought exactly as before, and
+            # mmw's code is given only if the reserve has no code of its own.
             if (not reserve_done and f_pl24 is not None
                     and f_vdg not in pending and f_pl24 not in pending
                     and not _gives_code(held.get('vdg_retry'))):
                 reserve_done = True
-                started = _start_ezyvin('both_empty')
-                if started is not None:
-                    pending = pending | {started}
+                if not _mmw_stands_in():
+                    started = _start_ezyvin('both_empty')
+                    if started is not None:
+                        pending = pending | {started}
 
         # NO SOURCE GAVE A CODE OF ITS OWN. What is left, best first (paint294
         # put these in one place):

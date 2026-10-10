@@ -26,11 +26,27 @@ in shell history or a process list:
     manage.py propose_hexes --contradicted --limit 25 --apply  # write
 
 Nothing is written without --apply. Start small, look at the output, then widen.
+
+ROWS ALREADY REFUSED ARE NOT ASKED ABOUT AGAIN (paint308, --missing only). A row
+the model was asked about and that got no swatch (its proposal failed the colour
+check, or it answered null) still has no swatch, so every later run asked about
+it first, paid for the answer again and threw it away again. An --apply run now
+writes each such row to a list, one line a row, and every later --missing run
+leaves those rows out and says how many:
+
+    etc/hex_refused.jsonl     where the list is kept (.gitignore keeps etc/ out
+                              of the repo); --skip-file PATH keeps it elsewhere
+
+Nothing to do to use it. To ask about the rows again, delete the file (or, for
+one row, its line). A row whose name has been corrected since is asked about
+again by itself: the list remembers the name it was refused under. A preview
+reads the list and never adds to it.
 """
 import json
 import os
 import re
 import time
+from datetime import datetime, timezone
 
 from django.core.management.base import BaseCommand, CommandError
 
@@ -38,6 +54,8 @@ from lookup.models import PaintLookup
 
 MODEL = 'claude-sonnet-4-6'
 API_URL = 'https://api.anthropic.com/v1/messages'
+#: paint308: the rows --missing has asked about and could write no swatch for.
+SKIP_FILE = os.path.join('etc', 'hex_refused.jsonl')
 
 #: Hues that are genuinely different, as opposed to a classifier boundary. A
 #: dark teal named green reading blue is imprecision, not a contradiction —
@@ -89,6 +107,10 @@ class Command(BaseCommand):
         parser.add_argument('--apply', action='store_true',
                             help='Write the verified proposals. Without this, '
                                  'nothing is written.')
+        parser.add_argument('--skip-file', default=SKIP_FILE,
+                            help='With --missing: the list of rows already asked '
+                                 'about and refused, which are left out (default '
+                                 'etc/hex_refused.jsonl). Delete it to ask again.')
 
     # ------------------------------------------------------------------
 
@@ -110,13 +132,18 @@ class Command(BaseCommand):
         self._hex_family = _hex_family
 
         rows = self._select(opt)
+        if getattr(self, '_left_out', 0):
+            # paint308: say so, or the rows would seem to have vanished.
+            self.stdout.write(
+                f'{self._left_out:,} rows left out: already asked about and refused '
+                f'(listed in {opt.get("skip_file")}; delete that file to ask again)')
         if not rows:
             self.stdout.write('Nothing to do.')
             return
         self.stdout.write(f'{len(rows):,} rows selected'
                           f'{"" if opt["apply"] else "  (preview — nothing will be written)"}')
 
-        accepted = rejected = null = failed = 0
+        accepted = rejected = null = failed = noted = 0
         for i in range(0, len(rows), opt['batch']):
             chunk = rows[i:i + opt['batch']]
             try:
@@ -131,10 +158,16 @@ class Command(BaseCommand):
                     f'{chunk[0].manufacturer}/{chunk[0].code} onwards')
                 failed += len(chunk)
                 continue
+            refused = []          # paint308: (row, the proposal, why nothing was written)
             for row in chunk:
                 hexv = proposals.get(row.pk)
                 if not hexv:
                     null += 1
+                    # An answer of null is the model declining, and it would
+                    # decline again. A row the reply never mentions (a reply cut
+                    # short) was not answered at all, so it is not noted.
+                    if hexv == '':
+                        refused.append((row, '', 'the model declined to guess'))
                     continue
                 ok, why = self._verify(row, hexv)
                 if not ok:
@@ -142,6 +175,7 @@ class Command(BaseCommand):
                     self.stdout.write(
                         f'  REJECT {row.manufacturer}/{row.code} '
                         f'{(row.name or "")[:26]} -> {hexv}  ({why})')
+                    refused.append((row, hexv, why))
                     continue
                 accepted += 1
                 self.stdout.write(
@@ -149,6 +183,8 @@ class Command(BaseCommand):
                     f'{(row.name or "")[:26]} {row.hex or "--"} -> {hexv}')
                 if opt['apply']:
                     self._write(row, hexv)
+            if opt['missing'] and opt['apply']:
+                noted += self._note_refused(opt.get('skip_file'), refused)
             time.sleep(0.5)     # courtesy, not a rate limit
 
         self.stdout.write('')
@@ -156,6 +192,10 @@ class Command(BaseCommand):
                           f'{" (written)" if opt["apply"] else " (NOT written)"}')
         self.stdout.write(f'  rejected : {rejected:,}   failed the colour check')
         self.stdout.write(f'  no answer: {null:,}   the model declined to guess')
+        if noted:
+            self.stdout.write(
+                f'  noted    : {noted:,}   refused rows listed in {opt.get("skip_file")}, '
+                f'not asked about again')
         if failed:
             self.stdout.write(
                 f'  batch fail: {failed:,}   rows skipped; run again to retry them')
@@ -199,13 +239,30 @@ class Command(BaseCommand):
             # with them before reaching the 4,222 that can pass. Those rows need
             # a NAME first, not a hex. Same test as _verify, same function, so
             # the two can never disagree about which rows are checkable.
+            #
+            # paint308: NOR ROWS ALREADY ASKED ABOUT AND REFUSED. A refused row
+            # still has no swatch, so it was selected again on every run, ahead
+            # of the rows never asked about: the model was paid for the same
+            # answer, the check refused it again, and with a small --limit the
+            # run never got past them. Reproduced with a faked model: three
+            # runs of --limit 3 --apply sent the same two refused rows and the
+            # one declined row each time, and a fifth row that would have
+            # passed was never asked about. Production's full run of 25 Sep
+            # left 883 refused and 4 declined rows in that position. An --apply
+            # run now lists what it could not write (see _note_refused) and the
+            # listed rows are passed over here, before --limit is counted.
             from lookup.services.paint_resolver import _colour_families
+            listed = self._refused(opt.get('skip_file'))
+            self._left_out = 0
             for qs_pass in (qs.filter(hex='').exclude(models_list=[]),
                             qs.filter(hex='', models_list=[])):
                 for r in qs_pass.order_by('manufacturer', 'code').iterator():
                     if not (r.name or '').strip() or _hex_locked(r):
                         continue
                     if not _colour_families(r.name):
+                        continue
+                    if (r.manufacturer, r.code, r.name) in listed:
+                        self._left_out += 1
                         continue
                     out.append(r)
                     if len(out) >= opt['limit']:
@@ -219,6 +276,46 @@ class Command(BaseCommand):
                 if len(out) >= opt['limit']:
                     break
         return out
+
+    @staticmethod
+    def _refused(path):
+        """paint308: the rows the list says not to ask about again, each as
+        (make, code, the name it was refused under). A line that cannot be
+        read is passed over, as research_codes does with its review file."""
+        listed = set()
+        if path and os.path.exists(path):
+            with open(path, encoding='utf-8') as f:
+                for line in f:
+                    try:
+                        r = json.loads(line)
+                    except ValueError:
+                        continue
+                    if isinstance(r, dict):
+                        listed.add((r.get('manufacturer'), r.get('code'), r.get('name')))
+        return listed
+
+    def _note_refused(self, path, refused):
+        """paint308: add this batch's refused rows to the list. Returns how
+        many were added. Appended batch by batch, so a run that is stopped
+        half way keeps what it has paid for. Never raises: the answers are
+        already paid for, and a list that cannot be saved (a read-only folder,
+        as in the Railway console) must not stop the swatches being written."""
+        if not (path and refused):
+            return 0
+        try:
+            os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
+            with open(path, 'a', encoding='utf-8') as f:
+                for row, hexv, why in refused:
+                    f.write(json.dumps({
+                        'manufacturer': row.manufacturer, 'code': row.code, 'name': row.name,
+                        'proposed': hexv, 'why': why, 'model': MODEL,
+                        'asked_at': datetime.now(timezone.utc).isoformat(timespec='seconds'),
+                    }, ensure_ascii=False) + '\n')
+        except OSError as exc:
+            self.stderr.write(f'  could not save the refused rows to {path} ({exc}); '
+                              f'they will be asked about again next time')
+            return 0
+        return len(refused)
 
     def _contradicts(self, row):
         fam = self._families(row.name)

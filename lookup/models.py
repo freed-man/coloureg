@@ -141,7 +141,7 @@ class Search(models.Model):
     # (NOT_SAVED): not the registration or VIN, not the paint answer, not MOT or
     # tax. Empty on lookups from before this field existed. Nullable so the code
     # still live while a deploy's migration has already run can keep saving rows;
-    # read it as `row.details or {}`. Cleared by the 12-month scrub.
+    # read it as `row.details or {}`. Cleared by the 5-year scrub.
     details = models.JSONField(default=dict, null=True, blank=True)
 
     # Flow/outcome tracking
@@ -242,12 +242,19 @@ class Search(models.Model):
     #   vdg_retry_returned    — did the 2nd (retry) VDG call return paint?
     #   pl24_attempted        — was the pl24 scraper queried?
     #   pl24_returned         — did pl24 return a usable CODE?
-    #   recovery_name_only    — did pl24 return a colour NAME but no code? (a
+    #   recovery_name_only    : did the search end with a colour NAME and no
+    #                           code, whatever source the name came from? (a
     #                           partial result: we show + can email the name, but
     #                           it is NOT a code recovery, so `success` stays
-    #                           False and `provider` is not set to partslink24.
-    #                           Kept distinct so admin stats don't count it as a
-    #                           full hit.)
+    #                           False. Kept distinct so admin stats don't count
+    #                           it as a full hit.)
+    #                           paint305 (M14): this note still said "did pl24
+    #                           return a name" and that `provider` is not set.
+    #                           Neither is true any more. Since paint294 the flag
+    #                           is set for a name from VDG, partslink24 or Ezyvin
+    #                           alike (views._record_name_only), and since
+    #                           paint278 `provider` holds the source the name
+    #                           came from.
     #   recovery_duration_ms  — wall-clock time the recovery took (ms); lets us
     #                           spot slow commercial-vehicle lookups.
     recovery_attempted = models.BooleanField(default=False)
@@ -499,6 +506,50 @@ class Search(models.Model):
     def gate_reason_label(self):
         """Which gate made this lookup not automated, in words (paint211)."""
         return self.GATE_LABELS.get(self.gate_reason, 'reason not recorded')
+
+    # paint297: a name made of two paints. "Two-tone ..." at the start, or a
+    # "+" or "/" anywhere ("Black + Red", "Grey/Black"). The colour test below
+    # reads every colour word in a name, so on these it trips on the second
+    # paint: 9 of the 48 answers it first flagged were names like these.
+    _TWO_PAINTS_RE = re.compile(r'^\s*two[\s-]*tone\b|[+/]', re.I)
+
+    @property
+    def colour_check(self):
+        """True when this answer is worth a look: its paint name states a
+        colour the car is not registered as (paint297, for the dashboard only).
+
+        "Arctic White" on a van registered silver, "Misano Red" on a car
+        registered grey. It means WORTH A LOOK, not wrong: a dark grey on a car
+        registered black trips it too. Measured on the lookups of 2 May to
+        7 Oct: 38 of 2,929 answers with a code and a name (1.3%).
+
+        Never the operator's own answer, nor a copy of one (a cache or
+        remembered row whose code he typed for that plate): he has already
+        looked. Never a two paint name, where the test cannot tell which paint
+        the registered colour belongs to. And nothing without both a code and
+        a name. The test itself is remembered.contradicts, the one that keeps
+        such an answer out of memory (paint293), so the two cannot drift.
+
+        Read by the dashboard's row only. Nothing a customer sees uses it: the
+        operator chose a mark for himself and no line for the customer (9 Oct).
+        """
+        if self.provider == self.PROVIDER_MANUAL:
+            return False
+        code = (self.paint_code or '').strip()
+        name = (self.paint_description or '').strip()
+        if not code or not name or self._TWO_PAINTS_RE.search(name):
+            return False
+        from lookup.services.remembered import contradicts
+        if not contradicts(name, self.colour or ''):
+            return False
+        if self.provider in self.COPIED_PROVIDERS:
+            # One query, and only for a copy that trips the test (one row in
+            # five months of lookups): is this the operator's own code for the
+            # plate, given again?
+            return not type(self).objects.filter(
+                registration=self.registration, provider=self.PROVIDER_MANUAL,
+                paint_code=self.paint_code).exists()
+        return True
 
     @property
     def source_label(self):
@@ -868,7 +919,7 @@ class PaintLookup(models.Model):
         'ds': 'dsautomobiles',
         # Lagonda is an Aston Martin marque and normalises to 'lagonda', which
         # has ZERO rows; 'astonmartin' has 689. UNMEASURED, unlike the entries
-        # above: one Lagonda lookup exists in the traffic (CS24, 3 Aug) and it
+        # above: one Lagonda lookup exists in the traffic ([car 45], 3 Aug) and it
         # returned no code at all, so there is nothing to verify a recovery
         # against. Included because an empty key can only decline, so routing it
         # somewhere with data is weakly better than routing it nowhere — but it
@@ -953,7 +1004,7 @@ class PaintLookup(models.Model):
         return t
 
     @staticmethod
-    def normalize_code_variants(paint_code):
+    def normalize_code_variants(paint_code, split_slash=True):
         """Generate reasonable variants of an incoming code to try, EXACT-match
         first.
 
@@ -962,6 +1013,12 @@ class PaintLookup(models.Model):
         dashes mark shade variants). So we try the full uppercased string first,
         then split on / and , (VDG joins two codes like '8E8E/A7W'), then a
         last-resort numeric-suffix strip ('197U' -> '197') tried LAST.
+
+        paint302: with split_slash=False a slash is left alone (a comma still
+        splits). lookup() asks for that, for the reason given there. The
+        catalogue top-up and the research command still ask for every part:
+        they use the list to tell whether a code is already reachable, and
+        what they do is unchanged.
         """
         if not paint_code:
             return []
@@ -974,7 +1031,7 @@ class PaintLookup(models.Model):
             variants.append(full)
             seen.add(full)
 
-        for part in re.split(r'[/,]', full):
+        for part in re.split(r'[/,]' if split_slash else r',', full):
             part = part.strip()
             if part and part not in seen:
                 variants.append(part)
@@ -1037,15 +1094,30 @@ class PaintLookup(models.Model):
         after the exact/split variants miss, and a given variant's L-form is only
         used when the plain form is ABSENT — so it can never override a correct
         exact match, and never collides with the solid-vs-metallic finish
-        variants (those have BOTH forms present, so exact wins). This also
-        recovers compound two-tone codes like 'B4B4/B9A' → split → 'B9A' →
-        'LB9A', since the split parts are among the variants.
+        variants (those have BOTH forms present, so exact wins).
+
+        paint302: A SLASH IS NOT SPLIT HERE ANY MORE. This function used to
+        try each part of "A/B" as a code of its own, which is how 'B4B4/B9A'
+        found LB9A. But it did so with none of the guards the slash rule has
+        (paint_resolver.resolve_slashed_code), and so it answered where that
+        rule had refused. Found by the audit of 8 Oct and reproduced when this
+        was built: a Fiat's "N/A" was read as code N and named "Warm Gray
+        Metallic Matt"; "T9/1" on a white Skoda, which the rule refuses for
+        its colour, still showed Atoll Gruen and a green swatch. Of the 212
+        slash strings in five months of lookups, 9 that the rule leaves alone
+        were named and coloured this way. Now the callers that can hold a
+        slash string ask the rule first (lookup_with_canonical,
+        two_tone_parts, mmw_code_validates), so a string is read one way
+        everywhere: the half the rule picks, or nothing. A code with a slash
+        of its own (abarth 103/B and 4,565 more) is matched whole, as before.
+        A comma still splits: nothing resolves one earlier, and no lookup has
+        carried one.
         """
         if not manufacturer or not paint_code:
             return None
 
         mfr_norm = cls.normalize_manufacturer(manufacturer)
-        variants = cls.normalize_code_variants(paint_code)
+        variants = cls.normalize_code_variants(paint_code, split_slash=False)
 
         # 1) Exact / split variants (the normal, reliable path).
         # ONE query for all variants instead of one per variant (paint17). A
@@ -1065,6 +1137,9 @@ class PaintLookup(models.Model):
         # any variant or the L fallback, so topping up can add answers but can
         # never change one: measured, a new part of a compound code like Ford
         # '2431C/2PJE/ZJNC' otherwise took over from the part that answered.
+        # (paint302: a compound code is no longer split in this function. For
+        # halves that are different paints the slash rule keeps this promise
+        # now: see resolve_slashed_code.)
         for code in variants:
             match = rows.get(code)
             if match and not cls.is_topup_only(match):
@@ -1147,6 +1222,10 @@ class PaintLookup(models.Model):
         Conservative: input ≤3 chars; candidate strictly longer; not a 1-2 char
         suffix variant (those are process variants like L8PA); not the input
         doubled. Returns the longer code string or None.
+
+        paint301: and the candidate must share a name with the paint shown
+        (see the note in the body). The same swatch alone is not the same
+        paint.
         """
         if not manufacturer or not paint_code:
             return None
@@ -1167,6 +1246,41 @@ class PaintLookup(models.Model):
             manufacturer=mfr_norm, hex=target_hex
         ).exclude(code=original)
 
+        # paint301: ONLY A ROW THAT SHARES A NAME WITH THE PAINT SHOWN.
+        #
+        # This is the code the results page and the email print as "also: X".
+        # Until now any row of the make with the same swatch counted, and a
+        # swatch is not a paint: the catalogue gives one swatch to many
+        # unrelated rows. So VW P3G, Flash Red, was shown "also: LY3H", which
+        # is Laser Red, and Lexus 212, Black, "also: 5881", a row named Blue.
+        # Measured on the lookups of 2 May to 7 Oct: 618 were shown an "also"
+        # code, and for 14 of them (12 different pairs) the two rows had no
+        # stored name in common. Across the catalogue it is 3,562 of the
+        # 11,564 short codes that show one.
+        #
+        # WHAT "SHARE A NAME" MEANS. One of the normalised names stored on the
+        # row shown (normalized_names: lower case, finish words dropped) is
+        # also stored on the other row, reading grey and gray as one word as
+        # the name matcher does (paint89). A name that is only a colour word
+        # does not count ("grey", "dark grey", "yellow": is_bare_colour_name,
+        # the test that refuses such a name a code in _code_from_name_exact).
+        # Two real cases decided that. Nissan KPN, Gunmetal Grey, shares only
+        # the word "grey" with PK26, and Lexus 1G0, Dark Grey Mica, only "dark
+        # grey" with I165; in both makes that swatch is a stock grey carried
+        # by 15 and by 17 rows, a red and a taupe among Lexus's. The row shown
+        # always counts as itself: a VW or Audi code given without its L (Y9B)
+        # is still shown "also: LY9B".
+        #
+        # Which of the rows that are left is shown is decided as before. So
+        # P3G now shows "also: LP3G", its own row, and Citroen KVE shows M0Z5
+        # (Cosmic Silver, as KVE is) where it showed M0Z9 (Nautiele).
+        from lookup.services.paint_resolver import is_bare_colour_name
+
+        def proper_names(row):
+            return {n.replace('gray', 'grey') for n in (row.normalized_names or [])
+                    if n and not is_bare_colour_name(n)}
+
+        shown_names = proper_names(swatch)
         candidates = []
         for s in siblings:
             c = s.code
@@ -1175,6 +1289,8 @@ class PaintLookup(models.Model):
             if c == original + original:
                 continue
             if c.startswith(original) and len(c) - len(original) <= 2:
+                continue
+            if s.pk != swatch.pk and shown_names.isdisjoint(proper_names(s)):
                 continue
             candidates.append(s)
 
@@ -1275,6 +1391,36 @@ class PaintLookup(models.Model):
         return row, base
 
     @classmethod
+    def _half_of_slash_string(cls, manufacturer, paint_code, vdg_colour=None):
+        """paint302: a slash string as the slash rule reads it: the one half
+        that is the paint code, or the string as it came when the rule leaves
+        it alone. Anything without a slash comes back untouched.
+
+        For the callers that may hold a string nobody has resolved yet: the
+        operator's own answer typed as "T9 / Y9C" (20 of his answers up to
+        August were typed with a slash), a string stored before the slash rule
+        existed, each entry of a VDG reply that lists several codes. lookup()
+        split those by itself until paint302 (see the note there). They now
+        get the reading a new answer gets, with the same guards: of the 212
+        different slash strings in five months of lookups, 193 keep the name
+        and swatch they showed, 7 show those of the half the rule picks, and
+        9 that the rule leaves alone show none (3 never showed any).
+
+        WHAT THAT COSTS. For those 9 the old split showed the name of the
+        first half it knew, with no check at all: of the car's registered
+        colour for 5 of them and of another colour for 4. Two of the 9 were
+        the code a customer was given (Citroen "KGX/EXY" on a blue car,
+        Skoda "8T/F3K" on a red one, one lookup each), and both had shown a
+        swatch of the right colour, which they no longer do. A rule that
+        picks between two different paints by the car's colour could give
+        those back; none exists yet, and it would be the operator's call.
+        """
+        if not isinstance(paint_code, str) or '/' not in paint_code:
+            return paint_code
+        from lookup.services.paint_resolver import resolve_slashed_code
+        return resolve_slashed_code(manufacturer, paint_code, vdg_colour)
+
+    @classmethod
     def lookup_with_canonical(cls, manufacturer, paint_code, model=None, year=None, vdg_colour=None):
         """Convenience: swatch lookup + canonical expansion.
 
@@ -1286,6 +1432,12 @@ class PaintLookup(models.Model):
         if not paint_code:
             return None, None, None
         try:
+            # paint302: a slash string is read by the slash rule before
+            # anything below looks at it (see _half_of_slash_string).
+            _as_given = paint_code
+            paint_code = cls._half_of_slash_string(manufacturer, paint_code, vdg_colour)
+            _halved = (isinstance(_as_given, str) and '/' in _as_given
+                       and paint_code != _as_given.strip())
             swatch = cls.lookup(
                 manufacturer=manufacturer,
                 paint_code=paint_code,
@@ -1375,6 +1527,12 @@ class PaintLookup(models.Model):
                 # paint282: the code delivered stays the code shown. That row's code
                 # field holds two codes ("BLVC 471 (JNJ)"), which is not a code to
                 # print, to key a picture by, or to put in the cache.
+                canonical = None
+            if _halved:
+                # paint302: nor is an "also" code offered for a slash string
+                # read as one of its halves. None ever was (a string longer
+                # than three characters gets none), and the half is not the
+                # code this caller is showing.
                 canonical = None
             # hex may be '' (name-only rows) — normalise to None for the caller
             _name = swatch.name or None
@@ -1536,7 +1694,7 @@ class PaintLookup(models.Model):
         'ford': {
             'race red': {
                 # Confirmed against the operator's Ford catalogue for a 2018 Focus
-                # ST-3 (VIN WF05XXGCC5JT23802). partslink24 returns the NAME
+                # ST-3 (looked up by its VIN). partslink24 returns the NAME
                 # for Ford passenger cars but no code, so this is the path that
                 # turns a name-only result into a usable answer.
                 'focus': 'BRQAWHA',
@@ -2018,19 +2176,268 @@ class PaintLookup(models.Model):
         try again without the suffix. Measured on real data that is 11 newly
         resolved and 0 changed — additive by construction, since the fallback
         can only run where the answer was already None.
+
+        paint301: an answer is looked at once more before it leaves here, by
+        the finish word in the name (_finish_check) and by its shape
+        (_never_a_placeholder). Both tries pass through both. The second try
+        is checked against the name AS GIVEN, so a finish word in the bracket
+        that was dropped ("Orionsilber (Metallic)") still counts.
         """
-        result = cls._code_from_name_exact(manufacturer, colour_name, model=model)
+        matched = []
+        result = cls._code_from_name_exact(manufacturer, colour_name, model=model,
+                                           matched=matched)
+        result = cls._finish_check(result, matched, colour_name, colour_name, model)
         if result[0] is not None:
-            return result
+            return cls._never_a_placeholder(result)
         if not colour_name:
             return result
         stripped = cls._TRAILING_PAREN_RE.sub('', colour_name.strip()).strip()
         if not stripped or stripped == colour_name.strip():
             return result
-        return cls._code_from_name_exact(manufacturer, stripped, model=model)
+        matched = []
+        result = cls._code_from_name_exact(manufacturer, stripped, model=model,
+                                           matched=matched)
+        return cls._never_a_placeholder(
+            cls._finish_check(result, matched, colour_name, stripped, model))
+
+    @staticmethod
+    def _never_a_placeholder(result):
+        """paint301: A PLACEHOLDER IS NEVER THE ANSWER TO A NAME.
+
+        The catalogue holds 18 rows whose code is a placeholder by its shape
+        (XXX, XX, NA, UNKNOWN, TBC, TBA, a dash: paint_resolver's
+        _PLACEHOLDER_CODE), and a name could lead to one: Audi "Blue" gave
+        XXX, the junk row behind the XXX of paint146, and it reached the
+        lookup as a found code. When a supplier SENDS such a code,
+        is_placeholder_code keeps the 7 of them that list a model, because the
+        supplier has said the car carries it. Nobody has said so here: the
+        name is all there is, and "NA" worked out from a name is not something
+        a customer can order paint by. So by shape alone. The name stays, and
+        the lookup goes on as for any name without a code.
+        """
+        from lookup.services.paint_resolver import _PLACEHOLDER_CODE
+        if result[0] is not None and _PLACEHOLDER_CODE.match(str(result[0]).strip()):
+            return None, None, None
+        return result
+
+    @staticmethod
+    def _name_words(text):
+        """paint301: a name's words with its FINISH WORDS KEPT, for comparing
+        two names word for word: lower case, accents folded, brackets and
+        punctuation read as spaces, a provider's wrapper words dropped, grey
+        and gray one word. "Dolphin Grey (Metallic)" and "Dolphin Gray
+        Metallic" are the same words; "Dolphin Grey Pearl" is not."""
+        t = unicodedata.normalize('NFKD', PaintLookup._light_normalize_name(text))
+        t = ''.join(c for c in t if not unicodedata.combining(c))
+        return re.sub(r'[^a-z0-9]+', ' ', t).strip().replace('gray', 'grey')
+
+    #: paint301: the finish words that take a side in _finish_check: matt
+    #: against everything that shines. Each is a word normalize_name drops.
+    #: Left out on purpose: 'satin', which is part of real names (Vauxhall
+    #: "Satin Steel Grey", Ford "Satin Silver"), and the words that say
+    #: nothing about the sheen ('clearcoat', 'tricoat', 'effect').
+    _MATT_WORDS = frozenset({'matt', 'matte'})
+    _SHINY_WORDS = frozenset({
+        'metallic', 'metalic', 'metalizado', 'metallise', 'metalise', 'met',
+        'pearl', 'pearlescent', 'perl', 'perlato', 'nacre', 'mica',
+        'solid', 'uni', 'gloss'})
 
     @classmethod
-    def _code_from_name_exact(cls, manufacturer, colour_name, model=None):
+    def _finish_check(cls, answer, rows, said, wording, model):
+        """paint301: ONE MORE LOOK AT A NAME'S ANSWER, BY ITS FINISH WORD.
+
+        `answer` is what _code_from_name_exact gave for `wording`, `rows` the
+        catalogue rows that wording matched, `said` the name as the supplier
+        wrote it. Returns the answer, another row's, or (None, None, None).
+
+        WHY. normalize_name drops finish words before a name is matched, so
+        "Dolphin Grey Metallic" and "Dolphin Grey Pearl" are one name to the
+        rules above, and they can pick the row of the other finish. VW
+        "Dolphin Grey Metallic" on a Golf gave LX7Z, the row named Dolphin
+        Grey Pearl and listed for the Jetta only, while LC7Q carries "Dolphin
+        Grey Metallic" word for word and lists the Golf; VDG's own code for
+        those three cars was C7Q. BMW "Orionsilber Metallic" gave F39, the
+        row named Orionsilber Matt; the suppliers' own code was A92.
+
+        WHAT IT MAY DO, and nothing else. A name with no finish word is
+        answered exactly as before. So is a name the rules above declined:
+        this never turns a decline into an answer. And so is an answer whose
+        own row carries the supplier's words. Otherwise:
+
+          (a) ANOTHER ROW CARRIES THE WORDS, AND LISTS THIS CAR'S MODEL. If
+              exactly one other matching row has the supplier's name word for
+              word among its stored names AND its model list includes the
+              car's model, that row answers. The model is half of the test,
+              not a tie-break: BMW "Mineralgrau Metallic" is B39 on an X1
+              (12 lookups where the supplier had the code), and the only row
+              that carries those words exactly is N0U, a motorcycle paint;
+              Hyundai "Red Passion Metallic" on an i10 is X2R, which the
+              catalogue calls Red Passion Pearl, and the row with the exact
+              words is P9R, Veloster Red. Without a model nothing is switched.
+
+          (b) THE ROW SAYS MATT AND THE NAME SAYS IT SHINES, or the other way
+              round. If every name the answer's row has for this paint says
+              matt while the supplier's says metallic, pearl or solid (or the
+              reverse), the answer is refused: no code, and the lookup goes on
+              as for any name without one.
+
+        WHY ONLY MATT. Measured on the 697 lookups where a supplier gave its
+        own code with a name stating a finish, and the catalogue's row for
+        that code carries the name: "metallic" for a paint the catalogue
+        calls "pearl", or the reverse, 31 times (Audi "Scuba Blue Metallic"
+        is LX5Q, Scuba Blue Pearl), so those two words do not tell two paints
+        apart and refusing on them would have taken 11 right answers away.
+        Matt against a shiny finish for one paint: never (one name states
+        both, Hyundai "Bijarim Khaki Matte Metallic", and is read as matt, as
+        its row is). "Solid" against "pearl" was the audit's example (Tesla
+        "Pearl White" giving PBCW, Solid White); that name is only a colour
+        word and gives no code at all now (see _code_from_name_exact). For
+        other names solid is left alone: suppliers do not agree on it for one
+        paint (Ford Panther Black, "(Metallic)" from one and "Solid" from two
+        others, paint295).
+
+        Never raises: if the check itself fails the answer stands as it was.
+        """
+        if answer[0] is None or not rows:
+            return answer
+        try:
+            one_spelling = lambda text: text.replace('gray', 'grey')
+            want = cls._name_words(said)
+            finish = set(want.split()) - set(one_spelling(cls.normalize_name(said)).split())
+            if not finish:
+                return answer                        # no finish word: exactly as before
+            plain = one_spelling(cls.normalize_name(wording))    # the name the rows were matched by
+            # The second try's wording counts too when it has a finish word of
+            # its own ("Dolphin Grey Metallic (C7Q)", bracket dropped).
+            forms = {want, cls._name_words(wording)} - {plain}
+
+            def names_of(row):
+                return [n for n in list(row.all_names or []) + [row.name] if n]
+
+            def carries_the_words(row):
+                return any(cls._name_words(n) in forms for n in names_of(row))
+
+            code = str(answer[0])
+            # The answer's own rows: FLVA and FLVAWWA are one code written two
+            # ways (see _collapse_to_single_code), so both are "its row".
+            picked = [r for r in rows if str(r.code).startswith(code)]
+            if not picked or any(carries_the_words(r) for r in picked):
+                return answer
+
+            # (a) another row carries the words and lists this car's model
+            if model:
+                mine = {r.code for r in picked}
+                worded = [r for r in rows if r.code not in mine and carries_the_words(r)]
+                listed = ([r for r in worded
+                           if cls._model_matches(model, r.models_list, anywhere=False)]
+                          or [r for r in worded
+                              if cls._model_matches(model, r.models_list, anywhere=True)])
+                if len({r.code for r in listed}) == 1:
+                    row = listed[0]
+                    logger.info('name %r: %s given, not %s: its row carries those words '
+                                'and lists the model', str(said)[:60], row.code, code)
+                    return (row.code, (row.hex or None),
+                            cls._display_name(row, cls.normalize_name(wording)))
+
+            # (b) matt against a finish that shines
+            said_matt = bool(finish & cls._MATT_WORDS)
+            said_shiny = bool(finish & cls._SHINY_WORDS) and not said_matt
+            if said_matt or said_shiny:
+                def says_the_opposite(row):
+                    mine = [set(cls._name_words(n).split()) for n in names_of(row)
+                            if one_spelling(cls.normalize_name(n)) == plain]
+                    if not mine:
+                        return False             # no name of its own to go by: not a contradiction
+                    if said_shiny:
+                        return all(w & cls._MATT_WORDS for w in mine)
+                    return all((w & cls._SHINY_WORDS) and not (w & cls._MATT_WORDS)
+                               for w in mine)
+                if all(says_the_opposite(r) for r in picked):
+                    # Refused, not undecided: nothing is left for the caller
+                    # to record as an ambiguity or to pick a "best" row from.
+                    cls._set_last_ambiguity(None)
+                    logger.info('name %r: %s refused, its row states the other finish',
+                                str(said)[:60], code)
+                    return None, None, None
+            return answer
+        except Exception:
+            logger.warning('finish check failed; the answer stands', exc_info=True)
+            return answer
+
+    _CODE_KEY_RE = re.compile(r'[\s\-/.]')
+
+    @classmethod
+    def code_key(cls, code):
+        """A code as it is compared between sources: upper case, with no
+        spaces, hyphens, slashes or dots ('NH-731P' and 'NH731P' are one)."""
+        return cls._CODE_KEY_RE.sub('', str(code or '').strip().upper())
+
+    @classmethod
+    def codes_listed_under(cls, manufacturer, colour_name):
+        """paint298: every code this make is known to carry under a colour
+        name, as code_key() keys. An empty set when there is none.
+
+        NOT THE SAME QUESTION AS code_from_name. That one asks "which ONE code
+        is this name?" and declines unless the matches collapse to a single
+        paint, because its answer is given to a customer. This one asks "is
+        THIS code among the codes that carry this name?", for a code another
+        source has already supplied, so it wants every match and never has to
+        choose. Ford "Race Red" is listed under nine codes: code_from_name
+        has to pick one of them, and this says yes to any of the nine.
+
+        The matching is code_from_name's own, so the two cannot disagree about
+        what a name is: the hand table (CURATED_NAME_OVERRIDES, on the lightly
+        normalised name), then every row whose stored names hold the
+        normalised name, grey and gray both ways, for the name as given and
+        again without a trailing bracket ("Sea Grey (Metallic)" and "Sea
+        Grey"). Then the operator's own table by the same name. Hidden rows do
+        not count. Never raises: a failure reads as "not listed", which leaves
+        whoever asked doing what it did before.
+
+        paint301: two things code_from_name now does that this does NOT. It
+        gives no code for a name that is only a colour word ("Blue Metallic"),
+        and it refuses a row whose finish contradicts the name's (matt against
+        metallic). This still lists every code under the name, bare word or
+        not, as it did when paint298 was measured.
+        """
+        keys = set()
+        try:
+            mfr = cls.normalize_manufacturer(manufacturer or '')
+            given = (colour_name or '').strip()
+            if not mfr or not given:
+                return keys
+            wanted = set()
+            for wording in {given, cls._TRAILING_PAREN_RE.sub('', given).strip()}:
+                if not wording:
+                    continue
+                hit = (cls.CURATED_NAME_OVERRIDES.get(mfr) or {}).get(
+                    cls._light_normalize_name(wording))
+                if hit:
+                    keys.add(cls.code_key(hit))
+                norm = cls.normalize_name(wording)
+                if norm:
+                    wanted |= {norm, norm.replace('gray', 'grey'),
+                               norm.replace('grey', 'gray')}
+            if wanted:
+                # Scanned in Python for the reason _code_from_name_exact gives:
+                # a JSON `contains` lookup does not exist on every database.
+                keys |= {cls.code_key(code)
+                         for code, names in cls.objects.filter(manufacturer=mfr)
+                         .values_list('code', 'normalized_names')
+                         if not wanted.isdisjoint(names or [])}
+                keys |= {cls.code_key(code)
+                         for code in OperatorPaintCode.objects.filter(
+                             manufacturer=mfr, normalized_name__in=wanted)
+                         .values_list('code', flat=True)}
+        except Exception:
+            logger.warning('codes_listed_under failed for %s', (manufacturer or '')[:30],
+                           exc_info=True)
+            return set()
+        keys.discard('')
+        return keys
+
+    @classmethod
+    def _code_from_name_exact(cls, manufacturer, colour_name, model=None, matched=None):
         """Given a colour NAME (and make), return a single paint code — but ONLY
         when it is unambiguous.
 
@@ -2061,6 +2468,10 @@ class PaintLookup(models.Model):
         Each step only ever NARROWS toward a single code; it never invents a match
         the base logic wouldn't have found, so this can only turn previously
         ambiguous (declined) names into resolved ones, never the reverse.
+
+        paint301: `matched`, when the caller passes a list, is filled with the
+        catalogue rows the name matched, for the caller's last look at the
+        answer (_finish_check). Nothing here reads it.
 
         Returns (code, hex, canonical_name) or (None, None, None).
         """
@@ -2093,6 +2504,45 @@ class PaintLookup(models.Model):
                     row = cls.lookup(manufacturer, hit)
                     if row is not None:
                         return row.code, row.hex, row.name
+
+            # paint301: A NAME THAT IS ONLY A COLOUR WORD GIVES NO CODE.
+            #
+            # "Blue", "Blue Metallic", "Black Pearl", "Metallic Grey Paintwork":
+            # a colour, with at most a shade before it and a finish after it
+            # (is_bare_colour_name, the test paint243 wrote for the opposite
+            # direction, read here on the lightly normalised name so brackets
+            # and a provider's wrapper words do not hide one). A supplier that
+            # writes this has not said which paint it is, and the catalogue
+            # can only answer by accident of how its rows happen to be named.
+            # Ford "Blue Metallic" gave JCTEWHA, Chroma Blue, to four
+            # customers between 26 Aug and 8 Sep, because one row lists that
+            # wording as another name; on every Ford where a supplier sent its
+            # own code beside that name (7 lookups) the code was PN4FT. Audi
+            # "Blue" gave the junk row XXX. Of the names of this kind the
+            # lookups carried that gave a code, the supplier's own code
+            # disagreed with it more often than it agreed.
+            #
+            # AFTER the two hand tables above, on purpose: a line written out
+            # by hand for such a name is a decision, and still answers.
+            # The lookup then goes on as for any name without a code.
+            #
+            # NOT TOUCHED: the operator's own table. _enrich_from_lookup reads
+            # it when this returns nothing, so a code he recorded under such a
+            # name is still given for that name (6 of his 152 hand answers to
+            # 7 Oct carry a name that is only a colour word; no real lookup
+            # has needed one of them). Whether that should stop is his to say.
+            #
+            # MEASURED on the lookups of 2 May to 7 Oct: replaying all 2,842
+            # paint searches, the 5 Ford "Blue Metallic" ones are the only
+            # ones that end differently (the name, and no code). Three names
+            # of this kind are real factory names that the suppliers' own
+            # codes bore out every time (Audi "Light Silver Metallic" LY7W 12
+            # of 12, Mini "Light White" B15 and Volvo "Silver Metallic" 426, 3
+            # of 3 each): each came with its code on every real lookup, so
+            # none of them changed, and none has a hand line yet.
+            from lookup.services.paint_resolver import is_bare_colour_name
+            if is_bare_colour_name(cls._light_normalize_name(colour_name)):
+                return None, None, None
 
             name_norm = cls.normalize_name(colour_name)
             if not name_norm:
@@ -2144,6 +2594,11 @@ class PaintLookup(models.Model):
             ]
             if not rows:
                 return None, None, None
+            if matched is not None:
+                # paint301: handed to the caller for its last look at the
+                # answer, not fetched a second time (a whole make was read to
+                # find them).
+                matched.extend(rows)
 
             # Try to collapse the full candidate set to a single code.
             resolved = cls._collapse_to_single_code(rows, name_norm)
@@ -2369,11 +2824,24 @@ class PaintLookup(models.Model):
     #:
     #: Guarded HERE rather than at the display site so every path is covered —
     #: results page, email and API each resolve names independently.
-    _COMBINATION_NAME_RE = re.compile(r'^\s*\S+\s+\+\s+\S+\s*$')
+    #:
+    #: paint302: TWO PARTS OR MORE. The pattern knew exactly two, so a row
+    #: naming three or four codes passed as a colour: Mazda 47E is
+    #: "Px + 46V + 47D" and Mini MW6 "C74 + C6X + C6T + C60". 74 rows of the
+    #: repository's catalogue are like that (52 of three parts, 22 of four,
+    #: every one listed by the same source: Mini 19, Toyota 13, Nissan 12,
+    #: Renault 8, Mitsubishi 7, Mazda 4 and six more makes). No lookup has
+    #: landed on one yet (the audit's "15 real lookups" were two part names a
+    #: supplier wrote, such as "Ivory D16 + Black Gne"); the name would have
+    #: been shown as it stands. Such a name is now a combination like any
+    #: other, which hides it. It is not EXPANDED: the two-tone wording and
+    #: the split swatch are written for exactly two paints
+    #: (expand_combination still declines anything else).
+    _COMBINATION_NAME_RE = re.compile(r'^\s*\S+(?:\s+\+\s+\S+)+\s*$')
 
     @classmethod
     def is_combination_name(cls, name):
-        """True when a name is two codes joined rather than a colour.
+        """True when a name is two or more codes joined rather than a colour.
 
         Deliberately anchored and whitespace-strict: it must be the WHOLE name,
         so a genuine colour containing a plus ("Black + Silver Trim", were one to
@@ -2446,6 +2914,18 @@ class PaintLookup(models.Model):
                 grp = item['_group']
                 if grp and grp == want:
                     item['is_body'] = True
+            # paint302: THE BODY IS NAMED ONLY WHEN EXACTLY ONE HALF MATCHES.
+            # When both halves are in the registered colour's group, both were
+            # tagged: the page drew "body" on each, and the caption called the
+            # first one listed the body and the second the roof, which is a
+            # guess. Abarth 618/B on a car registered grey is two greys, and
+            # 549 of the 4,838 pairs the repository's catalogue can expand
+            # are two paints of one group (343 of them grey). No lookup so far
+            # has been one. With both matching the colour cannot say which is
+            # which, so neither is tagged and the caption says "and".
+            if sum(1 for i in out if i['is_body']) != 1:
+                for item in out:
+                    item['is_body'] = False
             if any(i['is_body'] for i in out):
                 out.sort(key=lambda i: not i['is_body'])
         for item in out:
@@ -2465,6 +2945,9 @@ class PaintLookup(models.Model):
         body first when the DVLA colour identified one, or None.
         """
         try:
+            # paint302: a slash string is read as lookup_with_canonical reads
+            # it, so the page's two swatches and its caption cannot disagree.
+            paint_code = cls._half_of_slash_string(manufacturer, paint_code, vdg_colour)
             row = cls.lookup(manufacturer, paint_code)
             if not row or not cls.is_combination_name(getattr(row, 'name', None)):
                 return None
@@ -2565,7 +3048,7 @@ class PaintCodeReport(models.Model):
                                null=True, blank=True,
                                related_name='paint_reports')
     # Copied, not derived. The Search row can be scrubbed by prune_old_data at
-    # 365 days while the report still needs to count against its code.
+    # 5 years while the report still needs to count against its code.
     registration = models.CharField(max_length=20, blank=True, default='')
     manufacturer = models.CharField(max_length=100, blank=True, default='',
                                     db_index=True)
@@ -2687,10 +3170,36 @@ class OperatorPaintCode(models.Model):
     needs_review = models.BooleanField(default=False, db_index=True)
 
     class Meta:
+        # paint305 (M11): ONE ENTRY PER MAKE AND CODE, held by the database.
+        # The note above has always said the row is unique on (manufacturer,
+        # code), and nothing made it so: a second entry for the same make and
+        # code was accepted (by hand in the admin, or by two requests recording
+        # the same new code at the same moment), and from then on record()
+        # raised MultipleObjectsReturned for that code every time, which on
+        # the dashboard's report form is an error page. Production held 141
+        # entries and no repeats on 8 Oct. Migration 0065 adds the rule; on a
+        # database that does hold a repeat it stops with a message naming the
+        # pairs and changes nothing.
+        constraints = [
+            models.UniqueConstraint(fields=['manufacturer', 'code'],
+                                    name='operator_code_once_per_make'),
+        ]
         indexes = [
             models.Index(fields=['manufacturer', 'code']),
             models.Index(fields=['manufacturer', 'normalized_name']),
         ]
+
+    def clean(self):
+        """paint305 (M11): read the code the way save() stores it, BEFORE the
+        one entry per make and code rule is checked.
+
+        This runs when the Django admin's form is checked. save() below trims
+        the code and puts it in capitals, so without this a code typed in
+        small letters ("2pje") passed the form's check against an existing
+        2PJE, was then stored as 2PJE, and the database refused it with an
+        error page instead of the form's own "already exists" line.
+        """
+        self.code = (self.code or '').strip().upper()
 
     def save(self, *args, **kwargs):
         """Keep normalized_name derived, always.
@@ -2745,8 +3254,15 @@ class OperatorPaintCode(models.Model):
         row, _created = cls.objects.update_or_create(
             manufacturer=mfr, code=code,
             defaults={
-                'colour_name': name,
-                'normalized_name': norm,
+                # paint305 (M11): A BLANK NAME KEEPS THE NAME ALREADY RECORDED.
+                # Both went into this list whatever they held, so answering a
+                # second car with the same code and the name box left empty
+                # wiped the name typed the first time, and with it the name to
+                # code direction for that colour (reproduced: "Test Blue
+                # Metallic" found its code, then found nothing). A name is
+                # written only when one was given; a new entry with none still
+                # starts blank.
+                **({'colour_name': name, 'normalized_name': norm} if name else {}),
                 'model_text': (model or '').strip(),
                 'source_registration': (registration or '').strip().upper(),
                 'source_search_id': search_id,
@@ -2847,6 +3363,10 @@ class SiteConfig(models.Model):
     get() below. Any code path that MUTATES the row must call save(), which
     refreshes that cache so the change is visible immediately on the saving
     worker and within the cache TTL (60s) on the others.
+
+    paint305 (M10): and it must START from fresh(), never from get()'s copy.
+    The copy can be up to a minute behind the other worker, and save() writes
+    a balance back from it. See fresh() below.
     """
 
     # Pinned primary key for the singleton row.
@@ -2955,7 +3475,7 @@ class SiteConfig(models.Model):
     #   at 10:   6 alerts, 1.5/month, caught 2 of the 3
     #
     # 10 wins because the job is to make the OPERATOR LOOK on the day, not to
-    # catch every IP automatically. One email naming 90.197.60.82 on 7 Sep
+    # catch every IP automatically. One email naming one of them on 7 Sep
     # would have done it — open the dashboard, see 19 Audis in a row, find the
     # other two IPs in a minute. At 7 a month it becomes something you filter;
     # at 1.5 it stays something you read, and an alert nobody reads is worth
@@ -3162,7 +3682,7 @@ class SiteConfig(models.Model):
 
         VDG returns TypeApprovalCategory on the vehicle call we already pay
         for, so this costs nothing extra. It catches bikes a make list never
-        could: DMZ3018 was a Mash Force 400, a marque nobody would think to
+        could: [car 46] was a Mash Force 400, a marque nobody would think to
         add, and it arrived tagged L3.
 
         Better than a make list in the other direction too. BMW builds cars and
@@ -3219,9 +3739,21 @@ class SiteConfig(models.Model):
 
     def access_key_map(self):
         """{key: label} from the admin textarea. Malformed lines are ignored."""
+        # paint304: ONE KEY PER LINE, AND A LINE STARTING # IS A NOTE. This box
+        # was read like the blocklists (_parse_list: split at new lines AND at
+        # commas, every piece kept), which is wrong for a box whose lines are
+        # key:label. Measured on a scratch copy: "k1:Dave, tel: 0113" made two
+        # keys, k1 and one called "tel" that anyone could guess, and a line
+        # meant as a note or as a switched off key ("#k2:Smith Motors") made a
+        # live key called "#k2". A key only lifts the hourly limit, and
+        # production's box was empty when this was found (audit of 8 Oct, P7).
+        # So the box is split at new lines only, a comma stays in the label
+        # where it was typed, and a line that starts with # is skipped, as it is
+        # in the unsupported makes box. The three blocklists are read as before.
         out = {}
-        for line in self._parse_list(self.access_keys):
-            if ':' not in line:
+        for line in (self.access_keys or '').splitlines():
+            line = line.strip()
+            if not line or line.startswith('#') or ':' not in line:
                 continue
             key, _, label = line.partition(':')
             key = key.strip()
@@ -3355,6 +3887,32 @@ class SiteConfig(models.Model):
             caches['local'].set(cls._CACHE_KEY, obj, cls._CACHE_TTL)
         except Exception:
             pass
+        return obj
+
+    @classmethod
+    def fresh(cls):
+        """The row as the DATABASE holds it now, for code about to CHANGE a
+        setting. Everything that only reads keeps using get().
+
+        paint305 (M10). get() hands each worker a copy that it keeps for up to
+        a minute, and every change used to start from that copy. save()
+        compares the copy's two balances with the database's and, where they
+        differ, takes the copy's figure for a change just made: it stamps the
+        time and writes the copy's figure. So a balance typed in on one worker
+        was put back to the old figure by the next save of ANY setting on the
+        other worker inside that minute: the maintenance switch, the budget,
+        the blocklists, the payments switch, the budget alert, the origin gate
+        switching itself off. Reproduced with two copies standing for the two
+        workers: 123.45 saved by one, 50.00 back after the other saved the
+        maintenance switch alone. A switch pressed twice inside the minute was
+        read from the old copy as well, so the second press repeated the first
+        instead of undoing it.
+
+        Starting from this read, the only difference save() can find is the
+        one the caller has just made. One query, never served from the cache;
+        save() then puts the saved row in this worker's cache as it always did.
+        """
+        obj, _ = cls.objects.get_or_create(pk=cls.SINGLETON_PK)
         return obj
 
 

@@ -45,7 +45,7 @@ from django.utils import timezone
 from lookup.models import CarPicture, PaintLookup, Search
 from lookup.services import picture_store
 from lookup.services.http import get_session
-from lookup.services.paint_resolver import _colour_families
+from lookup.services.paint_resolver import _colour_families, marks_special_order
 
 logger = logging.getLogger(__name__)
 
@@ -120,8 +120,15 @@ def paint_words(make, code, name, dvla_colour):
     paint229: A TWO-TONE NAMES BOTH PAINTS, EACH WITH ITS OWN HEX, and which
     is the body. The combination row carries one hex at most, and for 2VN it
     was the black roof's, so the prompt gave the model no colour at all for
-    the Lunar Rock body, and it drew a warm beige-grey from the name alone."""
-    if code:
+    the Lunar Rock body, and it drew a warm beige-grey from the name alone.
+
+    paint299: A SPECIAL ORDER CODE IS DRAWN IN THE REGISTERED COLOUR, never
+    from the catalogue's row for it, which is some other car's bespoke paint:
+    on the repo's copy a purple BMW given 490 would have been drawn in
+    "Bornit", bright blue, and a VW given L999 in "Pistazie". It gets the
+    words a code with no row and no name has always had, which is what a
+    Bentley's 999 was already drawn from."""
+    if code and not marks_special_order(make, code):
         try:
             parts = PaintLookup.two_tone_parts(make, code, vdg_colour=dvla_colour)
         except Exception:

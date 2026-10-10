@@ -8,6 +8,9 @@ the steering wheel is on, and saves it in car_pictures/ at the top of the repo
 it. Run from the repo folder, env.py makes that PRODUCTION's lookups and
 supplies the keys.
 
+paint308: only a lookup that found a paint code is drawn (no code, no picture,
+as on the site); a plate with none is reported and nothing is paid for.
+
     python manage.py car_pictures AB12CDE
     python manage.py car_pictures AB12CDE CD34EFG          several cars
 
@@ -25,9 +28,18 @@ from lookup.services.protection import normalize_registration
 
 
 def latest_lookup(registration):
-    """The latest lookup of this plate that found a car, or None."""
+    """The latest lookup of this plate that found a car and a paint code, or None.
+
+    paint308: NO CODE, NO PICTURE, HERE TOO. The site stopped drawing a lookup
+    with no code in paint223 (a picture in DVLA's bare colour misled more than
+    none), and redraw_car_picture never drew one, but this command took the
+    plate's latest lookup whatever it held: it paid for a picture, a wheel
+    check and a plate check to draw the car "painted blue". Reproduced on a
+    scratch copy with the paid calls faked. And where an older lookup of the
+    plate had the code and a newer one had none, it drew the newer one. A
+    lookup with no code is now left out, as redraw_car_picture leaves it out."""
     reg = normalize_registration(registration)
-    return (Search.objects.filter(registration=reg).exclude(make='')
+    return (Search.objects.filter(registration=reg).exclude(make='').exclude(paint_code='')
             .order_by('-timestamp').first())
 
 
@@ -48,7 +60,7 @@ class Command(BaseCommand):
             search = latest_lookup(raw)
             reg = normalize_registration(raw)
             if not search:
-                self.stdout.write(f'{reg}: no lookup of this registration found a car')
+                self.stdout.write(f'{reg}: no lookup of this registration found a code (no code, no picture)')
                 continue
             prompt, paint = cp.search_prompt(search, plate=plate)
             self.stdout.write(f'{reg}: {search.year or ""} {search.make} {search.model}, painted {paint}')

@@ -39,6 +39,7 @@ class Command(BaseCommand):
             pic, _created = CarPicture.objects.get_or_create(registration=reg, paint_code=code,
                                                              defaults={'search': search})
             old_key = pic.file_key
+            old_verdict = pic.verdict
             CarPicture.objects.filter(id=pic.id).update(status=CarPicture.PENDING, search=search, error='',
                                                         verdict='', started_at=timezone.now())
             ap.make_picture(pic.id)
@@ -47,7 +48,16 @@ class Command(BaseCommand):
                 self.stdout.write(f'{reg} {code}: failed ({pic.error}); the old picture is kept' if old_key
                                   else f'{reg} {code}: failed ({pic.error})')
                 if old_key:
-                    CarPicture.objects.filter(id=pic.id).update(status=CarPicture.READY, file_key=old_key)
+                    # paint308: THE OLD PICTURE'S WHEEL VERDICT COMES BACK WITH IT.
+                    # The verdict is blanked above, before the new picture is
+                    # drawn, and only the status and the file were put back here.
+                    # So after a redraw that failed, the picture still shown was
+                    # recorded as never checked: it dropped out of the
+                    # dashboard's "wrong wheel" count, even when LEFT was the
+                    # reason for redrawing it. Reproduced on a scratch copy with
+                    # the picture model faked to fail: RIGHT before, blank after.
+                    CarPicture.objects.filter(id=pic.id).update(status=CarPicture.READY, file_key=old_key,
+                                                                verdict=old_verdict)
                 continue
             if old_key and old_key != pic.file_key:
                 try:

@@ -43,11 +43,12 @@ from django.utils import timezone
 
 # paint206: A PLATE TYPED WITH LEADING ZEROS. UK plates never start with 0.
 # A dateless plate starts with its number, 1 to 9999, then up to three
-# letters (88 FF, 54 EF), and people sometimes pad the number: 0088FF. DVLA
-# reads 0088FF as 88FF and finds the car; VDG refuses it as InvalidSearchTerm,
-# so the lookup came back with a make and year from DVLA, no VIN and no paint
-# code. Seen in production: 0088FF (a 2025 VW, found at once as 88FF),
-# 0054EF (a 2025 Porsche), 0054HE and 0054HEB. The zeros go ONLY when what is
+# letters, and people sometimes pad the number with zeros in front. DVLA
+# reads a padded plate without its zeros and finds the car; VDG refuses it as
+# InvalidSearchTerm, so the lookup came back with a make and year from DVLA,
+# no VIN and no paint code. Seen in production: [car 41] typed with two zeros
+# in front (a 2025 VW, found at once without them), [car 42] (a 2025
+# Porsche), [car 43] and [car 44]. The zeros go ONLY when what is
 # left is exactly that dateless shape. Anything else is left as typed, so
 # hex-looking junk (0X59482B, 0E0E) is not turned into a real-looking plate
 # that would then cost a VDG call.

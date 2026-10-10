@@ -19,7 +19,7 @@
    the point of this line is to tell a returning reader whether the terms
    have moved since they last looked.
 {% endcomment %}
-            <p class="text-muted mb-4" style="font-size: 0.9rem;">Last updated: August 2, 2026</p>
+            <p class="text-muted mb-4" style="font-size: 0.9rem;">Last updated: October 10, 2026</p>
 
             <p style="font-size: 1.05rem; line-height: 1.7; color: #333;">
                 This is the privacy notice for <span class="coloureg-brand">colou<strong>reg</strong></span> (the website at
@@ -78,9 +78,18 @@
                 GDPR):
             </p>
             <ul style="line-height: 1.8;">
-                <li><strong>Vehicle data providers</strong> — receive your registration plate to look up vehicle and paint code data. Based in the UK.</li>
+                {% comment %} paint300: the two lines below are this release's, each in words the operator approved.
+                   Vehicle data providers: it said they "receive your registration plate" and are "Based in the
+                   UK". For some lookups the car's VIN is sent as well (two of the suppliers are asked by VIN),
+                   and not all of them are in the UK (the audit of 8 Oct 2026, finding P9).
+                   Error monitoring provider: a new line. When something on the site fails, a report goes to
+                   this provider with the details of the lookup or of the message in it (the operator chose on
+                   9 Oct 2026 to keep them in the reports), and the page did not say so (finding P1). By kind
+                   and with no name, like every line of this list. {% endcomment %}
+                <li><strong>Vehicle data providers</strong> — receive your registration plate, and for some lookups your vehicle's VIN, to look up vehicle and paint code data. Based in the UK and Europe.</li>
+                <li><strong>Error monitoring provider</strong> — receives a technical report when something on the site fails. The report can include the registration, VIN and IP address of the lookup that failed and, if it fails while you are emailing us, your email address and message. EU-based.</li>
                 <li><strong>Email delivery provider</strong> — receives your email address and message content when we send you a paint code or contact reply. US-based; international transfers covered under the UK International Data Transfer Agreement / UK Data Bridge.</li>
-                {% if payments_on %}<li><strong>Payment processor (Stripe)</strong> — receives your card details, email address and the registration you looked up, in order to take payment. We never see your card details. See the Payments section below.</li>{% endif %}
+                {% if payments_on %}{% comment %} paint307: no name beside the kind any more, like the other providers in this list. It read "Payment processor (Stripe)". See the note in the Payments section below. {% endcomment %}<li><strong>Payment processor</strong> — receives your card details, email address and the registration you looked up, in order to take payment. We never see your card details. See the Payments section below.</li>{% endif %}
                 <li><strong>Web hosting and database providers</strong> — store your search history and the data above. The hosting provider is US-based (transfers covered by the UK Data Bridge); the database provider is EU-based.</li>
                 <li><strong>Analytics provider</strong> — sets cookies in your browser to collect anonymised usage statistics such as page views, device type, and country. US-based; transfers covered as above.</li>
             </ul>
@@ -91,10 +100,16 @@
             </p>
 
             <h2 style="font-size: 1.3rem; font-weight: 600; margin-top: 2rem; margin-bottom: 0.75rem;">How long we keep it</h2>
+            {% comment %} paint300: 5 years, it said 12 months (finding P10). The operator's decision of
+               9 Oct 2026, for every lookup since launch, with the reason the second sentence gives. The scrub
+               itself is the prune_old_data command (its RETENTION_DAYS), changed in the same release: this
+               paragraph and that number must always say the same thing. {% endcomment %}
             <p style="line-height: 1.7;">
-                After 12 months, we scrub the personal fields from each search record — specifically your IP
+                After 5 years, we scrub the personal fields from each search record — specifically your IP
                 address, browser user-agent, email address, VIN, and anything you wrote when requesting a
-                manual lookup. Any cached copy of your vehicle's details is deleted on the same schedule. The remaining record (the registration
+                manual lookup.
+                We keep them for that long so that we can deal with questions, complaints or disputes about a result, and spot misuse of the site.
+                Any cached copy of your vehicle's details is deleted on the same schedule. The remaining record (the registration
                 plate, vehicle make/model/year, and the search timestamp) is non-identifying on its own and is
                 retained for trend reporting and product analytics.
             </p>
@@ -116,21 +131,36 @@
                (Stripe), a different lawful basis for the transaction itself
                (performance of a contract, not consent), and a longer retention
                period for the records because tax law requires it.{% endcomment %}
+            {% comment %} paint307: THE PAYMENT PROCESSOR IS NO LONGER NAMED ON THIS PAGE.
+               The rule is that the site names no supplier ("If you'd like the specific
+               names of any of these providers, email us and we'll tell you", above),
+               and with payments on this section named it ten times. The operator's
+               answer for this one was "no name" (10 Oct, G4). Every place now says
+               "our payment processor", with its sentence otherwise as it was. Three
+               places could not take the words as they stand, and the operator sees
+               all three before payments go on:
+                 the list above said "Payment processor (Stripe)": the name is dropped;
+                 "a Stripe reference" is "our payment processor's reference";
+                 "the Stripe Privacy Policy" was a link to the processor's own website,
+                 whose address names it, so the link is gone and the words are "our
+                 payment processor's Privacy Policy".
+               Customers still see the processor's own name on its checkout page,
+               which is not ours. {% endcomment %}
             <h2 style="font-size: 1.3rem; font-weight: 600; margin-top: 2rem; margin-bottom: 0.75rem;">Payments</h2>
             <p style="line-height: 1.7;">
-                Payments are processed by <strong>Stripe</strong>, not by us.
+                Payments are processed by <strong>our payment processor</strong>, not by us.
             </p>
             <ul style="line-height: 1.8;">
-                <li><strong>We never see or store your card details.</strong> They are entered on Stripe's own hosted checkout page and go straight to Stripe. Nothing about your card reaches our servers or our database.</li>
-                <li><strong>What Stripe receives</strong> — your card details, your email address, the amount, and the registration you looked up (so the payment can be matched to the right lookup if you query it later).</li>
-                <li><strong>What we receive back</strong> — whether the payment succeeded, and a Stripe reference. We store that reference against the search record so we can trace a specific transaction.</li>
+                <li><strong>We never see or store your card details.</strong> They are entered on our payment processor's own hosted checkout page and go straight to our payment processor. Nothing about your card reaches our servers or our database.</li>
+                <li><strong>What our payment processor receives</strong> — your card details, your email address, the amount, and the registration you looked up (so the payment can be matched to the right lookup if you query it later).</li>
+                <li><strong>What we receive back</strong> — whether the payment succeeded, and our payment processor's reference. We store that reference against the search record so we can trace a specific transaction.</li>
                 <li><strong>Lawful basis</strong> — for the transaction itself we rely on <strong>performance of a contract</strong> rather than consent: we need to process the payment in order to deliver the lookup you asked for.</li>
-                <li><strong>How long</strong> — payment records are kept for as long as tax and accounting law requires, which is longer than the retention period described above for search data. Stripe holds its own records under its own privacy policy.</li>
+                <li><strong>How long</strong> — payment records are kept for as long as tax and accounting law requires, which is longer than the retention period described above for search data. Our payment processor holds its own records under its own privacy policy.</li>
             </ul>
             <p style="line-height: 1.7;">
-                Stripe is an independent controller for its own fraud-prevention and regulatory purposes.
-                You can read how it handles your data in the
-                <a href="https://stripe.com/gb/privacy" style="color: #003399;" rel="noopener" target="_blank">Stripe Privacy Policy</a>.
+                Our payment processor is an independent controller for its own fraud-prevention and regulatory purposes.
+                You can read how it handles your data in
+                our payment processor's Privacy Policy.
             </p>
             {% endif %}
 
@@ -178,10 +208,12 @@
             </p>
 
             <h2 style="font-size: 1.3rem; font-weight: 600; margin-top: 2rem; margin-bottom: 0.75rem;">Changes</h2>
+            {% comment %} paint300: this paragraph also promised a banner on the homepage for a substantial
+               change. The operator decided against a banner, so the sentence that promised one was taken
+               out with this release. {% endcomment %}
             <p style="line-height: 1.7;">
                 If we update this notice — for example to add a new processor or change retention periods — we'll
-                update the "Last updated" date at the top of this page. For substantial changes we'll add a banner
-                on the homepage.
+                update the "Last updated" date at the top of this page.
             </p>
 
         </div>

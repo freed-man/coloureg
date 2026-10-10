@@ -102,6 +102,9 @@ def create_checkout_session(registration, success_url, cancel_url, client_ip=Non
     happens later, on a paint hit) via payment_intent_data.capture_method=manual.
     The registration is stashed in metadata so the success handler and the
     webhook can both recover which lookup this payment is for.
+
+    paint304: client_ip and user_agent are accepted and NOT USED: neither is
+    sent to Stripe any more (see the note at the metadata below).
     """
     stripe = _stripe()
     if stripe is None:
@@ -137,25 +140,28 @@ def create_checkout_session(registration, success_url, cancel_url, client_ip=Non
                             f'when you paid. Before paying, you ticked: '
                             f'"{CONSENT_TEXT}"'),
         },
-        # client_ip / user_agent ride in metadata rather than being read off the
-        # fulfilling request (paint18). Fulfilment happens either on the
-        # customer's return to /paid/success/ OR on the Stripe webhook — and on
-        # the webhook route the request is STRIPE, so reading it there would
-        # record Stripe's IP as the customer's. Metadata is captured here, at
-        # the one moment we are definitely talking to the customer.
-        #
-        # Stripe caps metadata values at 500 characters and user agents can
-        # exceed that, so truncate. The IP is stored raw and validated on the
-        # way back out (views._valid_ip) — it lands in an `inet` column, which
-        # rejects anything that is not an address.
+        # paint304: THE CUSTOMER'S IP ADDRESS AND BROWSER STRING ARE NOT SENT TO
+        # STRIPE. They rode in this metadata from paint18, when the lookup ran
+        # AFTER payment: the row was written at fulfilment, which can arrive on
+        # Stripe's webhook, and reading that request would have recorded
+        # Stripe's address as the customer's. Since paint22 the lookup runs
+        # FIRST, on the customer's own request, and its row holds both from
+        # that moment (Search.ip_address, Search.user_agent). Fulfilment only
+        # unlocks that row, and nothing in views.py has read either value back
+        # out of a session since: they were left in so that a payment could be
+        # traced to a person from Stripe's side. That handed Stripe two pieces
+        # of personal data with every payment, and the privacy page did not
+        # say so (audit of 8 Oct, P8; the fix agreed was to stop sending them).
+        # Stripe is still sent the registration, as the privacy page says, and
+        # the row's number, which leads back to the row and so to both values.
+        # client_ip and user_agent are still accepted, so no caller breaks;
+        # they are dropped here.
         metadata={
             'registration': registration,
             # Which row is being unlocked (paint22). Fulfilment reads this
             # rather than re-deriving it from the registration, so a customer
             # with two lookups for the same reg unlocks the one they paid for.
             'search_id': str(search_id) if search_id is not None else '',
-            'client_ip': (client_ip or '')[:64],
-            'user_agent': (user_agent or '')[:400],
         },
         # --- CCR 2013 reg 37 consent (paint15) ---------------------------------
         # Digital content sold at a distance carries a 14-day cancellation right.

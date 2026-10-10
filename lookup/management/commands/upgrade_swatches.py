@@ -4,11 +4,13 @@ Only swatches that no committed catalogue file ever carried, and only where the
 row's name says the source's swatch is right and ours is wrong or a stock value:
 see plan_guess_upgrades in lookup/services/catalogue_topup.py. A preview by
 default; --apply saves every old value to a backup file first, and --restore
-puts a backup back.
+puts a backup back (paint308: a preview too, until --apply is added; it leaves
+alone a row changed since, and a row whose swatch has been locked since).
 
     python manage.py upgrade_swatches bsp etc\\BSP.csv etc\\HISTORY.json.gz            preview
     python manage.py upgrade_swatches bsp etc\\BSP.csv etc\\HISTORY.json.gz --apply    write, with a backup
-    python manage.py upgrade_swatches --restore etc\\BACKUP.json                      undo
+    python manage.py upgrade_swatches --restore etc\\BACKUP.json                      preview of the undo
+    python manage.py upgrade_swatches --restore etc\\BACKUP.json --apply              undo
 
 The backup is written beside the history file, so with the files in etc/ (which
 .gitignore keeps out of the public repo) the backups stay there too.
@@ -33,16 +35,30 @@ class Command(BaseCommand):
         parser.add_argument('source', nargs='?', choices=sorted(READERS))
         parser.add_argument('path', nargs='?')
         parser.add_argument('history', nargs='?')
-        parser.add_argument('--apply', action='store_true', help='write, after saving a backup')
-        parser.add_argument('--restore', metavar='BACKUP', help='put back every swatch in this backup')
+        parser.add_argument('--apply', action='store_true',
+                            help='write (an upgrade saves a backup first); without it, only a preview')
+        parser.add_argument('--restore', metavar='BACKUP',
+                            help='put back the swatches in this backup; only a preview unless --apply is given')
 
     def handle(self, *args, **opts):
         w = self.stdout.write
         if opts['restore']:
             if not os.path.exists(opts['restore']):
                 raise CommandError(f'No such file: {opts["restore"]}')
-            restored, changed = ct.restore_upgrades(opts['restore'])
-            w(f'Restored {restored:,} swatches' + (f'; {changed:,} left alone because they changed since' if changed else '') + '.')
+            # paint308: --restore PREVIEWS LIKE THE UPGRADE DOES, and writes only
+            # with --apply. It wrote at once, on the one flag. It also leaves a
+            # swatch locked since the upgrade alone (see restore_upgrades).
+            restored, changed, locked = ct.restore_upgrades(opts['restore'], apply=opts['apply'])
+            if not opts['apply']:
+                w(f'SWATCH RESTORE PREVIEW, nothing written (add --apply to write): {opts["restore"]}')
+                w(f'\nSwatches to put back:             {len(restored):>8,}')
+                w(f'Left alone, changed since:        {changed:>8,}')
+                w(f'Left alone, swatch locked since:  {locked:>8,}')
+                for c in restored[:6]:
+                    w(f'  e.g. {c.get("manufacturer")} {c.get("code")} "{c.get("name")}": {c["new_hex"]} -> {c["old_hex"]}')
+                return
+            w(f'Restored {len(restored):,} swatches' + (f'; {changed:,} left alone because they changed since' if changed else '')
+              + (f'; {locked:,} left alone because their swatch is locked' if locked else '') + '.')
             return
         if not (opts['source'] and opts['path'] and opts['history']):
             raise CommandError('Give the source, its file and the history file, or --restore BACKUP.')
@@ -71,4 +87,4 @@ class Command(BaseCommand):
             ct.apply_upgrades(plan, backup)
             w(f'\nWritten: {len(plan.changes):,} swatches replaced, marked "{src.name}".')
             w(f'Backup of every old value: {backup}')
-            w(f'To undo: python manage.py upgrade_swatches --restore "{backup}"')
+            w(f'To undo: python manage.py upgrade_swatches --restore "{backup}" --apply   (without --apply, a preview)')

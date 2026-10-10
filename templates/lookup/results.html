@@ -1,7 +1,13 @@
 {% extends "base.html" %}
 {% load static %}
 
-{% block extra_title %}Results for {{ registration }} | coloureg{% endblock %}
+{% comment %} paint304: A FIXED TITLE, WITH NO PLATE IN IT. The title was "Results for" followed by the
+   registration. Analytics loads on this page and reads the page's title, so every result handed the
+   customer's plate to the analytics provider, whose figures the privacy page calls anonymised (audit of
+   8 Oct, P2). Nothing else Analytics reads here holds the plate: the address is /results/ for everyone, and
+   the description, the sharing tags and the search engine data are the site's standard ones. The plate is
+   still shown on the page itself. {% endcomment %}
+{% block extra_title %}Results | coloureg{% endblock %}
 {% block meta_robots %}noindex, follow{% endblock %}
 
 {% block extra_css %}
@@ -572,19 +578,100 @@
                         <form method="POST" action="{% url 'start_paid_lookup' %}" id="unlock-form">
                         {% csrf_token %}
                         {% if turnstile_site_key %}
+                        {% comment %} paint307: NOBODY COULD PAY. The view this form posts to asks for a
+                           Turnstile token (start_paid_lookup), and the form carried the widget's
+                           holder, but this page never loaded Turnstile's script. So the holder stayed
+                           empty, no token was ever sent, and every press of the button was answered
+                           "We could not verify your browser". Found by reading (audit of 8 Oct, G1)
+                           and reproduced on a scratch copy with payments and Turnstile both on:
+                           without a token the button never reached checkout, with one it did at once.
+                           Payments were off, so no customer met it.
+                           The widget is now the home page form's (index.html), callbacks included:
+                           the same holder, the same site key setting, the same field name
+                           (cf-turnstile-response). The script that loads it is below the form. {% endcomment %}
                         <div class="turnstile-holder d-flex justify-content-center mb-3">
                             <div class="cf-turnstile"
                                  data-sitekey="{{ turnstile_site_key }}"
                                  data-size="flexible"
-                                 data-appearance="interaction-only"></div>
+                                 data-appearance="interaction-only"
+                                 data-callback="onTurnstileSolved"
+                                 data-expired-callback="onTurnstileExpired"
+                                 data-error-callback="onTurnstileError"></div>
                         </div>
                         {% endif %}
                         <button type="submit" class="btn btn-dark btn-lg px-4">
                             <i class="fas fa-lock-open me-2"></i>Reveal for {{ lookup_price }}
                         </button>
                     </form>
+                        {% if turnstile_site_key %}
+                        {% comment %} paint307: THE BUTTON IS HELD UNTIL THERE IS A TOKEN, the way the home
+                           page holds a search (index.html, paint17 and paint21). Only on a locked
+                           result, and only when a site key is set: without one (development) none of
+                           this is on the page and the form posts as it always did.
+                           The three functions are defined BEFORE the script tag, so they exist by the
+                           time the script draws the widget.
+                           A press before the token exists is stopped, and sent on by itself the moment
+                           the token arrives (for most visitors that is before they have read the page;
+                           a visitor who is asked to tick the box is sent on when they tick it).
+                           A token lasts about five minutes: one that expires on an idle page is replaced.
+                           A token works ONCE. So a second press of the button is stopped (the home page
+                           hides its form when a search is sent; this button stays on screen), and coming
+                           back with the browser's back button, from the payment page say, asks for a
+                           fresh token before the button works again.
+                           Nothing is written on the page while a press is held: the home page's two
+                           lines for that are not copied here until the operator has seen them. {% endcomment %}
+                        <script>
+                            window.__turnstileWaiting = false;
+
+                            window.onTurnstileSolved = function () {
+                                if (window.__turnstileWaiting) {
+                                    window.__turnstileWaiting = false;
+                                    var f = document.getElementById('unlock-form');
+                                    if (!f) return;
+                                    if (f.requestSubmit) { f.requestSubmit(); } else { f.submit(); }
+                                }
+                            };
+
+                            window.onTurnstileExpired = function () {
+                                window.__turnstileWaiting = false;
+                                if (window.turnstile) { try { window.turnstile.reset(); } catch (e) {} }
+                            };
+
+                            window.onTurnstileError = function () {
+                                window.__turnstileWaiting = false;
+                            };
+
+                            (function () {
+                                var unlockForm = document.getElementById('unlock-form');
+                                if (!unlockForm) { return; }
+                                var unlockSent = false;
+                                unlockForm.addEventListener('submit', function (e) {
+                                    if (unlockSent) { e.preventDefault(); return; }
+                                    var tsWidget = unlockForm.querySelector('.cf-turnstile');
+                                    var tsField = unlockForm.querySelector('[name="cf-turnstile-response"]');
+                                    if (tsWidget && (!tsField || !tsField.value)) {
+                                        e.preventDefault();
+                                        window.__turnstileWaiting = true;
+                                        return;
+                                    }
+                                    unlockSent = true;
+                                });
+                                window.addEventListener('pageshow', function (event) {
+                                    if (event.persisted) {
+                                        unlockSent = false;
+                                        window.__turnstileWaiting = false;
+                                        if (window.turnstile) { try { window.turnstile.reset(); } catch (e) {} }
+                                    }
+                                });
+                            })();
+                        </script>
+                        <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
+                        {% endif %}
+                        {% comment %} paint307: the payment processor is no longer named here. The site names
+                           no supplier, and the operator's answer for this one was "no name" (10 Oct,
+                           G4). The line read "Secure payment by Stripe." {% endcomment %}
                         <p class="text-muted mt-3 mb-0" style="font-size: 12px;">
-                            Secure payment by Stripe.
+                            Secure payment by our payment processor.
                             <a href="{% url 'disclaimer' %}" style="color: #6c757d;">Full terms</a>
                         </p>
                     </div>
@@ -949,6 +1036,14 @@ the request directly. {% endcomment %}
             })();
             </script>
             {% endif %}
+            {% comment %} paint299: FOR A SPECIAL ORDER CODE THE EMAIL BOX IS THE NOT FOUND ONE.
+               The note in the card has just offered a manual lookup, and submit_email sends
+               such a request to the operator's manual queue, as it does a not found one. So
+               the box below reads exactly as it does for a car with no code: the manual
+               lookup heading, blurb and button, then the request confirmation. Before, it
+               offered to email the code, sent the automatic email and said the code was sent.
+               The four tests on paint_code below each gained "and not special_order"; the
+               script's showFound does the same through revealEmail. {% endcomment %}
             <div id="email-section" class="mx-auto mt-4" style="max-width: 540px;{% if paint_pending %} display: none;{% endif %}">
                 {% if email_submitted %}
                 <div class="card" style="border: 2px solid #22c55e; background: #f0fdf4;">
@@ -957,10 +1052,10 @@ the request directly. {% endcomment %}
                             <i class="fas fa-check" style="color: white; font-size: 20px;"></i>
                         </div>
                         <h6 class="mb-1" style="color: #166534;">
-                            {% if paint_code %}Email sent{% else %}Request received{% endif %}
+                            {% if paint_code and not special_order %}Email sent{% else %}Request received{% endif %}
                         </h6>
                         <p class="mb-0 small text-muted">
-                            {% if paint_code %}
+                            {% if paint_code and not special_order %}
                             Paint code sent to <strong>{{ email_submitted }}</strong>
                             {% else %}
                             We'll email <strong>{{ email_submitted }}</strong>, usually within 1 hour
@@ -971,7 +1066,7 @@ the request directly. {% endcomment %}
                 {% else %}
                 <div class="card">
                     <div class="card-body p-4">
-                        {% if paint_code %}
+                        {% if paint_code and not special_order %}
                         <h5 class="mb-2 fw-semibold" style="display: flex; gap: 8px; align-items: baseline;"><span>✉️</span><span>Email me this code</span></h5>
                         {% elif paint_name_only %}
                         <h5 class="mb-3 fw-semibold" style="display: flex; gap: 8px; align-items: baseline;"><span>✉️</span><span>Want the exact code?</span></h5>
@@ -1001,7 +1096,7 @@ the request directly. {% endcomment %}
                             <div class="d-flex gap-2">
                                 <input type="email" name="email" class="form-control" placeholder="your@email.com" required>
                                 <button type="submit" class="btn btn-dark text-nowrap">
-                                    {% if paint_code %}Email me{% elif paint_name_only %}Send me the code{% else %}Request code{% endif %}
+                                    {% if paint_code and not special_order %}Email me{% elif paint_name_only %}Send me the code{% else %}Request code{% endif %}
                                 </button>
                             </div>
                         </form>
@@ -1244,7 +1339,22 @@ window.cregReportWait();
         return html;
     }
 
-    function paintBlockHtml(code, hex, canonical, description) {
+    {% comment %} paint299: THE SPECIAL ORDER NOTE, DRAWN BY THE SCRIPT TOO. The template has shown
+       it since paint159, but only on a page the server drew (a reload, a cached repeat).
+       A code found by the search is drawn here, and this script had no such note: of the
+       four lookups given 999 before 7 Oct, only the two repeats certainly showed it. The
+       words are the template's own, line for line, and a battery check fails if the two
+       ever differ. The status reply says when to draw them (special_order, set by the
+       view for 999 in its spellings and for a BMW's 490). {% endcomment %}
+    var SPECIAL_ORDER_NOTE =
+        "This code means the car was painted to special " +
+        "order rather than in a standard colour, so the " +
+        "code itself does not name a paint. The colour is " +
+        "recorded against your VIN. Leave your email below " +
+        "and we'll look it up manually and send it over, " +
+        "free, usually within 1 hour.";
+
+    function paintBlockHtml(code, hex, canonical, description, specialOrder) {
         var html = '';
         if (hex) {
             html += '<div class="paint-swatch-bar" style="background: ' + escapeHtml(hex) + ';"></div>';
@@ -1257,6 +1367,9 @@ window.cregReportWait();
         if (description) {
             html += '<p class="paint-desc">' + escapeHtml(description) + '</p>';
         }
+        if (specialOrder) {
+            html += '<p class="paint-desc paint-special-order">' + escapeHtml(SPECIAL_ORDER_NOTE) + '</p>';
+        }
         html += '</div>';
         return html;
     }
@@ -1268,7 +1381,11 @@ window.cregReportWait();
         var html = '';
         var list = data.all_paint_codes;
         var tt = data.two_tone;
-        if (tt && tt.length) {
+        if (data.special_order) {
+            {% comment %} paint299: the code and the note, and nothing that says a colour (no swatch, no
+               "also" code, no name, no list, no two-tone), whatever else the reply holds. {% endcomment %}
+            html += paintBlockHtml(data.paint_code, null, null, null, true);
+        } else if (tt && tt.length) {
             html += twoToneHtml(data.paint_code, tt);   // paint228: as the template draws it
         } else if (list && list.length > 1) {
             for (var i = 0; i < list.length; i++) {
@@ -1287,7 +1404,9 @@ window.cregReportWait();
         var disc = el('paint-disclaimer');
         if (disc) disc.style.display = '';
 
-        revealEmail(true);
+        {% comment %} paint299: for a special order code the email box is the manual lookup one, as the
+           template draws it: the request goes to the manual queue, not out as the automatic email. {% endcomment %}
+        revealEmail(!data.special_order);
     }
 
     {% comment %}
@@ -1347,7 +1466,12 @@ window.cregReportWait();
     function showMissed() {
         var card = el('paint-card');
         if (!card) return;
-        var mk = (card.getAttribute('data-make') || '').trim();
+        {% comment %} paint304: THE MAKE IS ESCAPED BEFORE IT GOES INTO THE CARD. The server writes it into
+           data-make escaped, but reading an attribute back gives the raw text, and that text was joined
+           straight into the card's HTML. The make comes from a supplier's reply, so one that held markup
+           would have been run as markup (shown in a browser: a made up make of an image tag ran its own
+           script). Every other value this script writes into the page already went through escapeHtml. {% endcomment %}
+        var mk = escapeHtml((card.getAttribute('data-make') || '').trim());
         var sheet = mk ? ('this ' + mk + ' build sheet') : 'this build sheet';
         card.innerHTML =
             '<div id="paint-missed-state"><div class="card-body">' +

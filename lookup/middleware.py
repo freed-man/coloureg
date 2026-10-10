@@ -542,6 +542,11 @@ class OriginGateObserverMiddleware:
         """Drop to observe. ONE copy, shared by both triggers, so the thing
         that actually restores the site cannot drift between them."""
         from lookup.models import SiteConfig
+        # paint305 (M10): saved from the row as the database holds it now. The
+        # `cfg` handed in is this worker's copy, up to a minute behind the
+        # other worker, and saving from it put a balance the operator had just
+        # entered there back to its old figure (SiteConfig.fresh() says how).
+        cfg = SiteConfig.fresh()
         cfg.origin_gate_mode = SiteConfig.ORIGIN_GATE_OBSERVE
         cfg.origin_gate_auto_reverted_at = timezone.now()
         cfg.save(update_fields=['origin_gate_mode',

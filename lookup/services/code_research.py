@@ -189,6 +189,14 @@ def extract_json(text):
     return best
 
 
+def _text_name(paint):
+    """paint308: one paint of a reply, with its name made text when it is not
+    (null becomes an empty name). A paint whose name is already text, or that
+    has none, is passed on exactly as it came."""
+    name = paint.get('name', '')
+    return paint if isinstance(name, str) else dict(paint, name=str(name or ''))
+
+
 def research(c, key, model=DEFAULT_MODEL, max_searches=3):
     """One code: returns a result dict (never raises for API trouble)."""
     tools = [{'type': 'web_search_20250305', 'name': 'web_search', 'max_uses': max_searches}]
@@ -219,11 +227,25 @@ def research(c, key, model=DEFAULT_MODEL, max_searches=3):
               'api_error': bool(error)}     # the API itself failed: not recorded, so a rerun tries again
     if found:
         verdict = str(found.get('verdict', '')).strip().lower()
+        # paint308: THE REPLY IS THE MODEL'S OWN WRITING, SO EVERY PART IS MADE
+        # THE KIND THE REST OF THE CODE EXPECTS, HERE. A paint's name was passed
+        # on as it came. When it was not text (null, a number, a list of two
+        # names) the command crashed while printing or scoring it, AFTER the
+        # paid call and BEFORE the line reached the review file, so a rerun
+        # began with the same code, paid again and crashed again: no code
+        # behind it could ever be reached. Reproduced with a faked reply for
+        # each of the three. The same crash came from "paints" or "sources"
+        # that were not lists (a number). Now a name is always text, as the
+        # correct name already was, and a list that is not a list counts as
+        # empty, as a missing one already did. So an answer of an odd shape is
+        # recorded like any other, and the rerun moves on to the next code.
+        paints, sources = found.get('paints'), found.get('sources')
         result.update({
             'verdict': verdict if verdict in ('one', 'shared', 'unsure') else 'unsure',
             'correct_name': str(found.get('correct_name') or '').strip(),
-            'paints': [p for p in (found.get('paints') or []) if isinstance(p, dict)][:8],
-            'sources': [str(s) for s in (found.get('sources') or [])][:8],
+            'paints': [_text_name(p) for p in (paints if isinstance(paints, list) else [])
+                       if isinstance(p, dict)][:8],
+            'sources': [str(s) for s in (sources if isinstance(sources, list) else [])][:8],
             'note': str(found.get('note') or '')[:300],
         })
     elif not error:

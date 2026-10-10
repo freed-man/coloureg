@@ -46,7 +46,9 @@ from .services.paint_resolver import (
     _enrich_from_lookup,
     _display_tidy,
     is_placeholder_code,
-    is_special_order_code,
+    marks_special_order,
+    special_order_code_spellings,
+    mmw_unpadded_code,
     PL24_TIMEOUT,
     acquire_recovery_slot,
     release_recovery_slot,
@@ -269,6 +271,21 @@ def extract_mot_field(mot_data, field_name):
 # /vehicle-make/ already learned instead of asking DVLA a second time.
 MAKE_CACHE_TTL_S = 600
 
+#: paint305 (F10): how many times an hour /vehicle-make/ may ask DVLA, for ALL
+#: visitors together. Its only limit was 15 an hour per address, and an address
+#: costs nothing to change: 300 addresses sending one new plate each got 300
+#: DVLA calls (reproduced), on the key every real lookup also depends on.
+#:
+#: 120, set from the real lookups of 2 May to 7 Oct. This endpoint could never
+#: have had more than one call per search, and the busiest 60 minutes held 28
+#: real searches (15 Jul), and only 16 of a plate not looked up before (a plate
+#: we already hold a make for is answered from our own records, without DVLA).
+#: Counting every request, the ones Turnstile refused included, the busiest 60
+#: minutes held 87 (10 Aug, a flood of them). So 120 is more than four times
+#: the busiest real hour and above the worst hour of any kind, and it holds
+#: the worst case to two DVLA calls a minute.
+VEHICLE_MAKE_DVLA_PER_HOUR = 120
+
 
 #: Same shape the lookup path enforces later. Applied HERE because the make
 #: cache is consulted BEFORE that validation runs, so an unvalidated value was
@@ -280,6 +297,16 @@ _REG_KEY_RE = re.compile(r'^[A-Z0-9]{1,8}$')
 #: paint208: the operator's note on a manual answer. It was 1000 characters,
 #: which a careful explanation outgrew; 5000 matches the contact form's limit.
 MANUAL_NOTE_MAX_CHARS = 5000
+
+#: paint305 (F9): the longest paint code and paint name the dashboard's report
+#: correction may carry: what the columns it is written to can hold. A
+#: correction goes to the lookup's own row (50 and 200) and to the operator's
+#: table (60 and 200), so 50 and 200. Read from the columns themselves, so the
+#: two cannot drift apart; the same limits the manual answer form has always had.
+CORRECTION_CODE_MAX_CHARS = min(Search._meta.get_field('paint_code').max_length,
+                                OperatorPaintCode._meta.get_field('code').max_length)
+CORRECTION_NAME_MAX_CHARS = min(Search._meta.get_field('paint_description').max_length,
+                                OperatorPaintCode._meta.get_field('colour_name').max_length)
 
 #: paint209: how long a same-browser repeat of a plate is sent back to the
 #: lookup already running for it. The recovery is bounded at about 65s; 120s
@@ -637,6 +664,17 @@ def _maybe_alert_budget(config):
     today = timezone.localdate()
     if config.budget_tripped and config.budget_tripped_date == today:
         return  # already alerted for today's trip
+    # paint305 (M10): THE FLAG IS READ AND SAVED FROM THE ROW ITSELF. `config`
+    # is the caller's copy, up to a minute behind the other worker. Saving from
+    # it put a balance the operator had just entered on the other worker back
+    # to its old figure (SiteConfig.fresh() in models.py says how), and each
+    # worker, seeing no flag in its own copy, sent the alert: two emails for
+    # one trip (reproduced with two copies). The check above still answers
+    # from the copy, so a worker that has alerted today asks the database
+    # nothing; only a worker that believes no alert has gone looks again.
+    config = SiteConfig.fresh()
+    if config.budget_tripped and config.budget_tripped_date == today:
+        return  # the other worker has alerted for today's trip
     config.budget_tripped = True
     config.budget_tripped_date = today
     config.save(update_fields=['budget_tripped', 'budget_tripped_date', 'updated_at'])
@@ -703,6 +741,17 @@ def index(request):
             )
             return render(request, 'lookup/index.html', {
                 'turnstile_site_key': dj_settings.TURNSTILE_SITE_KEY,
+                # paint307: THE PAYMENTS SWITCH WAS NOT PASSED HERE, nor on the
+                # daily budget and rate limit refusals below. The page reads it
+                # to choose between "Free while we finish testing" and the price
+                # line, and a switch it is not given reads as off: with payments
+                # on, a visitor turned away by any of the three was told the
+                # site is free. Found by reading (audit of 8 Oct, G2) and
+                # reproduced on a scratch copy with payments on: all three pages
+                # showed the free notice while the home page showed the price.
+                # Passed now as every other answer from this view passes it.
+                # With payments off the page is drawn exactly as before.
+                'payments_on': payments_active(config),
             })
 
         # --- Unsupported make (paint23; position fixed in paint30) ----------
@@ -778,6 +827,10 @@ def index(request):
             )
             return render(request, 'lookup/index.html', {
                 'turnstile_site_key': dj_settings.TURNSTILE_SITE_KEY,
+                # paint307: the payments switch, as on the blocklist refusal
+                # above (with payments on, the paused page said "Free while we
+                # finish testing").
+                'payments_on': payments_active(config),
             })
 
         # Sliding window (paint16), replacing django-ratelimit's fixed hourly
@@ -797,10 +850,15 @@ def index(request):
             )
             return render(request, 'lookup/index.html', {
                 'turnstile_site_key': dj_settings.TURNSTILE_SITE_KEY,
+                # paint307: the payments switch, as on the blocklist refusal
+                # above (with payments on, the "Too many searches" page said
+                # "Free while we finish testing").
+                'payments_on': payments_active(config),
             })
 
         # paint206: one clean-up for every path (normalize_registration), so
-        # 0088FF is looked up, cached and blocked as the 88FF it is.
+        # [car 41] typed with zeros in front is looked up, cached and blocked
+        # as the plate it is.
         registration = normalize_registration(request.POST.get('registration', ''))
 
         if not registration:
@@ -1301,7 +1359,7 @@ def index(request):
             # which is wrong when VDG plainly identified one.
             #
             # The Delica itself would not have resolved: mmw measures ZERO
-            # Mitsubishi coverage and `P25W0607988` is an 11-character chassis
+            # Mitsubishi coverage and it has an 11-character chassis
             # number, not a VIN pl24 would accept. A Ford or Vauxhall with a real
             # 17-character VIN is the case this pays for — 9/10 and 8/10 on mmw.
             if (not category or not make) and not config.is_make_unsupported(make):
@@ -1811,6 +1869,16 @@ def vehicle_make(request):
         return JsonResponse({'make': prior,
                              'supported': not config.is_make_unsupported(prior)})
 
+    # paint305 (F10): THE SHARED HOURLY CAP, counted only here, where DVLA is
+    # about to be asked: the answers above come from our own records and cost
+    # no call. The same sliding window as the limits above, with one key for
+    # everybody in place of an address or a plate. Over the cap the answer is
+    # the empty one this endpoint gives for every refusal. No page asks this
+    # endpoint any more (the homepage's call went with the pre-lookup make
+    # gate), so a visitor sees nothing, and a lookup never reads it.
+    if sliding_rate_limited('make-shared', 'all', limit=VEHICLE_MAKE_DVLA_PER_HOUR):
+        return JsonResponse({})
+
     # 2. Ask DVLA. Short timeout: this is decoration, and a slow answer is worse
     # than no answer — the message would land after the results page already had.
     try:
@@ -1977,6 +2045,44 @@ def paige(request):
     return response
 
 
+def _special_order_shown(make, shown):
+    """paint299: a result as it is about to be SHOWN, with nothing left in it
+    that says what colour a special order code is.
+
+    A special order code (marks_special_order: 999 and its spellings for any
+    make, 490 for a BMW) is true and names no paint. Whatever our catalogue
+    holds against it is some other car's bespoke colour: on the repo's copy
+    BMW 490 is "Bornit" with a bright blue swatch, VW L999 is "Pistazie" in
+    green. The page said as much in a note for 999, and still drew the swatch,
+    the "also" code and, on a replay, the name; a BMW's 490 got no note at all
+    and was drawn as an ordinary colour.
+
+    `shown` is the results page's context, or a status reply that the page's
+    own script draws from. It is changed in place and handed back. For a
+    special order code the name, the swatch, the "also" code, the list of
+    several codes and the two-tone parts are emptied, and `special_order` is
+    set: that flag is what makes the template, or the script, draw the note
+    that offers the manual lookup. (With the list and the two-tone parts
+    empty the template takes its one-code branch, the only one that holds the
+    note.) Anything else comes back exactly as it was given, so an ordinary
+    code's page and replies are unchanged.
+
+    ONE PLACE, ON THE WAY OUT, because the ways in are many: a first load, a
+    reload, a 7-day cache replay, a remembered answer, a session written
+    before this release, the status call's "found" reply (from the search or
+    from the row, for a second poll that waited) and its "already answered"
+    reply. Every one of them leaves through here. A locked (unpaid) result
+    never does: its context and its reply are built apart, with no code in
+    them, and a special order code is never locked (see _apply_paywall).
+    """
+    if marks_special_order(make, shown.get('paint_code')):
+        blank = {'paint_description': '', 'paint_hex': None, 'paint_name': None, 'canonical_code': None,
+                 'all_paint_codes': [], 'two_tone': []}
+        shown.update({key: value for key, value in blank.items() if key in shown})
+        shown['special_order'] = True
+    return shown
+
+
 def results(request):
     vehicle_data = request.session.get('vehicle_data')
 
@@ -2113,8 +2219,11 @@ def results(request):
         # paint159: `999` and `L999` mean the car was painted to special order,
         # so there IS no catalogue colour to name. The page says so rather than
         # showing a bare code with a blank beside it.
-        'special_order': is_special_order_code(
-            vehicle_data.get('paint_code') or ''),
+        # paint299: decided where this context leaves for the page (the
+        # return below), by _special_order_shown, which knows BMW's 490 too
+        # and also empties the name, the swatch and the rest of what would
+        # say which colour such a code is.
+        'special_order': False,
         'all_paint_codes': all_paint_codes,
         'paint_hex': paint_hex,
         'two_tone': two_tone,
@@ -2139,7 +2248,7 @@ def results(request):
         ),
     }
 
-    return render(request, 'lookup/results.html', context)
+    return render(request, 'lookup/results.html', _special_order_shown(make, context))
 
 
 # How long the page is told to wait before retrying a 'busy' response.
@@ -2230,11 +2339,14 @@ def _lookup_status(request, search_id):
     # Idempotency / guard: if we already have paint (resolved on a prior poll,
     # or this was never a paint-miss), return it; never re-run the fallback.
     if vehicle_data.get('paint_code'):
-        return JsonResponse({
+        # paint299: this reply is drawn by the page's script like a "found"
+        # one, so a special order code leaves it the same way: marked, and
+        # without a name (a session from before this release can hold one).
+        return JsonResponse(_special_order_shown(vehicle_data.get('make', ''), {
             'status': 'already_resolved',
             'paint_code': vehicle_data.get('paint_code'),
             'paint_description': vehicle_data.get('paint_description', ''),
-        })
+        }))
 
     if not vehicle_data.get('paint_pending'):
         return JsonResponse({'status': 'not_found'})
@@ -2430,7 +2542,13 @@ def _lookup_status(request, search_id):
     if _poll_locked is not None:
         return _poll_locked
 
-    return JsonResponse({
+    # paint299: THE REPLY THE PAGE'S SCRIPT DRAWS FROM. Most customers get
+    # their code this way, not from a page the server drew, and for a special
+    # order code this carried the catalogue's swatch and name (for a VW's L999,
+    # "#00937F" and "Pistazie") and nothing to say it was one, so the script
+    # drew a colour and no note. _special_order_shown empties those and marks
+    # the reply; the script draws the note from the mark.
+    return JsonResponse(_special_order_shown(make, {
         'status': 'found',
         'source': source,
         'paint_code': paint_code,
@@ -2440,7 +2558,7 @@ def _lookup_status(request, search_id):
         'canonical_code': canonical_code,
         'all_paint_codes': all_paint_codes,
         'two_tone': _two_tone_json(make, paint_code, vehicle_data.get('colour', '')),   # paint228
-    })
+    }))
 
 
 # Poll interval for the loser-waits path. Starts short (most recoveries that are
@@ -2513,7 +2631,9 @@ def _wait_for_recovery_result(search_id):
                 source = 'vdg_retry'
             else:
                 source = row.provider or ''
-            return JsonResponse({
+            # paint299: marked, and with no colour, for a special order code,
+            # exactly as the winner's own reply is.
+            return JsonResponse(_special_order_shown(row.make, {
                 'status': 'found',
                 'source': source,
                 'paint_code': row.paint_code,
@@ -2525,7 +2645,7 @@ def _wait_for_recovery_result(search_id):
                 # single recovered code is what matters here and is complete.
                 'all_paint_codes': [],
                 'two_tone': _two_tone_json(row.make, row.paint_code, row.colour),   # paint228
-            })
+            }))
         if row.recovery_duration_ms is not None:
             # Recovery finished without a code.
             if row.recovery_name_only and row.paint_description:
@@ -2603,6 +2723,16 @@ def _apply_paywall(search, config=None):
     if not payments_active(config):
         return False
     if not (search.paint_code and search.paint_description):
+        return False
+    # paint299: A SPECIAL ORDER CODE IS NEVER SOLD. Its page shows the code
+    # and a note promising a manual lookup, free; behind the paywall that
+    # would be "we've found the paint code and colour name", a charge, and
+    # then the note. A new answer cannot get this far (its name is emptied
+    # where it arrives, so the test above stops it). A copy can: a cached or
+    # remembered answer the operator typed with such a code and a name, or
+    # one cached with its name before this release. Measured with payments
+    # switched on in a scratch copy: a BMW's 490 with its name was locked.
+    if marks_special_order(search.make, search.paint_code):
         return False
     if search.paid_unlocked:
         return False          # already bought — never re-gate it
@@ -3014,7 +3144,15 @@ def _record_paint_hit(search_id, paint_code, paint_description, source, telemetr
                     return True
             return False
 
-        search.mmw_agreed = _same_code156(_got, _mmw)
+        # paint302: VOLVO AND POLESTAR, WITH MMW'S TWO EXTRA DIGITS. mmw writes
+        # their codes as 71700 for 717 (see mmw_unpadded_code), and each such
+        # answer was recorded here as a disagreement: 9 of the 16 lookups of
+        # those two makes that could be compared, to 7 Oct, every one the same
+        # three digits as the code given. Compared as sent first, then
+        # without the 00.
+        _mmw_short = mmw_unpadded_code(search.make, _mmw)
+        search.mmw_agreed = _same_code156(_got, _mmw) or (
+            _mmw_short != _mmw and _same_code156(_got, _mmw_short))
 
     if source == 'pl24':
         search.provider = Search.PROVIDER_PARTSLINK24
@@ -3247,6 +3385,12 @@ def _fill_cached_name(payload):
     try:
         code = (payload.get('paint_code') or '').strip()
         if not code or (payload.get('paint_description') or '').strip():
+            return payload
+        # paint299: NOT FOR A SPECIAL ORDER CODE. Its name is blank on purpose
+        # (paint159), and this filled it again from the catalogue on every
+        # replay: a VW's L999 came back as "Pistazie", some other car's bespoke
+        # green, on the page, on the copy's row and in the email.
+        if marks_special_order(payload.get('make') or '', code):
             return payload
         _hex, name, _canonical = PaintLookup.lookup_with_canonical(
             manufacturer=payload.get('make') or '', paint_code=code, model=payload.get('model') or '',
@@ -3487,7 +3631,24 @@ def submit_email(request):
 
     vin_masked = mask_vin(search.vin)
 
-    if search.paint_code:
+    # paint299: A SPECIAL ORDER CODE GOES TO THE MANUAL QUEUE (decided 9 Oct).
+    # The page has just told this customer "Leave your email below and we'll
+    # look it up manually and send it over, free, usually within 1 hour". This
+    # view then saw a code on the row and sent the automatic "here is your
+    # paint code" email, and the operator was never told: nobody looked
+    # anything up. Such a request now takes the branch a not found request
+    # takes, word for word: the operator's notification, the customer's
+    # "we're on it" email, and a row the dashboard's manual queue lists
+    # (admin_stats), which he answers or dismisses there as he does any other.
+    # The row keeps its code. Up to 7 Oct no customer had left an email on
+    # one of these (10 lookups on 7 cars).
+    _special_order = marks_special_order(search.make, search.paint_code)
+    # The name is never passed on for such a code, to the operator or the
+    # customer: a row from before this release can hold one ("Sonderlackierung"
+    # beside a BMW's 490), and the emails would call it the colour's name.
+    _found_name = '' if _special_order else (search.paint_description or '')
+
+    if search.paint_code and not _special_order:
         _email_args = _paint_email_args(search)
         sent = send_user_paint_code(to_email=email, **_email_args)
         if sent:
@@ -3506,7 +3667,11 @@ def submit_email(request):
             # paint106: the colour name a provider DID return. Without it both
             # mails read as though nothing was found, and the one fact we
             # established is discarded at the moment it is most useful.
-            found_name=search.paint_description or '',
+            found_name=_found_name,
+            # paint299: and for a special order request, the code, so the
+            # operator's email says why a car that has a code is in his queue.
+            # Passed only then, so every other request's call is as it was.
+            **({'special_order_code': search.paint_code} if _special_order else {}),
         )
         user_sent = send_user_pending_notification(
             to_email=email,
@@ -3518,7 +3683,7 @@ def submit_email(request):
             # than blaming "the manufacturer's servers", which was usually
             # untrue — most misses are a coverage gap, not an outage.
             make=search.make or '',
-            found_name=search.paint_description or '',
+            found_name=_found_name,
         )
         if admin_sent and user_sent:
             # The riskiest of the three: this runs after BOTH sends above, so
@@ -3701,7 +3866,8 @@ def _make_tables(lookups, min_cars=10, limit=10):
 
     Top searched: distinct plates per make, the operator's own lookups left
     out. Misses: of the cars the pipeline actually TRIED (gated makes and "no
-    code exists" answers left out, the operator's own lookups too), how many
+    code exists" answers left out, the operator's own lookups too, and since
+    paint305 the copies given again from the cache or from memory), how many
     never got a code AUTOMATICALLY. A hand answer counts as a miss: it is the
     pipeline's miss, answered by a person. A rate, not a raw count, and only
     for makes with at least `min_cars` cars, so one unlucky car cannot top it.
@@ -3712,6 +3878,21 @@ def _make_tables(lookups, min_cars=10, limit=10):
                .order_by('-count', 'make')[:limit])
     tried = (mine.exclude(error_message__contains='make_not_automated')
              .exclude(no_code_available=True)
+             # paint305 (M13): A COPY IS NOT A CAR THE PIPELINE TRIED. A row
+             # served from the 7 day cache or from memory (paint288) ran no
+             # search: it gives an earlier answer again. Counted here, a plate
+             # whose only rows are copies (the first lookup was the operator's
+             # own, or was answered by hand) became a car tried, and "answered"
+             # when its copy came from the 7 day cache, a miss when it came
+             # from memory. On the lookups of 2 May to 7 Oct that is 4 plates
+             # of 2,921: 3 with nothing but a copy, and 1 whose own search
+             # found nothing and whose copy, of an answer given another way,
+             # then counted that search as answered.
+             # Only a copy on which no search ran is left out. A row served
+             # from the cache whose search DID then run (a make taken off the
+             # not automated list inside the week) keeps the cache label when
+             # that search finds nothing, and the pipeline did try that car.
+             .exclude(provider__in=Search.COPIED_PROVIDERS, recovery_attempted=False)
              .values('make')
              .annotate(cars=Count('registration', distinct=True),
                        answered=Count('registration', distinct=True,
@@ -3797,11 +3978,19 @@ def _picture_panel(now=None):
 @staff_member_required
 def admin_stats(request):
     """Admin-only stats dashboard."""
+    # paint305 (M10): EVERY ACTION BELOW THAT SAVES A SETTING STARTS FROM
+    # SiteConfig.fresh(), the row as the database holds it now. They started
+    # from SiteConfig.get(), this worker's copy, which can be up to a minute
+    # behind the other worker. Saving from it put a balance entered on the
+    # other worker back to its old figure (see fresh() in models.py), and a
+    # switch pressed twice inside the minute was flipped from the old copy, so
+    # the second press repeated the first instead of undoing it.
+    #
     # Maintenance toggle: a POST from the dashboard's switch flips the
     # site-wide maintenance flag (lookups paused). Redirect-after-POST so a
     # refresh doesn't re-submit. staff-only via the decorator above.
     if request.method == 'POST' and request.POST.get('action') == 'toggle_maintenance':
-        cfg = SiteConfig.get()
+        cfg = SiteConfig.fresh()                                # paint305
         cfg.maintenance_mode = not cfg.maintenance_mode
         cfg.save(update_fields=['maintenance_mode', 'updated_at'])
         messages.success(
@@ -3814,7 +4003,7 @@ def admin_stats(request):
     # Origin gate switch (F2). Same shape as the maintenance toggle above:
     # POST, flip, redirect-after-POST, staff-only via the decorator.
     if request.method == 'POST' and request.POST.get('action') == 'toggle_origin_gate':
-        cfg = SiteConfig.get()
+        cfg = SiteConfig.fresh()                                # paint305
         # THREE STATES, cycled deliberately in that order: watching, then
         # trusting only Cloudflare, then refusing everything else. Each step is
         # stricter than the last, so a mis-click advances one notch rather than
@@ -3873,7 +4062,7 @@ def admin_stats(request):
     # the next lookup. Superseded automatically by the next real API reading —
     # see the "newer wins" comparison in the context above.
     if request.method == 'POST' and request.POST.get('action') == 'save_vdg_balance':
-        cfg = SiteConfig.get()
+        cfg = SiteConfig.fresh()                                # paint305
         raw = (request.POST.get('vdg_balance_manual') or '').strip()
         _back = '/admin-stats/'
         # paint130: BLANK IS A NO-OP, not a wipe.
@@ -3943,6 +4132,23 @@ def admin_stats(request):
         # would have recorded that you knew; this records what you knew.
         code = (request.POST.get('fixed_code') or '').strip()
         name = (request.POST.get('fixed_name') or '').strip()
+        # paint305 (F9): NO LONGER THAN THE COLUMNS HOLD. Neither box had a
+        # limit, in the form or here. The correction below is written to the
+        # lookup's row with .update(), which skips the row's own trimming, and
+        # to the operator's table: the scratch database (sqlite) stored a 300
+        # character code in the 50 character column, and Postgres refuses such
+        # a value with an error, so in production it would be an error page
+        # with the report left open. Refused here first, before anything is
+        # written, the way the manual answer form refuses it. Only for Save:
+        # "Code is fine" writes neither box.
+        if actioned and len(code) > CORRECTION_CODE_MAX_CHARS:
+            messages.error(request, f'Paint code too long ({len(code)} chars, max '
+                                    f'{CORRECTION_CODE_MAX_CHARS}). Nothing was saved.')
+            return redirect(_back)
+        if actioned and len(name) > CORRECTION_NAME_MAX_CHARS:
+            messages.error(request, f'Paint name too long ({len(name)} chars, max '
+                                    f'{CORRECTION_NAME_MAX_CHARS}). Nothing was saved.')
+            return redirect(_back)
         corrected = False
         if actioned and code and rep.search and rep.search.make:
             # Only when something actually CHANGED. Pressing save with the
@@ -3996,7 +4202,7 @@ def admin_stats(request):
         return redirect(_back)
 
     if request.method == 'POST' and request.POST.get('action') == 'save_ezyvin_balance':
-        cfg = SiteConfig.get()
+        cfg = SiteConfig.fresh()                                # paint305
         raw = (request.POST.get('ezyvin_credit_balance') or '').strip()
         # paint130: BLANK IS A NO-OP, not a wipe.
         #
@@ -4029,7 +4235,7 @@ def admin_stats(request):
         return redirect('admin_stats')
 
     if request.method == 'POST' and request.POST.get('action') == 'save_budget':
-        cfg = SiteConfig.get()
+        cfg = SiteConfig.fresh()                                # paint305
         raw = (request.POST.get('daily_budget_gbp') or '').strip()
         try:
             value = Decimal(raw)
@@ -4068,7 +4274,7 @@ def admin_stats(request):
     # Save the blocklists (A). Three textareas, newline/comma separated; stored
     # verbatim (parsing happens at match time via SiteConfig helpers).
     if request.method == 'POST' and request.POST.get('action') == 'save_blocklists':
-        cfg = SiteConfig.get()
+        cfg = SiteConfig.fresh()                                # paint305
         cfg.blocked_regs = (request.POST.get('blocked_regs') or '').strip()
         cfg.blocked_ips = (request.POST.get('blocked_ips') or '').strip()
         # paint23: makes we cannot resolve. Editable here rather than in code so
@@ -4102,7 +4308,7 @@ def admin_stats(request):
     # Payments master switch (F). Only meaningful once the Stripe env keys are
     # set; the view guards on payments_active() which checks both.
     if request.method == 'POST' and request.POST.get('action') == 'toggle_payments':
-        cfg = SiteConfig.get()
+        cfg = SiteConfig.fresh()                                # paint305
         cfg.payments_enabled = not cfg.payments_enabled
         cfg.save(update_fields=['payments_enabled', 'updated_at'])
         if cfg.payments_enabled and not payments_configured():
@@ -4184,14 +4390,38 @@ def admin_stats(request):
         # recorded) and still found nothing; "incomplete" is everything else —
         # recovery never ran or never finished (typically the user left before the
         # results page could fire it). Split so the dashboard shows them apart.
+        # paint305 (M12): ONE DEFINITION OF A MISS, today's card's. A lookup the
+        # operator answered "no code exists" (no_code_available) is the third
+        # outcome paint16 describes below: left out of BOTH sides of the rate.
+        # today_genuine_miss above has always left it out; this count did not,
+        # so the overall rate, and the "Searched fully, no code" line under
+        # it, counted those answers as misses. On the lookups of 2 May to
+        # 7 Oct that is 5 rows: 85.6% shown (2,964 of 3,461), 85.8% without
+        # them (2,964 of 3,456).
         genuine_miss=Count('id', filter=(
-            ~Q(make='') & Q(paint_code='')
+            ~Q(make='') & Q(paint_code='') & Q(no_code_available=False)
             & Q(recovery_attempted=True) & Q(recovery_duration_ms__isnull=False)
         )),
         incomplete=Count('id', filter=(
             ~Q(make='') & Q(paint_code='')
             & ~(Q(recovery_attempted=True) & Q(recovery_duration_ms__isnull=False))
             & ~Q(error_message='make_not_automated')
+            & ~Q(error_message=BUDGET_PAUSED_NOTE)                  # paint305, below
+        )),
+        # paint305 (M14): A SEARCH THE DAILY BUDGET HELD BACK, counted apart.
+        # Since paint294 the status call does not start a paint search once
+        # the day's budget is reached; the row carries BUDGET_PAUSED_NOTE until
+        # the search does run. Such a row fell into `incomplete` here and into
+        # "Left before finishing" on the daily chart, which both mean the
+        # CUSTOMER left, so a day the budget ran out read as a day people
+        # walked away. The same rows as before, split in two: the ones that
+        # carry the note are counted here and no longer there. (A row that
+        # already carried another message when it was held back never gets
+        # the note, by paint294's own rule, and still counts as left.)
+        budget_held=Count('id', filter=(
+            ~Q(make='') & Q(paint_code='')
+            & ~(Q(recovery_attempted=True) & Q(recovery_duration_ms__isnull=False))
+            & Q(error_message=BUDGET_PAUSED_NOTE)
         )),
         # A FOURTH outcome, reported on its own. Unsupported makes never run
         # recovery, so without this they would fall into `incomplete` — which
@@ -4336,7 +4566,15 @@ def admin_stats(request):
             not_automated=Count('id', filter=Q(error_message='make_not_automated')),
             abandoned=Count('id', filter=Q(paint_code='', no_code_available=False,
                                            recovery_attempted=False)
-                            & ~Q(make='') & ~Q(error_message='make_not_automated')),
+                            & ~Q(make='') & ~Q(error_message='make_not_automated')
+                            & ~Q(error_message=BUDGET_PAUSED_NOTE)),        # paint305
+            # paint305 (M14): the searches the daily budget held back, taken
+            # out of "Left before finishing" above and given a series of their
+            # own (see budget_held in top_metrics). The customer did not leave.
+            budget_held=Count('id', filter=Q(paint_code='', no_code_available=False,
+                                             recovery_attempted=False,
+                                             error_message=BUDGET_PAUSED_NOTE)
+                              & ~Q(make='')),
             # paint98: the pre-15 Aug VDG series is GONE. PROVIDER_VDG stopped
             # being reachable when paint66 split the packages on 15 Aug — the
             # last row is 15 Aug 14:40 — so from 14 Sep it sits permanently at
@@ -4392,6 +4630,7 @@ def admin_stats(request):
     chart_labels = []
     chart_delivered, chart_failed, chart_nocode = [], [], []
     chart_bad_plate, chart_not_automated, chart_abandoned = [], [], []
+    chart_budget_held = []                                      # paint305 (M14)
     src_ezyvin, src_retry, src_retry2 = [], [], []
     src_mmw = []
     src_pl24, src_manual, src_cache = [], [], []
@@ -4412,6 +4651,7 @@ def admin_stats(request):
         chart_bad_plate.append(row.get('bad_plate', 0))
         chart_not_automated.append(row.get('not_automated', 0))
         chart_abandoned.append(row.get('abandoned', 0))
+        chart_budget_held.append(row.get('budget_held', 0))     # paint305 (M14)
         src_ezyvin.append(row.get('s_ezyvin', 0))
         src_mmw.append(row.get('s_mmw', 0))
         src_retry.append(row.get('s_retry', 0))
@@ -4435,10 +4675,25 @@ def admin_stats(request):
     # requests, no [:10] cap. In practice this is small; if your backlog grew
     # to thousands it'd be worth paginating, but you'd notice that long before
     # the page slowed down).
-    recent_failures_with_email = (
-        Search.objects.filter(paint_code='', email__gt='', manual_lookup_completed=False)
+    #
+    # paint299: AND THE REQUESTS LEFT ON A SPECIAL ORDER CODE (submit_email
+    # sends those here, decided 9 Oct). The queue was "no code, an email, not
+    # yet answered"; such a row has a code, so it could never appear. The
+    # database narrows to the few codes that can mean special order, in any
+    # letter case, and marks_special_order then decides each row with its
+    # make: 490 is in that list for BMW and is a real colour on a Volvo, whose
+    # row must stay out (it was sent the automatic email). A row leaves the
+    # queue as before, when it is answered or dismissed. On the lookups up to
+    # 7 Oct this adds nothing: no row with such a code holds an email.
+    _special_order_spelling = Q()
+    for _spelling in special_order_code_spellings():
+        _special_order_spelling |= Q(paint_code__iexact=_spelling)
+    recent_failures_with_email = [
+        s for s in Search.objects.filter(Q(paint_code='') | _special_order_spelling,
+                                         email__gt='', manual_lookup_completed=False)
         .order_by('-timestamp')
-    )
+        if not s.paint_code or marks_special_order(s.make, s.paint_code)
+    ]
 
     # Provider breakdown — where did the paint code come from? Single aggregate.
     provider_breakdown = real_lookups.aggregate(
@@ -4462,7 +4717,7 @@ def admin_stats(request):
     #
     # The cost: a lookup where VDG ANSWERED with a vehicle but no make was
     # invisible. `[car 34]` on 15 Sep is the only one in four months — a 1991
-    # grey import with an 11-character chassis number, `P25W0607988`. VDG gave a
+    # grey import with an 11-character chassis number. VDG gave a
     # year, a colour and a VIN, charged £0.06, and the row could not be seen in
     # the table headed "All recent lookups".
     #
@@ -4613,6 +4868,7 @@ def admin_stats(request):
         'no_vehicle_count': no_vehicle_count,
         'genuine_miss_count': genuine_miss_count,
         'incomplete_count': incomplete_count,
+        'budget_held_count': top_metrics['budget_held'],        # paint305 (M14)
         'name_only_miss_count': name_only_miss_count,
         'avg_duration_s': avg_duration_s,
         'avg_client_s': avg_client_s,
@@ -4641,6 +4897,7 @@ def admin_stats(request):
             'bad_plate': chart_bad_plate,
             'not_automated': chart_not_automated,
             'abandoned': chart_abandoned,
+            'budget_held': chart_budget_held,                   # paint305 (M14)
             'src_ezyvin': src_ezyvin,
             'src_mmw': src_mmw,
             'src_retry': src_retry,
@@ -4651,6 +4908,8 @@ def admin_stats(request):
         },
         'top_makes': top_makes,
         'manual_note_max': MANUAL_NOTE_MAX_CHARS,
+        'correction_code_max': CORRECTION_CODE_MAX_CHARS,       # paint305 (F9)
+        'correction_name_max': CORRECTION_NAME_MAX_CHARS,       # paint305 (F9)
         'top_regs': top_regs,
         'failed_makes': failed_makes,
         'recent_failures': recent_failures_with_email,
@@ -4933,6 +5192,13 @@ def submit_manual_lookup(request):
         year=search.year,
         vdg_colour=search.colour,
     )
+    # paint299: NO SWATCH AND NO "ALSO" CODE WHEN THE CODE TYPED IS ITSELF A
+    # SPECIAL ORDER CODE (the operator answering a BMW's request with 490 and
+    # the colour's name, say). The swatch would be the catalogue's row for that
+    # code, some other car's paint: bright blue for 490 on the repo's copy. The
+    # code, the name and the note go out exactly as typed.
+    if marks_special_order(search.make, paint_code):
+        paint_hex = canonical_code = None
 
     _previous_code = search.paint_code or ''           # paint260: put back if the send fails
     _picture = None

@@ -65,31 +65,46 @@
       }
     }
     </script>
-    <script type="application/ld+json">
+    <script type="application/ld+json">{% comment %} paint307: WHAT THIS BLOCK SAYS ABOUT MONEY FOLLOWS THE PAYMENTS SWITCH.
+       It carried a 2.00 GBP offer, "You only pay when we find your code" and "No
+       charge if no paint code is found" on every page whatever the switch said,
+       so with payments off search engines were told a price while the page a
+       visitor reads says "Free while we finish testing" (audit of 8 Oct, G3;
+       reproduced on a scratch copy with payments off: the offer was on the home
+       page, help, about, privacy and the disclaimer).
+       The three are now drawn only when the page is given payments_on, the same
+       switch its visible wording reads (index.html, help.html), so the two
+       cannot disagree. The view of every page in the sitemap passes it. A page
+       drawn without it (the results page, the 404 page) carries none of the
+       three in either state; search engines are asked not to index those.
+       The price is still lookup_price_display, which is LOOKUP_PRICE_PENCE, the
+       one setting the paywall charges from (lookup/context_processors.py).
+       Each tag sits at the end of a line, and this note on the script tag's own
+       line, so that with payments on the block is byte for byte what it was. {% endcomment %}
     {
       "@context": "https://schema.org",
       "@type": "WebApplication",
       "name": "coloureg",
       "alternateName": "coloureg paint code finder",
-      "description": "UK paint code lookup tool. Enter your car's registration to retrieve the factory paint code from the manufacturer's database. Results in seconds. You only pay when we find your code.",
+      "description": "UK paint code lookup tool. Enter your car's registration to retrieve the factory paint code from the manufacturer's database. Results in seconds.{% if payments_on %} You only pay when we find your code.{% endif %}",
       "url": "https://coloureg.com",
       "applicationCategory": "AutomotiveApplication",
       "browserRequirements": "Requires JavaScript",
-      "operatingSystem": "Web",
+      "operatingSystem": "Web",{% if payments_on %}
       "offers": {
         "@type": "Offer",
         "price": "{{ lookup_price_display }}",
         "priceCurrency": "GBP",
         "availability": "https://schema.org/InStock"
-      },
+      },{% endif %}
       "featureList": [
         "Paint code lookup by UK registration",
         "Factory paint code retrieval from manufacturer database",
         "Manual lookup fallback, usually within 1 hour",
         "No account required",
         "No email required for instant lookup",
-        "Covers 40+ manufacturers including Ford, BMW, Audi, VW, Vauxhall",
-        "No charge if no paint code is found"
+        "Covers 40+ manufacturers including Ford, BMW, Audi, VW, Vauxhall"{% if payments_on %},
+        "No charge if no paint code is found"{% endif %}
       ],
       "audience": {
         "@type": "Audience",

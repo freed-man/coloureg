@@ -18,7 +18,7 @@ import re
 
 import requests
 
-from .http import get_session
+from .http import failure_chain, failure_kind, get_session
 
 
 VDG_BASE_URL = 'https://uk.api.vehicledataglobal.com/r2'
@@ -95,6 +95,17 @@ class VdgTimeoutError(VdgError):
     pass
 
 
+class VdgNotSentError(VdgError):
+    """paint296: the request never left. No connection to VDG was made (it was
+    refused, the name did not resolve, connecting timed out, or VDG's
+    certificate was refused), so VDG has nothing to work on and nothing to
+    charge. The paint search books no estimate for a call that ended this way
+    (paint_resolver._abandoned). Still a VdgError, so every caller that
+    handles a failed call handles this one the same way.
+    """
+    pass
+
+
 # Query-string parameters that must never survive into an exception string.
 # `apikey` is the live credential; `vrm` is personal data under the same
 # hashing discipline _log_reg enforces everywhere else.
@@ -107,19 +118,22 @@ def _failure_cause(exc):
 
     The stored error is cut at 200 characters and urllib3's text spends them on
     the request URL, so the admin table showed "... (Caused by Pro" and never
-    the cause (G5OPT, 2 Oct). The innermost reason now leads: e.g.
+    the cause ([car 47], 2 Oct). The innermost reason now leads: e.g.
     "ProtocolError: ('Connection aborted.', RemoteDisconnected(...))".
     """
-    reason = exc
-    for _ in range(4):                       # requests -> urllib3 MaxRetryError -> reason
-        inner = getattr(reason, 'reason', None)
-        if inner is None and reason.args and isinstance(reason.args[0], BaseException):
-            inner = reason.args[0]
-        if inner is None or inner is reason:
-            break
-        reason = inner
-    text = _scrub(reason) if reason is not exc else _scrub(exc)
-    return f'{type(reason).__name__}: {text}'[:160]
+    # paint296: the innermost cause, found by the same walk that decides what
+    # kind of failure it was (http.failure_chain), and its own message. Printed
+    # whole, a urllib3 error leads with the pool or connection object it came
+    # from ("<...HTTPSConnection object at 0x7f...>: Failed to establish a new
+    # connection"), which spends the stored characters on a memory address. So
+    # the message urllib3 keeps apart from that is used when there is one, then
+    # the error's own text argument, then the error printed whole.
+    reason = failure_chain(exc)[-1]
+    text = getattr(reason, '_message', None)
+    if not (isinstance(text, str) and text):
+        text = next((a for a in reversed(getattr(reason, 'args', ()))
+                     if isinstance(a, str) and a), None) or str(reason)
+    return f'{type(reason).__name__}: {_scrub(text)}'[:160]
 
 
 def _scrub(exc):
@@ -164,11 +178,16 @@ def _make_request(registration, package, billing_sink=None, timeout=None):
             VDG_LOOKUP_ENDPOINT, params=params,
             timeout=VDG_TIMEOUT_S if timeout is None else timeout,
         )
-    except requests.exceptions.Timeout as e:
-        # Raise the timeout-specific subclass so views.py / Sentry can tell
-        # this apart from a generic transport failure or VDG 500.
-        raise VdgTimeoutError(f'VDG request timed out: {_scrub(e)}')
     except requests.exceptions.RequestException as e:
+        # paint296: ONE CLAUSE, AND THE KIND IS READ FROM THE FAILURE ITSELF.
+        # There used to be an `except requests.exceptions.Timeout` above this
+        # one. On the shared session it never saw a read timeout (see
+        # http.failure_kind for why), so since the session came in, on 18 Aug,
+        # every VDG call that ran out of time was reported as "request failed"
+        # (the lookups table holds 15 "timed out" rows, the last on 14 Aug).
+        # And nothing told a call that never connected from one abandoned half
+        # way, so an unreachable VDG was booked as if it had been asked.
+        #
         # SCRUBBED (F1). The API key travels in the query string, so on any
         # connection-class failure urllib3's MaxRetryError carries the whole
         # URL — key and plaintext VRM included — inside str(e). views.py stores
@@ -178,6 +197,11 @@ def _make_request(registration, package, billing_sink=None, timeout=None):
         # the URL, so the everyday BMW path was never affected; this fires on
         # network-level failures, which is exactly when nobody is watching.
         # oneauto.py:204 already got this right by logging type(e).__name__.
+        kind = failure_kind(e)
+        if kind == 'not_sent':
+            raise VdgNotSentError(f'VDG request not sent: {_failure_cause(e)}')
+        if kind == 'timeout':
+            raise VdgTimeoutError(f'VDG request timed out: {_failure_cause(e)}')
         raise VdgError(f'VDG request failed: {_failure_cause(e)}')
 
     if response.status_code != 200:
@@ -259,7 +283,7 @@ def _log_reg(registration):
     """How a registration appears in the log line (paint19).
 
     A registration is personal data. The privacy notice covers the Search table
-    with a 365-day scrub, but platform logs sit OUTSIDE that: different
+    with a 5-year scrub, but platform logs sit OUTSIDE that: different
     retention, different controls, and prune_old_data cannot reach them. Writing
     plaintext registrations there — which the paint18 version of this line did —
     quietly creates a second copy of personal data under no retention policy at

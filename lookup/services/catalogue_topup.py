@@ -22,7 +22,8 @@ to an existing code (extra names widen the name->code search and can make a
 colour ambiguous that resolves today). For the same reason a NEW code whose
 name another code of the make already carries is kept out of the name search:
 it answers code->name, but a customer's colour name still finds exactly what
-it finds today.
+it finds today. (paint308: a name the operator answered by hand, in his own
+table, counts as a name already carried.)
 
 This replaces rebuilding the whole catalogue with paintscraper's merge, where
 every source votes: measured on bsp, that would have dropped 822 of 5,455 short
@@ -46,7 +47,7 @@ from difflib import SequenceMatcher
 
 from django.db import transaction
 
-from lookup.models import PaintLookup
+from lookup.models import OperatorPaintCode, PaintLookup
 
 # -- bsp-peinture.fr -----------------------------------------------------------
 # US, Australian and British Leyland lists: other markets' code systems (Ford
@@ -284,6 +285,21 @@ def plan_topup(src):
         if not suppressed:
             active[mfr].add(code)
             searched[mfr].update(norms or [])
+    # paint308: THE OPERATOR'S OWN TABLE HOLDS NAMES TOO. The rule further down
+    # keeps a new code out of the name search when another code of the make
+    # already carries its name, so that a customer's colour name still finds
+    # what it finds today. It read only the catalogue's rows. A name the
+    # operator answered by hand is found through his own table, and only when
+    # the catalogue finds nothing (paint92), so a new row carrying that name
+    # took the answer over. Reproduced on a scratch copy: "Harbour Mauve",
+    # answered by hand with one code, gave the source's different code after
+    # a top-up, and the source's "Storm Gray" took over his "Storm Grey". On
+    # 25 Sep, 27 of his 133 entries could not be folded into a catalogue row
+    # (26 with no row for the code, 1 refused), so his table is the only place
+    # those names lead to his codes. His names now count as names already
+    # searched.
+    for mfr, norm in OperatorPaintCode.objects.values_list('manufacturer', 'normalized_name'):
+        searched[mfr].add(norm)
     for (mfr, code), entry in sorted(src.codes.items()):
         if len(entry['strict']) > 1:
             plan.tally['left alone: more than one colour under this code'] += 1
@@ -443,20 +459,36 @@ def apply_upgrades(plan, backup_path, batch_size=1000):
         PaintLookup.all_objects.bulk_update(list(rows.values()), ['hex', 'sources'], batch_size=batch_size)
 
 
-def restore_upgrades(backup_path):
-    """Put back every swatch in a backup, unless the row has changed since.
-    Returns (restored, left because changed since)."""
+def restore_upgrades(backup_path, apply=False):
+    """Put back every swatch in a backup, unless the row has changed since or
+    its swatch has been locked. Writes only with apply=True; without it the
+    same rows are worked out and nothing is saved.
+    Returns (the backup's entries put back, left because changed since, left
+    because locked)."""
     import json
     with open(backup_path, encoding='utf-8') as f:
         changes = json.load(f)
-    restored = changed = 0
+    restored, changed, locked = [], 0, 0
     with transaction.atomic():
         for c in changes:
             row = PaintLookup.all_objects.filter(id=c['id']).first()
             if row is None or row.hex != c['new_hex']:
                 changed += 1
                 continue
-            row.hex, row.sources = c['old_hex'], c['old_sources']
-            row.save(update_fields=['hex', 'sources'])
-            restored += 1
-    return restored, changed
+            # paint308: A LOCKED SWATCH IS A DECISION, AND AN UNDO MUST NOT UNDO IT.
+            # The upgrade never touches a locked swatch, but its undo did: a row
+            # upgraded and THEN locked (the operator looked at the new swatch and
+            # kept it) still holds the swatch the backup expects, so the test
+            # above let it through and the old guess went back over the lock.
+            # Reproduced on a scratch copy: of two upgraded rows, one locked
+            # since, both were put back. The same rule as the loader (paint160).
+            if 'hex' in (row.locked_fields or []):
+                locked += 1
+                continue
+            # paint308: AND NOTHING IS WRITTEN UNLESS ASKED. --restore wrote at
+            # once, the only mode of this command with no preview.
+            if apply:
+                row.hex, row.sources = c['old_hex'], c['old_sources']
+                row.save(update_fields=['hex', 'sources'])
+            restored.append(c)
+    return restored, changed, locked
