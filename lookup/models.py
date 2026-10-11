@@ -514,6 +514,20 @@ class Search(models.Model):
     _TWO_PAINTS_RE = re.compile(r'^\s*two[\s-]*tone\b|[+/]', re.I)
 
     @property
+    def answer_box(self):
+        """paint312: may the dashboard's Answer box be used on this lookup?
+
+        On any lookup of a known make that ended with no code: nothing found,
+        a name without a code, a make that is not automated, a verdict of "no
+        code exists" the operator now knows better than. Not while the
+        customer's own request is waiting in the manual queue: that one is
+        answered there, where the answer is emailed to them. The dashboard
+        and the view that saves the answer both ask here."""
+        if (self.paint_code or '').strip() or not (self.make or '').strip():
+            return False
+        return not ((self.email or '').strip() and not self.manual_lookup_completed)
+
+    @property
     def colour_check(self):
         """True when this answer is worth a look: its paint name states a
         colour the car is not registered as (paint297, for the dashboard only).
@@ -662,6 +676,16 @@ class Search(models.Model):
     # gave. It is therefore excluded from the success-rate denominator and
     # reported separately. In paid mode it is unambiguously a no-charge.
     no_code_available = models.BooleanField(default=False)
+
+    # paint312: WHEN THE OPERATOR LAST GAVE HIS OWN WORD ON THIS LOOKUP: a code
+    # he typed (the manual queue, the dashboard's Answer box, a correction on a
+    # customer's report, the admin) or his verdict that no code exists. His
+    # word is written on the customer's row, and `timestamp` there is when the
+    # customer LOOKED. Remembered answers keep his word for good and let the
+    # newest one stand, so they need to know when he SAID it: an older lookup
+    # answered today is today's word. Empty on every row from before this
+    # release, where the lookup's own time is used.
+    operator_answered_at = models.DateTimeField(null=True, blank=True)
 
     def save(self, *args, **kwargs):
         """Truncate over-length text before it reaches the database.

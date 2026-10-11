@@ -1165,7 +1165,8 @@ def index(request):
 
         # --- Remembered answers (paint288) ----------------------------------
         # THE 7-DAY CACHE HAS NOTHING, BUT THE LOOKUPS TABLE MAY: this plate may
-        # have been answered inside the last 90 days. If so, and DVLA (asked
+        # have been answered by a supplier inside the last 30 days, or by the
+        # operator at any time (paint312). If so, and DVLA (asked
         # free on every lookup anyway) says the make, year and colour are still
         # the same, that answer is given again and the paint search is not run.
         # Which earlier answer counts, and how it is read, is all in
@@ -4264,7 +4265,7 @@ def admin_stats(request):
         # filled in with what the customer was given, so pressing Save without
         # touching them marked the report upheld with no correction, and since
         # paint306 an upheld report with no correction pauses the plate's
-        # remembered answer for 90 days. When the code was right the button
+        # remembered answer (for 30 days since paint312). When the code was right the button
         # is "Code is fine"; when it was wrong, the right code goes in the
         # box. So an unchanged Save is turned back with a message and the
         # report stays open. (A report on a lookup with no make cannot take a
@@ -4336,7 +4337,8 @@ def admin_stats(request):
                 # So the correction now lands where it was made. Kept exactly as
                 # typed — no casing applied, only the ends trimmed above.
                 Search.objects.filter(id=rep.search_id).update(
-                    paint_code=code, paint_description=name)
+                    paint_code=code, paint_description=name,
+                    operator_answered_at=timezone.now())     # paint312: his word, and when he gave it
                 # ...and in the registration cache, or a repeat lookup of the
                 # same plate would be served the old answer from storage for as
                 # long as the entry lives, and the fix would only ever show in
@@ -4835,6 +4837,69 @@ def admin_stats(request):
     # to thousands it'd be worth paginating, but you'd notice that long before
     # the page slowed down).
     #
+    # paint312: AN ANSWER FOR A LOOKUP NOBODY ASKED ABOUT. The manual queue
+    # lists only the failed lookups whose customer left an email. Every other
+    # failed lookup could take a code only in the Django admin, which is a
+    # correction tool: the row kept its supplier, nothing went to the
+    # operator's own table, and memory read it as a supplier's answer. The
+    # dashboard's Answer box (on a lookup with no code: Search.answer_box)
+    # saves the code as the operator's own answer. No email is sent: there is
+    # nobody to send one to. Since this release memory keeps his answer for
+    # good, so the next lookup of that plate is given it.
+    if request.method == 'POST' and request.POST.get('action') == 'answer_lookup':
+        _back = '/admin-stats/#recent-lookups'
+        code = (request.POST.get('answer_code') or '').strip()      # kept as typed (paint181)
+        name = (request.POST.get('answer_name') or '').strip()
+        try:
+            row = Search.objects.get(id=request.POST.get('search_id'))
+        except (Search.DoesNotExist, ValueError, TypeError):
+            messages.error(request, 'That lookup no longer exists.')
+            return redirect(_back)
+        _refused = ''
+        if not code:
+            _refused = 'Type the paint code.'
+        elif len(code) > CORRECTION_CODE_MAX_CHARS:
+            _refused = f'Paint code too long ({len(code)} chars, max {CORRECTION_CODE_MAX_CHARS}).'
+        elif len(name) > CORRECTION_NAME_MAX_CHARS:
+            _refused = f'Paint name too long ({len(name)} chars, max {CORRECTION_NAME_MAX_CHARS}).'
+        elif (row.paint_code or '').strip():
+            _refused = 'That lookup already has a code. Correct it in the admin.'
+        elif (row.email or '').strip() and not row.manual_lookup_completed:
+            _refused = ('That customer left an email. Answer it in the manual lookup queue, '
+                        'so the code is sent to them.')
+        elif not row.answer_box:
+            _refused = 'That lookup has no make, so it cannot take an answer.'
+        # One press wins: the row is claimed by the same update that answers it.
+        if not _refused and not Search.objects.filter(id=row.id, paint_code='').update(
+                paint_code=code, paint_description=name, provider=Search.PROVIDER_MANUAL,
+                success=True, no_code_available=False, recovery_name_only=False,
+                operator_answered_at=timezone.now()):
+            _refused = 'That lookup already has a code. Correct it in the admin.'
+        if _refused:
+            messages.error(request, _refused + ' Nothing was saved.')
+            return redirect(_back)
+        try:
+            # The operator's own table, as a manual answer writes it (paint92).
+            OperatorPaintCode.record(make=row.make, code=code, colour_name=name, model=row.model,
+                                     registration=row.registration, search_id=row.id)
+        except Exception:  # noqa: BLE001 - the answer is saved; this only helps the next car
+            logger.exception('operator paint code not recorded')
+        try:
+            # The 7 day answer for the plate, when there is one, gives the code
+            # too (a make that is not automated is cached with no code), and a
+            # miss remembered for the hour is forgotten.
+            _cached = get_cached_vrm_payload(row.registration, count_hit=False)
+            if _cached:
+                store_vrm_payload(row.registration, dict(
+                    _cached, paint_code=code, paint_description=name,
+                    all_paint_codes=[], paint_name_only=False))
+            clear_miss(row.registration)
+        except Exception:  # noqa: BLE001 - never lose the answer over the cache
+            logger.warning('answer box: the cached answer was not updated', exc_info=True)
+        messages.success(request, f'{row.registration}: answered {code} {name}'.strip()
+                         + '. No email was sent.')
+        return redirect(_back)
+
     # paint299: AND THE REQUESTS LEFT ON A SPECIAL ORDER CODE (submit_email
     # sends those here, decided 9 Oct). The queue was "no code, an email, not
     # yet answered"; such a row has a code, so it could never appear. The
@@ -5433,6 +5498,7 @@ def submit_manual_lookup(request):
         # the stats exclude from the denominator entirely.
         success=not no_code,
         no_code_available=no_code,
+        operator_answered_at=timezone.now(),         # paint312: his word, and when he gave it
         recovery_name_only=False,
         email_sent=True,
         email_picture=bool(_picture),                                     # paint260

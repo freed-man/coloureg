@@ -1,0 +1,18 @@
+{% comment %}paint312: THE ANSWER BOX, for the operator only. On a lookup that ended with no
+   code and whose customer is not waiting in the manual queue (Search.answer_box). It
+   saves the code as the operator's own answer and sends no email. Drawn twice for each
+   such lookup, in the table and in the phone card, from this one file. A plain form
+   to the dashboard itself, like the report forms: no script. The click is kept from
+   the row around it, which opens and closes its note on a click.{% endcomment %}
+<details class="answer-box" onclick="event.stopPropagation()" style="margin-top: 4px;">
+    <summary style="cursor: pointer; color: #003399; font-size: 12px;">Answer</summary>
+    <form method="post" action="{% url 'admin_stats' %}" style="display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px;">
+        {% csrf_token %}
+        <input type="hidden" name="action" value="answer_lookup">
+        <input type="hidden" name="search_id" value="{{ s.id }}">
+        <input type="text" name="answer_code" maxlength="{{ correction_code_max }}" placeholder="PAINT CODE" required style="flex: 1 1 110px; min-width: 0;">
+        <input type="text" name="answer_name" maxlength="{{ correction_name_max }}" placeholder="PAINT NAME" style="flex: 2 1 160px; min-width: 0;">
+        <button type="submit" style="background: #003399; color: #fff; border: 0; border-radius: 4px; padding: 6px 12px; cursor: pointer;">Save</button>
+        <div style="flex: 1 1 100%; font-size: 11px; color: #666;">Saved as your own answer. No email is sent.</div>
+    </form>
+</details>

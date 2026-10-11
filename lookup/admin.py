@@ -70,6 +70,10 @@ class SearchAdmin(admin.ModelAdmin):
         """paint276: a corrected code or name reaches the cache and gets its picture."""
         if 'paint_code' in form.changed_data:
             obj.paint_code = (obj.paint_code or '').strip()
+        # paint312: a code or a "no code exists" verdict changed here is the
+        # operator's word, and remembered answers go by when he gave it.
+        if change and {'paint_code', 'paint_description', 'no_code_available'} & set(form.changed_data):
+            obj.operator_answered_at = timezone.now()
         super().save_model(request, obj, form, change)
         if change and {'paint_code', 'paint_description'} & set(form.changed_data):
             apply_code_correction(obj)
@@ -133,6 +137,7 @@ class SearchAdmin(admin.ModelAdmin):
         # pipeline and editing one would corrupt cost data or unlock a paid row.
         # manual_note and no_code_available are deliberately left editable,
         # since those are the staff workflow fields.
+        'operator_answered_at',          # paint312: set when a code or a verdict is saved
         'vdg_paint_name',
         'vdg_transaction_cost',
         'oneauto_cost',
@@ -265,7 +270,7 @@ class SearchAdmin(admin.ModelAdmin):
         ('Customer and manual handling', {
             'classes': ('collapse',),
             'fields': ('customer_message', 'manual_note', 'no_code_available',
-                       'enriched_from'),
+                       'enriched_from', 'operator_answered_at'),
         }),
         # paint288. What a remembered answer draws its page from: the car details
         # this row has no column for. Empty on lookups from before paint288.

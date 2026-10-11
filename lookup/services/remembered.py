@@ -79,6 +79,32 @@ them remembered before this release):
     engine size, fuel and month of first registration, and where the saved
     details hold them DVLA must say the same today. Lookups saved before this
     release hold none and are confirmed by make, year and colour as before.
+
+paint312, decided by the operator on 11 Oct: HIS WORD IS KEPT FOR GOOD, A
+SUPPLIER'S ANSWER FOR 30 DAYS.
+  * An answer a supplier gave is remembered for REMEMBER_DAYS, now 30 (it was
+    90). Measured on the lookups of 2 May to 10 Oct, the operator's own left
+    out: of the repeats searched afresh 7 to 30 days after an answer, 35 got
+    the same code and 4 another; 30 to 90 days after, 7 and 5.
+  * The operator's own word on a plate has no end date: a code he typed (a
+    manual answer, the dashboard's Answer box, a correction on a report) and
+    his verdict that no code exists. It was counted from the day the customer
+    LOOKED, so a car he answered in July failed again in November.
+  * HIS NEWEST WORD STANDS. Each is dated by when he gave it
+    (Search.operator_answered_at; on older rows, the lookup's own time, and
+    for a report's correction the time the report was resolved). When the
+    newest is "no code exists", nothing is remembered, whatever a supplier
+    said before or since. When it is a code, that code is the answer, and an
+    older verdict or an older code of his no longer counts. (Until now any
+    "no code exists" in the window, and two hand answers that differed,
+    remembered nothing.)
+  * A verdict never stops a search: it only stops memory. The plate is
+    searched afresh on every lookup, and the customer may ask again.
+  * A customer's report that pauses memory (waiting, or upheld with nothing
+    typed) pauses it for REMEMBER_DAYS, as before, and for as long as it is
+    newer than the operator's word it would otherwise serve.
+  * Lookups by suppliers that disagree with his code still stop it, while
+    they are inside REMEMBER_DAYS and came after the lookup he answered.
 """
 import logging
 import re
@@ -88,8 +114,9 @@ from django.utils import timezone
 
 logger = logging.getLogger(__name__)
 
-#: How long an answer is remembered, counted from the lookup that got it.
-REMEMBER_DAYS = 90
+#: How long a SUPPLIER'S answer is remembered, counted from the lookup that got
+#: it. paint312: 30 days (it was 90). The operator's own word has no end date.
+REMEMBER_DAYS = 30
 
 #: The longest a lookup waits for DVLA's reply before giving up on the
 #: remembered answer (the vehicle checks wait the same for theirs).
@@ -286,20 +313,33 @@ def reports_for(registration, since):
     waiting to be judged pauses; so does one upheld with no correction typed
     (the code was wrong and nothing replaced it). One upheld with a correction
     marks its lookup as answered by hand. An ignored report is left out. A
-    report whose lookup is gone is filed under None."""
-    from lookup.models import PaintCodeReport
+    report whose lookup is gone is filed under None.
+
+    paint312: `since` None reads the plate's reports of every age."""
     out = {}
-    for search_id, status, note in (PaintCodeReport.objects
-                                    .filter(registration=registration, created_at__gte=since)
-                                    .order_by('created_at', 'id')
-                                    .values_list('search_id', 'status', 'operator_note')):
-        if status == PaintCodeReport.STATUS_IGNORED:
-            continue
-        corrected = status == PaintCodeReport.STATUS_ACTIONED and (note or '').startswith(_CORRECTED_NOTE)
+    for search_id, corrected, _created, _resolved in _report_list(registration, since):
         if corrected and out.get(search_id) != REPORT_PAUSES:
             out[search_id] = REPORT_CORRECTED
         elif not corrected:
             out[search_id] = REPORT_PAUSES
+    return out
+
+
+def _report_list(registration, since=None):
+    """paint312: this plate's reports that were not ignored, oldest first, as
+    (lookup id, was it a correction, when it was filed, when it was resolved)."""
+    from lookup.models import PaintCodeReport
+    reports = PaintCodeReport.objects.filter(registration=registration)
+    if since is not None:
+        reports = reports.filter(created_at__gte=since)
+    out = []
+    for search_id, status, note, created, resolved in (reports.order_by('created_at', 'id')
+                                                       .values_list('search_id', 'status', 'operator_note',
+                                                                    'created_at', 'resolved_at')):
+        if status == PaintCodeReport.STATUS_IGNORED:
+            continue
+        corrected = status == PaintCodeReport.STATUS_ACTIONED and (note or '').startswith(_CORRECTED_NOTE)
+        out.append((search_id, corrected, created, resolved))
     return out
 
 
@@ -324,31 +364,56 @@ def _find(registration, now):
     from lookup.models import Search
     if not registration:
         return None
-    rows = list(Search.objects
-                .filter(registration=registration, timestamp__gte=now - timedelta(days=REMEMBER_DAYS))
-                .order_by('timestamp', 'id'))
-    coded = [r for r in rows if (r.paint_code or '').strip()]
-    if not coded:
-        return None
-    # paint306 (R1): "no code exists" on ANY lookup of the plate in the window.
-    # The check further down looked only at lookups after the answer's, and the
-    # operator's verdict is written on the customer's row, which may be older.
-    if any(r.no_code_available for r in rows):
-        return None
-    # paint306 (R2): customers' reports on these lookups.
-    reports = reports_for(registration, now - timedelta(days=REMEMBER_DAYS))
-    if REPORT_PAUSES in reports.values():
-        return None
-    corrected = {r.id for r in coded if reports.get(r.id) == REPORT_CORRECTED}
+    # paint312: EVERY lookup of the plate is read, because the operator's own
+    # word has no end date. `recent` is the window a supplier's answer lives in.
+    since = now - timedelta(days=REMEMBER_DAYS)
+    rows = list(Search.objects.filter(registration=registration).order_by('timestamp', 'id'))
+    recent = [r for r in rows if r.timestamp >= since]
+    # paint306 (R2): customers' reports on these lookups. A correction typed on
+    # a report is the operator's answer for that lookup, at any age (paint312).
+    every_report = _report_list(registration)
+    all_kinds = reports_for(registration, None)
+    corrected = {r.id for r in rows if (r.paint_code or '').strip() and all_kinds.get(r.id) == REPORT_CORRECTED}
+    corrected_at = {}
+    for search_id, was_correction, created, resolved in every_report:
+        if was_correction and search_id in corrected:
+            corrected_at[search_id] = resolved or created
     by_hand = lambda r: r.provider == Search.PROVIDER_MANUAL or r.id in corrected
-    manual = [r for r in coded if by_hand(r)]
-    # paint306 (R1): two hand answers that give different codes.
-    if len({_code_key(r.paint_code) for r in manual}) > 1:
+    said_at = lambda r: r.operator_answered_at or corrected_at.get(r.id) or r.timestamp
+
+    # paint312: THE OPERATOR'S WORDS ON THIS PLATE, oldest first by when he
+    # gave them: "no code exists", or a code of his own. The newest stands.
+    words = []
+    for place, r in enumerate(rows):
+        if r.no_code_available:
+            words.append((said_at(r), place, False, r))
+        elif by_hand(r) and (r.paint_code or '').strip():
+            words.append((said_at(r), place, True, r))
+    words.sort(key=lambda w: (w[0], w[1]))
+
+    coded = [r for r in recent if (r.paint_code or '').strip()]
+    # A report waiting to be judged, or upheld with nothing typed, filed
+    # inside the window pauses the plate (paint306), whoever gave the answer.
+    if REPORT_PAUSES in reports_for(registration, since).values():
         return None
-    if manual:
-        source = manual[-1]
-        counted = coded[coded.index(source):]
+    if words:
+        said, _place, is_code, source = words[-1]
+        if not is_code:
+            return None                # his newest word: no code exists
+        # ...and such a report of any age pauses it while it is newer than
+        # the word that would be served.
+        if any(not was_correction and created >= said
+               for _search_id, was_correction, created, _resolved in every_report):
+            return None
+        # His older words are behind him; what must still agree is every
+        # other coded lookup inside the window that came after the one he
+        # answered (a supplier's own answer since, say).
+        superseded = {id(w[3]) for w in words[:-1]}
+        counted = [r for r in coded
+                   if r is source or (rows.index(r) > rows.index(source) and id(r) not in superseded)]
     else:
+        if not coded:
+            return None
         given = [r for r in coded if r.provider not in Search.COPIED_PROVIDERS]
         if not given:
             return None                # only copies are left: the answer itself is older than the window
@@ -380,9 +445,6 @@ def _find(registration, now):
                 continue
         if other is None or _code_key(other[0]) != _code_key(answer[0]):
             return None                # two lookups of this plate disagree
-    after = rows[rows.index(source) + 1:]
-    if any(r.no_code_available for r in after):
-        return None                    # the operator has since found that no code exists
     # The saved details of this same car: the fullest set any lookup of the plate
     # holds (a hand answer's cached copy can be thinner than the lookup before
     # it), the newest among equals.

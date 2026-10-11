@@ -1838,7 +1838,7 @@
     </div>
 
     {% comment %}<!-- Recent paint code lookups (all searches, success + failure) -->{% endcomment %}
-    <div class="panel">
+    <div class="panel" id="recent-lookups">
         <h3>Recent paint code lookups</h3>
 
         {% comment %}<!-- Desktop/tablet table (>768px). CSS hides this below 768px. -->{% endcomment %}
@@ -1877,6 +1877,7 @@
                         <span class="recent-paint-code">{{ s.paint_code }}</span>{% if s.enriched_from == 'code' %} <span class="db-badge" title="Code filled from coloureg's paint database">DB</span>{% endif %}
                         {% else %}
                         <span class="recent-empty">—</span>
+                        {% if s.answer_box %}{% include 'lookup/_answer_box.html' %}{% endif %}
                         {% endif %}
                     </td>
                     <td>
@@ -1991,6 +1992,7 @@
                     {% if s.paint_description %}<span class="recent-paint-desc">{{ s.paint_description }}</span>{% if s.enriched_from == 'name' %} <span class="db-badge" title="Name filled from coloureg's paint database">DB</span>{% endif %}{% if s.colour_check %} <span class="db-badge check-badge" title="The paint's name states a colour the car is not registered as. Worth a look.">check</span>{% endif %}{% endif %}
                 </div>
                 {% endif %}
+                {% if s.answer_box %}<div class="recent-card-paint">{% include 'lookup/_answer_box.html' %}</div>{% endif %}
                 {% comment %}
                    Provider and cost share a row on mobile: the desktop table has
                    a Cost column, and without this the phone view silently omits
