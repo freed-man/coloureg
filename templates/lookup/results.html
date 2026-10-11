@@ -762,7 +762,7 @@
                        the code was wrong. The same element, words and place as the script's; a
                        battery check fails if the two ever differ. The script that sends the
                        report is further down, on every page that has a lookup. {% endcomment %}
-                    {% if search_id %}<div class="text-center mt-4 mb-2" id="report-wrap"><button type="button" id="report-btn" class="btn btn-link btn-sm p-0" style="font-size: 13px; color: #888; text-decoration: underline;">Is this wrong? Let us know</button></div>{% endif %}
+                    {% if search_id and not already_reported %}<div class="text-center mt-4 mb-2" id="report-wrap"><button type="button" id="report-btn" class="btn btn-link btn-sm p-0" style="font-size: 13px; color: #888; text-decoration: underline;">Is this wrong? Let us know</button></div>{% endif %}
                 </div>
                 {% elif paint_pending %}
                 {# Paint not in the first VDG response, but a VIN exists, so a       #}

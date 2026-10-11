@@ -1738,6 +1738,10 @@
                         class="send-btn">Save</button>
                 <button type="submit" name="action" value="report_ignored"
                         class="send-btn">Code is fine</button>
+                {% comment %}paint313: the customer is right and the right code is not known yet.
+                   Upheld with no correction: the plate is searched afresh next time.{% endcomment %}
+                <button type="submit" name="action" value="report_upheld"
+                        class="send-btn">Wrong, code not known</button>
             </form>
         </div>
         {% endfor %}

@@ -2234,6 +2234,10 @@ def results(request):
         'paint_name': paint_name,
         'canonical_code': canonical_code,
         'search_id': vehicle_data.get('search_id'),
+        # paint313: a lookup already reported is not offered "Is this wrong?"
+        # again after a reload (a second press filed nothing). One small
+        # query, and only for a result that has a code.
+        'already_reported': _already_reported(vehicle_data.get('search_id')) if paint_code else False,
         'email_submitted': email_submitted,
         # True when VDG returned a vehicle but no paint: the template shows the
         # "finding your paint code" state and polls /lookup-status. Only true if
@@ -2266,6 +2270,48 @@ BUDGET_PAUSED_NOTE = 'paint search not run: daily budget reached'
 #: retries the same way. A page loaded before this release reads any status
 #: it does not know as "not found", as it did before.
 PAUSED_STATUS = 'paused'
+
+
+def _already_reported(search_id):
+    """paint313: has a customer already reported this lookup's code? False
+    when it cannot be read: the link is then drawn, as it always was."""
+    if not search_id:
+        return False
+    try:
+        return PaintCodeReport.objects.filter(search_id=search_id).exists()
+    except Exception:  # noqa: BLE001
+        logger.warning('reports could not be read for the results page', exc_info=True)
+        return False
+
+
+def _dressed_code_list(make, model, year, colour, items):
+    """paint313: a list of several codes as the page's script draws it: each
+    entry with its swatch and its longer form, as a reload gives it (results()
+    looks each entry up; the two replies below sent the list as the search left
+    it, so the first draw had no swatch on any entry). Copies: the session's
+    own list is left as it is. Never raises: an entry that cannot be read goes
+    out as it came.
+
+    ONLY A LIST OF TWO OR MORE. One entry is not drawn as a list (the script
+    and the template both ask for more than one), and nearly every answer
+    carries a list of one: those go out exactly as they did, with no lookup."""
+    items = list(items or [])
+    if len(items) < 2:
+        return items
+    out = []
+    for item in items:
+        if not isinstance(item, dict):
+            out.append(item)
+            continue
+        item = dict(item)
+        if item.get('code') and not item.get('hex'):
+            try:
+                item['hex'], _name, item['canonical'] = PaintLookup.lookup_with_canonical(
+                    manufacturer=make, paint_code=item['code'], model=model, year=year, vdg_colour=colour)
+            except Exception:  # noqa: BLE001
+                logger.warning('a code in a list could not be looked up', exc_info=True)
+        out.append(item)
+    return out
 
 
 def _found_fields(make, model, year, colour, paint_code):
@@ -2387,7 +2433,9 @@ def _lookup_status(request, search_id):
             'paint_hex': _known['paint_hex'],
             'paint_name': _known['paint_name'],
             'canonical_code': _known['canonical_code'],
-            'all_paint_codes': list(vehicle_data.get('all_paint_codes') or []),
+            'all_paint_codes': _dressed_code_list(                      # paint313
+                vehicle_data.get('make', ''), vehicle_data.get('model', ''), vehicle_data.get('year'),
+                vehicle_data.get('colour', ''), vehicle_data.get('all_paint_codes')),
             'two_tone': _known['two_tone'],
         }))
 
@@ -2599,7 +2647,9 @@ def _lookup_status(request, search_id):
         'paint_hex': paint_hex,
         'paint_name': paint_name,
         'canonical_code': canonical_code,
-        'all_paint_codes': all_paint_codes,
+        'all_paint_codes': _dressed_code_list(                          # paint313
+            make, vehicle_data.get('model', ''), vehicle_data.get('year'),
+            vehicle_data.get('colour', ''), all_paint_codes),
         'two_tone': _two_tone_json(make, paint_code, vehicle_data.get('colour', '')),   # paint228
     }))
 
@@ -3617,6 +3667,11 @@ def _record_name_only(search_id, paint_description, telemetry=None, source=''):
 EMAIL_NOT_SENT_MESSAGE = 'We could not send the email. Please check the address and try again.'
 CONTACT_NOT_SENT_MESSAGE = 'Your message could not be sent. Please try again in a few minutes.'
 
+#: paint313: the note on a report the operator upheld without knowing the right
+#: code. It must never start with remembered._CORRECTED_NOTE: memory reads a
+#: note that does as a correction, and this is the opposite of one.
+REPORT_UPHELD_NOTE = 'upheld, code not known'
+
 #: paint310: what the operator reads on the dashboard when he presses Save on a
 #: report without changing the code or the name. Never shown to a customer.
 REPORT_UNCHANGED_MESSAGE = ('Nothing was changed, so nothing was saved. If the code was right, '
@@ -3942,8 +3997,20 @@ def submit_contact(request):
     email = request.POST.get('email', '').strip()
     message = request.POST.get('message', '').strip()
 
+    def _keep_draft():
+        # paint313: WHAT WAS TYPED COMES BACK WITH EVERY REFUSAL, not only with
+        # a failed send (paint310). A mistyped address, a message over the
+        # limit or the hourly limit each came back with an empty form, and
+        # the customer typed it all again. Kept in their own session for the
+        # one page that follows (help_page pops it) and nowhere else. The
+        # message is cut at the form's own 5,000 characters, so a session
+        # never holds more than the form allows; the template escapes it.
+        request.session['contact_draft'] = {
+            'type': contact_type, 'email': email[:254], 'message': message[:5000]}
+
     if not email or not message:
         messages.error(request, 'Email and message are required.')
+        _keep_draft()
         return redirect('help')
 
     # Validate the email format (defence-in-depth; it also feeds the admin email).
@@ -3951,11 +4018,13 @@ def submit_contact(request):
         validate_email(email)
     except ValidationError:
         messages.error(request, 'Please enter a valid email address.')
+        _keep_draft()
         return redirect('help')
 
     # Cap the message so an oversized body can't be emailed to the admin.
     if len(message) > 5000:
         messages.error(request, 'Message is too long (max 5000 characters).')
+        _keep_draft()
         return redirect('help')
 
     was_limited = is_ratelimited(
@@ -3971,6 +4040,7 @@ def submit_contact(request):
             request,
             'Too many messages. Please wait an hour before trying again.'
         )
+        _keep_draft()
         return redirect('help')
 
     admin_sent = send_admin_contact_message(contact_type, email, message)
@@ -3994,8 +4064,7 @@ def submit_contact(request):
         # (help_page pops it) and nowhere else: not on a row, not in a log.
         # It has passed the checks above (an address of valid form, 5,000
         # characters at most), and the template escapes it.
-        request.session['contact_draft'] = {
-            'type': contact_type, 'email': email, 'message': message}
+        _keep_draft()
 
     return redirect('help')
 
@@ -4245,6 +4314,35 @@ def admin_stats(request):
     # paint115: resolve a report from the dashboard. Two outcomes and no third,
     # because there is nothing else to decide — either the code was wrong and
     # you have fixed it, or it was fine.
+    # paint313: A THIRD BUTTON, "Wrong, code not known". The customer is right
+    # and the operator does not have the right code yet. Since paint310 that
+    # could not be said from the dashboard (Save with nothing changed saves
+    # nothing), only by leaving the report open. It marks the report upheld
+    # with no correction, which remembered answers already read as a pause,
+    # and it drops the plate's 7 day answer, which would otherwise go on
+    # giving the code just judged wrong for the rest of its week. So the next
+    # lookup of the plate is searched afresh. The lookup's own row is left as
+    # it was: it is the record of what the customer was given.
+    if request.method == 'POST' and request.POST.get('action') == 'report_upheld':
+        _back = '/admin-stats/#reported-lookups'
+        try:
+            rep = PaintCodeReport.objects.get(id=request.POST.get('report_id'))
+        except (PaintCodeReport.DoesNotExist, ValueError, TypeError):
+            messages.error(request, 'That report no longer exists.')
+            return redirect(_back)
+        rep.status = PaintCodeReport.STATUS_ACTIONED
+        rep.operator_note = REPORT_UPHELD_NOTE
+        rep.resolved_at = timezone.now()
+        rep.save(update_fields=['status', 'operator_note', 'resolved_at'])
+        if rep.registration:
+            try:
+                VrmCache.objects.filter(registration=rep.registration).delete()
+            except Exception:  # noqa: BLE001 - the report is judged; the cached answer runs out by itself
+                logger.warning('upheld report: the cached answer was not dropped', exc_info=True)
+        messages.success(request, f'{rep.registration}: marked wrong, code not known. '
+                                  'It will not be given again from the cache or from memory.')
+        return redirect(_back)
+
     if request.method == 'POST' and request.POST.get('action') in (
             'report_actioned', 'report_ignored'):
         # paint117: BACK TO THE SECTION, not the top of the page.
