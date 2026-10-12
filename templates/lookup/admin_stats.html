@@ -1870,6 +1870,18 @@
                 var el = document.getElementById(ids[i]);
                 if (el && el.offsetParent !== null) { el.scrollIntoView({block: 'center'}); break; }
             }
+            {% comment %}paint322: a green line fades after 5 seconds and goes, with the table row that holds it.
+               A red one (something was refused) stays until the page is left.{% endcomment %}
+            setTimeout(function () {
+                var notes = document.querySelectorAll('.dash-note.ok');
+                for (var j = 0; j < notes.length; j++) { notes[j].style.transition = 'opacity 0.6s'; notes[j].style.opacity = '0'; }
+                setTimeout(function () {
+                    for (var k = 0; k < notes.length; k++) {
+                        var holder = notes[k].closest('tr.dash-note-row') || notes[k];
+                        if (holder.parentNode) holder.parentNode.removeChild(holder);
+                    }
+                }, 700);
+            }, 5000);
         });
         {% endif %}
         function cgEditToggle(id) {
