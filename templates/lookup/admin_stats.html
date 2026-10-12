@@ -7,6 +7,15 @@
 {% block extra_css %}
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
+    {% comment %}/* paint315: wider on a big screen. The dashboard sat inside the site's own page width
+       (1140px on a laptop, 1320px on a large screen), with wide empty margins either side,
+       while its tables are wider than that. From 1200px up the page, and the dashboard in
+       it, take the screen's width less 24px a side, up to 1800px. Only this page: the rule
+       asks for the stats page inside the site's main column, so no customer page moves. */{% endcomment %}
+    @media (min-width: 1200px) {
+        main.container:has(> .stats-page) { max-width: min(1800px, calc(100vw - 48px)); }
+        main.container > .stats-page { max-width: none; }
+    }
     .stats-page {
         font-family: 'IBM Plex Sans', sans-serif;
         padding: 20px 0 40px;

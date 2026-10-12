@@ -5046,7 +5046,9 @@ def admin_stats(request):
     recent_failures_with_email = [
         s for s in Search.objects.filter(Q(paint_code='') | _special_order_spelling,
                                          email__gt='', manual_lookup_completed=False)
-        .order_by('-timestamp')
+        # paint315: OLDEST FIRST, so the customer who has waited longest is at
+        # the top (the operator's choice, 12 Oct). It was newest first.
+        .order_by('timestamp', 'id')
         if not s.paint_code or marks_special_order(s.make, s.paint_code)
     ]
 
