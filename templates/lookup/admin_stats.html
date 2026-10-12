@@ -1684,6 +1684,8 @@
        broken one. {% endcomment %}
     <div class="panel" id="reported-lookups">
         <h3>Reported lookups (<span>{{ paint_report_count }}</span>)</h3>
+        {% comment %}paint319: the line after a button on a report, here where it was pressed.{% endcomment %}
+        {% if dash_note and dash_note.at == 'reported-lookups' %}<div class="dash-note {% if dash_note.ok %}ok{% else %}bad{% endif %}" role="status">{{ dash_note.text }}</div>{% endif %}
         {% if not paint_reports %}
         <p class="mlq-empty">No pending reports</p>
         {% endif %}
@@ -1859,6 +1861,17 @@
            on the page can stop it. It opens or shuts a lookup's strip; shutting it (the
            pencil again, or Cancel) puts both boxes back as they were. {% endcomment %}
         <script>
+        {% if dash_note %}
+        {% comment %}paint319: back to where the press was, whichever of the table or the phone card is on the screen.{% endcomment %}
+        document.addEventListener('DOMContentLoaded', function () {
+            var at = '{{ dash_note.at|escapejs }}';
+            var ids = /^[0-9]+$/.test(at) ? ['lookup-' + at, 'lookupcard-' + at] : [at];
+            for (var i = 0; i < ids.length; i++) {
+                var el = document.getElementById(ids[i]);
+                if (el && el.offsetParent !== null) { el.scrollIntoView({block: 'center'}); break; }
+            }
+        });
+        {% endif %}
         function cgEditToggle(id) {
             var strip = document.getElementById(id);
             if (!strip) return;
@@ -1871,6 +1884,9 @@
         </script>
         <style>
         .edit-strip { padding: 10px 14px; background: #fafbfc; }
+        .dash-note { margin: 8px 0; padding: 8px 12px; border-radius: 6px; font-size: 13px; font-weight: 500; }
+        .dash-note.ok { background: #d1e7dd; color: #0f5132; border: 1px solid #badbcc; }
+        .dash-note.bad { background: #f8d7da; color: #842029; border: 1px solid #f5c2c7; }
         .edit-actions { display: flex; gap: 6px; }
         .recent-card .edit-strip { margin-top: 8px; border: 1px solid #e6e9ee; border-radius: 6px; }
         .recent-card .edit-strip .edit-actions { flex: 1 1 100%; justify-content: center; }
@@ -1902,7 +1918,7 @@
                    which is where this dashboard actually gets read. A marker that
                    toggles a full-width row below costs no horizontal space, works
                    on touch, and only appears on rows that have something.{% endcomment %}
-                <tr{% if s.manual_note or s.customer_message %} class="has-note" data-note-row="{{ s.id }}" style="cursor: pointer;"{% endif %}>
+                <tr id="lookup-{{ s.id }}"{% if s.manual_note or s.customer_message %} class="has-note" data-note-row="{{ s.id }}" style="cursor: pointer;"{% endif %}>
                     <td style="color: #666; font-size: 13px; white-space: nowrap;">{{ s.timestamp|date:"M j Y, H:i" }}{% if s.manual_note or s.customer_message %} <span class="note-marker" title="Has notes — click to expand">&#9998;</span>{% endif %}{% if s.email_sent %} <span class="email-marker" title="Result emailed to {{ s.email }}">&#9993;</span>{% endif %}{% if s.access_label %} <span class="access-marker" title="Unlimited access: {{ s.access_label }}">&#9679;</span>{% endif %}</td>
                     <td>{{ s.vehicle_title|default:"—" }}</td>
                     <td>{{ s.registration }}{% if s.car_picture %}{% with p=s.car_picture %} {% if p.status == "ready" %}<a href="{{ p.url }}" target="_blank" rel="noopener" class="car-picture-link" title="AI picture{% if p.verdict %}, wheel {{ p.verdict }}{% endif %}{% if p.plate %}, plate {{ p.plate }}{% endif %}{% if p.cost %}, about ${{ p.cost|floatformat:3 }}{% endif %}">View</a>{% elif p.status == "pending" %}<span class="car-picture-pending" style="color: #888;" title="AI picture being drawn">drawing…</span>{% else %}<span class="car-picture-failed" style="color: #b00;" title="AI picture failed: {{ p.error }}">&#10007;</span>{% endif %}{% endwith %}{% endif %}</td>
@@ -1969,6 +1985,8 @@
                     </td>
                     <td style="text-align: center; white-space: nowrap;">{% include 'lookup/_edit_pencil.html' with where='row' %}</td>
                 </tr>
+                {% comment %}paint319: the line after a Save on this lookup's pencil, under its row.{% endcomment %}
+                {% if dash_note and dash_note.at == s.id|stringformat:"d" %}<tr class="dash-note-row"><td colspan="11"><div class="dash-note {% if dash_note.ok %}ok{% else %}bad{% endif %}" role="status">{{ dash_note.text }}</div></td></tr>{% endif %}
                 {% comment %}paint314: the strip the pencil opens, a row of its own under the lookup's.{% endcomment %}
                 {% if s.edit_box %}
                 <tr class="edit-detail" id="edit-row-{{ s.id }}" hidden onclick="event.stopPropagation()"><td colspan="11" style="padding: 0;">{% include 'lookup/_answer_box.html' with where='row' %}</td></tr>
@@ -2032,6 +2050,7 @@
                     {% if s.paint_description %}<span class="recent-paint-desc">{{ s.paint_description }}</span>{% if s.enriched_from == 'name' %} <span class="db-badge" title="Name filled from coloureg's paint database">DB</span>{% endif %}{% if s.colour_check %} <span class="db-badge check-badge" title="The paint's name states a colour the car is not registered as. Worth a look.">check</span>{% endif %}{% endif %}
                 </div>
                 {% endif %}
+                {% if dash_note and dash_note.at == s.id|stringformat:"d" %}<div id="lookupcard-{{ s.id }}"><div class="dash-note {% if dash_note.ok %}ok{% else %}bad{% endif %}" role="status">{{ dash_note.text }}</div></div>{% endif %}
                 {% comment %}paint314: the pencil and its strip, on the phone card too.{% endcomment %}
                 <div class="recent-card-paint" style="text-align: right;">{% include 'lookup/_edit_pencil.html' with where='card' %}</div>
                 {% if s.edit_box %}<div id="edit-card-{{ s.id }}" hidden onclick="event.stopPropagation()">{% include 'lookup/_answer_box.html' with where='card' %}</div>{% endif %}

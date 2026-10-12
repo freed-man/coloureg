@@ -3674,6 +3674,23 @@ EDIT_UNCHANGED_MESSAGE = 'Nothing was changed, so nothing was saved.'      # no 
 #: paint318: what a Save with nothing changed now says: the answer is confirmed.
 EDIT_CONFIRMED_MESSAGE = 'confirmed as it is. Nothing else was changed.'
 
+def _dash_note(request, at, ok, text):
+    """paint319: the line the dashboard shows after a Save on a lookup's pencil
+    or a button on a customer's report, and back to where it was pressed.
+
+    It went through Django's messages, which the site draws at the very top of
+    the page, while the page came back scrolled to the panel: the line was out
+    of sight. Now it is kept in the session for the one page that follows and
+    drawn where the press was: under the lookup's row (`at` its id), or at the
+    top of the reported lookups panel (`at` 'reported-lookups'; a report that
+    was judged has left the list). The page script scrolls to it."""
+    request.session['dash_note'] = {'at': str(at), 'ok': bool(ok), 'text': str(text)}
+    # Also as a message, tagged so the site's own banner leaves it out
+    # (base.html): everything that read the line from the messages still can.
+    (messages.success if ok else messages.error)(request, text, extra_tags='dash')
+    return redirect('/admin-stats/#' + (f'lookup-{at}' if str(at).isdigit() else str(at)))
+
+
 #: paint313: the note on a report the operator upheld without knowing the right
 #: code. It must never start with remembered._CORRECTED_NOTE: memory reads a
 #: note that does as a correction, and this is the opposite of one.
@@ -4330,12 +4347,18 @@ def admin_stats(request):
     # giving the code just judged wrong for the rest of its week. So the next
     # lookup of the plate is searched afresh. The lookup's own row is left as
     # it was: it is the record of what the customer was given.
+    # paint319: A SAVE WITH THE CODE BOX EMPTIED is the same as this button
+    # (the operator, 12 Oct: "why not just delete the fields and press save").
+    if (request.method == 'POST' and request.POST.get('action') == 'report_actioned'
+            and not (request.POST.get('fixed_code') or '').strip()):
+        request.POST = request.POST.copy()
+        request.POST['action'] = 'report_upheld'
     if request.method == 'POST' and request.POST.get('action') == 'report_upheld':
         _back = '/admin-stats/#reported-lookups'
         try:
             rep = PaintCodeReport.objects.get(id=request.POST.get('report_id'))
         except (PaintCodeReport.DoesNotExist, ValueError, TypeError):
-            messages.error(request, 'That report no longer exists.')
+            _dash_note(request, 'reported-lookups', False, 'That report no longer exists.')
             return redirect(_back)
         rep.status = PaintCodeReport.STATUS_ACTIONED
         rep.operator_note = REPORT_UPHELD_NOTE
@@ -4346,7 +4369,7 @@ def admin_stats(request):
                 VrmCache.objects.filter(registration=rep.registration).delete()
             except Exception:  # noqa: BLE001 - the report is judged; the cached answer runs out by itself
                 logger.warning('upheld report: the cached answer was not dropped', exc_info=True)
-        messages.success(request, f'{rep.registration}: marked wrong, code not known. '
+        _dash_note(request, 'reported-lookups', True, f'{rep.registration}: marked wrong, code not known. '
                                   'It will not be given again from the cache or from memory.')
         return redirect(_back)
 
@@ -4363,7 +4386,7 @@ def admin_stats(request):
         try:
             rep = PaintCodeReport.objects.get(id=request.POST.get('report_id'))
         except (PaintCodeReport.DoesNotExist, ValueError, TypeError):
-            messages.error(request, 'That report no longer exists.')
+            _dash_note(request, 'reported-lookups', False, 'That report no longer exists.')
             return redirect(_back)
         actioned = request.POST.get('action') == 'report_actioned'
         # paint310: SAVE WITH NOTHING CHANGED SAVES NOTHING. Both boxes come
@@ -4378,9 +4401,8 @@ def admin_stats(request):
         if actioned and rep.search and rep.search.make:
             _code = (request.POST.get('fixed_code') or '').strip()
             _name = (request.POST.get('fixed_name') or '').strip()
-            if (not _code or (_code.upper() == (rep.code or '').upper()
-                              and _name == (rep.colour_name or ''))):
-                messages.error(request, REPORT_UNCHANGED_MESSAGE)
+            if _code.upper() == (rep.code or '').upper() and _name == (rep.colour_name or ''):    # paint319: an empty code is "wrong, code not known" (above)
+                _dash_note(request, 'reported-lookups', False, REPORT_UNCHANGED_MESSAGE)
                 return redirect(_back)
         # IGNORED, never deleted. A dismissed report still records that someone
         # disagreed, and nine dismissals against one code is itself a signal
@@ -4407,11 +4429,11 @@ def admin_stats(request):
         # written, the way the manual answer form refuses it. Only for Save:
         # "Code is fine" writes neither box.
         if actioned and len(code) > CORRECTION_CODE_MAX_CHARS:
-            messages.error(request, f'Paint code too long ({len(code)} chars, max '
+            _dash_note(request, 'reported-lookups', False, f'Paint code too long ({len(code)} chars, max '
                                     f'{CORRECTION_CODE_MAX_CHARS}). Nothing was saved.')
             return redirect(_back)
         if actioned and len(name) > CORRECTION_NAME_MAX_CHARS:
-            messages.error(request, f'Paint name too long ({len(name)} chars, max '
+            _dash_note(request, 'reported-lookups', False, f'Paint name too long ({len(name)} chars, max '
                                     f'{CORRECTION_NAME_MAX_CHARS}). Nothing was saved.')
             return redirect(_back)
         corrected = False
@@ -4460,10 +4482,10 @@ def admin_stats(request):
             # any code the catalogue already holds — the operator table is only
             # consulted on a catalogue miss. What is now always true is that
             # THIS lookup changed.
-            messages.success(request, f'{rep.registration}: corrected to {code} '
+            _dash_note(request, 'reported-lookups', True, f'{rep.registration}: corrected to {code} '
                                       f'{name}'.strip() + '.')
         else:
-            messages.success(request, f'Report for {rep.registration} marked '
+            _dash_note(request, 'reported-lookups', True, f'Report for {rep.registration} marked '
                                       f'{rep.get_status_display().lower()}.')
         return redirect(_back)
 
@@ -4973,8 +4995,7 @@ def admin_stats(request):
         try:
             row = Search.objects.get(id=request.POST.get('search_id'))
         except (Search.DoesNotExist, ValueError, TypeError):
-            messages.error(request, 'That lookup no longer exists.')
-            return redirect(_back)
+            return _dash_note(request, 'recent-lookups', False, 'That lookup no longer exists.')
         _had_code = (row.paint_code or '').strip()
         _had_name = (row.paint_description or '').strip()
         _refused = ''
@@ -4995,8 +5016,7 @@ def admin_stats(request):
             # the dashboard's "check" mark goes from the row (the mark's own rule in models).
             # Memory reads it as before: a supplier's answer stays a supplier's.
             Search.objects.filter(id=row.id).update(operator_answered_at=timezone.now())
-            messages.success(request, f'{row.registration}: {EDIT_CONFIRMED_MESSAGE}')
-            return redirect(_back)
+            return _dash_note(request, row.id, True, f'{row.registration}: {EDIT_CONFIRMED_MESSAGE}')
         _code_changed = code != _had_code
         if not _refused:
             _now = timezone.now()
@@ -5010,8 +5030,7 @@ def admin_stats(request):
                                          paint_description=row.paint_description).update(**_fields):
                 _refused = 'That lookup was changed a moment ago. Look at it again.'
         if _refused:
-            messages.error(request, _refused + ' Nothing was saved.')
-            return redirect(_back)
+            return _dash_note(request, row.id, False, _refused + ' Nothing was saved.')
         try:
             # The operator's own table, as a manual answer writes it (paint92).
             OperatorPaintCode.record(make=row.make, code=code, colour_name=name, model=row.model,
@@ -5036,8 +5055,7 @@ def admin_stats(request):
             _said = f'code changed to {code} {name}'.strip() + '. It is now your own answer. No email was sent.'
         else:
             _said = (f'name changed to {name}.' if name else 'name cleared.')
-        messages.success(request, f'{row.registration}: {_said}')
-        return redirect(_back)
+        return _dash_note(request, row.id, True, f'{row.registration}: {_said}')
 
     # paint299: AND THE REQUESTS LEFT ON A SPECIAL ORDER CODE (submit_email
     # sends those here, decided 9 Oct). The queue was "no code, an email, not
@@ -5279,6 +5297,7 @@ def admin_stats(request):
         'failed_makes': failed_makes,
         'recent_failures': recent_failures_with_email,
         'recent_all_lookups': recent_all_lookups,
+        'dash_note': request.session.pop('dash_note', None),            # paint319
         'picture_panel': _picture_panel(),          # paint231
         'total_emails': total_emails,
         'emails_sent': emails_sent,
