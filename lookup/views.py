@@ -3667,6 +3667,10 @@ def _record_name_only(search_id, paint_description, telemetry=None, source=''):
 EMAIL_NOT_SENT_MESSAGE = 'We could not send the email. Please check the address and try again.'
 CONTACT_NOT_SENT_MESSAGE = 'Your message could not be sent. Please try again in a few minutes.'
 
+#: paint314: what the operator reads when he presses Save on a lookup's pencil
+#: without changing the code or the name. Never shown to a customer.
+EDIT_UNCHANGED_MESSAGE = 'Nothing was changed, so nothing was saved.'
+
 #: paint313: the note on a report the operator upheld without knowing the right
 #: code. It must never start with remembered._CORRECTED_NOTE: memory reads a
 #: note that does as a correction, and this is the opposite of one.
@@ -4939,11 +4943,26 @@ def admin_stats(request):
     # lists only the failed lookups whose customer left an email. Every other
     # failed lookup could take a code only in the Django admin, which is a
     # correction tool: the row kept its supplier, nothing went to the
-    # operator's own table, and memory read it as a supplier's answer. The
-    # dashboard's Answer box (on a lookup with no code: Search.answer_box)
-    # saves the code as the operator's own answer. No email is sent: there is
-    # nobody to send one to. Since this release memory keeps his answer for
-    # good, so the next lookup of that plate is given it.
+    # operator's own table, and memory read it as a supplier's answer. Saved
+    # from the dashboard, the code is the operator's own answer. No email is
+    # sent: there is nobody to send one to. Memory keeps his answer for good,
+    # so the next lookup of that plate is given it.
+    #
+    # paint314: THE PENCIL. Every lookup in the recent list has one (decided
+    # by the operator on 11 Oct), not only those with no code, and it opens
+    # the same two boxes filled in with what the row holds. What a Save means:
+    #   the row had no code      his own answer, as above;
+    #   the code was changed     his own answer too: he has overruled the
+    #                            supplier, and memory keeps it for good;
+    #   only the name changed    the name is corrected and the code stays
+    #                            whoever's it was (a supplier's is still
+    #                            remembered for REMEMBER_DAYS);
+    #   nothing changed          nothing is written.
+    # The code must be typed: a code is never cleared here (a "no code
+    # exists" verdict is given from the manual queue or the admin). A lookup
+    # whose customer is waiting in the manual queue is answered there, so
+    # that they are emailed. The action and its two boxes keep the names
+    # paint312 gave them.
     if request.method == 'POST' and request.POST.get('action') == 'answer_lookup':
         _back = '/admin-stats/#recent-lookups'
         code = (request.POST.get('answer_code') or '').strip()      # kept as typed (paint181)
@@ -4953,6 +4972,8 @@ def admin_stats(request):
         except (Search.DoesNotExist, ValueError, TypeError):
             messages.error(request, 'That lookup no longer exists.')
             return redirect(_back)
+        _had_code = (row.paint_code or '').strip()
+        _had_name = (row.paint_description or '').strip()
         _refused = ''
         if not code:
             _refused = 'Type the paint code.'
@@ -4960,19 +4981,26 @@ def admin_stats(request):
             _refused = f'Paint code too long ({len(code)} chars, max {CORRECTION_CODE_MAX_CHARS}).'
         elif len(name) > CORRECTION_NAME_MAX_CHARS:
             _refused = f'Paint name too long ({len(name)} chars, max {CORRECTION_NAME_MAX_CHARS}).'
-        elif (row.paint_code or '').strip():
-            _refused = 'That lookup already has a code. Correct it in the admin.'
-        elif (row.email or '').strip() and not row.manual_lookup_completed:
+        elif row.in_manual_queue:
             _refused = ('That customer left an email. Answer it in the manual lookup queue, '
                         'so the code is sent to them.')
-        elif not row.answer_box:
+        elif not row.edit_box:
             _refused = 'That lookup has no make, so it cannot take an answer.'
-        # One press wins: the row is claimed by the same update that answers it.
-        if not _refused and not Search.objects.filter(id=row.id, paint_code='').update(
-                paint_code=code, paint_description=name, provider=Search.PROVIDER_MANUAL,
-                success=True, no_code_available=False, recovery_name_only=False,
-                operator_answered_at=timezone.now()):
-            _refused = 'That lookup already has a code. Correct it in the admin.'
+        elif code == _had_code and name == _had_name:
+            messages.error(request, EDIT_UNCHANGED_MESSAGE)
+            return redirect(_back)
+        _code_changed = code != _had_code
+        if not _refused:
+            _now = timezone.now()
+            _fields = dict(paint_description=name, operator_answered_at=_now, enriched_from='')
+            if _code_changed:
+                # His own answer, whether the row had a code or not.
+                _fields.update(paint_code=code, provider=Search.PROVIDER_MANUAL, success=True,
+                               no_code_available=False, recovery_name_only=False)
+            # One press wins: the update only lands on the row as it was read.
+            if not Search.objects.filter(id=row.id, paint_code=row.paint_code,
+                                         paint_description=row.paint_description).update(**_fields):
+                _refused = 'That lookup was changed a moment ago. Look at it again.'
         if _refused:
             messages.error(request, _refused + ' Nothing was saved.')
             return redirect(_back)
@@ -4984,8 +5012,8 @@ def admin_stats(request):
             logger.exception('operator paint code not recorded')
         try:
             # The 7 day answer for the plate, when there is one, gives the code
-            # too (a make that is not automated is cached with no code), and a
-            # miss remembered for the hour is forgotten.
+            # and the name too (a make that is not automated is cached with no
+            # code), and a miss remembered for the hour is forgotten.
             _cached = get_cached_vrm_payload(row.registration, count_hit=False)
             if _cached:
                 store_vrm_payload(row.registration, dict(
@@ -4994,8 +5022,13 @@ def admin_stats(request):
             clear_miss(row.registration)
         except Exception:  # noqa: BLE001 - never lose the answer over the cache
             logger.warning('answer box: the cached answer was not updated', exc_info=True)
-        messages.success(request, f'{row.registration}: answered {code} {name}'.strip()
-                         + '. No email was sent.')
+        if not _had_code:
+            _said = f'answered {code} {name}'.strip() + '. No email was sent.'
+        elif _code_changed:
+            _said = f'code changed to {code} {name}'.strip() + '. It is now your own answer. No email was sent.'
+        else:
+            _said = (f'name changed to {name}.' if name else 'name cleared.')
+        messages.success(request, f'{row.registration}: {_said}')
         return redirect(_back)
 
     # paint299: AND THE REQUESTS LEFT ON A SPECIAL ORDER CODE (submit_email

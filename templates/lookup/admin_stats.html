@@ -1752,6 +1752,8 @@
         <div id="mlq-list">
             {% for s in recent_failures %}
             <div class="mlq-card" data-search-id="{{ s.id }}" data-reg="{{ s.registration }}">
+                {% comment %}paint314: where the pencil of a lookup waiting in this queue goes.{% endcomment %}
+                <span id="mlq-{{ s.id }}"></span>
                 <div class="mlq-meta">
                     <div>
                         <div class="lbl">Date</div>
@@ -1844,6 +1846,26 @@
     {% comment %}<!-- Recent paint code lookups (all searches, success + failure) -->{% endcomment %}
     <div class="panel" id="recent-lookups">
         <h3>Recent paint code lookups</h3>
+        {% comment %}paint314: the pencil's one function, in a script of its own so that nothing else
+           on the page can stop it. It opens or shuts a lookup's strip; shutting it (the
+           pencil again, or Cancel) puts both boxes back as they were. {% endcomment %}
+        <script>
+        function cgEditToggle(id) {
+            var strip = document.getElementById(id);
+            if (!strip) return;
+            strip.hidden = !strip.hidden;
+            var form = strip.querySelector('form');
+            if (strip.hidden) { if (form) form.reset(); return; }
+            var box = strip.querySelector('input[name="answer_code"]');
+            if (box) box.focus();
+        }
+        </script>
+        <style>
+        .edit-strip { padding: 10px 14px; background: #fafbfc; }
+        .edit-actions { display: flex; gap: 6px; }
+        .recent-card .edit-strip { margin-top: 8px; border: 1px solid #e6e9ee; border-radius: 6px; }
+        .recent-card .edit-strip .edit-actions { flex: 1 1 100%; justify-content: center; }
+        </style>
 
         {% comment %}<!-- Desktop/tablet table (>768px). CSS hides this below 768px. -->{% endcomment %}
         <div class="table-scroll">
@@ -1860,6 +1882,7 @@
                     <th style="text-align: center;">Source</th>
                     <th style="text-align: right; white-space: nowrap;">Cost</th>
                     <th style="text-align: center;">Outcome</th>
+                    <th aria-label="Edit"></th>
                 </tr>
             </thead>
             <tbody>
@@ -1881,7 +1904,6 @@
                         <span class="recent-paint-code">{{ s.paint_code }}</span>{% if s.enriched_from == 'code' %} <span class="db-badge" title="Code filled from coloureg's paint database">DB</span>{% endif %}
                         {% else %}
                         <span class="recent-empty">—</span>
-                        {% if s.answer_box %}{% include 'lookup/_answer_box.html' %}{% endif %}
                         {% endif %}
                     </td>
                     <td>
@@ -1936,10 +1958,15 @@
                         <span class="outcome-cross" title="Not found">✗</span>
                         {% endif %}
                     </td>
+                    <td style="text-align: center; white-space: nowrap;">{% include 'lookup/_edit_pencil.html' with where='row' %}</td>
                 </tr>
+                {% comment %}paint314: the strip the pencil opens, a row of its own under the lookup's.{% endcomment %}
+                {% if s.edit_box %}
+                <tr class="edit-detail" id="edit-row-{{ s.id }}" hidden onclick="event.stopPropagation()"><td colspan="11" style="padding: 0;">{% include 'lookup/_answer_box.html' with where='row' %}</td></tr>
+                {% endif %}
                 {% if s.manual_note or s.customer_message %}
                 <tr class="note-detail" id="note-{{ s.id }}" hidden>
-                    <td colspan="10" style="background: #fafbfc; padding: 14px 18px;">
+                    <td colspan="11" style="background: #fafbfc; padding: 14px 18px;">
                         {% if s.customer_message %}
                         <div style="margin-bottom: 10px;">
                             <div style="font-size: 11px; font-weight: 600; letter-spacing: 0.6px; text-transform: uppercase; color: #666; margin-bottom: 4px;">Customer said</div>
@@ -1956,7 +1983,7 @@
                 </tr>
                 {% endif %}
                 {% empty %}
-                <tr><td colspan="10" style="color: #999; text-align: center; padding: 24px 0;">No lookups yet</td></tr>
+                <tr><td colspan="11" style="color: #999; text-align: center; padding: 24px 0;">No lookups yet</td></tr>
                 {% endfor %}
             </tbody>
         </table>
@@ -1996,7 +2023,9 @@
                     {% if s.paint_description %}<span class="recent-paint-desc">{{ s.paint_description }}</span>{% if s.enriched_from == 'name' %} <span class="db-badge" title="Name filled from coloureg's paint database">DB</span>{% endif %}{% if s.colour_check %} <span class="db-badge check-badge" title="The paint's name states a colour the car is not registered as. Worth a look.">check</span>{% endif %}{% endif %}
                 </div>
                 {% endif %}
-                {% if s.answer_box %}<div class="recent-card-paint">{% include 'lookup/_answer_box.html' %}</div>{% endif %}
+                {% comment %}paint314: the pencil and its strip, on the phone card too.{% endcomment %}
+                <div class="recent-card-paint" style="text-align: right;">{% include 'lookup/_edit_pencil.html' with where='card' %}</div>
+                {% if s.edit_box %}<div id="edit-card-{{ s.id }}" hidden onclick="event.stopPropagation()">{% include 'lookup/_answer_box.html' with where='card' %}</div>{% endif %}
                 {% comment %}
                    Provider and cost share a row on mobile: the desktop table has
                    a Cost column, and without this the phone view silently omits

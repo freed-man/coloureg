@@ -514,18 +514,26 @@ class Search(models.Model):
     _TWO_PAINTS_RE = re.compile(r'^\s*two[\s-]*tone\b|[+/]', re.I)
 
     @property
-    def answer_box(self):
-        """paint312: may the dashboard's Answer box be used on this lookup?
-
-        On any lookup of a known make that ended with no code: nothing found,
-        a name without a code, a make that is not automated, a verdict of "no
-        code exists" the operator now knows better than. Not while the
-        customer's own request is waiting in the manual queue: that one is
-        answered there, where the answer is emailed to them. The dashboard
-        and the view that saves the answer both ask here."""
-        if (self.paint_code or '').strip() or not (self.make or '').strip():
+    def in_manual_queue(self):
+        """paint314: is this lookup's customer waiting in the dashboard's manual
+        queue? The queue's own rule: an email left, not yet answered or
+        dismissed, and either no code or a special order code (paint299). Such
+        a lookup is answered from the queue, where the answer is emailed."""
+        if not (self.email or '').strip() or self.manual_lookup_completed:
             return False
-        return not ((self.email or '').strip() and not self.manual_lookup_completed)
+        code = (self.paint_code or '').strip()
+        if not code:
+            return True
+        from lookup.services.paint_resolver import marks_special_order
+        return bool(marks_special_order(self.make, code))
+
+    @property
+    def edit_box(self):
+        """paint314: may the dashboard's pencil be used on this lookup? On
+        every lookup of a known make (paint312 offered it only where there was
+        no code), except while its customer waits in the manual queue. The
+        dashboard and the view that saves the change both ask here."""
+        return bool((self.make or '').strip()) and not self.in_manual_queue
 
     @property
     def colour_check(self):

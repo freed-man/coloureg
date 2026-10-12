@@ -1,18 +1,25 @@
-{% comment %}paint312: THE ANSWER BOX, for the operator only. On a lookup that ended with no
-   code and whose customer is not waiting in the manual queue (Search.answer_box). It
-   saves the code as the operator's own answer and sends no email. Drawn twice for each
-   such lookup, in the table and in the phone card, from this one file. A plain form
-   to the dashboard itself, like the report forms: no script. The click is kept from
-   the row around it, which opens and closes its note on a click.{% endcomment %}
-<details class="answer-box" onclick="event.stopPropagation()" style="margin-top: 4px;">
-    <summary style="cursor: pointer; color: #003399; font-size: 12px;">Answer</summary>
-    <form method="post" action="{% url 'admin_stats' %}" style="display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px;">
+{% comment %}paint312, paint314: THE STRIP THE PENCIL OPENS, for the operator only: the paint code
+   and the name of one lookup, filled in with what it holds, Save and Cancel. Drawn twice
+   for each lookup that may be edited (Search.edit_box), under its row in the table and
+   in its phone card, from this one file, inside a wrapper that is shut until its
+   pencil is pressed (the wrapper carries the id the pencil names). A plain form
+   to the dashboard itself, like the report forms. Cancel shuts the strip and puts both
+   boxes back as they were. What a Save means is in views.admin_stats. No email is ever
+   sent from here, and the one line below is shown only where a customer was emailed
+   this code, so a correction is not taken for one they were told of. {% endcomment %}
+<div class="edit-strip">
+    <form method="post" action="{% url 'admin_stats' %}" style="display: flex; flex-wrap: wrap; gap: 6px; align-items: center;">
         {% csrf_token %}
         <input type="hidden" name="action" value="answer_lookup">
         <input type="hidden" name="search_id" value="{{ s.id }}">
-        <input type="text" name="answer_code" maxlength="{{ correction_code_max }}" placeholder="PAINT CODE" required style="flex: 1 1 110px; min-width: 0;">
-        <input type="text" name="answer_name" maxlength="{{ correction_name_max }}" placeholder="PAINT NAME" style="flex: 2 1 160px; min-width: 0;">
-        <button type="submit" style="background: #003399; color: #fff; border: 0; border-radius: 4px; padding: 6px 12px; cursor: pointer;">Save</button>
-        <div style="flex: 1 1 100%; font-size: 11px; color: #666;">Saved as your own answer. No email is sent.</div>
+        <input type="text" name="answer_code" value="{{ s.paint_code }}" maxlength="{{ correction_code_max }}" placeholder="PAINT CODE" aria-label="Paint code" required style="flex: 1 1 110px; min-width: 0; max-width: 200px;">
+        <input type="text" name="answer_name" value="{{ s.paint_description }}" maxlength="{{ correction_name_max }}" placeholder="PAINT NAME" aria-label="Paint name" style="flex: 2 1 160px; min-width: 0;">
+        {% comment %}Save and Cancel travel together: beside the boxes on a wide screen, on a line of
+           their own in the middle of a phone card (the dashboard's style sheet centres them there).{% endcomment %}
+        <span class="edit-actions">
+            <button type="submit" style="background: #003399; color: #fff; border: 0; border-radius: 4px; padding: 6px 12px; cursor: pointer;">Save</button>
+            <button type="button" onclick="cgEditToggle('edit-{{ where }}-{{ s.id }}')" style="background: transparent; color: #444; border: 1px solid #ccc; border-radius: 4px; padding: 6px 12px; cursor: pointer;">Cancel</button>
+        </span>
+        {% if s.email_sent and s.paint_code %}<div style="flex: 1 1 100%; font-size: 11px; color: #7a5600;">This code was emailed to the customer. They are not told of a change.</div>{% endif %}
     </form>
-</details>
+</div>
