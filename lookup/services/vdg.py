@@ -688,7 +688,9 @@ def _clean_paint_code(raw):
     """Uppercase + strip a provider paint code, returning '' if it is really a
     finish word (see _FINISH_WORD_CODES) rather than a code. Whole-string match
     only — never strips a finish token out of a longer, legitimate code."""
-    code = (raw or '').strip().upper()
+    # paint316: VDG sometimes puts an underscore before a code ("_PJACA", 3
+    # times since May, once shown to a customer). No paint code starts with one.
+    code = (raw or '').strip().lstrip('_').strip().upper()
     return '' if code in _FINISH_WORD_CODES else code
 
 

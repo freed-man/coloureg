@@ -1553,7 +1553,8 @@ def index(request):
             # record which part we supplied. Most VDG hits return both, so this
             # usually does nothing.
             _enriched = _enrich_from_lookup(
-                {'paint_code': paint_code, 'paint_description': paint_description},
+                {'paint_code': paint_code, 'paint_description': paint_description,
+                 'source': 'vdg'},                                     # paint316: its name is cleaned
                 make,
                 model,
             )

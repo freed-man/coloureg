@@ -72,6 +72,73 @@ def _stated_colours(name, words):
     return {_COLOUR_FAMILY[w] for w in found if w in _COLOUR_FAMILY}
 
 
+#: paint316: the suppliers whose names are cleaned for the page. partslink24's are left as it sends them (the operator, 12 Oct).
+CLEANED_SOURCES = frozenset({'vdg', 'vdg_retry', 'ezyvin'})
+
+_SMALL_WORDS = frozenset({'or', 'and', 'with', 'de', 'di', 'du', 'la', 'le', 'of'})
+_FINISH_TAIL = re.compile(r'\s*[-–]\s*(metallich?|met\.?)\s*(?:finish|paint(?:work)?)?\s*$', re.I)
+_MICA_TAIL = re.compile(r'\s*[-–]\s*(pearl|mica|matt|matte)\s*(?:finish|paint(?:work)?)?\s*$', re.I)
+_WORD_TAIL = re.compile(r'\s*[-\u2013]\s*([a-z]+)\s+(?:finish|paint(?:work)?)\s*$', re.I)
+_STANDARD_TAIL = re.compile(r'\s*[-–]\s*(?:standard|solid|non[- ]?metallic)\s*(?:finish|paint(?:work)?)?\s*$', re.I)
+_METALLICH = re.compile(r'\bmetallich\b', re.I)
+_MET_ABBR = re.compile(r'\s+met\.\s*$', re.I)
+_FORD_CC = re.compile(r'\s+c/c\s+med\s+solid\s*$', re.I)
+_LEAD_PAINT = re.compile(r'^\s*(?:exterior\s+)?paint(?:work)?\b\s*[-–:]?\s*', re.I)
+_TAIL_PAINT = re.compile(r'\s*\b(?:exterior\s+)?paint(?:work)?\s*[-–]?\s*$', re.I)
+_TAIL_CODE_PAREN = re.compile(r'\s*\((?:vr-[a-z0-9/-]+|\d{1,2})\)\s*$', re.I)        # a Fiat or Jeep paint number, a bare count; the answer's own code in brackets goes by paint273's rule
+_TAIL_CODE_DASH = re.compile(r'\s*-\s*[a-z]{2,4}\d{3,}\s*$', re.I)
+_TAIL_NUMBER = re.compile(r'\s+\d{3,}\s*$')
+_DANGLING = re.compile(r'^[\s\-–:,]+|[\s\-–:,]+$')
+
+
+def _written_twice(a, b):
+    key = lambda s: re.sub(r'(.)\1+', r'\1', re.sub(r'[^a-z]', '', s.lower().replace('gray', 'grey')))
+    return key(a) == key(b)
+
+
+def clean_supplier_name(name):
+    """paint316: a colour name as VDG or Ezyvin sent it, without its clutter: the word paint around it, a finish
+    written as a tail ("- Metallic Finish" is "Metallic", "- Standard Finish" nothing), VDG's typos, Ford's paint
+    system words, a code repeated at the end, the same paint written twice, lower case words, and stray spaces
+    and dashes. What it cannot clean it leaves as it was; it never returns less than a name. Never raises."""
+    if not isinstance(name, str):
+        return name
+    try:
+        original = name
+        s = re.sub(r'\s+', ' ', original).strip()
+        if not s:
+            return original
+        if '/' in s:
+            halves = [h.strip() for h in s.split('/')]
+            if len(halves) == 2 and all(halves) and _written_twice(*halves):
+                s = next((h for h in halves if 'grey' in h.lower()), max(halves, key=len))
+        s = _FORD_CC.sub('', s)
+        s = _TAIL_CODE_PAREN.sub('', s)
+        s = _TAIL_CODE_DASH.sub('', s)
+        s = _TAIL_NUMBER.sub('', s)
+        s = _FINISH_TAIL.sub(' Metallic', s)
+        s = _MICA_TAIL.sub(lambda m: ' ' + m.group(1).capitalize(), s)
+        s = _STANDARD_TAIL.sub('', s)
+        s = _WORD_TAIL.sub(lambda m: ' ' + m.group(1).capitalize(), s)
+        s = _METALLICH.sub('Metallic', s)
+        s = _MET_ABBR.sub(' Metallic', s)
+        for _ in range(2):
+            s = _TAIL_PAINT.sub('', s)
+            s = _LEAD_PAINT.sub('', s)
+            s = _DANGLING.sub('', s)
+        s = re.sub(r'\s+', ' ', s).strip()
+        words = s.split(' ')
+        s = ' '.join(w if not (w.isalpha() and w.islower()) or (i and w in _SMALL_WORDS) else w.capitalize()
+                     for i, w in enumerate(words))
+        s = re.sub(r'\+([a-z])', lambda m: '+' + m.group(1).upper(), s)
+        if not re.search(r'[A-Za-z]{2}', s):
+            return original
+        return s
+    except Exception:
+        logger.warning('supplier name not cleaned', exc_info=True)
+        return name
+
+
 def _display_tidy(result, make):
     """paint284: the name as it leaves for the page. Capitals for a name given all
     in lower case or all in capitals ("bright blue", "BRIGHT BLUE"), and the code's
@@ -96,6 +163,12 @@ def _display_tidy(result, make):
         name = (result or {}).get('paint_description') or ''
         if not name or name.startswith('Two-tone'):
             return result
+        # paint316: a name VDG or Ezyvin sent is cleaned of its clutter first
+        # (clean_supplier_name). Not a name our catalogue supplied, and not
+        # partslink24's: the operator wants those as they are. This runs after
+        # the code has been worked out, so no code changes with it.
+        if (result.get('source') in CLEANED_SOURCES and result.get('enriched_from') != 'name'):
+            name = clean_supplier_name(name)
         letters = re.sub(r'[^A-Za-z]', '', name)
         if letters and (letters.islower() or letters.isupper()):
             name = ' '.join(w.capitalize() if w.isalpha() else w for w in name.split())
@@ -2414,7 +2487,8 @@ def _settle_code_list(read, make, model=None, vdg_colour=None):
             code = str(item.get('code') or '').strip()
             if not code:
                 continue
-            one = _enrich_from_lookup({'paint_code': code, 'paint_description': str(item.get('description') or '').strip()},
+            one = _enrich_from_lookup({'paint_code': code, 'paint_description': str(item.get('description') or '').strip(),
+                                       'source': read.get('source')},                                  # paint316
                                       make, model, vdg_colour=vdg_colour) or {}
             today = (one.get('paint_code') or '').strip()
             if not today or one.get('placeholder_refused'):

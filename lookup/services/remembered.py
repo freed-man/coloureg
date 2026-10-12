@@ -278,7 +278,8 @@ def _reading(row, by_hand=False):
     from lookup.services.paint_resolver import _enrich_from_lookup
     ours = (row.enriched_from or '').strip()      # the half our catalogue supplied on the day, if any
     out = _enrich_from_lookup({'paint_code': '' if ours == Search.ENRICHED_CODE else code,
-                               'paint_description': '' if ours == Search.ENRICHED_NAME else name},
+                               'paint_description': '' if ours == Search.ENRICHED_NAME else name,
+                               'source': row.provider},          # paint316: a VDG or Ezyvin name is cleaned
                               row.make, row.model, vdg_colour=row.colour) or {}
     today = (out.get('paint_code') or '').strip()
     if not today or out.get('placeholder_refused'):
