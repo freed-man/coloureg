@@ -758,7 +758,7 @@ def send_admin_paint_report(report, total_for_code=1, vehicle_title='',
     }, context='paint_report')
 
 
-def send_admin_failure_notification(registration, vehicle_title, vin_full, colour, user_email, customer_message='', extra_attachments=None, found_name='', special_order_code=''):
+def send_admin_failure_notification(registration, vehicle_title, vin_full, colour, user_email, customer_message='', extra_attachments=None, found_name='', special_order_code='', unconfirmed_code=''):
     """Email admin when paint code wasn't found and user requested manual lookup.
 
     `customer_message` is optional free text the customer added to the request
@@ -773,6 +773,9 @@ def send_admin_failure_notification(registration, vehicle_title, vin_full, colou
     order (999, a BMW's 490). Those requests come here too, by the operator's
     decision of 9 Oct, and without this row the email would read as if nothing
     had been found. Only the operator reads this email.
+
+    paint320: `unconfirmed_code` likewise, for a code a supplier gave that we
+    could not confirm (no name, not in our paint records).
     """
 
     found_block = _found_name_block(found_name)
@@ -782,6 +785,12 @@ def send_admin_failure_notification(registration, vehicle_title, vin_full, colou
                     <tr style="border-bottom: 1px solid #eee;">
                         <td style="padding: 10px 16px 10px 0; color: #666; font-size: 13px; vertical-align: top;">Code</td>
                         <td style="padding: 10px 0; color: #1a1a1a; font-size: 14px;">{_esc(special_order_code)}, a special order code: it does not say which paint</td>
+                    </tr>"""
+    elif unconfirmed_code:
+        special_order_row = f"""
+                    <tr style="border-bottom: 1px solid #eee;">
+                        <td style="padding: 10px 16px 10px 0; color: #666; font-size: 13px; vertical-align: top;">Code</td>
+                        <td style="padding: 10px 0; color: #1a1a1a; font-size: 14px;">{_esc(unconfirmed_code)}, given by a supplier with no name and not in our paint records: check it</td>
                     </tr>"""
     message_block = ''
     if customer_message and customer_message.strip():

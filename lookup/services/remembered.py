@@ -433,6 +433,13 @@ def _find(registration, now):
     from lookup.services.paint_resolver import marks_special_order
     if not by_hand(source) and marks_special_order(source.make, answer[0]):
         return None
+    # paint320: nor a code we could not confirm (no name, and nothing we hold
+    # names it). Never remembered: the next lookup searches again, and may
+    # find what it is. One the operator confirmed with the pencil stands.
+    from lookup.services.paint_resolver import is_unconfirmed_code
+    if (not by_hand(source) and not source.operator_answered_at
+            and is_unconfirmed_code(source.make, answer[0], answer[1], source.model or None, source.colour or '')):
+        return None
     for row in counted:
         if row is source or _code_key(row.paint_code) == _code_key(source.paint_code):
             continue

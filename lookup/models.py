@@ -525,7 +525,34 @@ class Search(models.Model):
         if not code:
             return True
         from lookup.services.paint_resolver import marks_special_order
-        return bool(marks_special_order(self.make, code))
+        # paint320: or a code we could not confirm, whose page offers the same check.
+        return bool(marks_special_order(self.make, code)) or self.unconfirmed_code
+
+    @property
+    def unconfirmed_code(self):
+        """paint320: is this lookup's code one we could not confirm? A
+        supplier's code with no name that nothing we hold can name
+        (paint_resolver.is_unconfirmed_code). Its page shows the code with a
+        note and the free manual check; it is never cached, remembered or
+        charged, and a request left on it goes to the manual queue.
+
+        Never the operator's own answer, nor one he has confirmed with the
+        pencil (he has looked), nor a copy of either (a cache or remembered row
+        whose code he gave or confirmed for that plate)."""
+        if self.provider == self.PROVIDER_MANUAL or self.operator_answered_at:
+            return False
+        code = (self.paint_code or '').strip()
+        if not code or (self.paint_description or '').strip():
+            return False
+        from lookup.services.paint_resolver import is_unconfirmed_code
+        if not is_unconfirmed_code(self.make, code, '', self.model or None, self.colour or ''):
+            return False
+        if self.provider in self.COPIED_PROVIDERS:
+            from django.db.models import Q as _Q
+            return not type(self).objects.filter(
+                _Q(provider=self.PROVIDER_MANUAL) | _Q(operator_answered_at__isnull=False),
+                registration=self.registration, paint_code=self.paint_code).exists()
+        return True
 
     @property
     def edit_box(self):

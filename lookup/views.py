@@ -47,6 +47,7 @@ from .services.paint_resolver import (
     _display_tidy,
     is_placeholder_code,
     marks_special_order,
+    is_unconfirmed_code,
     special_order_code_spellings,
     mmw_unpadded_code,
     PL24_TIMEOUT,
@@ -1742,7 +1743,11 @@ def index(request):
         # complete successes are cached — a miss must stay live so recovery /
         # retry always gets a fresh shot. Payload excludes the request-specific
         # keys (search_id, paint_pending); store_vrm_payload strips them anyway.
-        if paint_code or make_not_automated:
+        # paint320: never a code we could not confirm (no name, nothing we
+        # hold names it). A repeat searches again.
+        if (paint_code and is_unconfirmed_code(make, paint_code, paint_description, model or None, colour)):
+            pass
+        elif paint_code or make_not_automated:
             # UNSUPPORTED MAKES ARE CACHED TOO. The rule above is "only complete
             # successes", because "a miss must stay live so recovery / retry
             # always gets a fresh shot". For a make we do not automate, recovery
@@ -2048,7 +2053,7 @@ def paige(request):
     return response
 
 
-def _special_order_shown(make, shown):
+def _special_order_shown(make, shown, row=None):
     """paint299: a result as it is about to be SHOWN, with nothing left in it
     that says what colour a special order code is.
 
@@ -2083,6 +2088,16 @@ def _special_order_shown(make, shown):
                  'all_paint_codes': [], 'two_tone': []}
         shown.update({key: value for key, value in blank.items() if key in shown})
         shown['special_order'] = True
+    elif (row is not None and (shown.get('paint_code') or '').strip()
+            and not (shown.get('paint_description') or '').strip()
+            and (row.paint_code or '').strip().upper() == (shown.get('paint_code') or '').strip().upper()
+            and row.unconfirmed_code):
+        # paint320: A CODE WE COULD NOT CONFIRM (Search.unconfirmed_code). The
+        # code is shown, with a note and the free manual check in place of the
+        # automatic email (the template and the page's script draw both from
+        # this mark). Decided from the lookup's row, which knows whether the
+        # operator gave or confirmed it; a reply with no row is left as it is.
+        shown['unconfirmed_code'] = True
     return shown
 
 
@@ -2255,7 +2270,7 @@ def results(request):
         ),
     }
 
-    return render(request, 'lookup/results.html', _special_order_shown(make, context))
+    return render(request, 'lookup/results.html', _special_order_shown(make, context, _locked_search))   # paint320: the row
 
 
 # How long the page is told to wait before retrying a 'busy' response.
@@ -2438,7 +2453,7 @@ def _lookup_status(request, search_id):
                 vehicle_data.get('make', ''), vehicle_data.get('model', ''), vehicle_data.get('year'),
                 vehicle_data.get('colour', ''), vehicle_data.get('all_paint_codes')),
             'two_tone': _known['two_tone'],
-        }))
+        }, Search.objects.filter(id=search_id).first()))                # paint320: the row
 
     if not vehicle_data.get('paint_pending'):
         return JsonResponse({'status': 'not_found'})
@@ -2622,7 +2637,9 @@ def _lookup_status(request, search_id):
     # only cache when a real paint code was delivered (which is precisely this
     # branch). Name-only recoveries never reach here, so they're never cached.
     reg_for_cache = vehicle_data.get('registration')
-    if reg_for_cache and paint_code:
+    # paint320: never a code we could not confirm. A repeat searches again.
+    if reg_for_cache and paint_code and not is_unconfirmed_code(
+            make, paint_code, paint_description, vehicle_data.get('model') or None, vehicle_data.get('colour', '')):
         store_vrm_payload(reg_for_cache, vehicle_data)
         clear_miss(reg_for_cache)  # recovery found it — drop any stale miss
 
@@ -2652,7 +2669,7 @@ def _lookup_status(request, search_id):
             make, vehicle_data.get('model', ''), vehicle_data.get('year'),
             vehicle_data.get('colour', ''), all_paint_codes),
         'two_tone': _two_tone_json(make, paint_code, vehicle_data.get('colour', '')),   # paint228
-    }))
+    }, Search.objects.filter(id=search_id).first()))                    # paint320: the row
 
 
 # Poll interval for the loser-waits path. Starts short (most recoveries that are
@@ -2739,7 +2756,7 @@ def _wait_for_recovery_result(search_id):
                 # single recovered code is what matters here and is complete.
                 'all_paint_codes': [],
                 'two_tone': _two_tone_json(row.make, row.paint_code, row.colour),   # paint228
-            }))
+            }, row))                                                    # paint320
         if row.recovery_duration_ms is not None:
             # Recovery finished without a code.
             if row.recovery_name_only and row.paint_description:
@@ -3820,12 +3837,15 @@ def submit_email(request):
     # The row keeps its code. Up to 7 Oct no customer had left an email on
     # one of these (10 lookups on 7 cars).
     _special_order = marks_special_order(search.make, search.paint_code)
+    # paint320: AND A CODE WE COULD NOT CONFIRM. Its page promised the same
+    # free manual check, so the request takes the same branch.
+    _unconfirmed = (not _special_order) and search.unconfirmed_code
     # The name is never passed on for such a code, to the operator or the
     # customer: a row from before this release can hold one ("Sonderlackierung"
     # beside a BMW's 490), and the emails would call it the colour's name.
     _found_name = '' if _special_order else (search.paint_description or '')
 
-    if search.paint_code and not _special_order:
+    if search.paint_code and not _special_order and not _unconfirmed:
         _email_args = _paint_email_args(search)
         sent = send_user_paint_code(to_email=email, **_email_args)
         if sent:
@@ -3855,6 +3875,7 @@ def submit_email(request):
             # operator's email says why a car that has a code is in his queue.
             # Passed only then, so every other request's call is as it was.
             **({'special_order_code': search.paint_code} if _special_order else {}),
+            **({'unconfirmed_code': search.paint_code} if _unconfirmed else {}),     # paint320
         )
         user_sent = send_user_pending_notification(
             to_email=email,
@@ -5069,13 +5090,14 @@ def admin_stats(request):
     _special_order_spelling = Q()
     for _spelling in special_order_code_spellings():
         _special_order_spelling |= Q(paint_code__iexact=_spelling)
+    # paint320: and those left on a code we could not confirm, which has no name.
     recent_failures_with_email = [
-        s for s in Search.objects.filter(Q(paint_code='') | _special_order_spelling,
+        s for s in Search.objects.filter(Q(paint_code='') | _special_order_spelling | Q(paint_description=''),
                                          email__gt='', manual_lookup_completed=False)
         # paint315: OLDEST FIRST, so the customer who has waited longest is at
         # the top (the operator's choice, 12 Oct). It was newest first.
         .order_by('timestamp', 'id')
-        if not s.paint_code or marks_special_order(s.make, s.paint_code)
+        if not s.paint_code or marks_special_order(s.make, s.paint_code) or s.unconfirmed_code
     ]
 
     # Provider breakdown — where did the paint code come from? Single aggregate.

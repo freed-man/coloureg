@@ -2525,6 +2525,11 @@ def _weigh(make, answer):
         'name'     a colour name, with or without a code OUR catalogue worked
                    out from it (enriched_from 'code'). Held: a provider's own
                    code for this very car is better than a match on a name.
+        'unsure'   paint320: a code of the provider's own that nothing can
+                   name: no name came with it, and our catalogue, the
+                   operator's table and the trim rule have none for it (see
+                   is_unconfirmed_code). Held, and given only when nothing
+                   better comes: it may not be a paint code at all.
         ''         nothing usable: empty, or refused (a placeholder, an
                    interior). The search carries on as if nothing had arrived.
     """
@@ -2534,10 +2539,45 @@ def _weigh(make, answer):
     if code and marks_special_order(make, code):
         return 'special'
     if code and answer.get('enriched_from') != 'code':
+        # paint320: the answer has been read (_enrich_from_lookup), so a name
+        # still missing here is one nothing we hold could supply.
+        if not (answer.get('paint_description') or '').strip():
+            return 'unsure'
         return 'code'
     if code or (answer.get('paint_description') or '').strip():
         return 'name'
     return ''
+
+
+def is_unconfirmed_code(make, code, name='', model=None, vdg_colour=None):
+    """paint320: A CODE WE COULD NOT CONFIRM. True when a supplier's code
+    arrived with no name and nothing we hold can name it: not our catalogue,
+    not the operator's own table, not the trim rule (_enrich_from_lookup,
+    which every supplier answer passes). A special order code is not one (it
+    has its own note), nor an empty or refused code.
+
+    The Bentley O92 of 11 Oct is the case: pl24 sent it with no name and the
+    catalogue holds no Bentley O92. Measured on the lookups to 12 Oct: 14 of
+    3,026 supplier codes were like it.
+
+    Such a code is not the answer straight away (_weigh calls it 'unsure').
+    Given in the end, it is shown with a note and the free manual check, it
+    is never cached or remembered, and it is never charged (no name). Who
+    asks whether it is the operator's own (he typed it, or confirmed it with
+    the pencil) is the caller's business: see Search.unconfirmed_code. Never
+    raises."""
+    try:
+        code = (code or '').strip()
+        if not code or (name or '').strip() or marks_special_order(make, code):
+            return False
+        read = _enrich_from_lookup({'paint_code': code, 'paint_description': ''}, make, model,
+                                   vdg_colour=vdg_colour or '') or {}
+        if read.get('placeholder_refused') or not (read.get('paint_code') or '').strip():
+            return False
+        return not (read.get('paint_description') or '').strip()
+    except Exception:
+        logger.warning('could not tell whether a code is confirmed', exc_info=True)
+        return False
 
 
 def _ezyvin_leg(vin, sink, race_over, budget, search_id):
@@ -3152,7 +3192,7 @@ def resolve_paint(registration, vin, make, category=None, telemetry=None, model=
                            'all_paint_codes': [], 'source': 'mmw'})
             if entry[0] == 'code':
                 return _give(entry)
-            if entry[0] == 'special':
+            if entry[0] in ('special', 'unsure'):       # paint320
                 held['mmw'] = entry
 
         for _source in ('pl24', 'ezyvin'):
@@ -3160,6 +3200,12 @@ def resolve_paint(registration, vin, make, category=None, telemetry=None, model=
                 return _give(held[_source])
         for _source in ('vdg_retry', 'pl24', 'ezyvin'):
             if held.get(_source) and held[_source][0] == 'name':
+                return _give(held[_source])
+        # paint320: A CODE NOTHING CAN NAME comes after every name, and before
+        # a special order code. The page shows it with a note offering the
+        # manual check (the operator, 12 Oct: name over code, less risky).
+        for _source in ('vdg_retry', 'pl24', 'ezyvin', 'mmw'):
+            if held.get(_source) and held[_source][0] == 'unsure':
                 return _give(held[_source])
         for _source in ('vdg_retry', 'pl24', 'ezyvin', 'mmw'):
             if held.get(_source):
