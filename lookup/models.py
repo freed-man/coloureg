@@ -3810,6 +3810,22 @@ class SiteConfig(models.Model):
         """
         return (wheelplan or '').strip().upper() == '2 WHEEL'
 
+    #: paint317: the makes whose motorbikes ARE searched. partslink24 answers a
+    #: BMW motorbike by its VIN: the probe of 12 Oct gave codes for the 2 of 2
+    #: BMW bikes it tried (a 2024 S 1000 XR, a 2015 S 1000 R), each of the
+    #: car's registered colour, while every other bike make gave nothing.
+    #: Decided by the operator on 11 Oct ("Yes add bmw bikes").
+    BIKE_MAKES_SEARCHED = frozenset({'bmw'})
+
+    @classmethod
+    def is_bike_gated(cls, make, category, wheelplan):
+        """paint317: True when the vehicle class or DVLA's wheelplan says it is
+        a motorbike (is_category_unsupported, is_wheelplan_unsupported) and its
+        make is not one whose bikes are searched (BIKE_MAKES_SEARCHED)."""
+        if not (cls.is_category_unsupported(category) or cls.is_wheelplan_unsupported(wheelplan)):
+            return False
+        return cls._norm_make(make or '') not in {cls._norm_make(m) for m in cls.BIKE_MAKES_SEARCHED}
+
     def is_make_unsupported(self, make):
         if not make:
             return False

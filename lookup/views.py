@@ -980,10 +980,10 @@ def index(request):
                 bool(cached_payload.get('make', ''))
                 and not (cached_payload.get('paint_code') or '')
                 and (config.is_make_unsupported(cached_payload.get('make', ''))
-                     or SiteConfig.is_category_unsupported(
-                         cached_payload.get('category') or '')
-                     or SiteConfig.is_wheelplan_unsupported(
-                         cached_payload.get('wheelplan') or ''))
+                     # paint317: a motorbike, unless its make's bikes are searched
+                     or SiteConfig.is_bike_gated(cached_payload.get('make', ''),
+                                                 cached_payload.get('category') or '',
+                                                 cached_payload.get('wheelplan') or ''))
             )
             cache_search = Search(
                 registration=registration,
@@ -1621,8 +1621,8 @@ def index(request):
         # BMW bike without touching BMW cars — which no name rule can do.
         make_not_automated = bool(make) and not paint_code \
             and (config.is_make_unsupported(make)
-                 or SiteConfig.is_category_unsupported(category)
-                 or SiteConfig.is_wheelplan_unsupported(wheelplan))
+                 # paint317: a motorbike, unless its make's bikes are searched (BMW)
+                 or SiteConfig.is_bike_gated(make, category, wheelplan))
         if make_not_automated:
             search.error_message = 'make_not_automated'
             # paint132: record WHICH gate fired. Checked in the same order the
