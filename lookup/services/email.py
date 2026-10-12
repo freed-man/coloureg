@@ -236,7 +236,7 @@ def send_custom_message(to_email, subject, markdown_body, extra_attachments=None
     }, context='custom_message')
 
 
-def send_user_paint_code(to_email, registration, vehicle_title, vin_masked, colour, paint_code, paint_description, canonical_code=None, paint_hex=None, message='', extra_attachments=None, bcc_owner=False, purchase=None, car_picture_jpeg=None):
+def send_user_paint_code(to_email, registration, vehicle_title, vin_masked, colour, paint_code, paint_description, canonical_code=None, paint_hex=None, message='', extra_attachments=None, bcc_owner=False, purchase=None, car_picture_jpeg=None, two_tone=None):
     """Email user the found paint code.
 
     If canonical_code is provided and differs from paint_code, the email displays
@@ -246,10 +246,26 @@ def send_user_paint_code(to_email, registration, vehicle_title, vin_masked, colo
 
     If paint_hex is provided (a validated 6-digit hex colour), a swatch bar is
     rendered above the paint code box, matching the website's results page.
+
+    paint321: `two_tone` is the list PaintLookup.two_tone_parts gives for a
+    combination code (Suzuki's A9G is ZCD body with a ZCE roof). With two or
+    more parts the email draws what the results page draws: the swatch split
+    into the paints, "Two-tone finish, two paints", and each paint's code and
+    name with "body" or "roof" when the registered colour says which. It went
+    out as the code with one swatch and nothing to say there were two paints.
     """
+    parts = [p for p in (two_tone or []) if isinstance(p, dict) and (p.get('code') or '').strip()]
+    if len(parts) < 2:
+        parts = []
 
     # Optional swatch bar — mirrors the results page UI
-    if paint_hex:
+    if parts and all(p.get('hex') for p in parts):
+        # paint321: a split bar, one half per paint, as the page's split swatch.
+        cells = ''.join(f'<td style="height: 80px; background: {_esc(p["hex"])};"></td>' for p in parts)
+        swatch_html = ('<table role="presentation" cellpadding="0" cellspacing="0" style="width: 100%; border-collapse: collapse; '
+                       f'border-radius: 8px 8px 0 0; overflow: hidden;"><tr>{cells}</tr></table>')
+        box_radius = '0 0 8px 8px'
+    elif paint_hex and not parts:
         swatch_html = (
             f'<div style="height: 80px; background: {_esc(paint_hex)}; '
             f'border-radius: 8px 8px 0 0;"></div>'
@@ -311,6 +327,19 @@ def send_user_paint_code(to_email, registration, vehicle_title, vin_masked, colo
     else:
         note_html = ''
 
+    # paint321: the paints of a two tone, worded as the results page words them.
+    two_tone_html = ''
+    if parts:
+        lines = []
+        for i, p in enumerate(parts):
+            tag = 'body' if p.get('is_body') else ('roof' if i > 0 and parts[0].get('is_body') else '')
+            dot = (f'<span style="display: inline-block; width: 12px; height: 12px; border-radius: 50%; background: {_esc(p["hex"])}; '
+                   'vertical-align: middle; margin-right: 6px; border: 1px solid #ddd;"></span>') if p.get('hex') else ''
+            lines.append(f'<div style="margin-top: 6px; color: #1a1a1a; font-size: 14px;">{dot}<b>{_esc(p.get("code"))}</b> {_esc(p.get("name") or "")}'
+                         + (f' <span style="color: #666;">({tag})</span>' if tag else '') + '</div>')
+        two_tone_html = ('<div style="margin-top: 12px; color: #666; font-size: 14px; letter-spacing: 0.5px;">Two-tone finish, two paints</div>'
+                         + ''.join(lines))
+
     # paint221: the car's AI picture, inline (cid:car) like the logo, when it
     # was ready as the email went out. Never waited for: the code is what was
     # asked for. Labelled an illustration, as on the results page (paint290: and
@@ -343,7 +372,7 @@ def send_user_paint_code(to_email, registration, vehicle_title, vin_masked, colo
                         {_esc(paint_code)}
                     </div>
                     {canonical_html}
-                    {f'<div style="margin-top: 12px; color: #666; font-size: 14px; letter-spacing: 0.5px;">{_esc(paint_description)}</div>' if paint_description else ''}
+                    {two_tone_html or (f'<div style="margin-top: 12px; color: #666; font-size: 14px; letter-spacing: 0.5px;">{_esc(paint_description)}</div>' if paint_description else '')}
                 </div>
                 {note_html}
                 {picture_html}

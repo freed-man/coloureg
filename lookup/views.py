@@ -2857,6 +2857,21 @@ def _apply_paywall(search, config=None):
     return True
 
 
+def _email_two_tone(make, code, colour):
+    """paint321: the paints of a two tone code for the paint code email, as
+    the results page draws them (PaintLookup.two_tone_parts: body first by the
+    registered colour). None for an ordinary code, a special order code, or
+    when the catalogue cannot be read: the email is then as it always was."""
+    try:
+        if not (code or '').strip() or marks_special_order(make, code):
+            return None
+        parts = PaintLookup.two_tone_parts(make, code, vdg_colour=colour)
+        return parts if parts and len(parts) >= 2 else None
+    except Exception:
+        logger.warning('two tone parts for the email could not be read', exc_info=True)
+        return None
+
+
 def _paint_email_args(search):
     """paint194: everything send_user_paint_code needs about a result, built ONE
     way for both callers — the customer's "email me my result" and the email
@@ -2882,6 +2897,7 @@ def _paint_email_args(search):
         'canonical_code': canonical_code,
         'paint_hex': paint_hex,
         'car_picture_jpeg': _email_picture(search),      # paint221
+        'two_tone': _email_two_tone(search.make, search.paint_code, search.colour),     # paint321
     }
 
 
@@ -5646,6 +5662,7 @@ def submit_manual_lookup(request):
             paint_hex=paint_hex,
             message=message,
             extra_attachments=[reply_photo] if reply_photo else None,
+            two_tone=_email_two_tone(search.make, paint_code, search.colour),      # paint321
             # This is a reply YOU wrote, so copy ourselves. The default is False
             # because the same sender also serves the automatic customer-triggered
             # email from submit_email(), which deliberately does not bcc. See the
