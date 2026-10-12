@@ -557,6 +557,10 @@ class Search(models.Model):
         """
         if self.provider == self.PROVIDER_MANUAL:
             return False
+        # paint318: nor an answer he has looked at and confirmed (a Save with
+        # the dashboard's pencil, changed or not, dates it).
+        if self.operator_answered_at:
+            return False
         code = (self.paint_code or '').strip()
         name = (self.paint_description or '').strip()
         if not code or not name or self._TWO_PAINTS_RE.search(name):
@@ -568,9 +572,11 @@ class Search(models.Model):
             # One query, and only for a copy that trips the test (one row in
             # five months of lookups): is this the operator's own code for the
             # plate, given again?
+            # paint318: or a code of the plate he has confirmed with the pencil.
+            from django.db.models import Q as _Q
             return not type(self).objects.filter(
-                registration=self.registration, provider=self.PROVIDER_MANUAL,
-                paint_code=self.paint_code).exists()
+                _Q(provider=self.PROVIDER_MANUAL) | _Q(operator_answered_at__isnull=False),
+                registration=self.registration, paint_code=self.paint_code).exists()
         return True
 
     @property

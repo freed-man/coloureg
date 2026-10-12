@@ -3670,7 +3670,9 @@ CONTACT_NOT_SENT_MESSAGE = 'Your message could not be sent. Please try again in 
 
 #: paint314: what the operator reads when he presses Save on a lookup's pencil
 #: without changing the code or the name. Never shown to a customer.
-EDIT_UNCHANGED_MESSAGE = 'Nothing was changed, so nothing was saved.'
+EDIT_UNCHANGED_MESSAGE = 'Nothing was changed, so nothing was saved.'      # no longer shown since paint318
+#: paint318: what a Save with nothing changed now says: the answer is confirmed.
+EDIT_CONFIRMED_MESSAGE = 'confirmed as it is. Nothing else was changed.'
 
 #: paint313: the note on a report the operator upheld without knowing the right
 #: code. It must never start with remembered._CORRECTED_NOTE: memory reads a
@@ -4988,7 +4990,12 @@ def admin_stats(request):
         elif not row.edit_box:
             _refused = 'That lookup has no make, so it cannot take an answer.'
         elif code == _had_code and name == _had_name:
-            messages.error(request, EDIT_UNCHANGED_MESSAGE)
+            # paint318: SAVE WITH NOTHING CHANGED CONFIRMS IT. Only the time he
+            # looked is written: the code, the name and their source stay, and
+            # the dashboard's "check" mark goes from the row (the mark's own rule in models).
+            # Memory reads it as before: a supplier's answer stays a supplier's.
+            Search.objects.filter(id=row.id).update(operator_answered_at=timezone.now())
+            messages.success(request, f'{row.registration}: {EDIT_CONFIRMED_MESSAGE}')
             return redirect(_back)
         _code_changed = code != _had_code
         if not _refused:

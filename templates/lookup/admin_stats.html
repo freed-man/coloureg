@@ -689,9 +689,10 @@
             <p class="stat-label">Total</p>
             <p class="stat-value">{{ total_searches }}</p>
         </div>
-        {% if turnstile_blocks_week %}
+        {% comment %}paint318: ALWAYS drawn, 0 included (the operator, 12 Oct); it was drawn only
+           when something was blocked in the last 7 days, and read as removed.{% endcomment %}
         {% comment %}
-           Only rendered when non-zero. Expected to be bots; a rise here at the
+           Rendered at 0 too since paint318. Expected to be bots; a rise here at the
            same time as a fall in real lookups is the signature of the widget
            failing for genuine users, which is otherwise invisible — a refused
            lookup produces no result and no error anyone sees.
@@ -701,7 +702,6 @@
             <p class="stat-value">{{ turnstile_blocks_today }}</p>
             <p class="stat-subvalue">today · {{ turnstile_blocks_week }} in the last 7 days</p>
         </div>
-        {% endif %}
     </div>
 
     {% comment %}<!-- Top metrics: row 2 = quality + balance -->{% endcomment %}
