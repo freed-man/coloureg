@@ -139,7 +139,65 @@ def clean_supplier_name(name):
         return name
 
 
-def _display_tidy(result, make):
+#: paint324: suppliers whose names get the three narrow fixes of tidy_supplier_tags, partslink24 included
+#: (the operator, 14 Oct: "A. Yes, B. Yes, C. Yes, only those confirmed 100%"). Under either spelling of
+#: partslink24's source: the search says 'pl24', a remembered lookup says 'partslink24'.
+TAGGED_SOURCES = CLEANED_SOURCES | frozenset({'pl24', 'partslink24'})
+_BODY_COLOUR_TAG = re.compile(r'\s+bc(?=\s*(?:$|/|\+))', re.I)      # Renault and Dacia: "Ice White Bc"
+_FORD_TC_TAG = re.compile(r'\s+tc(?=\s*(?:$|/|\+))', re.I)          # Ford: "Fantastic Red Tc"
+_FIAT_VR_TAG = re.compile(r'\s*\(vr-[a-z0-9/-]+\)\s*$', re.I)          # Fiat and Jeep: "Grigio Garbato (Vr-612/A)"
+_BC_MAKES = frozenset({'renault', 'dacia', 'alpine'})
+#: paint324: partslink24's names in Slovenian or Czech, each replaced by the paint's English name only for
+#: the code AND the model it was checked for (14 Oct, against paint suppliers' listings of that code on that
+#: model). Fiat reuses a code across years and models, so nothing wider is safe: (make, code, name as sent,
+#: lower case) -> (model the car's model must start with, the name shown).
+CONFIRMED_NAMES = {
+    ('fiat', '268', 'bela pastelna'): ('500', 'Bossa Nova White'),
+    ('fiat', '268', 'bila pastelova ambient/bossa n'): ('panda', 'Ambient White'),
+    ('fiat', '111', 'crvena pastelna'): ('500', 'Pasodoble Red'),
+    ('fiat', '866', 'bordo metalik'): ('500', 'Bordeaux Opera Metallic'),
+    ('fiat', '876', 'crna metalik'): ('500', 'Carbon Black Metallic'),
+    ('fiat', '166', 'mint zelena pastelna'): ('500', 'Verde Lattementa'),
+    ('fiat', '599', 'modra metaliza magnetico'): ('panda', 'Blu Magnetico Metallic'),
+}
+_TYPOS = {'renault': (('casawhitea white', 'Casablanca White'),)}   # D31 is Casablanca White
+
+
+def tidy_supplier_tags(name, make, code='', model=None):
+    """paint324: three narrow fixes to a supplier's colour name, partslink24's too. (A) Renault's and Dacia's
+    "Bc" (body colour) and Ford's "Tc" go, and partslink24's "Casawhitea" is Casablanca White. (B) A Fiat or
+    Jeep "(Vr-612/A)" at the end goes, as paint316 already does for VDG and Ezyvin. (C) a name in
+    CONFIRMED_NAMES is replaced, only for its own code and model. Anything else comes back as it came.
+    Never raises."""
+    if not isinstance(name, str) or not name.strip():
+        return name
+    try:
+        from lookup.models import PaintLookup
+        mk = PaintLookup.normalize_manufacturer(make or '')
+        s = re.sub(r'\s+', ' ', name).strip()
+        key_code = (code or '').strip().upper().split('/')[0]
+        hit = CONFIRMED_NAMES.get((mk, key_code, s.lower()))
+        if hit and (model or '').strip().lower().startswith(hit[0]):
+            return hit[1]
+        if mk in _BC_MAKES:
+            s = _BODY_COLOUR_TAG.sub('', s)
+        if mk == 'ford':
+            s = _FORD_TC_TAG.sub('', s)
+        for wrong, right in _TYPOS.get(mk, ()):
+            s = re.sub(re.escape(wrong), right, s, flags=re.I)
+        s = _FIAT_VR_TAG.sub('', s)
+        s = re.sub(r'\s+', ' ', s).strip()
+        if s != re.sub(r'\s+', ' ', name).strip():
+            s = re.sub(r'/([a-z])', lambda m: '/' + m.group(1).upper(), s)   # "Lucid Red/red Carpet" once its tags are gone
+        if not re.search(r'[A-Za-z]{2}', s):
+            return name
+        return s if s != re.sub(r'\s+', ' ', name).strip() else name
+    except Exception:
+        logger.warning('supplier name tags not tidied', exc_info=True)
+        return name
+
+
+def _display_tidy(result, make, model=None):
     """paint284: the name as it leaves for the page. Capitals for a name given all
     in lower case or all in capitals ("bright blue", "BRIGHT BLUE"), and the code's
     English name in place of a German one when its row has one ("Elixir-Rot
@@ -169,6 +227,10 @@ def _display_tidy(result, make):
         # the code has been worked out, so no code changes with it.
         if (result.get('source') in CLEANED_SOURCES and result.get('enriched_from') != 'name'):
             name = clean_supplier_name(name)
+        # paint324: the narrow fixes of tidy_supplier_tags, partslink24's names included (the operator,
+        # 14 Oct). The same guard: never a name our catalogue supplied.
+        if (result.get('source') in TAGGED_SOURCES and result.get('enriched_from') != 'name'):
+            name = tidy_supplier_tags(name, make, result.get('paint_code') or '', model)
         letters = re.sub(r'[^A-Za-z]', '', name)
         if letters and (letters.islower() or letters.isupper()):
             name = ' '.join(w.capitalize() if w.isalpha() else w for w in name.split())
@@ -195,7 +257,7 @@ def _tidy_on_exit(fn):
     inspect, which older battery checks read."""
     @functools.wraps(fn)
     def wrapper(result, make, *args, **kwargs):
-        return _display_tidy(fn(result, make, *args, **kwargs), make)
+        return _display_tidy(fn(result, make, *args, **kwargs), make, kwargs.get('model', args[0] if args else None))   # paint324: the model, for CONFIRMED_NAMES
     return wrapper
 
 

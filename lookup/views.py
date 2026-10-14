@@ -3580,7 +3580,7 @@ def _tidy_replayed_name(payload, registration):
     (paint181): 5 of 152 would have been reworded. The stored entry is left as
     it is. Never raises."""
     try:
-        tidied = _display_tidy(payload, payload.get('make') or '')
+        tidied = _display_tidy(payload, payload.get('make') or '', payload.get('model'))   # paint324: the model too
         if not tidied or tidied.get('paint_description') == payload.get('paint_description'):
             return payload
         code = (payload.get('paint_code') or '').strip()
