@@ -146,6 +146,7 @@ TAGGED_SOURCES = CLEANED_SOURCES | frozenset({'pl24', 'partslink24'})
 _BODY_COLOUR_TAG = re.compile(r'\s+bc(?=\s*(?:$|/|\+))', re.I)      # Renault and Dacia: "Ice White Bc"
 _FORD_TC_TAG = re.compile(r'\s+tc(?=\s*(?:$|/|\+))', re.I)          # Ford: "Fantastic Red Tc"
 _FIAT_VR_TAG = re.compile(r'\s*\(vr-[a-z0-9/-]+\)\s*$', re.I)          # Fiat and Jeep: "Grigio Garbato (Vr-612/A)"
+_FORD_LETTER_TAG = re.compile(r'\s*\(([A-Z])\)\s*$')                   # paint325, Ford: "Tonic (B)", a paint system letter
 _BC_MAKES = frozenset({'renault', 'dacia', 'alpine'})
 #: paint324: partslink24's names in Slovenian or Czech, each replaced by the paint's English name only for
 #: the code AND the model it was checked for (14 Oct, against paint suppliers' listings of that code on that
@@ -159,6 +160,8 @@ CONFIRMED_NAMES = {
     ('fiat', '876', 'crna metalik'): ('500', 'Carbon Black Metallic'),
     ('fiat', '166', 'mint zelena pastelna'): ('500', 'Verde Lattementa'),
     ('fiat', '599', 'modra metaliza magnetico'): ('panda', 'Blu Magnetico Metallic'),
+    # paint325: the catalogue's and the operator's spelling of Toyota's 040 (every model).
+    ('toyota', '040', 'super white ii'): ('', 'Super White 2'),
 }
 _TYPOS = {'renault': (('casawhitea white', 'Casablanca White'),)}   # D31 is Casablanca White
 
@@ -168,6 +171,8 @@ def tidy_supplier_tags(name, make, code='', model=None):
     "Bc" (body colour) and Ford's "Tc" go, and partslink24's "Casawhitea" is Casablanca White. (B) A Fiat or
     Jeep "(Vr-612/A)" at the end goes, as paint316 already does for VDG and Ezyvin. (C) a name in
     CONFIRMED_NAMES is replaced, only for its own code and model. Anything else comes back as it came.
+    paint325: Ford's single paint system letter in brackets at the end goes too ("Tonic (B)"), and Toyota's
+    "Super White II" is written as the catalogue has it, Super White 2 (a CONFIRMED_NAMES line, every model).
     Never raises."""
     if not isinstance(name, str) or not name.strip():
         return name
@@ -183,6 +188,7 @@ def tidy_supplier_tags(name, make, code='', model=None):
             s = _BODY_COLOUR_TAG.sub('', s)
         if mk == 'ford':
             s = _FORD_TC_TAG.sub('', s)
+            s = _FORD_LETTER_TAG.sub('', s)     # paint325
         for wrong, right in _TYPOS.get(mk, ()):
             s = re.sub(re.escape(wrong), right, s, flags=re.I)
         s = _FIAT_VR_TAG.sub('', s)
@@ -425,6 +431,19 @@ def _enrich_from_lookup(result, make, model=None, vdg_colour=None,
                         desc, make)
             desc = ''
             result['paint_description'] = ''
+        # paint325: NOR IS A PLACEHOLDER. "N/A" was passed through as a colour
+        # name (a Polestar, 2 Oct: code 368 shown with the name "N/A", while the
+        # catalogue named it). The same words a code is refused for are refused
+        # as a name: with a code, the catalogue names it below; with none, the
+        # answer is empty and is routed as not found, the way a placeholder
+        # code is.
+        if desc and _PLACEHOLDER_CODE.match(desc.strip('()').strip()):
+            logger.info('placeholder refused as a name: %s %r', (make or '')[:30], desc)
+            desc = ''
+            result['paint_description'] = ''
+            if not code:
+                result['placeholder_refused'] = True
+                return result
         # paint273: NOR IS ONE ENDING IN ITS OWN CODE. VDG writes Land Rover names
         # as "Luxor (869)" or "Santorini Black (820)" (10 answers so far, all
         # VDG, all Land Rover), so the page showed the code twice. The bracket
@@ -484,6 +503,29 @@ def _enrich_from_lookup(result, make, model=None, vdg_colour=None,
                     desc = _locked.name
                     result['paint_description'] = _locked.name
                     result['enriched_from'] = 'name'
+        # paint325: A PAIR OF NAMES GIVES WAY TO THE ONE THE CATALOGUE CONFIRMS.
+        # "Absolutely Red/Super Red", "Flare Red Metallic/Flare Red Pearl",
+        # "Moondust Silver C/c Med Solid" and Renault's "Grey Kng + Black Gne"
+        # (its two tone, which the catalogue already expands from the code) all
+        # reached the page as written: 57 answers since 1 Sep. The catalogue's
+        # name is taken only when the supplier's own words confirm it, under
+        # pair_confirmed_name's rules, so Fiat 294 "Giallo 258/Nero 876" keeps
+        # its pair (the catalogue's 294 is a blue). Here, where the answer
+        # arrives, so the row, the page, the email and a remembered answer agree.
+        if code and desc and is_pair_name(desc):
+            _h, _n, _c = PaintLookup.lookup_with_canonical(
+                manufacturer=make, paint_code=code,
+                vdg_colour=vdg_colour or result.get('colour') or '',
+            )
+            _pick = pair_confirmed_name(desc, _n)
+            if _pick:
+                logger.info('pair %r gives way to the catalogue\'s %r for %s %s',
+                            desc, _pick, (make or '')[:30], code)
+                desc = _pick
+                result['paint_description'] = _pick
+                result['enriched_from'] = 'name'
+                if _h and not result.get('paint_hex'):
+                    result['paint_hex'] = _h
 
         if code and not desc:
             # code -> name (+ swatch)
@@ -1410,6 +1452,77 @@ def _best_of_same_paint(make, codes, name):
 
 def is_bare_colour_name(name):
     return bool(_BARE_COLOUR_NAME.match((name or '').strip()))
+
+
+#: paint325: a supplier's name that is two names joined: "Absolutely Red/Super Red", "Grey Kng + Black Gne".
+_PAIR_SPLIT = re.compile(r'\s*(?:/|\s\+\s)\s*')
+_PAIR_CODE_TOKEN = re.compile(r'\b[A-Za-z0-9]{3}\b')
+
+
+def is_pair_name(name):
+    """paint325: True for a name holding a slash or a " + ", other than the site's own "Two-tone:" text, and
+    other than Ford's paint system words "C/C Med Solid", which are a tag, not a second name: the display
+    cleaning of VDG's and Ezyvin's names (paint316) takes those off, and the enrichment leaves such a name as
+    sent (an older check holds partslink24's names as sent, and no partslink24 answer has carried them)."""
+    s = (name or '').strip()
+    if not s or s.startswith('Two-tone'):
+        return False
+    s = _FORD_CC.sub('', s)
+    return '/' in s or ' + ' in s
+
+
+def pair_confirmed_name(name, catalogue_name):
+    """paint325: the catalogue's name for a code, when the supplier's pair of names confirms it; else None.
+
+    Suppliers write one paint two ways ("Flare Red Metallic/Flare Red Pearl"), two names for one code
+    ("Absolutely Red/Super Red"), or a Renault two tone as two words and two codes ("Grey Kng + Black
+    Gne"). The page showed the pair. Measured on the export of 14 Oct: 52 answers since 1 Sep held a slash
+    and 5 a plus. (Ford's "C/c Med Solid" after a name is a tag, not a pair: tidy_supplier_tags.)
+
+    THE CATALOGUE'S NAME IS SHOWN ONLY WHEN THE SUPPLIER'S OWN WORDS CONFIRM IT. Preferring the
+    catalogue's name whenever it had one would have cleaned 43 of the 57 and made three worse: Fiat 294
+    "Giallo 258/Nero 876" is a yellow and black car and the catalogue's 294 is a blue (Fiat reuses its
+    codes); Mercedes 6339 would have gone from English to German, Fiat 718 to French. So:
+      * a two tone from the catalogue ("Two-tone: KNG ... and GNE ...") is shown when every three
+        character code the supplier wrote (Kng, Gne) is in it, and at least one is;
+      * otherwise one half of the pair must be the catalogue's name, or start it, or be started by it,
+        after the finish words are stripped, and the shorter of the two must be at least two words
+        ("Super Red" confirms "Super Red 5"; "Pristine White 3" confirms "Pristine White"; "Sovereign"
+        alone confirms nothing).
+    The catalogue's name is never a bare colour word (Land Rover 1CB "Blue" is left to the supplier) and
+    never states another colour than the supplier's pair. Pure; never raises."""
+    try:
+        from lookup.models import PaintLookup
+        s = (name or '').strip()
+        cat = (catalogue_name or '').strip()
+        if not s or not cat or not is_pair_name(s):
+            return None
+        if cat.startswith('Two-tone'):
+            codes = {t.upper() for t in _PAIR_CODE_TOKEN.findall(s)
+                     if t.lower() not in _COLOUR_FAMILY and t.lower() not in ('and', 'the', 'met')}
+            in_cat = set(re.findall(r'\b[A-Z0-9]{3}\b', cat))
+            return cat if codes and codes <= in_cat else None
+        if is_bare_colour_name(cat):
+            return None
+        want, got = _colour_families(s), _colour_families(cat)
+        if want and got and not (want & got):
+            return None
+        target = PaintLookup.normalize_name(cat)
+        if not target:
+            return None
+        for half in _PAIR_SPLIT.split(s):
+            h = PaintLookup.normalize_name(half)
+            if not h:
+                continue
+            if h == target:
+                return cat
+            shorter, longer = sorted((h, target), key=len)
+            if len(shorter.split()) >= 2 and longer.startswith(shorter + ' '):
+                return cat
+        return None
+    except Exception:
+        logger.warning('pair name not checked', exc_info=True)
+        return None
 
 
 def tidy_provider_name(name):
