@@ -5850,6 +5850,19 @@ def report_paint_code(request):
         session_key=request.session.session_key or '',
     )
 
+    # paint323: A REPORT DROPS THE PLATE'S 7 DAY ANSWER at once. Memory already
+    # pauses on a waiting report (paint306, paint312), but the 7 day cache is
+    # asked before memory and knew nothing of it, so for the rest of that week
+    # the next lookup of the plate could still be given the reported code. Now
+    # the next lookup searches afresh (or memory decides, and memory pauses).
+    # "Wrong, code not known" drops it too, as before; a correction writes it
+    # back. A failure here must not lose the report, which is already saved.
+    if search.registration:
+        try:
+            VrmCache.objects.filter(registration=search.registration).delete()
+        except Exception:  # noqa: BLE001 - the report is saved; the cached answer runs out by itself
+            logger.warning('paint report: the cached answer was not dropped', exc_info=True)
+
     # The COUNT is the reason this exists, so it goes in the email — one report
     # is a shrug, three against the same code is a catalogue error.
     try:
