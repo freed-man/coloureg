@@ -409,6 +409,50 @@ def _enrich_from_lookup(result, make, model=None, vdg_colour=None,
                 return result
             result['name_only'] = True
             code = ''
+        if is_order_code(make, code):
+            # paint326: A VW GROUP ORDER CODE IS NOT A PAINT CODE. Two
+            # characters on a Volkswagen, Audi, Skoda, Seat or Cupra are the
+            # exterior colour's order code (2T of 2T2T/C9X), the same paint as
+            # the paint number and nothing a paint shop can mix from. 46
+            # lookups to 14 Oct were given one as the code, with a name beside
+            # it, all from VDG and Ezyvin (Audi L8 "Phantom Black Pearl
+            # Effect", VW K2 "Pyrit Silber-Metallic"); the catalogue's own two
+            # character rows (a scraped source lists order codes as codes)
+            # named them and gave them a swatch, so nothing objected.
+            #
+            # Three ways out, in this order:
+            #   1. our history pairs it with a paint number for this make
+            #      (order_code_pair, with its guards): the paint number is the
+            #      code and the supplier's name stays. 28 of the 46.
+            #   2. no pair, but a name came: the code is dropped and the name
+            #      is read as a name alone, the way a colour word in the code
+            #      field is (above), so the rest of this function may find the
+            #      paint number by it under the exactly one code rule. 18 of
+            #      the 46: 12 find it (K2 "Pyrit Silber-Metallic" gives LB7S,
+            #      2R "Platinum-Grey Metallic" LD7X), 6 stay a name.
+            #   3. no pair and no name: the code stays and nothing may name
+            #      it, so it is a code we could not confirm (paint320): shown
+            #      with the note and the free check, never cached, remembered
+            #      or charged. None in the history.
+            # Memory (paint288) reads every remembered answer back through
+            # this function, so the 46 are read the new way from their rows.
+            result['order_code'] = code
+            _full = order_code_pair(make, code, result.get('paint_description') or '', vdg_colour)
+            if _full:
+                logger.info('order code %s read as %s for %s', code, _full, (make or '')[:30])
+                code = _full
+                result['paint_code'] = _full
+            elif (result.get('paint_description') or '').strip():
+                logger.info('order code %s dropped, name kept: %s', code, (make or '')[:30])
+                result['paint_code'] = ''
+                result['name_only'] = True
+                result['order_code_dropped'] = True
+                code = ''
+            else:
+                logger.info('order code %s unpaired and unnamed: %s', code, (make or '')[:30])
+                result['paint_description'] = ''
+                result['order_code_unpaired'] = True
+                return result
         # A provider can return a real code that no retailer sells (paint85).
         # Rewritten HERE, where the provider's answer arrives, so the mapped
         # code flows to the row, the page and the email alike — mapping later
@@ -1557,8 +1601,8 @@ def resolve_slashed_code(make, code, dvla_colour=None):
         Ford        2431C/2PJE/ZJNC  -> 2PJE   cross-references
         Chrysler    PS3/QS3S         -> PS3    body / trim
         Jeep        PW6/QW6S         -> PW6
-        Audi        T9/Y9C           -> Y9C    interior / exterior
-        Volkswagen  0Q0Q/C9A         -> C9A
+        Audi        T9/Y9C           -> Y9C    order code / paint number
+        Volkswagen  0Q0Q/C9A         -> C9A    (paint326: the same paint, twice)
 
     THE GUARD IS THE CATALOGUE, not the shape. Exactly one part must resolve as
     a code for that make. If several do, we cannot tell which is the paint and
@@ -1588,9 +1632,10 @@ def resolve_slashed_code(make, code, dvla_colour=None):
         return code
     # Each part is tried as sent AND `L`-prefixed, because VDG returns the VAG
     # exterior code without the L that the catalogue carries: `T9/Y9C` is Ibis
-    # White under `LY9C`, and testing `Y9C` alone finds nothing. The interior
+    # White under `LY9C`, and testing `Y9C` alone finds nothing. The order code
     # halves — T9, 0E, 2T2T — resolve under neither form, which is what makes
-    # the pair separable at all.
+    # the pair separable at all. (paint326: they are the exterior colour's
+    # order code, the same paint as the paint number; not an interior.)
     #
     # The part is returned AS SENT, not as the variant that matched: the
     # customer's sticker says Y9C, and the L is our catalogue's notation.
@@ -1725,7 +1770,119 @@ def is_special_order_code(code):
 #: bronze, purple, maroon, green, and red and black. Limited to BMW because 16
 #: other makes in the catalogue use 490 for a real colour (Volvo's is Chameleon
 #: Blue). Keyed by the catalogue's own spelling of the make.
-_SPECIAL_ORDER_BY_MAKE = {'bmw': frozenset({'490'})}
+#: paint326: PORSCHE'S 89 TOO. Porsche's order record for a paint to sample car
+#: reads "Option Code 89 Exterior in Custom Color" beside "QUB Preparation for
+#: Custom Color", and names no colour (Rennlist, the PTS order thread). So 89
+#: says the car was painted to sample, as 490 does for BMW; partslink24 now
+#: returns it as it finds it, and it is read here. Porsche only: 89 is Honda's
+#: Sonic Grey, Jaguar's Shadow and Land Rover's Stornoway. No Porsche lookup had
+#: been given it by 14 Oct (24 lookups).
+_SPECIAL_ORDER_BY_MAKE = {'bmw': frozenset({'490'}), 'porsche': frozenset({'89'})}
+
+
+#: paint326: VW GROUP ORDER CODES. On a Volkswagen, Audi, Skoda, Seat or Cupra
+#: the two character code beside the paint number (2T2T/C9X, 0Q0Q/C9A, 6Y/Z7S)
+#: is the exterior colour's ORDER code: the same paint, one to one with the
+#: paint number on that model's order book, and nothing a paint shop can mix
+#: from. Not interior, not roof (the handoff said both at different times).
+#: Suppliers sometimes send it on its own: 46 lookups to 14 Oct were given a
+#: bare order code as the paint code, with a name beside it, every one from
+#: VDG or Ezyvin (Audi L8 "Phantom Black Pearl Effect", VW K2 "Pyrit
+#: Silber-Metallic", Seat N1 "Metal Blue").
+#:
+#: THE PAIRS BELOW ARE OUR OWN HISTORY, not a scraped list: every pair string
+#: a supplier sent (703 of them, 2T2T/C9X and the like) and every car given
+#: the order code by one supplier and the paint number by another, grouped by
+#: make, kept only where the make's history agrees on one paint number. Three
+#: do not and are left out: Audi 2Y (S9R, once Z5C), Audi C2 (A7C, Y7J) and
+#: VW H7 (C5B, K3A). The same order code is reused across the group for
+#: different paints (Audi 8X is Z7X, Skoda 8X is F5W), so the table is read
+#: by make and never across makes.
+#:
+#: Porsche and Lamborghini are not in it: their two character codes include
+#: real paint codes from older cars, and no bare one has ever arrived. A
+#: Porsche 0Q/C9A pair is resolved by resolve_slashed_code as before.
+_ORDER_CODE_MAKES = frozenset({'volkswagen', 'audi', 'skoda', 'seat', 'cupra'})
+_ORDER_CODE = re.compile(r'^[A-Z0-9]{2}$')
+_ORDER_CODE_PAIRS = {
+    'audi': {
+        '0C': 'X7R', '0E': 'Y9T', '1H': 'Z7K', '1R': 'Z7L', '1T': 'Y1C', '1X': 'Z7W', '2D': 'X5H',
+        '2L': 'Z7F', '2S': 'Y7H', '2T': 'C9X', '3G': 'Y9W', '3W': 'Z6E', '4F': 'Z5R', '4G': 'Y3C',
+        '4J': 'Y7R', '4N': 'X7U', '4Z': 'Z9W', '5B': 'Y7W', '5F': 'Z5Q', '5N': 'Z5F', '5Q': 'Y7E',
+        '5U': 'X5B', '6E': 'Y7S', '6H': 'Z7J', '6I': 'G5C', '6Y': 'Z7S', '8A': 'Z5A', '8X': 'Z7X',
+        '9T': 'X7X', '9W': 'X5F', 'A1': '041', 'A2': 'Y9B', 'B4': 'B9A', 'C8': 'Y3J', 'D2': 'X5L',
+        'F5': 'X7Z', 'G3': 'X7M', 'G5': 'X7C', 'H1': 'X7L', 'L5': 'Z7G', 'L8': 'Z9Y', 'N9': 'Z3M',
+        'P5': 'X7W', 'P7': 'Z5J', 'Q4': 'Y7G', 'S9': 'X5Q', 'T9': 'Y9C', 'W1': 'X5R', 'W4': 'Z5H',
+        'X5': 'Z7H', 'Y1': 'Y3U', 'Y5': 'Y9K', 'Z7': 'X7G', 'Z9': 'Y9L',
+    },
+    'cupra': {
+        '0E': 'Y9T', '0F': 'W5Q', 'R6': 'S7G', 'S7': 'S7H',
+    },
+    'seat': {
+        '0C': 'X7R', '0E': 'Y9T', '0F': 'W5Q', '1Z': 'F9R', '2V': 'W7Z', '2Y': 'S9R', '5C': 'S2Z',
+        '5X': 'F7C', '5Y': 'S7Z', '6Z': 'Z7X', '7B': 'R7L', '7Y': 'W5L', '9M': 'S3H', 'B4': 'B9A',
+        'D8': 'P3G', 'E4': 'W5N', 'F5': 'W2Y', 'F6': 'F7Y', 'I3': 'S6Q', 'I4': 'W5P', 'J4': 'W1M',
+        'K4': 'V5F', 'L8': 'Z9Y', 'P5': 'X7W', 'S7': 'S7H', 'Z4': 'C9Z',
+    },
+    'skoda': {
+        '0W': 'R6U', '1M': 'F8N', '1Z': 'F9R', '2C': 'F7M', '2Y': 'S9R', '3U': 'F8K', '4K': 'F8H',
+        '5X': 'F7C', '6D': 'F5K', '8D': 'F5Q', '8E': 'A7W', '8T': 'F3K', '8X': 'F5W', '9P': 'F9E',
+        'F6': 'F7Y', 'G0': 'Q5X', 'G2': 'Y3D', 'K1': 'F3P', 'L2': 'F6X', 'M3': 'F7A', 'X7': 'F3X',
+        'Z5': 'F5A',
+    },
+    'volkswagen': {
+        '0A': 'B5K', '0E': 'Y9T', '0Q': 'C9A', '0U': 'R5C', '0Z': 'C6L', '1K': 'A9W', '1U': 'A3S',
+        '2B': 'D5L', '2T': 'C9X', '2W': 'R5T', '2Y': 'S9R', '3Q': 'C8Z', '3S': 'T5U', '4M': 'P2Y',
+        '4Y': 'A3H', '5K': 'I7F', '5V': 'B7R', '5Y': 'D5H', '6J': 'A5M', '6K': 'A3X', '6U': 'A7A',
+        '7D': 'B5N', '7J': 'B5M', '7Q': 'C5C', '8E': 'A7W', '9H': 'C7Z', 'A1': '041', 'B0': 'C7Q',
+        'B4': 'B9A', 'C0': 'L4U', 'C1': 'L1W', 'C2': 'A7C', 'C9': 'K7X', 'D5': 'A5J', 'D8': 'P3G',
+        'E1': 'C3L', 'F3': 'L5M', 'F8': 'C7V', 'G2': 'Y3D', 'G6': 'H9Z', 'H5': 'D1E', 'J2': 'H7J',
+        'K5': 'B7W', 'K8': 'B9Z', 'L4': 'C3R', 'L9': 'D5K', 'M3': 'D7U', 'M4': 'H7W', 'P2': 'G3L',
+        'P6': 'D5Q', 'T7': '902', 'U5': 'D7R', 'V1': 'B1M', 'W9': 'C5F', 'X3': 'R7H', 'X6': 'A7T',
+        'X8': 'L6T', 'Z1': 'A7N', 'Z2': 'H5X', 'Z4': 'C9Z', 'Z8': 'A6R',
+    },
+}
+
+
+def is_order_code(make, code):
+    """paint326: is this a bare VW group order code (two characters, on a
+    make whose two character codes are order codes)? Never raises."""
+    code = (code or '').strip().upper()
+    if not _ORDER_CODE.match(code):
+        return False
+    from lookup.models import PaintLookup
+    return PaintLookup.normalize_manufacturer(str(make or '')) in _ORDER_CODE_MAKES
+
+
+def order_code_pair(make, code, name='', vdg_colour=None):
+    """paint326: the paint number our history pairs a bare order code with,
+    or None. The pair must be on record for that make, the paint number must
+    be in the catalogue (as sent or under the L), and its row must not name
+    a colour the car is registered as something else, nor one the supplier's
+    own name contradicts: both say which car this is, and a pair from another
+    car's history must agree with them. Returned as the supplier writes it
+    (Z9Y, not LZ9Y): the sticker's form. Never raises."""
+    try:
+        code = (code or '').strip().upper()
+        if not is_order_code(make, code):
+            return None
+        from lookup.models import PaintLookup
+        mfr = PaintLookup.normalize_manufacturer(str(make or ''))
+        full = _ORDER_CODE_PAIRS.get(mfr, {}).get(code)
+        if not full:
+            return None
+        row = PaintLookup.lookup(make, full, vdg_colour=vdg_colour or '')
+        if row is None:
+            return None
+        got = _colour_families(row.name)
+        for said in (vdg_colour, name):
+            want = _colour_families(said or '')
+            if want and got and not (want & got):
+                return None
+        return full
+    except Exception:
+        logger.warning('could not pair an order code', exc_info=True)
+        return None
 
 
 def marks_special_order(make, code):
