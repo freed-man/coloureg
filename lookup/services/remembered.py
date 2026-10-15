@@ -178,6 +178,15 @@ def _make_key(make):
     return PaintLookup.normalize_manufacturer(str(make or ''))
 
 
+def _car_make_key(make, vin):
+    """paint327: a make as the search now reads it for this car: the VIN's
+    maker when the make is one the catalogue does not know (make_from_vin).
+    A lookup saved since paint327 holds "Ford" where DVLA, and every lookup
+    before it, still say "Dria A"; read the same way, they are one make."""
+    from lookup.services.paint_resolver import make_from_vin
+    return _make_key(make_from_vin(make, vin))
+
+
 def _colour_key(colour):
     """'Grey And Black', 'GREY/BLACK' and 'grey and black' are one colour."""
     return frozenset(w for w in re.sub(r'[^a-z]+', ' ', str(colour or '').lower()).split() if w != 'and')
@@ -199,8 +208,10 @@ def same_car(row, dvla, marks=None):
     the same make, year and colour passed the three alone."""
     if not isinstance(dvla, dict):
         return False, 'DVLA gave no answer'
-    make = _make_key(row.make)
-    if not make or make != _make_key(dvla.get('make')):
+    # paint327: both read by this car's VIN, so "Ford" on a lookup saved since
+    # paint327 and DVLA's "Dria A" for the same van agree, as before they did.
+    make = _car_make_key(row.make, row.vin)
+    if not make or make != _car_make_key(dvla.get('make'), row.vin):
         return False, 'the make differs'
     try:
         if int(row.year) != int(dvla.get('yearOfManufacture')):
@@ -458,7 +469,8 @@ def _find(registration, now):
     # it), the newest among equals.
     with_details = [r for r in rows
                     if isinstance(r.details, dict) and r.details
-                    and _make_key(r.make) == _make_key(source.make) and r.year == source.year
+                    and _car_make_key(r.make, r.vin or source.vin) == _car_make_key(source.make, source.vin)   # paint327
+                    and r.year == source.year
                     and vin_agrees(source.vin, r.vin)]
     details_row = max(with_details, default=None,
                       key=lambda r: (sum(1 for v in r.details.values() if v), r.timestamp, r.id))

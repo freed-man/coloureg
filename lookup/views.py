@@ -50,6 +50,7 @@ from .services.paint_resolver import (
     is_unconfirmed_code,
     special_order_code_spellings,
     mmw_unpadded_code,
+    make_from_vin,
     PL24_TIMEOUT,
     acquire_recovery_slot,
     release_recovery_slot,
@@ -1526,6 +1527,18 @@ def index(request):
             mot_model = extract_mot_field(mot, 'model') or ''
             model = _tidy_mot_model(mot_model) or model
 
+        # paint327: A MAKE THE CATALOGUE DOES NOT KNOW, ON A VIN THAT NAMES ONE
+        # IT DOES. 6381, 15 Oct: VDG named a 2006 Ford Transit conversion "Dria",
+        # a run of spaces, "A", so pl24 refused it as an unknown make and the
+        # operator's answer was filed under that string. The VIN's maker is used
+        # from here on, everywhere (his choice); a make the catalogue holds is
+        # never replaced (see make_from_vin). The registered make is kept in the
+        # lookup's details below.
+        _registered_make = make
+        make = make_from_vin(make, vin)
+        if make != _registered_make:
+            logger.info('make %r read as %s from the VIN', ' '.join(str(_registered_make or '').split()), make)
+
         vehicle_title = build_vehicle_title(year, make, model)
 
         search.make = make
@@ -1716,6 +1729,8 @@ def index(request):
             # paint244: DVLA's and the MOT service's own facts (dates, statuses);
             # what the page says about them is worked out when it is shown.
             'vehicle_status': vehicle_checks.collect(_checks),
+            # paint327: the make as registered, only when the VIN's maker replaced it.
+            **({'registered_make': _registered_make} if make != _registered_make else {}),
         }
         _save_details(search, request.session['vehicle_data'])          # paint288
 

@@ -1312,6 +1312,81 @@ def route_make(make):
     return _PL24_MAKE_ALIASES.get((make or '').strip().lower(), make)
 
 
+#: paint327: THE MAKER A VIN NAMES, by its first three characters (the world
+#: manufacturer identifier), as VDG spells that make.
+#:
+#: Built from our own lookups to 15 Oct (6,248), not from a published list: a
+#: prefix is here when at least 3 lookups carried it and at least 90% of them
+#: were one make the catalogue holds (KGM counted as SsangYong and Daimler as
+#: Jaguar, the aliases of paint327). Each make is spelled as VDG spelled it most
+#: often for that prefix, so pl24, the logos and the catalogue all know it.
+#: Left out: prefixes two makes share in our history (VSS, Seat 87 and Cupra 21;
+#: SAR, Rover 5 and MG 4; LNN and LVV, Chery's brands; JF1, Subaru and Toyota)
+#: and every prefix seen fewer than 3 times.
+#:
+#: Used ONLY when the registered make is one the catalogue does not hold (see
+#: make_from_vin): a make we know is never overridden by its VIN.
+_VIN_MAKERS = {
+    '1FA': 'Ford', '1J4': 'Jeep', '3HG': 'Honda', '6FP': 'Ford', 'AHT': 'Toyota', 'JDA': 'Daihatsu',
+    'JH2': 'Honda', 'JHM': 'Honda', 'JM4': 'Mazda', 'JMA': 'Mitsubishi', 'JMZ': 'Mazda', 'JN1': 'Nissan',
+    'JS1': 'Suzuki', 'JSA': 'Suzuki', 'JT1': 'Toyota', 'JTD': 'Toyota', 'JTE': 'Toyota', 'JTH': 'Lexus',
+    'JTJ': 'Lexus', 'JTM': 'Toyota', 'KL1': 'Chevrolet', 'KMH': 'Hyundai', 'KMT': 'Genesis', 'KNA': 'Kia',
+    'KPT': 'Ssangyong', 'LC0': 'BYD', 'LGX': 'BYD', 'LRW': 'Tesla', 'LSJ': 'MG', 'LVU': 'Jaecoo',
+    'MA3': 'Suzuki', 'MAL': 'Hyundai', 'MCA': 'Jeep', 'MDH': 'Nissan', 'MMC': 'Mitsubishi', 'MMS': 'Suzuki',
+    'MMZ': 'Mazda', 'MPA': 'Isuzu', 'NLH': 'Hyundai', 'NMT': 'Toyota', 'SAD': 'Jaguar', 'SAJ': 'Jaguar',
+    'SAL': 'Land Rover', 'SB1': 'Toyota', 'SCA': 'Rolls-Royce', 'SCB': 'Bentley', 'SDL': 'TVR', 'SDP': 'MG',
+    'SHH': 'Honda', 'SHS': 'Honda', 'SJN': 'Nissan', 'TMA': 'Hyundai', 'TMB': 'Skoda', 'TRU': 'Audi',
+    'TSM': 'Suzuki', 'U5Y': 'Kia', 'UU1': 'Dacia', 'UV1': 'Dacia', 'VF1': 'Renault', 'VF3': 'Peugeot',
+    'VF6': 'Renault', 'VF7': 'Citroen', 'VNK': 'Toyota', 'VNV': 'Nissan', 'VR3': 'Peugeot', 'VR7': 'Citroen',
+    'VSK': 'Nissan', 'VXE': 'Vauxhall', 'VXK': 'Vauxhall', 'VYS': 'Renault', 'W0L': 'Vauxhall', 'W0V': 'Vauxhall',
+    'W1K': 'Mercedes-Benz', 'W1N': 'Mercedes-Benz', 'W1V': 'Mercedes-Benz', 'WAU': 'Audi', 'WB1': 'BMW', 'WBA': 'BMW',
+    'WBS': 'BMW', 'WBY': 'BMW', 'WDB': 'Mercedes-Benz', 'WDC': 'Mercedes-Benz', 'WDD': 'Mercedes-Benz', 'WDF': 'Mercedes-Benz',
+    'WF0': 'Ford', 'WMA': 'MAN', 'WMW': 'Mini', 'WP0': 'Porsche', 'WP1': 'Porsche', 'WUA': 'Audi',
+    'WV1': 'Volkswagen', 'WV2': 'Volkswagen', 'WV4': 'Volkswagen', 'WVG': 'Volkswagen', 'WVW': 'Volkswagen', 'YAR': 'Toyota',
+    'YS2': 'Scania', 'YS3': 'Saab', 'YSM': 'Polestar', 'YV1': 'Volvo', 'ZAC': 'Jeep', 'ZAR': 'Alfa Romeo',
+    'ZCF': 'Iveco', 'ZFA': 'Fiat',
+}
+
+
+def make_from_vin(make, vin):
+    """paint327: the make to search by. The registered make, unless the
+    catalogue holds no rows for it (or there is none) and the VIN is a real
+    one whose first three characters name a maker in _VIN_MAKERS; then that
+    maker.
+
+    6381 (15 Oct) is why: a 2006 Ford Transit conversion that VDG named
+    "Dria", a run of spaces, "A" (its copy of DVLA's make field; VDG had no
+    model details for it). pl24 was sent that string and refused it as an
+    unknown make, the free source's code was checked against no catalogue, and
+    the operator's answer was filed under "Dria A", where it helps no Ford.
+    The VIN (WF0...) says Ford. Measured on the lookups since 2 May: 26 had a
+    registered make with no catalogue rows; the VIN named a maker in 5 (this
+    Transit, two Erwin Hymer motorhomes on Peugeots, two "Other Italy" Fiats).
+    pl24 refused 177 makes since 14 Aug, but 170 of those are makes
+    partslink24 does not cover (Mazda, Honda, Tesla...), which no make can fix.
+
+    The operator's choice (15 Oct): the VIN's maker is used everywhere, the
+    page and the dashboard included (an Erwin Hymer motorhome shows as
+    Peugeot, its base vehicle, whose paint the code is); the registered make is
+    kept in the lookup's details as `registered_make`. Never raises: what it
+    cannot read comes back as it came."""
+    try:
+        v = (vin or '').strip().upper()
+        if not vin_is_real(v):
+            return make
+        maker = _VIN_MAKERS.get(v[:3])
+        if not maker:
+            return make
+        from lookup.models import PaintLookup
+        known = PaintLookup.normalize_manufacturer(str(make or ''))
+        if known and PaintLookup.objects.filter(manufacturer=known).exists():
+            return make
+        return maker
+    except Exception:
+        logger.warning('could not read the make from the VIN', exc_info=True)
+        return make
+
+
 def _route_category(make, model, vin, category):
     """The category pl24 should receive for this vehicle.
 

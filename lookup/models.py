@@ -990,6 +990,17 @@ class PaintLookup(models.Model):
         # somewhere with data is weakly better than routing it nowhere — but it
         # is reasoning, not evidence. Drop it if a wrong Lagonda name appears.
         'lagonda': 'astonmartin',
+        # paint327: KG Mobility is SsangYong renamed (2023), and DVLA writes the
+        # new name, "KGM", which normalises to 'kgm', a key with no rows, while
+        # 'ssangyong' has 245. One KGM lookup to 15 Oct (a 2025 car, no code);
+        # its VIN begins KPT, SsangYong's prefix, which the 3 SsangYong lookups
+        # carry too.
+        'kgm': 'ssangyong',
+        # paint327: Daimler cars from 1960 are Jaguars badged Daimler, painted
+        # in Jaguar's colours, and 'daimler' has no rows while 'jaguar' has
+        # 1,334. One Daimler lookup to 15 Oct, no code; its VIN begins SAJ,
+        # Jaguar's prefix, as 35 Jaguar lookups' do.
+        'daimler': 'jaguar',
     }
 
     @staticmethod
