@@ -186,6 +186,15 @@ SHOWN_NAMES = {
     ('dacia', 'D69', 'gris platine metallic'): 'Platinum Grey Metallic',
     ('dacia', 'TED69', 'gris platine'): 'Platinum Grey',
     ('dacia', 'D69', 'gris platine'): 'Platinum Grey',
+    # paint330: two Ford rows whose English name cannot go on the row either. 7VTA: "Frozen White" is the
+    # name of 7VTAWWA, which the name finds today (13 answers); named so, 7VTA would take that name
+    # (a code that is a prefix of the other wins). PN4B7: "Deep Impact Blue" is DCWEWHA's (23 answers)
+    # and two rows named alike find nothing. Shown 17 and 1 times as the rows read.
+    ('ford', '7VTA', 'frozen white (blanc glacier)'): 'Frozen White',
+    ('ford', 'PN4B7', 'azul carmel'): 'Deep Impact Blue',
+    # 8CPCWWA: renamed, "Bleu Lagon Metallic" sent alone would find the Ranger's 37R "Bleu Lagon Nacre",
+    # another paint, which the two rows naming it alike keep from happening today (measured 16 Oct).
+    ('ford', '8CPCWWA', 'bleu lagon metallic'): 'Vision Blue',
 }
 
 
@@ -293,6 +302,17 @@ def _display_tidy(result, make, model=None):
         code = (result.get('paint_code') or '').strip()
         if code and _DE_COLOUR.search(name) and not _EN_COLOUR.search(name):
             row = PaintLookup.all_objects.filter(manufacturer=PaintLookup.normalize_manufacturer(make or ''), code=code).first()
+            if row is None:
+                # paint330: A VOLKSWAGEN OR AUDI ANSWER CARRIES THE CODE WITHOUT ITS L (A7W, B9A, C7Q,
+                # Y3D) while the row sits under the L (LA7W), so the exact code found no row, no English
+                # name was read, and "Reflexsilber Metallic", "Candyweiss", "Delfingrau Metallic" and
+                # "Tornadorot" reached customers with the English name sitting on the row all along
+                # (measured 16 Oct on the export: 51 answers since May). The row is read as the catalogue
+                # read it (PaintLookup.lookup, the L forms included), and only when it carries this very
+                # name, so the swap never crosses to another paint's names.
+                _l_row = PaintLookup.lookup(make, code, vdg_colour=result.get('colour') or None)
+                if _l_row is not None and name.strip().lower() in {str(n).strip().lower() for n in [_l_row.name] + list(_l_row.all_names or [])}:
+                    row = _l_row
             words = set(re.findall(r'[a-z]+', name.lower()))
             english = [n for n in (getattr(row, 'all_names', None) or []) if _EN_COLOUR.search(n) and not _DE_COLOUR.search(n)]
             # paint302: of those, only the ones that state the German name's colour.
