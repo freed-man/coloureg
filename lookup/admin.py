@@ -332,8 +332,8 @@ class OperatorPaintCodeAdmin(admin.ModelAdmin):
     # paint100: needs_review FIRST in the filter, because a flagged row is the
     # only thing here that wants acting on — the rest is a reference table.
     list_display = ('manufacturer', 'code', 'colour_name', 'needs_review',
-                    'previous_name', 'model_text', 'source_registration',
-                    'created_at')
+                    'previous_name', 'review_note', 'model_text', 'source_registration',
+                    'created_at')     # paint331: review_note says why, when it is a twin
     list_filter = ('needs_review', 'manufacturer')
     # paint101: DERIVED, so not editable. It is recomputed from colour_name on
     # every save; leaving it as a text box invited exactly the drift that

@@ -3277,6 +3277,15 @@ class OperatorPaintCode(models.Model):
     # two ways — a rate low enough that a flag is worth reading.
     previous_name = models.CharField(max_length=200, blank=True, default='')
     needs_review = models.BooleanField(default=False, db_index=True)
+    # paint331: WHY the row was flagged, when the reason is not a second name
+    # on one code (previous_name says that) but a second CODE under one name.
+    # code_for_name declines a name that two rows of a make answer, so the
+    # moment a twin is recorded that name stops giving a code, for every car,
+    # and nothing said so: Ford "Smoke" was answered by BMU until a Tradesoft
+    # batch recorded PN3LS "Smoke" on 12 Oct, and two EcoSports then came
+    # through with no code before anyone noticed (16 Oct). The note names the
+    # other code(s), so the review list says what to decide.
+    review_note = models.CharField(max_length=200, blank=True, default='')
 
     class Meta:
         # paint305 (M11): ONE ENTRY PER MAKE AND CODE, held by the database.
@@ -3398,16 +3407,62 @@ class OperatorPaintCode(models.Model):
                    if conflict else {}),
             },
         )
+        # paint331: A SECOND CODE UNDER ONE NAME IS NEVER SILENT. code_for_name
+        # declines a name two rows of a make answer, so this write may have just
+        # taken that name away from every later car (Ford "Smoke": BMU answered
+        # it from 13 Sep until a batch recorded PN3LS "Smoke" on 12 Oct, and the
+        # next two EcoSports got no code). Only when THIS write made the twin: a
+        # new row, or a row whose name changed. Answering a second car with the
+        # same code and the same name does not flag again, so a pair kept on
+        # purpose is not re-flagged every time one of them is used. Flagged,
+        # noted and logged; never refused: which code stands is the operator's
+        # decision, and the catalogue's own rule (decline) is the safe one
+        # until he makes it. The callers read `twins` to say so on the spot.
+        twins = []
+        # (`existing` is None when the row was created, and when another request
+        # created it between the look above and this write, paint305's race.)
+        _named_before = (existing.normalized_name or '') if existing else ''
+        if name and norm and (_created or _named_before != norm):
+            twins = cls.twins_for(make, code, name)
+            if twins:
+                note = (f"'{name}' is also recorded as {', '.join(twins)}: the name gives no code "
+                        f"until one of them is removed")[:200]
+                cls.objects.filter(pk=row.pk).update(needs_review=True, review_note=note)
+                row.needs_review, row.review_note = True, note
+                logger.warning('operator paint code %s/%s recorded as %r, a name %s already answers; '
+                               'flagged for review', mfr, code, name, ', '.join(twins))
+        row.twins = twins
         # paint202: fold the name into its catalogue row as it is recorded, so
         # the catalogue can never fall behind the operator again. Not for an
-        # answer flagged for review, and NEVER allowed to break the fulfilment
-        # that called this.
-        if name and not conflict:
+        # answer flagged for review (a twin included, paint331), and NEVER
+        # allowed to break the fulfilment that called this.
+        if name and not conflict and not twins:
             try:
                 PaintLookup.fold_operator_name(make, code, name)
             except Exception:
                 logger.exception('operator name fold failed for %s/%s', mfr, code)
         return row
+
+    @classmethod
+    def twins_for(cls, make, code, colour_name):
+        """paint331: the OTHER codes of this make already recorded under this name, oldest first.
+
+        Read only. [] when there are none, when the name is blank, or when it is only a colour
+        word ("Black Pearl"): such a name never answers a code here (paint310), so a second code
+        under it takes nothing away. record() reads it after writing; a batch script reads it in
+        its preview, before writing, so the operator sees the twin and decides first.
+        """
+        if not make or not colour_name:
+            return []
+        from lookup.services.paint_resolver import is_bare_colour_name
+        if is_bare_colour_name(PaintLookup._light_normalize_name(colour_name)):
+            return []
+        norm = PaintLookup.normalize_name(colour_name)
+        if not norm:
+            return []
+        return list(cls.objects.filter(
+            manufacturer=PaintLookup.normalize_manufacturer(make), normalized_name=norm,
+        ).exclude(code=(code or '').strip().upper()).order_by('id').values_list('code', flat=True))
 
     @classmethod
     def name_for_code(cls, make, code):
@@ -3450,6 +3505,11 @@ class OperatorPaintCode(models.Model):
             manufacturer=PaintLookup.normalize_manufacturer(make),
             normalized_name=norm,
         ).values_list('code', flat=True)[:3])
+        if len(codes) > 1:
+            # paint331: the decline used to be silent; the twin that caused it
+            # took four days to find (Ford "Smoke", BMU and PN3LS, 12 to 16 Oct).
+            logger.info('operator table declines %r for %s: %s answer it',
+                        colour_name, make, ', '.join(codes))
         return codes[0] if len(codes) == 1 else None
 
 

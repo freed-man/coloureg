@@ -3740,6 +3740,21 @@ def _dash_note(request, at, ok, text):
     return redirect('/admin-stats/#' + (f'lookup-{at}' if str(at).isdigit() else str(at)))
 
 
+def twin_warning(recorded, make, name):
+    """paint331: the dashboard's line when an answer has just recorded a second
+    code under a name the operator's table already answers, else ''.
+
+    record() flags the row and attaches the other codes as `twins`; this says
+    it where the Save was pressed, in red, because from this moment that name
+    gives no code to any car until the operator decides which code stands.
+    Never shown to a customer. Pure; never raises."""
+    twins = list(getattr(recorded, 'twins', None) or [])
+    if not twins:
+        return ''
+    return (f"But your table already answers '{name}' for {make} with {', '.join(twins)}. With two codes "
+            f"under one name the name gives no code until one of them is removed. Flagged for review.")
+
+
 #: paint313: the note on a report the operator upheld without knowing the right
 #: code. It must never start with remembered._CORRECTED_NOTE: memory reads a
 #: note that does as a correction, and this is the opposite of one.
@@ -4490,16 +4505,18 @@ def admin_stats(request):
                                     f'{CORRECTION_NAME_MAX_CHARS}). Nothing was saved.')
             return redirect(_back)
         corrected = False
+        _twin = ''                                               # paint331
         if actioned and code and rep.search and rep.search.make:
             # Only when something actually CHANGED. Pressing save with the
             # fields untouched means "I checked it and it was right", which is
             # the other button's job, not a reason to write a row asserting the
             # code we already doubted.
             if code.upper() != (rep.code or '').upper() or name != (rep.colour_name or ''):
-                OperatorPaintCode.record(
+                _recorded = OperatorPaintCode.record(
                     make=rep.search.make, code=code, colour_name=name,
                     model=rep.search.model or '', registration=rep.registration,
                     search_id=rep.search_id)
+                _twin = twin_warning(_recorded, rep.search.make, name)      # paint331
                 rep.operator_note = f'corrected to {code} {name}'.strip()
                 fields.append('operator_note')
                 corrected = True
@@ -4535,8 +4552,9 @@ def admin_stats(request):
             # any code the catalogue already holds — the operator table is only
             # consulted on a catalogue miss. What is now always true is that
             # THIS lookup changed.
-            _dash_note(request, 'reported-lookups', True, f'{rep.registration}: corrected to {code} '
-                                      f'{name}'.strip() + '.')
+            # paint331: red, with the twin, when the correction made one.
+            _dash_note(request, 'reported-lookups', not _twin, f'{rep.registration}: corrected to {code} '
+                                      f'{name}'.strip() + '.' + (f' {_twin}' if _twin else ''))
         else:
             _dash_note(request, 'reported-lookups', True, f'Report for {rep.registration} marked '
                                       f'{rep.get_status_display().lower()}.')
@@ -5084,10 +5102,12 @@ def admin_stats(request):
                 _refused = 'That lookup was changed a moment ago. Look at it again.'
         if _refused:
             return _dash_note(request, row.id, False, _refused + ' Nothing was saved.')
+        _twin = ''
         try:
             # The operator's own table, as a manual answer writes it (paint92).
-            OperatorPaintCode.record(make=row.make, code=code, colour_name=name, model=row.model,
-                                     registration=row.registration, search_id=row.id)
+            _recorded = OperatorPaintCode.record(make=row.make, code=code, colour_name=name, model=row.model,
+                                                 registration=row.registration, search_id=row.id)
+            _twin = twin_warning(_recorded, row.make, name)      # paint331
         except Exception:  # noqa: BLE001 - the answer is saved; this only helps the next car
             logger.exception('operator paint code not recorded')
         try:
@@ -5108,7 +5128,9 @@ def admin_stats(request):
             _said = f'code changed to {code} {name}'.strip() + '. It is now your own answer. No email was sent.'
         else:
             _said = (f'name changed to {name}.' if name else 'name cleared.')
-        return _dash_note(request, row.id, True, f'{row.registration}: {_said}')
+        # paint331: the answer is saved either way; the note turns red when it
+        # made a twin, because that wants acting on.
+        return _dash_note(request, row.id, not _twin, f'{row.registration}: {_said}' + (f' {_twin}' if _twin else ''))
 
     # paint299: AND THE REQUESTS LEFT ON A SPECIAL ORDER CODE (submit_email
     # sends those here, decided 9 Oct). The queue was "no code, an email, not
@@ -5616,13 +5638,15 @@ def submit_manual_lookup(request):
     # Deliberately outside the `if no_code` branch below: a no-code outcome is
     # a fact about that VEHICLE ("nothing published"), not a reusable fact
     # about a colour, and record() drops it.
+    _twin = ''                                                   # paint331
     if not no_code:
         try:
-            OperatorPaintCode.record(
+            _recorded = OperatorPaintCode.record(
                 make=search.make, code=paint_code,
                 colour_name=paint_description_clean, model=search.model,
                 registration=search.registration, search_id=search.id,
             )
+            _twin = twin_warning(_recorded, search.make, paint_description_clean)
         except Exception:  # noqa: BLE001
             # Never let remembering break fulfilling. The customer's email is
             # the job; this is a side effect that improves the next lookup.
@@ -5780,10 +5804,15 @@ def submit_manual_lookup(request):
 
     return JsonResponse({
         'success': True,
-        'message': f'Sent paint code {paint_code} to {search.email} for {search.registration}.',
+        # paint331: the card's message carries the twin warning too (the card
+        # shows `message` and nothing else), so a queue answer that silenced a
+        # name is seen at once, as a pencil answer is.
+        'message': f'Sent paint code {paint_code} to {search.email} for {search.registration}.'
+                   + (f' {_twin}' if _twin else ''),
         'paint_code': paint_code,
         'registration': search.registration,
         'email': search.email,
+        'twin_warning': _twin,
     })
 
 
