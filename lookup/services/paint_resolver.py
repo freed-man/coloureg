@@ -165,6 +165,12 @@ CONFIRMED_NAMES = {
     ('fiat', '599', 'modra metaliza magnetico'): ('panda', 'Blu Magnetico Metallic'),
     # paint325: the catalogue's and the operator's spelling of Toyota's 040 (every model).
     ('toyota', '040', 'super white ii'): ('', 'Super White 2'),
+    # paint332: Renault's technical name for Dacia's Dusty Khaki (KQM; partslink24 and VDG send it as
+    # OVKQM, the type prefixed form, and the dealer's own screen writes it the same way). Five answers on
+    # three green cars since 11 Aug (a Jogger, a Duster, a Sandero Stepway) said "Grey Dusty"; the
+    # operator's answer of 16 Oct and the live catalogue row say Dusty Khaki, Dacia UK's name. Every model.
+    ('dacia', 'OVKQM', 'grey dusty'): ('', 'Dusty Khaki'),
+    ('dacia', 'KQM', 'grey dusty'): ('', 'Dusty Khaki'),
 }
 _TYPOS = {'renault': (('casawhitea white', 'Casablanca White'),)}   # D31 is Casablanca White
 
