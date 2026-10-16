@@ -3227,6 +3227,20 @@ class PaintCodeReport(models.Model):
         ).values_list('ip_address', 'session_key', 'id')
         return len({(ip or sess or f'row:{pk}') for ip, sess, pk in rows})
 
+    @classmethod
+    def count_reports_for_code(cls, manufacturer, code):
+        """paint334: how many reports, rows not people, are filed against this
+        exact code, the same rows count_for_code reads. The report email says
+        both when they differ ("1st reporter, 3rd report"), so one person
+        pressing the button on three lookups of one car is read as what it is.
+        Ignored reports count here too, as there."""
+        if not code:
+            return 0
+        return cls.objects.filter(
+            manufacturer=(manufacturer or '').strip().lower(),
+            code__iexact=(code or '').strip()
+        ).count()
+
 
 class OperatorPaintCode(models.Model):
     """Paint codes the operator researched by hand, kept OUTSIDE paint_lookup.json.

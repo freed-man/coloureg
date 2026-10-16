@@ -710,7 +710,7 @@ def send_admin_origin_gate_alert(kind, what, tagged):
 
 
 def send_admin_paint_report(report, total_for_code=1, vehicle_title='',
-                            vin_full='', dvla_colour=''):
+                            vin_full='', dvla_colour='', total_reports=None):
     """Tell the operator a customer says a delivered code is wrong.
 
     paint116. THE COUNT LEADS, because it is the only part that carries
@@ -733,6 +733,18 @@ def send_admin_paint_report(report, total_for_code=1, vehicle_title='',
     """
     repeat = total_for_code > 1
     banner = f'{_ordinal(total_for_code)} report against {report.manufacturer}/{report.code}'
+    # paint334: ONE PERSON PRESSING THREE TIMES IS ONE REPORTER AND THREE
+    # REPORTS, and the banner says both when they differ. A Polo was reported
+    # three times by one person on 16 Oct and each mail said "1st report",
+    # which was true of the reporters and read as if nothing had happened
+    # before. `total_reports` is the raw count of reports against the code
+    # (PaintCodeReport.count_reports_for_code); when it is given and differs
+    # from the count of reporters, the banner reads "1st reporter, 3rd report
+    # against ...". The subject keeps counting reporters, the signal it was
+    # built for. Equal counts, or no raw count given, read as before.
+    if total_reports and total_reports != total_for_code:
+        banner = (f'{_ordinal(total_for_code)} reporter, {_ordinal(total_reports)} report '
+                  f'against {report.manufacturer}/{report.code}')
     subject = (f'[{total_for_code}x] {report.manufacturer}/{report.code} reported'
                if repeat else
                f'Paint code reported: {report.registration}')
