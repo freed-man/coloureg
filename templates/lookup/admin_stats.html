@@ -1786,6 +1786,15 @@
                         <div class="lbl">DVLA colour</div>
                         <div class="val">{{ s.colour|default:"—" }}</div>
                     </div>
+                    {% comment %} paint329: the catalogue's paints for this model in the registered colour, the
+                       first few and how many more, so the choice is in view before a dealer is asked (a grey
+                       BYD Seal U is HA4 or HAZ). Nothing is shown for a model the catalogue has no tags for. {% endcomment %}
+                    {% if s.catalogue_paints %}
+                    <div style="grid-column: 1 / -1;">
+                        <div class="lbl">Catalogue: this model in {{ s.colour|default:"any colour"|lower }}</div>
+                        <div class="val" style="word-break: normal;">{% for p in s.catalogue_paints %}{% if p.hex %}<span style="display: inline-block; width: 10px; height: 10px; border-radius: 2px; border: 1px solid #ccc; vertical-align: middle; background: {{ p.hex }};"></span> {% endif %}<b>{{ p.code }}</b> {{ p.name }}{% if not forloop.last %} &middot; {% endif %}{% endfor %}{% if s.catalogue_more %} <span style="color: #666;">and {{ s.catalogue_more }} more</span>{% endif %}</div>
+                    </div>
+                    {% endif %}
                     {% comment %} paint299: a request left on a SPECIAL ORDER CODE (999, a BMW's 490) is in this
                        queue too, and it is the only kind of row here that has a code. The card says
                        so, or it would look like a car nothing was found for. {% endcomment %}

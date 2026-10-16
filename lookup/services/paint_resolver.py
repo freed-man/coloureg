@@ -82,7 +82,10 @@ _WORD_TAIL = re.compile(r'\s*[-\u2013]\s*([a-z]+)\s+(?:finish|paint(?:work)?)\s*
 _STANDARD_TAIL = re.compile(r'\s*[-–]\s*(?:standard|solid|non[- ]?metallic)\s*(?:finish|paint(?:work)?)?\s*$', re.I)
 _METALLICH = re.compile(r'\bmetallich\b', re.I)
 _MET_ABBR = re.compile(r'\s+met\.\s*$', re.I)
-_FORD_CC = re.compile(r'\s+c/c\s+med\s+solid\s*$', re.I)
+#: paint328: Ezyvin's "Med Stl Blue C/c Med Solid #1" (a Fiesta, 15 Oct) kept the paint system words because of the "#1"
+#: after them, so they reached the page. The count goes with them. Only after these words: a "#1" of its own is
+#: a name's ("Copper Leaf #1", "Blue Orbital #2" are rows of the catalogue).
+_FORD_CC = re.compile(r'\s+c/c\s+med\s+solid(?:\s*#\d{1,2})?\s*$', re.I)
 _LEAD_PAINT = re.compile(r'^\s*(?:exterior\s+)?paint(?:work)?\b\s*[-–:]?\s*', re.I)
 _TAIL_PAINT = re.compile(r'\s*\b(?:exterior\s+)?paint(?:work)?\s*[-–]?\s*$', re.I)
 _TAIL_CODE_PAREN = re.compile(r'\s*\((?:vr-[a-z0-9/-]+|\d{1,2})\)\s*$', re.I)        # a Fiat or Jeep paint number, a bare count; the answer's own code in brackets goes by paint273's rule
@@ -165,6 +168,45 @@ CONFIRMED_NAMES = {
 }
 _TYPOS = {'renault': (('casawhitea white', 'Casablanca White'),)}   # D31 is Casablanca White
 
+#: paint328: the catalogue's own name for a code, in another language, shown in English. These rows cannot
+#: simply be renamed: the English name already sits on a twin row (Skoda LF3P carries Velvet Red, Renault KAD
+#: Platinum Grey), and a name on two rows of a make finds no code (the name to code direction declines on
+#: any doubt). So the page shows the English name and the catalogue keeps its own, and nothing a customer
+#: types stops finding its code. Applied whatever supplied the name, the catalogue included, after the code
+#: is settled. (make, code as shown, name as shown, lower case) -> the name shown. Measured 16 Oct: Skoda
+#: F3P was shown "Cervena Velvet" twice (22 Sep, 3 Oct) and F3K VDG's "Corrida (Red)" (9 Sep); Renault TED69
+#: "Gris Platine" three times since 2 Oct, where partslink24's bare "Grey" gives way to the catalogue.
+SHOWN_NAMES = {
+    ('skoda', 'F3P', 'cervena velvet'): 'Velvet Red',
+    ('skoda', 'F3K', 'cervena corrida'): 'Corrida Red',
+    ('skoda', 'F3K', 'corrida (red)'): 'Corrida Red',
+    ('renault', 'TED69', 'gris platine'): 'Platinum Grey',
+    ('renault', 'D69', 'gris platine'): 'Platinum Grey',
+    ('dacia', 'TED69', 'gris platine metallic'): 'Platinum Grey Metallic',
+    ('dacia', 'D69', 'gris platine metallic'): 'Platinum Grey Metallic',
+    ('dacia', 'TED69', 'gris platine'): 'Platinum Grey',
+    ('dacia', 'D69', 'gris platine'): 'Platinum Grey',
+}
+
+
+def shown_name(name, make, code=''):
+    """paint328: the English name SHOWN_NAMES gives for this make, code and name, or the name as it came.
+    A slash joined code is read a part at a time ("8T/F3K" is read for F3K). Never raises."""
+    if not isinstance(name, str) or not name.strip():
+        return name
+    try:
+        from lookup.models import PaintLookup
+        mk = PaintLookup.normalize_manufacturer(make or '')
+        key = re.sub(r'\s+', ' ', name).strip().lower()
+        for part in (code or '').upper().split('/'):
+            hit = SHOWN_NAMES.get((mk, part.strip(), key))
+            if hit:
+                return hit
+        return name
+    except Exception:
+        logger.warning('shown name not read', exc_info=True)
+        return name
+
 
 def tidy_supplier_tags(name, make, code='', model=None):
     """paint324: three narrow fixes to a supplier's colour name, partslink24's too. (A) Renault's and Dacia's
@@ -173,6 +215,10 @@ def tidy_supplier_tags(name, make, code='', model=None):
     CONFIRMED_NAMES is replaced, only for its own code and model. Anything else comes back as it came.
     paint325: Ford's single paint system letter in brackets at the end goes too ("Tonic (B)"), and Toyota's
     "Super White II" is written as the catalogue has it, Super White 2 (a CONFIRMED_NAMES line, every model).
+    paint328: the word paint in front of the name goes too, for every supplier here (partslink24's "Paint
+    High-Tech Silver Metallic", a Sprinter, 15 Oct; paint316 already took it off VDG's and Ezyvin's). A
+    trailing "Paintwork" is taken off where the answer arrives (tidy_provider_name, paint243), so is not
+    read here. Never less than a name: a bare "Paint" or "Paintwork" stays as it came.
     Never raises."""
     if not isinstance(name, str) or not name.strip():
         return name
@@ -184,6 +230,7 @@ def tidy_supplier_tags(name, make, code='', model=None):
         hit = CONFIRMED_NAMES.get((mk, key_code, s.lower()))
         if hit and (model or '').strip().lower().startswith(hit[0]):
             return hit[1]
+        s = _LEAD_PAINT.sub('', s)      # paint328
         if mk in _BC_MAKES:
             s = _BODY_COLOUR_TAG.sub('', s)
         if mk == 'ford':
@@ -237,6 +284,9 @@ def _display_tidy(result, make, model=None):
         # 14 Oct). The same guard: never a name our catalogue supplied.
         if (result.get('source') in TAGGED_SOURCES and result.get('enriched_from') != 'name'):
             name = tidy_supplier_tags(name, make, result.get('paint_code') or '', model)
+        # paint328: the catalogue's own name in another language, shown in English (SHOWN_NAMES). This one
+        # runs whatever supplied the name, the catalogue included: that is the point of it.
+        name = shown_name(name, make, result.get('paint_code') or '')
         letters = re.sub(r'[^A-Za-z]', '', name)
         if letters and (letters.islower() or letters.isupper()):
             name = ' '.join(w.capitalize() if w.isalpha() else w for w in name.split())
@@ -2199,6 +2249,51 @@ def _gate_colour_families(text):
              if w in _COLOUR_FAMILY]
     plain = {_COLOUR_FAMILY[w] for w in words if w not in _GEM_AND_METAL_WORDS}
     return plain or {_COLOUR_FAMILY[w] for w in words}
+
+
+#: paint329: how many of a model's paints the manual queue card lists before saying how many more there are.
+QUEUE_HINTS = 8
+_HEX6 = re.compile(r'^#[0-9A-Fa-f]{6}$')
+
+
+def queue_hints(make, model, colour, limit=QUEUE_HINTS):
+    """paint329: the catalogue's paints for this model in the car's registered colour, for the manual
+    queue card: what the choice is before a dealer is asked (a grey BYD Seal U is HA4 or HAZ, KC of the
+    paint327 handoff; a grey Suzuki Celerio one of six). The rows of the make tagged with the model, read
+    as the name to code direction reads tags, whose colour group (or, where the group says nothing, whose
+    names) states the family of the registered colour; every tagged row when the registered colour states
+    no family ("Multi-Colour", none). Never the whole make: a model with no tagged rows gets nothing,
+    because a make's greys run to hundreds (measured 16 Oct on the 525 lookups that ended without a code:
+    173 would list nothing, 84 one to five paints, 77 six to ten, 191 more than ten). By code, the first
+    `limit` and how many more. A swatch only when the row's hex is a proper one, since it goes into the
+    page's style. {'paints': [{'code', 'name', 'hex'}], 'more': n}, empty when there is nothing to say.
+    Never raises."""
+    out = {'paints': [], 'more': 0}
+    try:
+        from lookup.models import PaintLookup
+        mk = PaintLookup.normalize_manufacturer(make or '')
+        if not mk or not str(model or '').strip():
+            return out
+        wanted = _colour_families(colour)
+        found = []
+        rows = (PaintLookup.objects.filter(manufacturer=mk)
+                .only('code', 'name', 'hex', 'models_list', 'color_group', 'all_names').order_by('code', 'id'))
+        for row in rows:
+            if not PaintLookup._model_matches(model, row.models_list):
+                continue
+            if wanted:
+                group = _COLOUR_FAMILY.get((row.color_group or '').strip().lower())
+                stated = {group} if group else (_colour_families(row.name) | _colour_families(' '.join(row.all_names or [])))
+                if not (wanted & stated):
+                    continue
+            hex_val = (row.hex or '').strip()
+            found.append({'code': row.code, 'name': row.name or '', 'hex': hex_val if _HEX6.match(hex_val) else ''})
+        out['paints'] = found[:limit]
+        out['more'] = max(0, len(found) - limit)
+    except Exception:
+        logger.warning('queue hints not read', exc_info=True)
+        return {'paints': [], 'more': 0}
+    return out
 
 
 def _is_colour_word_not_code(make, code):

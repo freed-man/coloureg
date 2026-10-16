@@ -51,6 +51,7 @@ from .services.paint_resolver import (
     special_order_code_spellings,
     mmw_unpadded_code,
     make_from_vin,
+    queue_hints,
     PL24_TIMEOUT,
     acquire_recovery_slot,
     release_recovery_slot,
@@ -5130,6 +5131,12 @@ def admin_stats(request):
         .order_by('timestamp', 'id')
         if not s.paint_code or marks_special_order(s.make, s.paint_code) or s.unconfirmed_code
     ]
+    # paint329: on each card, the catalogue's paints for the car's model in its registered colour, so the
+    # operator sees what the choice is before asking a dealer (a grey BYD Seal U is HA4 or HAZ). Read here,
+    # once a page, for the few cards in the queue; queue_hints never raises.
+    for _queued in recent_failures_with_email:
+        _hints = queue_hints(_queued.make, _queued.model, _queued.colour)
+        _queued.catalogue_paints, _queued.catalogue_more = _hints['paints'], _hints['more']
 
     # Provider breakdown — where did the paint code come from? Single aggregate.
     provider_breakdown = real_lookups.aggregate(

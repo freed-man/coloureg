@@ -3336,6 +3336,18 @@ class OperatorPaintCode(models.Model):
     def __str__(self):
         return f'{self.manufacturer} {self.code} {self.colour_name}'.strip()
 
+    #: paint328: American spellings read as the British ones when two names are compared for the review flag.
+    _SPELLINGS = (('gray', 'grey'), ('color', 'colour'), ('aluminum', 'aluminium'))
+
+    @classmethod
+    def spelling_key(cls, normalized_name):
+        """paint328: a normalised name with its American spellings written the British way, so that
+        "machine gray" and "machine grey" compare equal. Whole words only."""
+        key = normalized_name or ''
+        for american, british in cls._SPELLINGS:
+            key = re.sub(r'\b' + american + r'\b', british, key)
+        return key
+
     @classmethod
     def record(cls, make, code, colour_name, model=None, registration='', search_id=None):
         """Remember one hand-researched code. Idempotent on (make, code).
@@ -3354,8 +3366,12 @@ class OperatorPaintCode(models.Model):
         # 'Ink Blue (Metallic)' are not treated as a disagreement — the flag is
         # for a different COLOUR, not a different rendering of one.
         existing = cls.objects.filter(manufacturer=mfr, code=code).first()
+        # paint328: nor is a spelling a disagreement. Mazda's own "Machine Gray
+        # Metallic" against the operator's "Machine Grey Metallic" (16 Oct) set
+        # the flag, and the flag is for a different colour. Only the three
+        # American spellings; anything else that differs still flags.
         conflict = bool(existing and existing.normalized_name and norm
-                        and existing.normalized_name != norm)
+                        and cls.spelling_key(existing.normalized_name) != cls.spelling_key(norm))
         if conflict:
             logger.warning(
                 'operator paint code %s/%s recorded as %r, previously %r — '
