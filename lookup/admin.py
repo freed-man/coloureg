@@ -270,7 +270,7 @@ class SearchAdmin(admin.ModelAdmin):
         ('Customer and manual handling', {
             'classes': ('collapse',),
             'fields': ('customer_message', 'manual_note', 'no_code_available',
-                       'enriched_from', 'operator_answered_at'),
+                       'enriched_from', 'operator_answered_at', 'parked_at'),     # paint335: parked (editable: the admin is the escape hatch)
         }),
         # paint288. What a remembered answer draws its page from: the car details
         # this row has no column for. Empty on lookups from before paint288.

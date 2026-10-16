@@ -727,6 +727,62 @@ class Search(models.Model):
     # answered today is today's word. Empty on every row from before this
     # release, where the lookup's own time is used.
     operator_answered_at = models.DateTimeField(null=True, blank=True)
+    # paint335: PARKED. The operator has tried every route for this car (his
+    # dealer software, the parts desks, the catalogues) and found no code, so
+    # he stops trying for now. Set on every lookup of the plate that holds no
+    # code (Search.park, from the PARKED section of etc/open_cars.txt through
+    # the `park` command). The dashboard shows a parked lookup with the grey
+    # circle used for a make that is not automated, not the red cross, and the
+    # open cars file lists the car under PARKED, so the time is not spent twice.
+    # A code found later wins: the dashboard reads success first, and the file
+    # treats a car with a code as answered whatever this holds.
+    parked_at = models.DateTimeField(null=True, blank=True, db_index=True)
+
+    @classmethod
+    def _plates_of(cls, ids):
+        """paint335: the registrations of these lookup ids (unknown ids are left out)."""
+        want = {int(i) for i in ids if str(i).strip().isdigit()}
+        if not want:
+            return []
+        return sorted({r for r in cls.objects.filter(id__in=want).values_list('registration', flat=True) if (r or '').strip()})
+
+    @classmethod
+    def park(cls, ids, apply=False, when=None):
+        """paint335: park the cars these lookup ids belong to. Every lookup of
+        each plate that holds no code, is not marked "no code exists" and is
+        not parked yet is marked with the time. Returns {plate: [ids marked]};
+        with apply=False nothing is written and the dict says what would be."""
+        when = when or timezone.now()
+        out = {}
+        for plate in cls._plates_of(ids):
+            rows = cls.objects.filter(registration=plate, paint_code='', no_code_available=False, parked_at__isnull=True)
+            marked = sorted(rows.values_list('id', flat=True))
+            if marked:
+                out[plate] = marked
+                if apply:
+                    cls.objects.filter(id__in=marked, parked_at__isnull=True).update(parked_at=when)
+        return out
+
+    @classmethod
+    def unpark(cls, ids, apply=False):
+        """paint335: the reverse, for every parked lookup of those plates. Same shape, nothing written unless apply."""
+        out = {}
+        for plate in cls._plates_of(ids):
+            marked = sorted(cls.objects.filter(registration=plate, parked_at__isnull=False).values_list('id', flat=True))
+            if marked:
+                out[plate] = marked
+                if apply:
+                    cls.objects.filter(id__in=marked).update(parked_at=None)
+        return out
+
+    @classmethod
+    def parked_plates(cls):
+        """paint335: {plate: (newest parked_at, [ids])} for every plate with a parked lookup and no code on any lookup since."""
+        out = {}
+        for plate, pid, when in cls.objects.filter(parked_at__isnull=False).order_by('registration', 'id').values_list('registration', 'id', 'parked_at'):
+            w, ids = out.get(plate, (None, []))
+            out[plate] = (max(w, when) if w else when, ids + [pid])
+        return out
 
     def save(self, *args, **kwargs):
         """Truncate over-length text before it reaches the database.

@@ -1998,6 +1998,9 @@
                         <span class="outcome-tick" title="Colour found">✓</span>
                         {% elif s.paint_description %}
                         <span class="outcome-partial" title="Colour name found — no code">◐</span>
+                        {% elif s.parked_at %}
+                        {% comment %} paint335: parked by the operator (every route tried, no code yet): the grey circle, not the cross. {% endcomment %}
+                        <span class="outcome-none" title="Parked {{ s.parked_at|date:'j M' }}: every route tried, no code yet" aria-label="Parked"></span>
                         {% elif s.error_message == 'make_not_automated' %}
                         <span class="outcome-none" title="Not automated ({{ s.gate_reason_label }}), manual lookup offered" aria-label="Not automated"></span>
                         {% else %}
@@ -2056,6 +2059,9 @@
                     <span class="outcome-tick" title="Colour found">✓</span>
                     {% elif s.paint_description %}
                     <span class="outcome-partial" title="Colour name found — no code">◐</span>
+                    {% elif s.parked_at %}
+                    {% comment %} paint335: parked by the operator (every route tried, no code yet): the grey circle, not the cross. {% endcomment %}
+                    <span class="outcome-none" title="Parked {{ s.parked_at|date:'j M' }}: every route tried, no code yet" aria-label="Parked"></span>
                     {% elif s.error_message == 'make_not_automated' %}
                     <span class="outcome-none" title="Not automated ({{ s.gate_reason_label }}), manual lookup offered" aria-label="Not automated"></span>
                     {% else %}
