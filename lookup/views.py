@@ -2069,6 +2069,23 @@ def paige(request):
     return response
 
 
+def special_order_label(make):
+    """paint333: the line drawn in the name's place for a special order code,
+    which names what the code is since it cannot name a paint: "<make>
+    Individual (special order paint)", the make as the lookup holds it ("BMW
+    Individual (special order paint)" for a 490, the name the operator gave the
+    catalogue's 490 row on 2 Oct; "Volkswagen Individual (special order
+    paint)" for the VW group's 999 and its spellings). One format for every
+    make, the operator's choice of 16 Oct. The stored row's name stays blank
+    on purpose (paint299): this is for the page and its script only, and for
+    the one off fill of the rows from before this release. Never raises."""
+    try:
+        shown = ' '.join(str(make or '').split())
+        return f'{shown} Individual (special order paint)' if shown else 'Individual (special order paint)'
+    except Exception:
+        return 'Individual (special order paint)'
+
+
 def _special_order_shown(make, shown, row=None):
     """paint299: a result as it is about to be SHOWN, with nothing left in it
     that says what colour a special order code is.
@@ -2104,6 +2121,7 @@ def _special_order_shown(make, shown, row=None):
                  'all_paint_codes': [], 'two_tone': []}
         shown.update({key: value for key, value in blank.items() if key in shown})
         shown['special_order'] = True
+        shown['special_order_label'] = special_order_label(make)      # paint333: the line in the name's place
     elif (row is not None and (shown.get('paint_code') or '').strip()
             and not (shown.get('paint_description') or '').strip()
             and (row.paint_code or '').strip().upper() == (shown.get('paint_code') or '').strip().upper()

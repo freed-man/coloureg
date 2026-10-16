@@ -743,14 +743,20 @@
                             as a gap in our data; the code is correct and the
                             explanation is what the customer needs.
                             paint310: the sentence saying the colour is recorded
-                            against the VIN was taken out (the operator, 10 Oct).{% endcomment %}
+                            against the VIN was taken out (the operator, 10 Oct).
+                            paint333: a line in the name's place says what the code is
+                            (special_order_label, set by the view with the make: "BMW
+                            Individual (special order paint)", "Volkswagen Individual
+                            (special order paint)"), and the note lost its second sentence, which the
+                            manual lookup box under the card already says. Wording
+                            approved by the operator, 16 Oct. The script draws the same
+                            (SPECIAL_ORDER_NOTE, paintBlockHtml).{% endcomment %}
                             {% if special_order %}
+                            <p class="paint-desc paint-special-order-label">{{ special_order_label }}</p>
                             <p class="paint-desc paint-special-order">
-                                This code means the car was painted to special
-                                order rather than in a standard colour, so the
-                                code itself does not name a paint. Leave your email below
-                                and we'll look it up manually and send it over,
-                                free, usually within 1 hour.
+                                This is a special order code, not a colour. The
+                                car was painted to an individual order, so the
+                                code alone does not say which paint it is.
                             </p>
                             {% endif %}
                             {% comment %}paint320: a code a supplier gave with no name, that nothing we
@@ -1417,11 +1423,9 @@ window.cregReportWait();
        ever differ. The status reply says when to draw them (special_order, set by the
        view for 999 in its spellings and for a BMW's 490). {% endcomment %}
     var SPECIAL_ORDER_NOTE =
-        "This code means the car was painted to special " +
-        "order rather than in a standard colour, so the " +
-        "code itself does not name a paint. Leave your email below " +
-        "and we'll look it up manually and send it over, " +
-        "free, usually within 1 hour.";
+        "This is a special order code, not a colour. The " +
+        "car was painted to an individual order, so the " +
+        "code alone does not say which paint it is.";
     {% comment %} paint320: the template's note for a code we could not confirm, word for word. {% endcomment %}
     var UNCONFIRMED_NOTE =
         "We found this code, but we couldn't confirm it " +
@@ -1429,7 +1433,7 @@ window.cregReportWait();
         "and we'll check it by hand and send you the " +
         "confirmed code, free, usually within 1 hour.";
 
-    function paintBlockHtml(code, hex, canonical, description, specialOrder, unconfirmed) {
+    function paintBlockHtml(code, hex, canonical, description, specialOrder, unconfirmed, specialOrderLabel) {
         var html = '';
         if (hex) {
             html += '<div class="paint-swatch-bar" style="background: ' + escapeHtml(hex) + ';"></div>';
@@ -1443,6 +1447,8 @@ window.cregReportWait();
             html += '<p class="paint-desc">' + escapeHtml(description) + '</p>';
         }
         if (specialOrder) {
+            {% comment %} paint333: the label in the name's place, then the note. {% endcomment %}
+            html += '<p class="paint-desc paint-special-order-label">' + escapeHtml(specialOrderLabel || '') + '</p>';
             html += '<p class="paint-desc paint-special-order">' + escapeHtml(SPECIAL_ORDER_NOTE) + '</p>';
         }
         if (unconfirmed) {
@@ -1462,7 +1468,7 @@ window.cregReportWait();
         if (data.special_order) {
             {% comment %} paint299: the code and the note, and nothing that says a colour (no swatch, no
                "also" code, no name, no list, no two-tone), whatever else the reply holds. {% endcomment %}
-            html += paintBlockHtml(data.paint_code, null, null, null, true);
+            html += paintBlockHtml(data.paint_code, null, null, null, true, false, data.special_order_label);   // paint333: the label too
         } else if (data.unconfirmed_code) {
             html += paintBlockHtml(data.paint_code, null, null, null, false, true);   // paint320
         } else if (tt && tt.length) {
