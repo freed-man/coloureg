@@ -3741,7 +3741,36 @@ EDIT_UNCHANGED_MESSAGE = 'Nothing was changed, so nothing was saved.'      # no 
 #: paint318: what a Save with nothing changed now says: the answer is confirmed.
 EDIT_CONFIRMED_MESSAGE = 'confirmed as it is. Nothing else was changed.'
 
-def _dash_note(request, at, ok, text):
+RECENT_PAGE = 50     # paint336: lookups on one page of the dashboard's recent table
+
+
+def recent_page_number(raw, pages):
+    """paint336: the page of the recent lookups asked for (?page=N), as a whole
+    number from 1 to `pages`. Anything else (blank, letters, zero, a minus) is
+    page 1, and a number past the end is the last page, so a stale link still
+    shows something. Pure; never raises."""
+    try:
+        n = int(str(raw if raw is not None else '').strip())
+    except ValueError:
+        return 1
+    return max(1, min(n, max(1, int(pages or 1))))
+
+
+def recent_page_of(search):
+    """paint336: the page of the recent table a lookup sits on now: the lookups
+    the table shows before it (newer, under the table's own filter) fill the
+    pages before. Read when a pencil Save comes back, so the note lands under
+    the row on the page it is on and not on page 1, where the row may not be.
+    Never raises; a failure reads as page 1."""
+    try:
+        newer = Search.objects.exclude(make='', vin='').filter(timestamp__gt=search.timestamp).count()
+        return newer // RECENT_PAGE + 1
+    except Exception:  # noqa: BLE001 - the note matters more than its page
+        logger.warning('recent page of lookup %s not read', getattr(search, 'id', '?'), exc_info=True)
+        return 1
+
+
+def _dash_note(request, at, ok, text, page=1):
     """paint319: the line the dashboard shows after a Save on a lookup's pencil
     or a button on a customer's report, and back to where it was pressed.
 
@@ -3755,7 +3784,10 @@ def _dash_note(request, at, ok, text):
     # Also as a message, tagged so the site's own banner leaves it out
     # (base.html): everything that read the line from the messages still can.
     (messages.success if ok else messages.error)(request, text, extra_tags='dash')
-    return redirect('/admin-stats/#' + (f'lookup-{at}' if str(at).isdigit() else str(at)))
+    # paint336: back to the PAGE of the recent table the row is on (recent_page_of);
+    # page 1 is the dashboard as it always was, so nothing older changes.
+    _page = f'?page={int(page)}' if isinstance(page, int) and page > 1 else ''
+    return redirect('/admin-stats/' + _page + '#' + (f'lookup-{at}' if str(at).isdigit() else str(at)))
 
 
 def twin_warning(recorded, make, name):
@@ -5105,7 +5137,7 @@ def admin_stats(request):
             # the dashboard's "check" mark goes from the row (the mark's own rule in models).
             # Memory reads it as before: a supplier's answer stays a supplier's.
             Search.objects.filter(id=row.id).update(operator_answered_at=timezone.now())
-            return _dash_note(request, row.id, True, f'{row.registration}: {EDIT_CONFIRMED_MESSAGE}')
+            return _dash_note(request, row.id, True, f'{row.registration}: {EDIT_CONFIRMED_MESSAGE}', page=recent_page_of(row))   # paint336
         _code_changed = code != _had_code
         if not _refused:
             _now = timezone.now()
@@ -5119,7 +5151,7 @@ def admin_stats(request):
                                          paint_description=row.paint_description).update(**_fields):
                 _refused = 'That lookup was changed a moment ago. Look at it again.'
         if _refused:
-            return _dash_note(request, row.id, False, _refused + ' Nothing was saved.')
+            return _dash_note(request, row.id, False, _refused + ' Nothing was saved.', page=recent_page_of(row))   # paint336
         _twin = ''
         try:
             # The operator's own table, as a manual answer writes it (paint92).
@@ -5148,7 +5180,8 @@ def admin_stats(request):
             _said = (f'name changed to {name}.' if name else 'name cleared.')
         # paint331: the answer is saved either way; the note turns red when it
         # made a twin, because that wants acting on.
-        return _dash_note(request, row.id, not _twin, f'{row.registration}: {_said}' + (f' {_twin}' if _twin else ''))
+        return _dash_note(request, row.id, not _twin, f'{row.registration}: {_said}' + (f' {_twin}' if _twin else ''),
+                          page=recent_page_of(row))   # paint336: back to the page the row is on
 
     # paint299: AND THE REQUESTS LEFT ON A SPECIAL ORDER CODE (submit_email
     # sends those here, decided 9 Oct). The queue was "no code, an email, not
@@ -5207,10 +5240,16 @@ def admin_stats(request):
     # Requiring BOTH to be empty hides exactly what the old filter hid — every
     # block and every empty attempt has neither — while surfacing the one shape
     # worth looking at: money spent on a vehicle that resolved to nothing.
-    recent_all_lookups = list(
-        Search.objects.exclude(make='', vin='')
-        .order_by('-timestamp')[:50]
-    )
+    # paint336: PAGES, 50 A PAGE, NEWEST FIRST. The table showed the newest 50
+    # and no more; 27 of the 149 days to 16 Oct had more than 50 lookups (91 on
+    # 9 Oct), so an evening look missed the morning. ?page=N shows the next 50
+    # back; the pager above and below the table says where it is. Page 1 is the
+    # table as it was. The count is one query over the same filter.
+    _recent_qs = Search.objects.exclude(make='', vin='').order_by('-timestamp')
+    recent_total = _recent_qs.count()
+    recent_pages = max(1, -(-recent_total // RECENT_PAGE))
+    recent_page = recent_page_number(request.GET.get('page'), recent_pages)
+    recent_all_lookups = list(_recent_qs[(recent_page - 1) * RECENT_PAGE:recent_page * RECENT_PAGE])
     # paint218: each row's AI picture, found by registration and paint code
     # (a repeat lookup shares the first one's picture).
     from lookup.models import CarPicture
@@ -5397,6 +5436,14 @@ def admin_stats(request):
         'failed_makes': failed_makes,
         'recent_failures': recent_failures_with_email,
         'recent_all_lookups': recent_all_lookups,
+        # paint336: the pager's words and links
+        'recent_page': recent_page,
+        'recent_pages': recent_pages,
+        'recent_total': recent_total,
+        'recent_from': (recent_page - 1) * RECENT_PAGE + 1 if recent_all_lookups else 0,
+        'recent_to': (recent_page - 1) * RECENT_PAGE + len(recent_all_lookups),
+        'recent_prev': recent_page - 1 if recent_page > 1 else None,
+        'recent_next': recent_page + 1 if recent_page < recent_pages else None,
         'dash_note': request.session.pop('dash_note', None),            # paint319
         'picture_panel': _picture_panel(),          # paint231
         'total_emails': total_emails,
