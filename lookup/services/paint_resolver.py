@@ -201,6 +201,14 @@ SHOWN_NAMES = {
     # 8CPCWWA: renamed, "Bleu Lagon Metallic" sent alone would find the Ranger's 37R "Bleu Lagon Nacre",
     # another paint, which the two rows naming it alike keep from happening today (measured 16 Oct).
     ('ford', '8CPCWWA', 'bleu lagon metallic'): 'Vision Blue',
+    # paint340: Ford PN4GM, the paint's full English name rather than another language's. VDG and Ezyvin
+    # send "Agate Black Metallic" with PN4GM (16 answers since 21 Jun), and the operator's dealer system
+    # reads a 2021 Tourneo Custom that mmw answered PN4GM as Agate Black Metallic (20 Oct). mmw sends the
+    # code alone and the catalogue's row (one source) names it "Agate Black": shown 5 times since 5 Oct.
+    # A line here rather than a rename of the live row, so nothing is written to production: the row keeps
+    # its name, and the name still finds what it found (nine Ford rows carry it, so the catalogue gives no
+    # code for it, and the operator's table answers it with KBXEWHA, the same paint).
+    ('ford', 'PN4GM', 'agate black'): 'Agate Black Metallic',
 }
 
 
