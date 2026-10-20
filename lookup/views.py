@@ -2223,6 +2223,7 @@ def results(request):
             model=model,
             year=year,
             vdg_colour=colour_for_lookup,
+            answer_name=vehicle_data.get('paint_description'),    # paint341
         )
     # paint50: the two halves of a two-tone, so the template can show a split
     # swatch and both codes instead of one bar and a sentence. None for every
@@ -2255,6 +2256,7 @@ def results(request):
             model=model,
             year=year,
             vdg_colour=colour_for_lookup,
+            answer_name=item.get('description'),                  # paint341
         )
         item['hex'] = item_hex
         item['canonical'] = item_canonical
@@ -2369,21 +2371,23 @@ def _dressed_code_list(make, model, year, colour, items):
         if item.get('code') and not item.get('hex'):
             try:
                 item['hex'], _name, item['canonical'] = PaintLookup.lookup_with_canonical(
-                    manufacturer=make, paint_code=item['code'], model=model, year=year, vdg_colour=colour)
+                    manufacturer=make, paint_code=item['code'], model=model, year=year, vdg_colour=colour,
+                    answer_name=item.get('description'))                  # paint341
             except Exception:  # noqa: BLE001
                 logger.warning('a code in a list could not be looked up', exc_info=True)
         out.append(item)
     return out
 
 
-def _found_fields(make, model, year, colour, paint_code):
+def _found_fields(make, model, year, colour, paint_code, paint_description=''):
     """paint303: what the catalogue says of a code that is about to be drawn
     by the page's script: its swatch, its name, its longer form and, for a
     two-tone, its two paints. One place, so every reply that carries a code
     carries the same fields (the "already answered" reply had none of them:
     audit of 8 Oct, F6)."""
     paint_hex, paint_name, canonical_code = PaintLookup.lookup_with_canonical(
-        manufacturer=make, paint_code=paint_code, model=model, year=year, vdg_colour=colour)
+        manufacturer=make, paint_code=paint_code, model=model, year=year, vdg_colour=colour,
+        answer_name=paint_description)                                  # paint341
     return {
         'paint_hex': paint_hex,
         'paint_name': paint_name,
@@ -2487,7 +2491,8 @@ def _lookup_status(request, search_id):
         # answer, found meanwhile, comes back from here (paint63).
         _known = _found_fields(vehicle_data.get('make', ''), vehicle_data.get('model', ''),
                                vehicle_data.get('year'), vehicle_data.get('colour', ''),
-                               vehicle_data.get('paint_code'))
+                               vehicle_data.get('paint_code'),
+                               vehicle_data.get('paint_description', ''))      # paint341
         return JsonResponse(_special_order_shown(vehicle_data.get('make', ''), {
             'status': 'already_resolved',
             'paint_code': vehicle_data.get('paint_code'),
@@ -2666,6 +2671,7 @@ def _lookup_status(request, search_id):
         model=vehicle_data.get('model', ''),
         year=vehicle_data.get('year'),
         vdg_colour=vehicle_data.get('colour', ''),
+        answer_name=paint_description,                              # paint341
     )
 
     _record_paint_hit(search_id, paint_code, paint_description, source, telemetry,
@@ -2781,6 +2787,7 @@ def _wait_for_recovery_result(search_id):
                 model=row.model,
                 year=row.year,
                 vdg_colour=row.colour,
+                answer_name=row.paint_description,                  # paint341
             )
             if row.provider == Search.PROVIDER_PARTSLINK24:
                 source = 'pl24'
@@ -2938,6 +2945,7 @@ def _paint_email_args(search):
         model=search.model,
         year=search.year,
         vdg_colour=search.colour,
+        answer_name=search.paint_description,                       # paint341
     )
     return {
         'registration': search.registration,
@@ -3054,6 +3062,7 @@ def _locked_payload(search, config=None):
                 model=search.model,
                 year=search.year,
                 vdg_colour=search.colour,
+                answer_name=search.paint_description,               # paint341
             )
         except Exception:
             locked_hex = None
@@ -5754,6 +5763,7 @@ def submit_manual_lookup(request):
         model=search.model,
         year=search.year,
         vdg_colour=search.colour,
+        answer_name=paint_description_clean,                        # paint341
     )
     # paint299: NO SWATCH AND NO "ALSO" CODE WHEN THE CODE TYPED IS ITSELF A
     # SPECIAL ORDER CODE (the operator answering a BMW's request with 490 and

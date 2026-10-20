@@ -1563,13 +1563,22 @@ class PaintLookup(models.Model):
         return resolve_slashed_code(manufacturer, paint_code, vdg_colour)
 
     @classmethod
-    def lookup_with_canonical(cls, manufacturer, paint_code, model=None, year=None, vdg_colour=None):
+    def lookup_with_canonical(cls, manufacturer, paint_code, model=None, year=None, vdg_colour=None,
+                              answer_name=None):
         """Convenience: swatch lookup + canonical expansion.
 
         Returns (paint_hex, paint_name, canonical_code) — all None on miss or
         exception. Never raises; a swatch failure must never break the caller.
         Same signature/return as the old PaintSwatch method so the existing
         call sites in views.py work unchanged.
+
+        paint341: `answer_name` is the name the answer itself carries (the
+        supplier's, or the operator's). Given, a row whose name states a colour
+        that neither the car's registered colour nor that name states, while
+        those two agree, is not used for this answer: all None, as for a code
+        the catalogue does not hold (see disowned_by_answer). The picture and
+        every page and email that shows a swatch pass it; the resolver's own
+        name filling does not, and is unchanged.
         """
         if not paint_code:
             return None, None, None
@@ -1723,9 +1732,45 @@ class PaintLookup(models.Model):
                 logger.info('paint %s %s named by the car\'s colour %r: %r -> %r',
                             manufacturer, paint_code, vdg_colour, _name, _picked[0])
                 return _picked[1], _picked[0], canonical
+            # paint341: A ROW IN ANOTHER COLOUR IS NOT THIS ANSWER'S ROW.
+            if answer_name and _name and cls.disowned_by_answer(_name, answer_name, vdg_colour):
+                logger.info('paint %s %s: the catalogue row %r is in a colour neither the car (%r) nor '
+                            'the answer %r is in; not used for this answer',
+                            manufacturer, paint_code, _name, vdg_colour, answer_name)
+                return None, None, None
             return (swatch.hex or None), _name, canonical
         except Exception:
             return None, None, None
+
+    @staticmethod
+    def disowned_by_answer(row_name, answer_name, car_colour):
+        """paint341: True when the catalogue row's name states a colour that
+        neither the car's registered colour nor the answer's own name states,
+        while the answer's name and the registered colour share a colour.
+
+        The case (20 Oct): partslink24 answered a white 2010 Hyundai i20 GT
+        "Crystal White", which is right, and the live catalogue's only Hyundai
+        GT row was "Gold Topaz" (#B8960C, one bulk import). The page showed a
+        gold swatch beside "Crystal White" and the car's picture was drawn gold:
+        both take the row's name and swatch ahead of the answer's name, and
+        paint239's pick_by_colour needs a second name in the row to swap to.
+
+        Two witnesses that agree outvote one that agrees with neither. The row's
+        side is remembered.contradicts (paint297), the test the colour doubt of
+        paint339 uses; the third condition keeps a row whose colour the answer
+        also names: "Digital Teal Pearl" (blue) on a car registered green that
+        was answered "Digital Teal Green Pearl" is the same paint. A name that
+        states no colour, on any of the three, decides nothing.
+
+        Measured on the live data (20 Oct): of 3,368 answers whose own name fits
+        the registered colour, 2 have such a row (Vauxhall EKU "Amethyst Purple
+        Metallic" on a blue car answered Ink Blue; Volkswagen D4 "Yellow" on a
+        green car answered Cipressino Green), besides the i20's, since corrected."""
+        from lookup.services.paint_resolver import _colour_families
+        want = _colour_families(car_colour or '')
+        said = _colour_families(answer_name or '')
+        row = _colour_families(row_name or '')
+        return bool(want and said and row and (said & want) and not (row & want) and not (row & said))
 
     @classmethod
     def pick_by_colour(cls, row, car_colour):

@@ -141,7 +141,12 @@ def paint_words(make, code, name, dvla_colour):
             return 'two-tone, ' + ' and '.join(_one_paint(make, p) for p in parts)
         # paint239: the car's colour goes in, so a code covering two paints is
         # drawn as the one this car has (the same pick the page makes).
-        hex_value, cat_name, _canonical = PaintLookup.lookup_with_canonical(make, code, vdg_colour=dvla_colour)
+        # paint341: and the answer's own name, so a row in a colour that neither
+        # the car nor the answer is in is not drawn: a white i20 answered GT
+        # "Crystal White" was drawn gold from the catalogue's "Gold Topaz" row
+        # (20 Oct). The picture is then drawn from the answer's own name.
+        hex_value, cat_name, _canonical = PaintLookup.lookup_with_canonical(make, code, vdg_colour=dvla_colour,
+                                                                            answer_name=name)
         words = cat_name or name
         if words:
             if not hex_value and dvla_colour and _not_one_colour(words):
