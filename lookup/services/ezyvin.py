@@ -76,6 +76,10 @@ _RE_LABEL = re.compile(
 #: Ezyvin's null. /vehicle/ returned a placeholder row of dashes on an MX-5;
 #: reading the dash as a colour reports a miss as a hit.
 _NULLISH = {'', '-', '--', 'n/a', 'na', 'null', 'none'}
+#: paint338: SAIC's build sheet (Maxus) keeps the FIELD LABEL where a code would
+#: be and the value as the name: {"code": "ext color", "name": "Warm White"}.
+#: A designation labelled like this names the car's exterior colour, with no code.
+_EXT_COLOUR_LABEL = re.compile(r'^\s*(?:ext(?:erior)?|body|vehicle)\s*colou?r\s*$', re.I)
 
 
 def _is_code(candidate):
@@ -220,11 +224,27 @@ def extract(body):
     if ext and re.match(r'\s*interior\b', ext, re.I):
         ext = ''
     if not ext:
+        # paint338: SAIC'S "ext color" LINE. A 2021 Maxus Deliver 9 (20 Oct) came
+        # back with no exterior field and its colour as {"code": "ext color",
+        # "name": "Warm White"}: the label sits where the code would be. Exactly
+        # one such line gives its colour as a name with no code; the catalogue
+        # can then give the code (Maxus M001 is Warm White).
+        labelled = [d for d in _designations(body)
+                    if _EXT_COLOUR_LABEL.match(str(d.get('code') or ''))
+                    and str(d.get('name') or '').strip().lower() not in _NULLISH]
+        if len(labelled) == 1:
+            return '', str(labelled[0]['name']).strip()
         # paint284: NO EXTERIOR FIELD, BUT ONE "... PAINT" LINE. A 2022 Tesla Model Y
         # came back with no exterior and its paint as a specification line,
         # "Deep Blue Metallic Paint" (PPSB). Exactly one such line, ending in the
         # word Paint, or nothing: two would be a guess.
-        paints = [d for d in _designations(body) if re.search(r'\bpaint\s*$', (d.get('name') or ''), re.I)]
+        # paint338: AND ITS CODE MUST BE A CODE. The same Maxus had one such line,
+        # {"code": "power window switch", "name": "Matte Black Paint"}: the finish
+        # of a switch, served as paint code POWER WINDOW SWITCH, Matte Black, on a
+        # van registered white. A phrase of words is a label, not a code (_is_code,
+        # the bracket rule's own test), so such a line is not read at all.
+        paints = [d for d in _designations(body) if re.search(r'\bpaint\s*$', (d.get('name') or ''), re.I)
+                  and _is_code(_clean_code(d.get('code')))]
         if len(paints) == 1:
             nm = re.sub(r'\s*\bpaint\s*$', '', paints[0]['name'], flags=re.I).strip()
             return _clean_code(paints[0]['code']), nm
