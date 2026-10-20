@@ -526,7 +526,9 @@ class Search(models.Model):
             return True
         from lookup.services.paint_resolver import marks_special_order
         # paint320: or a code we could not confirm, whose page offers the same check.
-        return bool(marks_special_order(self.make, code)) or self.unconfirmed_code
+        # paint339: or an answer whose name states a colour the car is not registered as
+        # (colour_check), whose page now offers the same check.
+        return bool(marks_special_order(self.make, code)) or self.unconfirmed_code or self.colour_check
 
     @property
     def unconfirmed_code(self):
@@ -579,8 +581,16 @@ class Search(models.Model):
         a name. The test itself is remembered.contradicts, the one that keeps
         such an answer out of memory (paint293), so the two cannot drift.
 
-        Read by the dashboard's row only. Nothing a customer sees uses it: the
-        operator chose a mark for himself and no line for the customer (9 Oct).
+        paint339: THE CUSTOMER IS TOLD TOO (the operator, 20 Oct; on 9 Oct he had
+        chosen a mark for himself only). A 2021 Maxus registered white was served
+        "Matte Black" from a line of Ezyvin's build sheet that was not its paint.
+        Such an answer's page shows a note that the code may be wrong and needs a
+        manual check, the box under it offers that check free in place of the
+        automatic email, a request left there goes to the manual queue, and it is
+        never charged. Measured on the lookups to 20 Oct: 45 of 3,475 served
+        answers with a code and a name (1.3%), about a third of them wrong and
+        the rest names DVLA gives another word for (a dark grey on a car
+        registered black), hence "may be wrong", not "is wrong".
         """
         if self.provider == self.PROVIDER_MANUAL:
             return False

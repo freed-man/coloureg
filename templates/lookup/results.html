@@ -191,7 +191,7 @@
         font-feature-settings: "zero" 0;
         font-variant-numeric: normal;
     }
-    .paint-special-order, .paint-unconfirmed {   /* paint320: the unconfirmed note looks the same */
+    .paint-special-order, .paint-unconfirmed, .paint-colour-doubt {   /* paint320: the unconfirmed note looks the same; paint339: and the colour doubt note */
             font-size: .95rem;
             line-height: 1.45;
             color: #4a4a4a;
@@ -770,6 +770,17 @@
                                 confirmed code, free, usually within 1 hour.
                             </p>
                             {% endif %}
+                            {% comment %}paint339: an answer whose name states a colour the car is not
+                            registered as (the dashboard's mark, its rule in models; set on the page as colour_doubt by the view).
+                            Wording approved by the operator, 20 Oct. The box under the card offers the free
+                            manual check. The script draws the same words (COLOUR_DOUBT_NOTE).{% endcomment %}
+                            {% if colour_doubt %}
+                            <p class="paint-desc paint-colour-doubt">
+                                This paint code may be wrong for your vehicle and
+                                needs a manual check. Request one below and we'll
+                                send you the confirmed code, free, usually within 1 hour.
+                            </p>
+                            {% endif %}
                         </div>
                     {% endif %}
                     <div id="car-thumb-anchor"></div>
@@ -1087,10 +1098,10 @@ the request directly. {% endcomment %}
                             <i class="fas fa-check" style="color: white; font-size: 20px;"></i>
                         </div>
                         <h6 class="mb-1" style="color: #166534;">
-                            {% if paint_code and not special_order and not unconfirmed_code %}Email sent{% else %}Request received{% endif %}
+                            {% if paint_code and not special_order and not unconfirmed_code and not colour_doubt %}Email sent{% else %}Request received{% endif %}
                         </h6>
                         <p class="mb-0 small text-muted">
-                            {% if paint_code and not special_order and not unconfirmed_code %}
+                            {% if paint_code and not special_order and not unconfirmed_code and not colour_doubt %}
                             Paint code sent to <strong>{{ email_submitted }}</strong>
                             {% else %}
                             We'll email <strong>{{ email_submitted }}</strong>, usually within 1 hour
@@ -1101,7 +1112,7 @@ the request directly. {% endcomment %}
                 {% else %}
                 <div class="card">
                     <div class="card-body p-4">
-                        {% if paint_code and not special_order and not unconfirmed_code %}
+                        {% if paint_code and not special_order and not unconfirmed_code and not colour_doubt %}
                         <h5 class="mb-2 fw-semibold" style="display: flex; gap: 8px; align-items: baseline;"><span>✉️</span><span>Email me this code</span></h5>
                         {% elif paint_name_only %}
                         <h5 class="mb-3 fw-semibold" style="display: flex; gap: 8px; align-items: baseline;"><span>✉️</span><span>Want the exact code?</span></h5>
@@ -1131,7 +1142,7 @@ the request directly. {% endcomment %}
                             <div class="d-flex gap-2">
                                 <input type="email" name="email" class="form-control" placeholder="your@email.com" required>
                                 <button type="submit" class="btn btn-dark text-nowrap">
-                                    {% if paint_code and not special_order and not unconfirmed_code %}Email me{% elif paint_name_only %}Send me the code{% else %}Request code{% endif %}
+                                    {% if paint_code and not special_order and not unconfirmed_code and not colour_doubt %}Email me{% elif paint_name_only %}Send me the code{% else %}Request code{% endif %}
                                 </button>
                             </div>
                         </form>
@@ -1432,8 +1443,13 @@ window.cregReportWait();
         "against our paint records. Leave your email below " +
         "and we'll check it by hand and send you the " +
         "confirmed code, free, usually within 1 hour.";
+    {% comment %} paint339: the template's note for an answer whose name is not the registered colour, word for word. {% endcomment %}
+    var COLOUR_DOUBT_NOTE =
+        "This paint code may be wrong for your vehicle and " +
+        "needs a manual check. Request one below and we'll " +
+        "send you the confirmed code, free, usually within 1 hour.";
 
-    function paintBlockHtml(code, hex, canonical, description, specialOrder, unconfirmed, specialOrderLabel) {
+    function paintBlockHtml(code, hex, canonical, description, specialOrder, unconfirmed, specialOrderLabel, colourDoubt) {
         var html = '';
         if (hex) {
             html += '<div class="paint-swatch-bar" style="background: ' + escapeHtml(hex) + ';"></div>';
@@ -1453,6 +1469,9 @@ window.cregReportWait();
         }
         if (unconfirmed) {
             html += '<p class="paint-desc paint-unconfirmed">' + escapeHtml(UNCONFIRMED_NOTE) + '</p>';
+        }
+        if (colourDoubt) {
+            html += '<p class="paint-desc paint-colour-doubt">' + escapeHtml(COLOUR_DOUBT_NOTE) + '</p>';   // paint339
         }
         html += '</div>';
         return html;
@@ -1480,7 +1499,8 @@ window.cregReportWait();
             }
         } else {
             html += paintBlockHtml(
-                data.paint_code, data.paint_hex, data.canonical_code, data.paint_description
+                data.paint_code, data.paint_hex, data.canonical_code, data.paint_description,
+                false, false, null, data.colour_doubt   // paint339: the note when the name is not the registered colour
             );
         }
         card.innerHTML = '<div id="paint-found-state">' + html + '<div id="car-thumb-anchor"></div>' + reportControl() + '</div>';
@@ -1492,7 +1512,7 @@ window.cregReportWait();
 
         {% comment %} paint299: for a special order code the email box is the manual lookup one, as the
            template draws it: the request goes to the manual queue, not out as the automatic email. {% endcomment %}
-        revealEmail(!data.special_order && !data.unconfirmed_code);     // paint320: the manual box
+        revealEmail(!data.special_order && !data.unconfirmed_code && !data.colour_doubt);     // paint320: the manual box; paint339: for a colour doubt too
     }
 
     {% comment %}

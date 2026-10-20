@@ -1801,7 +1801,8 @@
                     {% if s.paint_code %}
                     <div>
                         <div class="lbl">Code returned</div>
-                        <div class="val">{{ s.paint_code }} <span style="color: #666;">(special order code{% if s.provider and s.provider != 'none' %}, {{ s.source_label }}{% endif %})</span></div>
+                        {% comment %}paint339: and why it is here: a colour doubt (the name is not the registered colour), a code we could not confirm, or a special order code.{% endcomment %}
+                        <div class="val">{{ s.paint_code }} <span style="color: #666;">({% if s.colour_check %}its name is not the registered colour{% elif s.unconfirmed_code %}not in our paint records{% else %}special order code{% endif %}{% if s.provider and s.provider != 'none' %}, {{ s.source_label }}{% endif %})</span></div>
                     </div>
                     {% endif %}
                     {% comment %} paint278: the name the lookup returned, where it came from, and each

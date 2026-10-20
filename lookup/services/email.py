@@ -799,7 +799,7 @@ def send_admin_paint_report(report, total_for_code=1, vehicle_title='',
     }, context='paint_report')
 
 
-def send_admin_failure_notification(registration, vehicle_title, vin_full, colour, user_email, customer_message='', extra_attachments=None, found_name='', special_order_code='', unconfirmed_code=''):
+def send_admin_failure_notification(registration, vehicle_title, vin_full, colour, user_email, customer_message='', extra_attachments=None, found_name='', special_order_code='', unconfirmed_code='', colour_doubt_code='', colour_doubt_name=''):
     """Email admin when paint code wasn't found and user requested manual lookup.
 
     `customer_message` is optional free text the customer added to the request
@@ -817,6 +817,10 @@ def send_admin_failure_notification(registration, vehicle_title, vin_full, colou
 
     paint320: `unconfirmed_code` likewise, for a code a supplier gave that we
     could not confirm (no name, not in our paint records).
+
+    paint339: `colour_doubt_code` and `colour_doubt_name` likewise, for an answer
+    whose name states a colour the car is not registered as: the page told the
+    customer it may be wrong and offered this check.
     """
 
     found_block = _found_name_block(found_name)
@@ -832,6 +836,12 @@ def send_admin_failure_notification(registration, vehicle_title, vin_full, colou
                     <tr style="border-bottom: 1px solid #eee;">
                         <td style="padding: 10px 16px 10px 0; color: #666; font-size: 13px; vertical-align: top;">Code</td>
                         <td style="padding: 10px 0; color: #1a1a1a; font-size: 14px;">{_esc(unconfirmed_code)}, given by a supplier with no name and not in our paint records: check it</td>
+                    </tr>"""
+    elif colour_doubt_code:
+        special_order_row = f"""
+                    <tr style="border-bottom: 1px solid #eee;">
+                        <td style="padding: 10px 16px 10px 0; color: #666; font-size: 13px; vertical-align: top;">Code</td>
+                        <td style="padding: 10px 0; color: #1a1a1a; font-size: 14px;">{_esc(colour_doubt_code)} {_esc(colour_doubt_name)}, a name that is not the colour the car is registered as: check it</td>
                     </tr>"""
     message_block = ''
     if customer_message and customer_message.strip():

@@ -2132,6 +2132,18 @@ def _special_order_shown(make, shown, row=None):
         # this mark). Decided from the lookup's row, which knows whether the
         # operator gave or confirmed it; a reply with no row is left as it is.
         shown['unconfirmed_code'] = True
+    elif (row is not None and (shown.get('paint_code') or '').strip()
+            and (shown.get('paint_description') or '').strip()
+            and (row.paint_code or '').strip().upper() == (shown.get('paint_code') or '').strip().upper()
+            and len(shown.get('all_paint_codes') or []) <= 1 and not shown.get('two_tone')
+            and row.colour_check):
+        # paint339: AN ANSWER WHOSE NAME STATES A COLOUR THE CAR IS NOT REGISTERED
+        # AS (Search.colour_check, the dashboard's "check" mark). The code and the
+        # name are shown, with a note that the code may be wrong and needs a
+        # manual check, and the free manual check in place of the automatic
+        # email, as for a code we could not confirm (the operator, 20 Oct). Only
+        # where the page shows one code: a list or a two-tone has no such note.
+        shown['colour_doubt'] = True
     return shown
 
 
@@ -2878,6 +2890,12 @@ def _apply_paywall(search, config=None):
     # one cached with its name before this release. Measured with payments
     # switched on in a scratch copy: a BMW's 490 with its name was locked.
     if marks_special_order(search.make, search.paint_code):
+        return False
+    # paint339: NOR AN ANSWER WHOSE NAME STATES A COLOUR THE CAR IS NOT
+    # REGISTERED AS (Search.colour_check). Its page says the code may be wrong
+    # and offers the manual check, free; the operator's decision of 20 Oct is
+    # that nobody pays for it.
+    if search.colour_check:
         return False
     if search.paid_unlocked:
         return False          # already bought — never re-gate it
@@ -3937,12 +3955,19 @@ def submit_email(request):
     # paint320: AND A CODE WE COULD NOT CONFIRM. Its page promised the same
     # free manual check, so the request takes the same branch.
     _unconfirmed = (not _special_order) and search.unconfirmed_code
+    # paint339: AND AN ANSWER WHOSE NAME STATES A COLOUR THE CAR IS NOT
+    # REGISTERED AS. Its page offered the free manual check in place of the
+    # automatic email, so the request takes the same branch, and the code it
+    # doubts is not emailed to the customer as their paint code.
+    _colour_doubt = (not _special_order) and (not _unconfirmed) and search.colour_check
     # The name is never passed on for such a code, to the operator or the
     # customer: a row from before this release can hold one ("Sonderlackierung"
     # beside a BMW's 490), and the emails would call it the colour's name.
-    _found_name = '' if _special_order else (search.paint_description or '')
+    # paint339: nor for a colour doubt: both emails would call it the colour
+    # found; the operator's carries it in the line that says why it is queued.
+    _found_name = '' if (_special_order or _colour_doubt) else (search.paint_description or '')
 
-    if search.paint_code and not _special_order and not _unconfirmed:
+    if search.paint_code and not _special_order and not _unconfirmed and not _colour_doubt:
         _email_args = _paint_email_args(search)
         sent = send_user_paint_code(to_email=email, **_email_args)
         if sent:
@@ -3973,6 +3998,8 @@ def submit_email(request):
             # Passed only then, so every other request's call is as it was.
             **({'special_order_code': search.paint_code} if _special_order else {}),
             **({'unconfirmed_code': search.paint_code} if _unconfirmed else {}),     # paint320
+            **({'colour_doubt_code': search.paint_code,                              # paint339
+                'colour_doubt_name': search.paint_description or ''} if _colour_doubt else {}),
         )
         user_sent = send_user_pending_notification(
             to_email=email,
@@ -5196,13 +5223,16 @@ def admin_stats(request):
     for _spelling in special_order_code_spellings():
         _special_order_spelling |= Q(paint_code__iexact=_spelling)
     # paint320: and those left on a code we could not confirm, which has no name.
+    # paint339: and those left on an answer whose name states a colour the car is
+    # not registered as (Search.colour_check). Such a row has a code and a name,
+    # so the database cannot narrow to it: every unanswered row with an email is
+    # read (80 on 20 Oct) and the rule below decides, as in_manual_queue does.
     recent_failures_with_email = [
-        s for s in Search.objects.filter(Q(paint_code='') | _special_order_spelling | Q(paint_description=''),
-                                         email__gt='', manual_lookup_completed=False)
+        s for s in Search.objects.filter(email__gt='', manual_lookup_completed=False)
         # paint315: OLDEST FIRST, so the customer who has waited longest is at
         # the top (the operator's choice, 12 Oct). It was newest first.
         .order_by('timestamp', 'id')
-        if not s.paint_code or marks_special_order(s.make, s.paint_code) or s.unconfirmed_code
+        if not s.paint_code or marks_special_order(s.make, s.paint_code) or s.unconfirmed_code or s.colour_check
     ]
     # paint329: on each card, the catalogue's paints for the car's model in its registered colour, so the
     # operator sees what the choice is before asking a dealer (a grey BYD Seal U is HA4 or HAZ). Read here,
