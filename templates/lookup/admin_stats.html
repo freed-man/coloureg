@@ -1914,10 +1914,13 @@
         {% comment %}paint336: the pager, above the table and under the cards (_recent_pager.html).{% endcomment %}
         .recent-pager { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 8px 16px; margin: 0 0 12px; font-size: 13px; color: #555; }
         .recent-pager.bottom { margin: 12px 0 0; }
-        .recent-pager-links { display: flex; gap: 14px; align-items: center; white-space: nowrap; }
+        .recent-pager-links { display: flex; gap: 6px; align-items: center; white-space: nowrap; }
+        {% comment %}paint337: the four marks are links big enough for a thumb; a grey one goes nowhere.{% endcomment %}
+        .recent-pager-links a, .recent-pager-links .recent-pager-off { display: inline-block; min-width: 30px; text-align: center; font-size: 20px; line-height: 1; padding: 4px 6px; border-radius: 4px; }
         .recent-pager a { color: #003399; font-weight: 600; text-decoration: none; }
-        .recent-pager a:hover { text-decoration: underline; }
+        .recent-pager a:hover { background: #eef2ff; }
         .recent-pager-off { color: #bbb; }
+        .recent-pager-page { margin: 0 6px; }
         </style>
 
         {% include 'lookup/_recent_pager.html' with place='top' %}

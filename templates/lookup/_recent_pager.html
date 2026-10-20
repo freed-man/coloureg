@@ -1,14 +1,16 @@
 {% comment %}paint336: THE PAGES OF THE RECENT LOOKUPS TABLE, drawn twice by admin_stats.html (above the
    table and under the cards, `place` 'top' or 'bottom'). The table shows 50 lookups a page, newest
-   first; the operator checks in the evening and a day of 80 lookups lost its morning. "Newer" and
-   "Older" are plain links to ?page=N on the same panel; a link that would go nowhere is drawn grey.
-   What the view hands over: recent_page, recent_pages, recent_total, recent_from, recent_to,
-   recent_prev and recent_next (views.admin_stats). {% endcomment %}
+   first; the operator checks in the evening and a day of 80 lookups lost its morning. What the view
+   hands over: recent_page, recent_pages, recent_total, recent_from, recent_to, recent_prev and
+   recent_next (views.admin_stats).
+   paint337: four marks instead of words, the operator's choice: « the newest page, ‹ one page newer,
+   › one page older, » the oldest page. A mark that would go nowhere is drawn grey. Each is a plain
+   link to ?page=N on the same panel, with its meaning in the title and the aria label. {% endcomment %}
 <div class="recent-pager {{ place|default:'top' }}" role="navigation" aria-label="Pages of recent lookups">
     <span class="recent-pager-count">{% if recent_total %}Lookups {{ recent_from }} to {{ recent_to }} of {{ recent_total }}{% else %}No lookups yet{% endif %}</span>
     <span class="recent-pager-links">
-        {% if recent_prev %}<a href="?page={{ recent_prev }}#recent-lookups" rel="prev">&larr; Newer</a>{% else %}<span class="recent-pager-off" aria-disabled="true">&larr; Newer</span>{% endif %}
+        {% if recent_prev %}<a href="?page=1#recent-lookups" title="Newest" aria-label="Newest lookups, page 1">&laquo;</a><a href="?page={{ recent_prev }}#recent-lookups" rel="prev" title="Newer" aria-label="Newer, page {{ recent_prev }}">&lsaquo;</a>{% else %}<span class="recent-pager-off" aria-disabled="true">&laquo;</span><span class="recent-pager-off" aria-disabled="true">&lsaquo;</span>{% endif %}
         <span class="recent-pager-page">Page {{ recent_page }} of {{ recent_pages }}</span>
-        {% if recent_next %}<a href="?page={{ recent_next }}#recent-lookups" rel="next">Older &rarr;</a>{% else %}<span class="recent-pager-off" aria-disabled="true">Older &rarr;</span>{% endif %}
+        {% if recent_next %}<a href="?page={{ recent_next }}#recent-lookups" rel="next" title="Older" aria-label="Older, page {{ recent_next }}">&rsaquo;</a><a href="?page={{ recent_pages }}#recent-lookups" title="Oldest" aria-label="Oldest lookups, page {{ recent_pages }}">&raquo;</a>{% else %}<span class="recent-pager-off" aria-disabled="true">&rsaquo;</span><span class="recent-pager-off" aria-disabled="true">&raquo;</span>{% endif %}
     </span>
 </div>
