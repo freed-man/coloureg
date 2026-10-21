@@ -2360,6 +2360,37 @@ class PaintLookup(models.Model):
         s = re.sub(r'^[\s\-–—:,]+|[\s\-–—:,]+$', ' ', s)
         return re.sub(r'\s+', ' ', s).strip()
 
+    # paint342 (21 Oct): A NAME THAT SEVERAL OF THE MAKE'S PAINTS CARRY GIVES NO
+    # CODE BY ITSELF. Suzuki has called at least eight paints "Bright Red" (53U,
+    # 71U, 72U, Z5H, Z8C, Z9T, ZCF, ZR8; 73L Super Red carries it as an alias),
+    # and its refinish names tell them apart by a number the UK brochures drop
+    # (Bright Red 2, 4, 5). The matcher still picked one through the model: a
+    # bare "Bright Red" gave Z5H on an Alto, Baleno or Wagon R and Z9T on a
+    # Liana, because Z5H is the only row tagged for those models whose own name
+    # is the bare one, and the catalogue holds no years (a 2014 Alto is Z9T by
+    # the operator's own answer). "Bright Red 2" gave Z8C on every Suzuki,
+    # while Z9T's aliases claim that name and "Bright Red II" as well. So on a
+    # Suzuki these names give no code, from the catalogue or from the
+    # operator's table, and the car goes to the manual queue. Compared on
+    # normalize_name, so "BRIGHT RED", "Bright Red Metallic" and "Bright-Red"
+    # are the same name. A code the supplier sends is untouched (this is the
+    # name to code direction only), and the curated tables are still read
+    # first. Measured on the export of 21 Oct (6,712 lookups, 55 of them
+    # Suzuki): no answer changes; the only two Suzuki lookups named Bright Red
+    # are the operator's own, each with its code.
+    NAMES_GIVING_NO_CODE = {
+        'suzuki': ('Bright Red', 'Bright Red 2', 'Bright Red II'),
+    }
+
+    @classmethod
+    def name_gives_no_code(cls, manufacturer, colour_name):
+        """paint342: True when this make's name is one that several of its paints carry (NAMES_GIVING_NO_CODE)."""
+        names = cls.NAMES_GIVING_NO_CODE.get(cls.normalize_manufacturer(manufacturer or ''))
+        if not names or not colour_name:
+            return False
+        norm = cls.normalize_name(colour_name)
+        return bool(norm) and norm in {cls.normalize_name(n) for n in names}
+
     # Trailing parenthetical suffixes that providers append to a colour name.
     # Matches the LAST bracketed group only, e.g. 'Squeeze (G)' -> 'Squeeze'.
     _TRAILING_PAREN_RE = re.compile(r'\s*\([^)]*\)\s*$')
@@ -2716,6 +2747,13 @@ class PaintLookup(models.Model):
                     row = cls.lookup(manufacturer, hit)
                     if row is not None:
                         return row.code, row.hex, row.name
+
+            # paint342: a name that several of the make's paints carry gives no
+            # code by itself (NAMES_GIVING_NO_CODE). After the curated tables,
+            # which are checked by hand, and before any row is matched.
+            if cls.name_gives_no_code(mfr_norm, colour_name):
+                logger.info('name %r gives no code for %s by itself (paint342)', colour_name, manufacturer)
+                return None, None, None
 
             # paint301: A NAME THAT IS ONLY A COLOUR WORD GIVES NO CODE.
             #
@@ -3622,6 +3660,11 @@ class OperatorPaintCode(models.Model):
         # which are read before this, still answer the names written in them.
         from lookup.services.paint_resolver import is_bare_colour_name
         if is_bare_colour_name(PaintLookup._light_normalize_name(colour_name)):
+            return None
+        # paint342: nor a name that several of the make's paints carry (Suzuki
+        # "Bright Red"): one hand typed entry under it would otherwise answer
+        # every car of the make by that name.
+        if PaintLookup.name_gives_no_code(make, colour_name):
             return None
         norm = PaintLookup.normalize_name(colour_name)
         if not norm:
