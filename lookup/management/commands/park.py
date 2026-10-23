@@ -2,9 +2,9 @@
 
 paint335. A parked car is one he has tried every route for (his dealer software, the parts
 desks, the catalogues) and found no code, so he stops trying. Every lookup of the plate that
-holds no code is marked with the time; the dashboard then shows the grey circle (the one a make
-that is not automated gets) instead of the red cross, and etc/open_cars.py lists the car under
-PARKED rather than its make. A code found later wins on both.
+holds no code is marked with the time, and etc/open_cars.py lists the car under PARKED rather
+than its make. paint350: that is all; the dashboard marks a parked lookup like any other (the
+red cross when no code was found), where paint335 showed the grey circle. A code found later wins.
 
 PREVIEW BY DEFAULT: nothing is written without --apply, and the preview says exactly what would be.
 

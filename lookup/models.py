@@ -777,11 +777,12 @@ class Search(models.Model):
     # dealer software, the parts desks, the catalogues) and found no code, so
     # he stops trying for now. Set on every lookup of the plate that holds no
     # code (Search.park, from the PARKED section of etc/open_cars.txt through
-    # the `park` command). The dashboard shows a parked lookup with the grey
-    # circle used for a make that is not automated, not the red cross, and the
-    # open cars file lists the car under PARKED, so the time is not spent twice.
-    # A code found later wins: the dashboard reads success first, and the file
-    # treats a car with a code as answered whatever this holds.
+    # the `park` command). The open cars file lists the car under PARKED, so the
+    # time is not spent twice. paint350: that is all it does; the dashboard marks
+    # a parked lookup like any other (the red cross when no code was found: a
+    # car searched for and never found is a failure, the operator's rule of
+    # 23 Oct; paint335 showed the grey circle). A code found later wins: the
+    # file treats a car with a code as answered whatever this holds.
     parked_at = models.DateTimeField(null=True, blank=True, db_index=True)
 
     @classmethod
