@@ -4845,7 +4845,8 @@ def admin_stats(request):
         today_genuine_miss=Count('id', filter=Q(
             timestamp__gte=today_start, paint_code='', no_code_available=False,
             recovery_attempted=True, recovery_duration_ms__isnull=False)
-            & ~Q(make='')),
+            & ~Q(make='')
+            & ~Q(error_message='make_not_automated')),             # paint349, see genuine_miss below
         week=Count('id', filter=Q(timestamp__gte=week_ago)),
         month=Count('id', filter=Q(timestamp__gte=month_ago)),
         # Success / paint hit rate
@@ -4871,9 +4872,19 @@ def admin_stats(request):
         # it, counted those answers as misses. On the lookups of 2 May to
         # 7 Oct that is 5 rows: 85.6% shown (2,964 of 3,461), 85.8% without
         # them (2,964 of 3,456).
+        # paint349: NOR IS A LOOKUP MARKED NOT AUTOMATED, even one whose search ran. The
+        # gate never lets such a search run today, but the lookups from before a gate did:
+        # the motorbikes marked on 16 Oct (etc/tidy/mark_bikes.py) and the lorries and
+        # coaches marked on 23 Oct (mark_heavy.py) all searched, found nothing, and kept
+        # counting here as misses while the dashboard showed them grey and counted them
+        # under "Not automated" too: 12 lookups, the rate reading 94.4% where it reads 94.6%
+        # without them (measured on the operator's export of 23 Oct, with the marks). Left
+        # out of both sides, as a gated lookup is; today's count and the daily chart's
+        # failed bar leave them out the same way.
         genuine_miss=Count('id', filter=(
             ~Q(make='') & Q(paint_code='') & Q(no_code_available=False)
             & Q(recovery_attempted=True) & Q(recovery_duration_ms__isnull=False)
+            & ~Q(error_message='make_not_automated')
         )),
         incomplete=Count('id', filter=(
             ~Q(make='') & Q(paint_code='')
@@ -5026,7 +5037,8 @@ def admin_stats(request):
             no_code=Count('id', filter=Q(no_code_available=True)),
             failed=Count('id', filter=Q(
                 paint_code='', no_code_available=False,
-                recovery_attempted=True, make__gt='')),
+                recovery_attempted=True, make__gt='')
+                & ~Q(error_message='make_not_automated')),          # paint349: it is in not_automated
             # `excluded` WAS ONE BAR holding two unrelated things: rows where
             # VDG could not identify the vehicle at all (a mistyped plate, 183
             # of 249 measured 17 Aug 2026) and rows where the vehicle WAS found
