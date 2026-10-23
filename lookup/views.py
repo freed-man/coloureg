@@ -4770,6 +4770,14 @@ def admin_stats(request):
             )
         return redirect('admin_stats')
 
+    # paint343: THE PAGE SHOWS THE SWITCHES AS THE DATABASE HOLDS THEM. It is drawn
+    # by whichever worker takes the request, and SiteConfig.get() is that worker's
+    # copy, up to a minute old. After a click the redirect often lands on the other
+    # worker, so the maintenance panel stayed amber under the green "lookups are live
+    # again" line until a refresh (the gate and payments panels the same). One read
+    # of the row, made this worker's copy, so every panel below agrees with it.
+    SiteConfig.fresh_and_cached()
+
     now = timezone.now()
     # London-local midnight, NOT UTC midnight (paint17). This used to be
     # now.replace(hour=0, ...) on a UTC-aware datetime, which under BST starts

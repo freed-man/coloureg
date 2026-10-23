@@ -4297,6 +4297,26 @@ class SiteConfig(models.Model):
         obj, _ = cls.objects.get_or_create(pk=cls.SINGLETON_PK)
         return obj
 
+    @classmethod
+    def fresh_and_cached(cls):
+        """paint343: the row as the database holds it now, made this worker's copy as well.
+
+        For the stats page. It is drawn by whichever worker takes the request, and
+        get() hands back that worker's copy, up to _CACHE_TTL old. After a click the
+        redirect often lands on the other worker, so a switch saved a moment ago was
+        drawn in its old state: the green line said lookups were live again over a
+        panel that still said paused, until a refresh. Read from the database instead,
+        one query, and put in this worker's copy, every panel shows the database's
+        state and this worker acts on it at once. The other worker still catches up
+        within _CACHE_TTL, and get() on the hot path is unchanged.
+        """
+        obj = cls.fresh()
+        try:
+            caches['local'].set(cls._CACHE_KEY, obj, cls._CACHE_TTL)
+        except Exception:
+            pass  # a cache failure must never break the page; get() then reads the database itself
+        return obj
+
 
 class CarPicture(models.Model):
     """An AI picture of a looked-up car in its paint (paint218).
