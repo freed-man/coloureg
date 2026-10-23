@@ -1913,7 +1913,12 @@
         .recent-card .edit-strip { margin-top: 8px; border: 1px solid #e6e9ee; border-radius: 6px; }
         .recent-card .edit-strip .edit-actions { flex: 1 1 100%; justify-content: center; }
         {% comment %}paint336: the pager, above the table and under the cards (_recent_pager.html).{% endcomment %}
-        .recent-pager { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 8px 16px; margin: 0 0 12px; font-size: 13px; color: #555; }
+        {% comment %}paint345: CENTRED WHEN THE MARKS GET A LINE OF THEIR OWN. On a phone the count and the marks do not fit on one
+           line; with space-between the marks, alone on the second line, sat at its left (34px left of centre at 412px, both
+           pagers, 23 Oct). Now the line is centred and the count's auto margin takes the free space whenever the two share a
+           line, so a wide screen still has the count at the left and the marks at the right, exactly as before.{% endcomment %}
+        .recent-pager { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 8px 16px; margin: 0 0 12px; font-size: 13px; color: #555; }
+        .recent-pager-count { margin-right: auto; }
         .recent-pager.bottom { margin: 12px 0 0; }
         .recent-pager-links { display: flex; gap: 6px; align-items: center; white-space: nowrap; }
         {% comment %}paint337: the four marks are links big enough for a thumb; a grey one goes nowhere.{% endcomment %}
