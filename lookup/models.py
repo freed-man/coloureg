@@ -4150,6 +4150,22 @@ class SiteConfig(models.Model):
             return False
         return cls._norm_make(make or '') not in {cls._norm_make(m) for m in cls.BIKE_MAKES_SEARCHED}
 
+    #: paint348: LORRIES AND COACHES ARE NOT SEARCHED EITHER, by VDG's class: N3, goods vehicles over 12 tonnes,
+    #: and M3, buses and coaches over 5 tonnes (N3G and M3G, their off road forms, too). In the lookups of
+    #: 2 May to 23 Oct, 8 were of these classes (6 lorries: DAF, MAN, Renault, Volvo and two Scania; 2 Scania
+    #: coaches) and none got a code from the search; the 2 codes found (DAF, MAN) were the operator's, by hand.
+    #: partslink24 does not cover Scania or DAF and could not route the Renault and Volvo, and Ezyvin, where it
+    #: was asked, found nothing. Gated by class like a motorbike, so a Volvo lorry is caught and a Volvo car is
+    #: not; minibuses (M2: 6 of 6 found by the search) and vans and light lorries (N1, N2) are searched as
+    #: before. The word is the page's: "Extracting paint data from Volvo lorry build sheets isn't automated
+    #: yet" (the operator's wording, 23 Oct).
+    HEAVY_CLASSES = {'N3': 'lorry', 'M3': 'bus and coach'}
+
+    @classmethod
+    def heavy_class_word(cls, category):
+        """paint348: 'lorry' for class N3, 'bus and coach' for M3, '' for any other class or none. Never raises."""
+        return cls.HEAVY_CLASSES.get(str(category or '').strip().upper()[:2], '')
+
     def is_make_unsupported(self, make):
         if not make:
             return False

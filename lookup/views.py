@@ -986,7 +986,9 @@ def index(request):
                      # paint317: a motorbike, unless its make's bikes are searched
                      or SiteConfig.is_bike_gated(cached_payload.get('make', ''),
                                                  cached_payload.get('category') or '',
-                                                 cached_payload.get('wheelplan') or ''))
+                                                 cached_payload.get('wheelplan') or '')
+                     # paint348: a lorry or a coach, as the live gate decides
+                     or bool(SiteConfig.heavy_class_word(cached_payload.get('category') or '')))
             )
             cache_search = Search(
                 registration=registration,
@@ -1042,6 +1044,13 @@ def index(request):
 
             payload = dict(cached_payload)
             payload['search_id'] = cache_search.id
+            # paint348: the page's word for a gated lorry or coach, decided as the gate is, now; a word an older
+            # answer kept is dropped when this repeat is not a gated lorry or coach.
+            _cached_word = SiteConfig.heavy_class_word(cached_payload.get('category') or '') if _cached_gated else ''
+            if _cached_word:
+                payload['gated_class'] = _cached_word
+            else:
+                payload.pop('gated_class', None)
             # Never poll from a cached serve: either the code is already here,
             # or the make is one we do not automate and recovery would be the
             # 60s of spend this whole path exists to avoid.
@@ -1637,10 +1646,13 @@ def index(request):
         # Gated on the MAKE list, or on the vehicle class VDG already gave us.
         # The category catches motorcycles the list never would, and gates a
         # BMW bike without touching BMW cars — which no name rule can do.
+        _heavy = SiteConfig.heavy_class_word(category)          # paint348: 'lorry', 'bus and coach' or ''
         make_not_automated = bool(make) and not paint_code \
             and (config.is_make_unsupported(make)
                  # paint317: a motorbike, unless its make's bikes are searched (BMW)
-                 or SiteConfig.is_bike_gated(make, category, wheelplan))
+                 or SiteConfig.is_bike_gated(make, category, wheelplan)
+                 # paint348: a lorry (class N3) or a bus or coach (M3), never searched
+                 or bool(_heavy))
         if make_not_automated:
             search.error_message = 'make_not_automated'
             # paint132: record WHICH gate fired. Checked in the same order the
@@ -1648,7 +1660,7 @@ def index(request):
             # short-circuited rather than whichever also happens to be true.
             if config.is_make_unsupported(make):
                 search.gate_reason = Search.GATE_MAKE
-            elif SiteConfig.is_category_unsupported(category):
+            elif SiteConfig.is_category_unsupported(category) or _heavy:      # paint348: the class, as for a bike
                 search.gate_reason = Search.GATE_CLASS
             else:
                 search.gate_reason = Search.GATE_WHEELPLAN
@@ -1724,6 +1736,9 @@ def index(request):
             # Drives the results-page message and the admin badge. Distinct from
             # a miss: we did not search and fail, we chose not to search.
             'make_not_automated': make_not_automated,
+            # paint348: what the page calls a gated lorry or coach ("Volvo lorry build sheets"). Only on a gated lorry
+            # or coach, so every other lookup's payload, and the car details saved from it (paint288), are as before.
+            **({'gated_class': _heavy} if make_not_automated and _heavy else {}),
             # paint94: the DVLA wheelplan, so a cache-served repeat can decide
             # the CLASS gate for itself. Without it the cached branch had no way
             # to know a bike was a bike and replayed a verdict reached before
@@ -2311,6 +2326,8 @@ def results(request):
         # we don't already have a paint_code here.
         'paint_pending': bool(vehicle_data.get('paint_pending')) and not paint_code,
         'make_not_automated': bool(vehicle_data.get('make_not_automated')),
+        # paint348: "lorry" or "bus and coach" for a gated heavy vehicle, so the page says "Volvo lorry build sheets".
+        'gated_class': vehicle_data.get('gated_class') or '',
         # True when a prior recovery resolved to name-only (colour name, no code).
         # Lets a page reload re-render the name-only card instead of re-polling.
         # Only meaningful when there's no code and we're not pending.

@@ -848,7 +848,9 @@
                             <div style="font-size: 2.5rem; color: #C8102E; line-height: 1;">&#9888;</div>
                             <div>
                                 <p class="mb-0" style="font-size: 1.1rem; color: #333;">
-                                    Extracting paint data from {{ make }} build sheets isn't automated yet
+                                    {% comment %}paint348: a lorry or coach gated by its class is named so ("Volvo lorry build sheets"): the
+                                       make's cars are searched, so the page must not say the make is not covered (the operator's wording, 23 Oct).{% endcomment %}
+                                    {% if gated_class %}Extracting paint data from {{ make }} {{ gated_class }} build sheets isn't automated yet{% else %}Extracting paint data from {{ make }} build sheets isn't automated yet{% endif %}
                                 </p>
                             </div>
                         </div>
