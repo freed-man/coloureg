@@ -209,6 +209,11 @@ SHOWN_NAMES = {
     # its name, and the name still finds what it found (nine Ford rows carry it, so the catalogue gives no
     # code for it, and the operator's table answers it with KBXEWHA, the same paint).
     ('ford', 'PN4GM', 'agate black'): 'Agate Black Metallic',
+    # paint344: DS EPH as Stellantis' own data spells it. partslink24 sends "Chrystal Pearl" and Ezyvin
+    # "Chrystal Pearl Paint" (a 2026 DS N°8, 22 Oct). Since 23 Oct the live catalogue row carries that
+    # spelling as one of its names (etc/tidy/tidy_ds_eph.py), so the name finds EPH; the customer is
+    # shown DS UK's spelling, the row's shown name. Display only: the row keeps every name it has.
+    ('dsautomobiles', 'EPH', 'chrystal pearl'): 'Crystal Pearl',
 }
 
 
