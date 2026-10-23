@@ -415,6 +415,22 @@ class Search(models.Model):
                 parts.append(Decimal(str(rate)) * Decimal(self.ezyvin_credits))
         return sum(parts) if parts else None
 
+    @property
+    def cost_parts(self):
+        """paint346: WHAT THE COST COLUMN ADDS UP, for the box that opens over it on the stats page.
+
+        The same three terms as total_cost, read the same way, as (supplier, amount): VDG (every VDG
+        call of this lookup, net of refunds), One Auto (lookups before paint95) and Ezyvin (its credits
+        at EZYVIN_CREDIT_GBP). A term that cost nothing is left out, the operator's choice (23 Oct:
+        "just VDG price and so on and then total"), so the lines always add up to total_cost. VDG is
+        one line: the row keeps its calls as one sum (paint347 is to record each call)."""
+        parts = [('VDG', self.vdg_transaction_cost), ('One Auto', self.oneauto_cost)]
+        if self.ezyvin_credits:
+            rate = getattr(settings, 'EZYVIN_CREDIT_GBP', None)
+            if rate:
+                parts.append(('Ezyvin', Decimal(str(rate)) * Decimal(self.ezyvin_credits)))
+        return [(supplier, amount) for supplier, amount in parts if amount]
+
     # Which access key (if any) exempted this lookup from the hourly limit
     # (paint41). Stores the LABEL, not the key: the label is what you read on
     # the dashboard, and it keeps the secret out of the row.

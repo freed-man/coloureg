@@ -1919,6 +1919,17 @@
            line, so a wide screen still has the count at the left and the marks at the right, exactly as before.{% endcomment %}
         .recent-pager { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 8px 16px; margin: 0 0 12px; font-size: 13px; color: #555; }
         .recent-pager-count { margin-right: auto; }
+        {% comment %}paint346: THE BOX THAT OPENS OVER A PRICE OR THE MAIL ICON. Hover text (a title) never shows on a phone, so
+           the mail icon did nothing when tapped (the operator, 23 Oct). Both are buttons now, with what they say kept hidden
+           inside; hovering with a mouse or tapping one shows it in a single floating box (#tip-float), placed by the script
+           under the lookups: fixed to the screen, under the button or above it near the bottom, never past an edge, so the
+           table's scroll box cannot cut it off. A tap elsewhere, Escape or a scroll closes it.{% endcomment %}
+        .tip { background: none; border: 0; margin: 0; padding: 0; font: inherit; line-height: inherit; color: inherit; cursor: pointer; }
+        .tip.email-marker { color: #0F9D58; }
+        .cost-tip { border-bottom: 1px dotted #9aa3b2; font-variant-numeric: tabular-nums; }
+        .tip-float { position: fixed; z-index: 1000; font-family: 'IBM Plex Sans', sans-serif; max-width: min(320px, calc(100vw - 16px)); background: #fff; border: 1px solid #d5dbe5; border-radius: 8px; box-shadow: 0 8px 22px rgba(16, 24, 40, .14); padding: 8px 12px; font-size: 13px; line-height: 1.4; color: #333; text-align: left; white-space: normal; overflow-wrap: anywhere; }
+        .tip-float .tip-row { display: flex; justify-content: space-between; gap: 24px; padding: 2px 0; font-variant-numeric: tabular-nums; }
+        .tip-float .tip-total { border-top: 1px solid #e3e7ee; margin-top: 4px; padding-top: 6px; font-weight: 600; }
         .recent-pager.bottom { margin: 12px 0 0; }
         .recent-pager-links { display: flex; gap: 6px; align-items: center; white-space: nowrap; }
         {% comment %}paint337: the four marks are links big enough for a thumb; a grey one goes nowhere.{% endcomment %}
@@ -1957,7 +1968,7 @@
                    toggles a full-width row below costs no horizontal space, works
                    on touch, and only appears on rows that have something.{% endcomment %}
                 <tr id="lookup-{{ s.id }}"{% if s.manual_note or s.customer_message %} class="has-note" data-note-row="{{ s.id }}" style="cursor: pointer;"{% endif %}>
-                    <td style="color: #666; font-size: 13px; white-space: nowrap;">{{ s.timestamp|date:"M j Y, H:i" }}{% if s.manual_note or s.customer_message %} <span class="note-marker" title="Has notes — click to expand">&#9998;</span>{% endif %}{% if s.email_sent %} <span class="email-marker" title="Result emailed to {{ s.email }}">&#9993;</span>{% endif %}{% if s.access_label %} <span class="access-marker" title="Unlimited access: {{ s.access_label }}">&#9679;</span>{% endif %}</td>
+                    <td style="color: #666; font-size: 13px; white-space: nowrap;">{{ s.timestamp|date:"M j Y, H:i" }}{% if s.manual_note or s.customer_message %} <span class="note-marker" title="Has notes — click to expand">&#9998;</span>{% endif %}{% if s.email_sent %} <button type="button" class="tip email-marker" aria-label="Result emailed to {{ s.email }}">&#9993;<span class="tip-src" hidden>Result emailed to {{ s.email }}</span></button>{% endif %}{% if s.access_label %} <span class="access-marker" title="Unlimited access: {{ s.access_label }}">&#9679;</span>{% endif %}</td>
                     <td>{{ s.vehicle_title|default:"—" }}</td>
                     <td>{{ s.registration }}{% if s.car_picture %}{% with p=s.car_picture %} {% if p.status == "ready" %}<a href="{{ p.url }}" target="_blank" rel="noopener" class="car-picture-link" title="AI picture{% if p.verdict %}, wheel {{ p.verdict }}{% endif %}{% if p.plate %}, plate {{ p.plate }}{% endif %}{% if p.cost %}, about ${{ p.cost|floatformat:3 }}{% endif %}">View</a>{% elif p.status == "pending" %}<span class="car-picture-pending" style="color: #888;" title="AI picture being drawn">drawing…</span>{% else %}<span class="car-picture-failed" style="color: #b00;" title="AI picture failed: {{ p.error }}">&#10007;</span>{% endif %}{% endwith %}{% endif %}</td>
                     <td style="white-space: nowrap;">{{ s.vin|default:"—" }}</td>
@@ -2003,6 +2014,7 @@
                     {% endcomment %}
                     <td style="text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums;">
                         {% if s.provider == 'cache' %}£0.00
+                        {% elif s.total_cost %}{% include 'lookup/_cost_tip.html' %}
                         {% elif s.total_cost is not None %}£{{ s.total_cost|floatformat:2 }}
                         {% elif s.provider == 'remembered' %}£0.00
                         {% else %}<span style="color: #ccc;">—</span>
@@ -2069,7 +2081,7 @@
                card to reveal it. {% endcomment %}
             <div class="recent-card{% if s.manual_note or s.customer_message %} has-note-card{% endif %}"{% if s.manual_note or s.customer_message %} data-note-card="{{ s.id }}" role="button" tabindex="0" aria-expanded="false"{% endif %}>
                 <div class="recent-card-row1">
-                    <span class="recent-card-date">{{ s.timestamp|date:"M j Y, H:i" }}{% if s.manual_note or s.customer_message %} <span class="note-marker" aria-hidden="true">&#9998;</span>{% endif %}{% if s.email_sent %} <span class="email-marker" title="Result emailed to {{ s.email }}">&#9993;</span>{% endif %}{% if s.access_label %} <span class="access-marker" title="Unlimited access: {{ s.access_label }}">&#9679;</span>{% endif %}</span>
+                    <span class="recent-card-date">{{ s.timestamp|date:"M j Y, H:i" }}{% if s.manual_note or s.customer_message %} <span class="note-marker" aria-hidden="true">&#9998;</span>{% endif %}{% if s.email_sent %} <button type="button" class="tip email-marker" aria-label="Result emailed to {{ s.email }}">&#9993;<span class="tip-src" hidden>Result emailed to {{ s.email }}</span></button>{% endif %}{% if s.access_label %} <span class="access-marker" title="Unlimited access: {{ s.access_label }}">&#9679;</span>{% endif %}</span>
                     {% if s.recovery_name_only %}
                     <span class="outcome-partial" title="Colour name found — no code">◐</span>
                     {% elif s.success %}
@@ -2111,6 +2123,7 @@
                     </span>
                     <span style="font-variant-numeric: tabular-nums;">
                         {% if s.provider == 'cache' %}£0.00
+                        {% elif s.total_cost %}{% include 'lookup/_cost_tip.html' %}
                         {% elif s.total_cost is not None %}£{{ s.total_cost|floatformat:2 }}
                         {% elif s.provider == 'remembered' %}£0.00
                         {% else %}<span style="color: #ccc;">—</span>
@@ -2139,6 +2152,53 @@
             {% endfor %}
         </div>
         {% include 'lookup/_recent_pager.html' with place='bottom' %}
+        <div id="tip-float" class="tip-float" role="tooltip" hidden></div>
+        <script>
+        // paint346: one floating box for every .tip button (the Cost column's prices, the mail icon). A mouse
+        // hovering a button shows its hidden .tip-src; a tap (or Enter) shows it until the next tap. The click is
+        // taken before the page's own handlers, so tapping a price never opens or closes a lookup's note.
+        (function () {
+            var box = document.getElementById('tip-float');
+            if (!box) return;
+            document.body.appendChild(box);        // fixed to the screen whatever the panels around it do (so it takes the page's font from its own style)
+            var shownFor = null, byTap = false;
+            function show(btn, tap) {
+                var src = btn.querySelector('.tip-src');
+                if (!src) return;
+                box.innerHTML = src.innerHTML;
+                box.hidden = false;
+                var r = btn.getBoundingClientRect();
+                var vw = document.documentElement.clientWidth, vh = window.innerHeight;
+                var w = box.offsetWidth, h = box.offsetHeight;
+                var left = Math.max(8, Math.min(r.right - w, vw - w - 8));
+                var top = r.bottom + 8;
+                if (top + h > vh - 8 && r.top - h - 8 >= 8) top = r.top - h - 8;
+                box.style.left = left + 'px';
+                box.style.top = top + 'px';
+                shownFor = btn;
+                byTap = !!tap;
+            }
+            function hide() { box.hidden = true; shownFor = null; byTap = false; }
+            document.addEventListener('pointerover', function (e) {
+                if (e.pointerType !== 'mouse' || !e.target.closest) return;
+                var btn = e.target.closest('.tip');
+                if (btn) { if (btn !== shownFor) show(btn, false); }
+                else if (shownFor && !byTap) hide();
+            });
+            document.addEventListener('click', function (e) {
+                var btn = e.target.closest ? e.target.closest('.tip') : null;
+                if (btn) {
+                    e.stopPropagation();
+                    if (shownFor === btn && byTap) hide(); else show(btn, true);
+                } else if (shownFor) {
+                    hide();
+                }
+            }, true);
+            document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && shownFor) hide(); });
+            window.addEventListener('scroll', function () { if (shownFor) hide(); }, true);
+            window.addEventListener('resize', function () { if (shownFor) hide(); });
+        })();
+        </script>
     </div>
 
 

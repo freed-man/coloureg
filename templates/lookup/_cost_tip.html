@@ -1,0 +1,5 @@
+{% comment %}paint346: THE COST AND WHAT IT ADDS UP, in the table's Cost column and on the phone card, for a lookup that
+   cost something (a cache answer, a £0.00 and a dash have no box: the source column says enough). The price is a button;
+   hovering it with a mouse or tapping it fills the page's one floating box (#tip-float, admin_stats.html) from the hidden
+   .tip-src, so the table's scroll box never cuts it off. The lines are Search.cost_parts, then the total.{% endcomment %}
+<button type="button" class="tip cost-tip" aria-label="{% for supplier, amount in s.cost_parts %}{{ supplier }} £{{ amount|floatformat:2 }}, {% endfor %}total £{{ s.total_cost|floatformat:2 }}">£{{ s.total_cost|floatformat:2 }}<span class="tip-src" hidden>{% for supplier, amount in s.cost_parts %}<span class="tip-row"><span>{{ supplier }}</span><span>£{{ amount|floatformat:2 }}</span></span>{% endfor %}<span class="tip-row tip-total"><span>Total</span><span>£{{ s.total_cost|floatformat:2 }}</span></span></span></button>
