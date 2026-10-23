@@ -1053,7 +1053,8 @@ def _record_worker_result(search_id, **fields):
             pass
 
 
-def _record_retry_billing(search_id, cost, balance, retry_code, retry_name=''):
+def _record_retry_billing(search_id, cost, balance, retry_code, retry_name='',
+                          paint_cost=None, paint_retry_cost=None):
     """Write the retry's own spend straight to its Search row (paint21).
 
     The retry used to hand its cost back through the telemetry dict, which the
@@ -1092,6 +1093,14 @@ def _record_retry_billing(search_id, cost, balance, retry_code, retry_name=''):
                 F('vdg_transaction_cost'), Value(Decimal('0')),
                 output_field=DecimalField(max_digits=10, decimal_places=2),
             ) + Decimal(str(cost))
+        # paint347: EACH PAINT CALL'S OWN CHARGE too, for the cost box ("VDG paint", "VDG paint retry"). The same
+        # atomic, Coalesce'd add as the total above, so the three VDG columns add up to vdg_transaction_cost.
+        for column, part in (('vdg_paint_cost', paint_cost), ('vdg_paint_retry_cost', paint_retry_cost)):
+            if part is not None:
+                updates[column] = Coalesce(
+                    F(column), Value(Decimal('0')),
+                    output_field=DecimalField(max_digits=10, decimal_places=2),
+                ) + Decimal(str(part))
         if balance is not None:
             # The retry is the newer call, so its balance is the fresher truth.
             updates['vdg_balance_after_call'] = Decimal(str(balance))
@@ -1311,7 +1320,8 @@ def _vdg_retry(registration, telemetry=None, search_id=None, race_over=None,
     _t['vdg_retry_code'] = retry_code
     _t['vdg_paint_name'] = retry_name
     _record_retry_billing(search_id, retry_cost, retry_balance, retry_code,
-                          retry_name=retry_name)
+                          retry_name=retry_name,
+                          paint_cost=first_cost, paint_retry_cost=second_cost)     # paint347: each call's own
     if data is None:
         return None
     if not data or not data.get('paint_returned'):

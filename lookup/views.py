@@ -1301,6 +1301,9 @@ def index(request):
         # paths, and an unrecorded charge is invisible to the budget breaker.
         if search.vdg_transaction_cost is None and vdg_billing.get('transaction_cost') is not None:
             search.vdg_transaction_cost = vdg_billing['transaction_cost']
+        # paint347: and the same charge as the car call's own ("VDG auto" in the cost box). Nothing else has been
+        # booked on this row yet: the paint calls come later, in the recovery, and add their own columns.
+        search.vdg_auto_cost = search.vdg_transaction_cost
         if latest_balance is None and vdg_billing.get('balance') is not None:
             latest_balance = vdg_billing['balance']
 

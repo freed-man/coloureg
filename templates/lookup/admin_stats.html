@@ -1923,7 +1923,8 @@
            the mail icon did nothing when tapped (the operator, 23 Oct). Both are buttons now, with what they say kept hidden
            inside; hovering with a mouse or tapping one shows it in a single floating box (#tip-float), placed by the script
            under the lookups: fixed to the screen, under the button or above it near the bottom, never past an edge, so the
-           table's scroll box cannot cut it off. A tap elsewhere, Escape or a scroll closes it.{% endcomment %}
+           table's scroll box cannot cut it off. A tap elsewhere, Escape or a scroll closes it.
+           paint347: the mail icon's box shows the address alone ("i want just the email address of the person").{% endcomment %}
         .tip { background: none; border: 0; margin: 0; padding: 0; font: inherit; line-height: inherit; color: inherit; cursor: pointer; }
         .tip.email-marker { color: #0F9D58; }
         .cost-tip { border-bottom: 1px dotted #9aa3b2; font-variant-numeric: tabular-nums; }
@@ -1968,7 +1969,7 @@
                    toggles a full-width row below costs no horizontal space, works
                    on touch, and only appears on rows that have something.{% endcomment %}
                 <tr id="lookup-{{ s.id }}"{% if s.manual_note or s.customer_message %} class="has-note" data-note-row="{{ s.id }}" style="cursor: pointer;"{% endif %}>
-                    <td style="color: #666; font-size: 13px; white-space: nowrap;">{{ s.timestamp|date:"M j Y, H:i" }}{% if s.manual_note or s.customer_message %} <span class="note-marker" title="Has notes — click to expand">&#9998;</span>{% endif %}{% if s.email_sent %} <button type="button" class="tip email-marker" aria-label="Result emailed to {{ s.email }}">&#9993;<span class="tip-src" hidden>Result emailed to {{ s.email }}</span></button>{% endif %}{% if s.access_label %} <span class="access-marker" title="Unlimited access: {{ s.access_label }}">&#9679;</span>{% endif %}</td>
+                    <td style="color: #666; font-size: 13px; white-space: nowrap;">{{ s.timestamp|date:"M j Y, H:i" }}{% if s.manual_note or s.customer_message %} <span class="note-marker" title="Has notes — click to expand">&#9998;</span>{% endif %}{% if s.email_sent %} <button type="button" class="tip email-marker" aria-label="Result emailed to {{ s.email }}">&#9993;<span class="tip-src" hidden>{{ s.email }}</span></button>{% endif %}{% if s.access_label %} <span class="access-marker" title="Unlimited access: {{ s.access_label }}">&#9679;</span>{% endif %}</td>
                     <td>{{ s.vehicle_title|default:"—" }}</td>
                     <td>{{ s.registration }}{% if s.car_picture %}{% with p=s.car_picture %} {% if p.status == "ready" %}<a href="{{ p.url }}" target="_blank" rel="noopener" class="car-picture-link" title="AI picture{% if p.verdict %}, wheel {{ p.verdict }}{% endif %}{% if p.plate %}, plate {{ p.plate }}{% endif %}{% if p.cost %}, about ${{ p.cost|floatformat:3 }}{% endif %}">View</a>{% elif p.status == "pending" %}<span class="car-picture-pending" style="color: #888;" title="AI picture being drawn">drawing…</span>{% else %}<span class="car-picture-failed" style="color: #b00;" title="AI picture failed: {{ p.error }}">&#10007;</span>{% endif %}{% endwith %}{% endif %}</td>
                     <td style="white-space: nowrap;">{{ s.vin|default:"—" }}</td>
@@ -2081,7 +2082,7 @@
                card to reveal it. {% endcomment %}
             <div class="recent-card{% if s.manual_note or s.customer_message %} has-note-card{% endif %}"{% if s.manual_note or s.customer_message %} data-note-card="{{ s.id }}" role="button" tabindex="0" aria-expanded="false"{% endif %}>
                 <div class="recent-card-row1">
-                    <span class="recent-card-date">{{ s.timestamp|date:"M j Y, H:i" }}{% if s.manual_note or s.customer_message %} <span class="note-marker" aria-hidden="true">&#9998;</span>{% endif %}{% if s.email_sent %} <button type="button" class="tip email-marker" aria-label="Result emailed to {{ s.email }}">&#9993;<span class="tip-src" hidden>Result emailed to {{ s.email }}</span></button>{% endif %}{% if s.access_label %} <span class="access-marker" title="Unlimited access: {{ s.access_label }}">&#9679;</span>{% endif %}</span>
+                    <span class="recent-card-date">{{ s.timestamp|date:"M j Y, H:i" }}{% if s.manual_note or s.customer_message %} <span class="note-marker" aria-hidden="true">&#9998;</span>{% endif %}{% if s.email_sent %} <button type="button" class="tip email-marker" aria-label="Result emailed to {{ s.email }}">&#9993;<span class="tip-src" hidden>{{ s.email }}</span></button>{% endif %}{% if s.access_label %} <span class="access-marker" title="Unlimited access: {{ s.access_label }}">&#9679;</span>{% endif %}</span>
                     {% if s.recovery_name_only %}
                     <span class="outcome-partial" title="Colour name found — no code">◐</span>
                     {% elif s.success %}

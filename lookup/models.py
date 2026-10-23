@@ -232,6 +232,15 @@ class Search(models.Model):
     vdg_transaction_cost = models.DecimalField(
         max_digits=10, decimal_places=2, null=True, blank=True
     )
+    # paint347: WHAT EACH VDG CALL CHARGED, for the cost box (paint346, the operator's names). vdg_transaction_cost
+    # stays the lookup's VDG total, the one every sum and the budget breaker read; these say what it was made of,
+    # from paint347 on: the car call (views.index, the first call, "VDG auto"), the paint call and its second chance
+    # (paint_resolver._vdg_retry, "VDG paint" and "VDG paint retry"), each net of refunds as VDG billed it, an
+    # abandoned paint call at its booked estimate (paint272) as in the total. Null on older lookups and for a call
+    # never made; when the three do not add up to the total, the box shows VDG as one line.
+    vdg_auto_cost = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    vdg_paint_cost = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    vdg_paint_retry_cost = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
 
     # Stage 2 — automatic paint recovery (the /lookup-status fallback).
     # When the first VDG call returns a vehicle but no paint, the results page
@@ -422,9 +431,20 @@ class Search(models.Model):
         The same three terms as total_cost, read the same way, as (supplier, amount): VDG (every VDG
         call of this lookup, net of refunds), One Auto (lookups before paint95) and Ezyvin (its credits
         at EZYVIN_CREDIT_GBP). A term that cost nothing is left out, the operator's choice (23 Oct:
-        "just VDG price and so on and then total"), so the lines always add up to total_cost. VDG is
-        one line: the row keeps its calls as one sum (paint347 is to record each call)."""
-        parts = [('VDG', self.vdg_transaction_cost), ('One Auto', self.oneauto_cost)]
+        "just VDG price and so on and then total"), so the lines always add up to total_cost.
+
+        paint347: VDG IN ITS THREE CALLS, "VDG auto, VDG paint, VDG paint retry so 3 different prices"
+        (the operator, 23 Oct), from the columns paint347 fills, but only when what they hold adds up to
+        the VDG total exactly; an older lookup (nothing recorded) or one that does not add up shows VDG
+        as one line, so the box never shows lines that miss the total."""
+        split = [('VDG auto', self.vdg_auto_cost), ('VDG paint', self.vdg_paint_cost),
+                 ('VDG paint retry', self.vdg_paint_retry_cost)]
+        recorded = [amount for _call, amount in split if amount is not None]
+        if self.vdg_transaction_cost is not None and recorded and sum(recorded) == self.vdg_transaction_cost:
+            parts = split
+        else:
+            parts = [('VDG', self.vdg_transaction_cost)]
+        parts.append(('One Auto', self.oneauto_cost))
         if self.ezyvin_credits:
             rate = getattr(settings, 'EZYVIN_CREDIT_GBP', None)
             if rate:

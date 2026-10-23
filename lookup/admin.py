@@ -140,6 +140,10 @@ class SearchAdmin(admin.ModelAdmin):
         'operator_answered_at',          # paint312: set when a code or a verdict is saved
         'vdg_paint_name',
         'vdg_transaction_cost',
+        # paint347: what each VDG call charged, written by the pipeline like the total above.
+        'vdg_auto_cost',
+        'vdg_paint_cost',
+        'vdg_paint_retry_cost',
         'oneauto_cost',
         'oneauto_outcome',
         'oneauto_code',
@@ -261,7 +265,8 @@ class SearchAdmin(admin.ModelAdmin):
         }),
         ('VDG paint detail', {
             'classes': ('collapse',),
-            'fields': ('vdg_paint_name', 'vdg_transaction_cost'),
+            'fields': ('vdg_paint_name', 'vdg_transaction_cost',
+                       'vdg_auto_cost', 'vdg_paint_cost', 'vdg_paint_retry_cost'),    # paint347
         }),
         ('Payment', {
             'classes': ('collapse',),
