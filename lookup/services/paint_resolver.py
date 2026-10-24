@@ -399,6 +399,13 @@ def _enrich_from_lookup(result, make, model=None, vdg_colour=None,
                         code, _slashed, (make or '')[:30])
             code = _slashed
             result['paint_code'] = code
+        # paint352: and a VW group order code sent twice over (8E8E) is read as the order code, where
+        # that is certain (doubled_order_code), so the special order and order code rules below read it.
+        _once = doubled_order_code(make, code, result.get('paint_description') or '', vdg_colour)
+        if _once != code:
+            logger.info('doubled order code %s read as %s for %s', code, _once, (make or '')[:30])
+            code = _once
+            result['paint_code'] = code
         # paint310: and a slash string one of whose halves is a placeholder,
         # when no half is a paint (_slash_holds_placeholder, below).
         if is_placeholder_code(make, code) or _slash_holds_placeholder(make, code):
@@ -1960,7 +1967,17 @@ def is_special_order_code(code):
 #: returns it as it finds it, and it is read here. Porsche only: 89 is Honda's
 #: Sonic Grey, Jaguar's Shadow and Land Rover's Stornoway. No Porsche lookup had
 #: been given it by 14 Oct (24 lookups).
-_SPECIAL_ORDER_BY_MAKE = {'bmw': frozenset({'490'}), 'porsche': frozenset({'89'})}
+#: paint352: AUDI'S Q0 TOO. Q0 is the order code of an Audi painted in an exclusive
+#: colour, whichever colour it is. Five Audis carried it from 4 Sep to 24 Oct (One
+#: Auto's "Q0/XXX", mmw's "Q0Q0" and "Q0PA", Ezyvin's "Q0"), registered grey, orange,
+#: blue, maroon and blue; on four of them partslink24 held no paint at all (XXX), and
+#: the fifth, an SQ5, was Sprint Blue, which partslink24 sent with its own paint
+#: number (Z5F). Paint shops list Q0Q0 under several colours (Nimbus Grey, Mocha
+#: Latte). So Q0 says the paint is exclusive, not which it is: a special order code,
+#: and the search goes on for the paint number (paint294). Ezyvin's "Q0" with the name
+#: "(Q0)" was shown "(Q0)" as a colour name twice on 24 Oct. Audi only: no other make
+#: has been given it.
+_SPECIAL_ORDER_BY_MAKE = {'bmw': frozenset({'490'}), 'porsche': frozenset({'89'}), 'audi': frozenset({'Q0'})}
 
 
 #: paint326: VW GROUP ORDER CODES. On a Volkswagen, Audi, Skoda, Seat or Cupra
@@ -2066,6 +2083,37 @@ def order_code_pair(make, code, name='', vdg_colour=None):
     except Exception:
         logger.warning('could not pair an order code', exc_info=True)
         return None
+
+
+#: paint352: an order code sent twice over, the body's and the roof's alike (8E8E).
+_DOUBLED_ORDER_CODE = re.compile(r'^([A-Z0-9]{2})\1$')
+
+
+def doubled_order_code(make, code, name='', vdg_colour=None):
+    """paint352: A VW GROUP ORDER CODE SENT TWICE OVER is read as the order code.
+    A colour's order code also comes as four characters, the body's and the
+    roof's: 8E8E for a car in Reflex Silver all over. paint326 reads the two
+    character form (8E becomes A7W) and not this one, so three lookups from
+    24 Jul to 13 Oct were given one as the paint code, with no swatch: Ezyvin's
+    8E8E on a Skoda Octavia (mmw said A7W), VDG's 5V5V on an Arteon and 1Z1Z
+    on an Octavia. Returns the two characters only where their meaning is
+    certain: a special order code of the make (Audi's Q0, which mmw sends as
+    Q0Q0), or a code our history pairs with a paint number (order_code_pair,
+    with its guards); the rules that read order codes then do the rest, as
+    for the two character form. Anything else comes back as it came: the
+    catalogue holds doubled codes of its own (Skoda 4444, China Blue), and a
+    pair the guards refuse is no evidence. Never raises."""
+    try:
+        m = _DOUBLED_ORDER_CODE.match((code or '').strip().upper())
+        if not m or not is_order_code(make, m.group(1)):
+            return code
+        half = m.group(1)
+        if marks_special_order(make, half) or order_code_pair(make, half, name, vdg_colour):
+            return half
+        return code
+    except Exception:
+        logger.warning('could not read a doubled order code', exc_info=True)
+        return code
 
 
 def marks_special_order(make, code):
