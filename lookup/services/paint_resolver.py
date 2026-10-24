@@ -223,6 +223,15 @@ SHOWN_NAMES = {
     # paint340. Peugeot KTA needs no line: on the live rows its German name already gives way to Dark Grey
     # Mica (paint302), the operator's own answer for KTA, folded onto the row as one of its names (paint202).
     ('vauxhall', 'KCA', 'quartz silver metallic'): 'Artense Grey',
+    # paint353: Seat B9A as Seat names it, Candy White. The live catalogue's B9A row is named "Bila White"
+    # ("bila" is Czech for white) and that name is locked (the operator's console, 24 Oct), so every Seat
+    # B9A answer was shown it: partslink24's, which comes with no name, and VDG's own "Candy White" too,
+    # which a locked name of the same colour replaces (paint256). Four Seats (Ibizas of 2010, 2015 and 2017
+    # and a 2018 Leon, 23 Sep to 14 Oct) were shown "Bila White"; VDG named all four Candy White. Not
+    # renamed: the row would become the one named Candy White, and that name would then find B9A on the
+    # Czech built Ateca and Toledo, whose Candy White can be Skoda's F9E (the Seat F9E row carries the name
+    # too), while "Bila White" would stop finding B9A there. Display only, as paint340.
+    ('seat', 'B9A', 'bila white'): 'Candy White',
 }
 
 
