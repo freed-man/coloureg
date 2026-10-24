@@ -214,6 +214,15 @@ SHOWN_NAMES = {
     # spelling as one of its names (etc/tidy/tidy_ds_eph.py), so the name finds EPH; the customer is
     # shown DS UK's spelling, the row's shown name. Display only: the row keeps every name it has.
     ('dsautomobiles', 'EPH', 'chrystal pearl'): 'Crystal Pearl',
+    # paint351: Vauxhall KCA as the makers' own data name it. partslink24 sends "Artense Grey" with KCA on
+    # every Vauxhall it has answered so (a Vivaro, a Grandland, a Combo Life, a Grandland X and another
+    # Vivaro, 23 Aug to 8 Oct), VDG "Artense Grey Paint", and the operator's dealer system read a 2023 Corsa
+    # and a 2025 Vivaro as KCA Artense Grey. The row (two scraped sources) is named "Quartz Silver Metallic",
+    # which a supplier that sends KCA alone would be shown. It cannot be renamed: G4I carries the same name,
+    # and with KCA renamed the name would find G4I (measured 24 Oct on the live rows). Display only, as
+    # paint340. Peugeot KTA needs no line: on the live rows its German name already gives way to Dark Grey
+    # Mica (paint302), the operator's own answer for KTA, folded onto the row as one of its names (paint202).
+    ('vauxhall', 'KCA', 'quartz silver metallic'): 'Artense Grey',
 }
 
 
