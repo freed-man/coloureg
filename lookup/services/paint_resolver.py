@@ -232,6 +232,20 @@ SHOWN_NAMES = {
     # Czech built Ateca and Toledo, whose Candy White can be Skoda's F9E (the Seat F9E row carries the name
     # too), while "Bila White" would stop finding B9A there. Display only, as paint340.
     ('seat', 'B9A', 'bila white'): 'Candy White',
+    # paint354: Hyundai KJ as Hyundai names it. The operator's dealer software read KJ Forest Green Mica on a
+    # 2003 Galloper (lookup 5710), PaintScratch lists KJ as Forest Green Pearl for Hyundai's 1995 models, and
+    # ERA Paints sells Hyundai KJ as Mica Green; the live row's "Green Pearl" comes from one scraped source.
+    # Not renamed: the row would join the three named Forest Green (4OT, UGP, YE4, all bsp), and "Forest
+    # Green" would stop giving any code on every Hyundai but the Galloper (measured 24 Oct on production
+    # like rows). No supplier has sent KJ yet. Display only, as paint340.
+    ('hyundai', 'KJ', 'green pearl'): 'Forest Green Mica',
+    # paint354: MG DCM as the MG dealer's system names it in the UK. Summit (Simon) read DCM Cosmic Silver
+    # off a 2026 HS's VIN (lookup 6133; Chorley's desk read the same code as MG's own name for it, Cashmere
+    # Silver, the live row's name). MG UK sells the HS in Cosmic Silver and in Sterling Silver, so the
+    # operator's own answer of DCM "Sterling Silver Metallic" on a 2025 HS SE (6673) wants its VIN read.
+    # Not a rename: "Cosmic Silver" is SSA on the 2026 ZS HEV (6740), and a name on one row would give DCM
+    # on every model (trap 143). No supplier has sent DCM yet. Display only, as paint340.
+    ('mg', 'DCM', 'cashmere silver'): 'Cosmic Silver',
 }
 
 
@@ -324,11 +338,16 @@ def _display_tidy(result, make, model=None):
         # (clean_supplier_name). Not a name our catalogue supplied, and not
         # partslink24's: the operator wants those as they are. This runs after
         # the code has been worked out, so no code changes with it.
-        if (result.get('source') in CLEANED_SOURCES and result.get('enriched_from') != 'name'):
+        # paint354: read by who sent the NAME. An mmw code given with the colour
+        # name partslink24, VDG or Ezyvin sent in the same search carries that
+        # supplier as `name_source`, so the name is tidied as that supplier's
+        # names always are; any other answer has none, and reads as before.
+        _named_by = result.get('name_source') or result.get('source')
+        if (_named_by in CLEANED_SOURCES and result.get('enriched_from') != 'name'):
             name = clean_supplier_name(name)
         # paint324: the narrow fixes of tidy_supplier_tags, partslink24's names included (the operator,
         # 14 Oct). The same guard: never a name our catalogue supplied.
-        if (result.get('source') in TAGGED_SOURCES and result.get('enriched_from') != 'name'):
+        if (_named_by in TAGGED_SOURCES and result.get('enriched_from') != 'name'):
             name = tidy_supplier_tags(name, make, result.get('paint_code') or '', model)
         # paint328: the catalogue's own name in another language, shown in English (SHOWN_NAMES). This one
         # runs whatever supplied the name, the catalogue included: that is the point of it.
@@ -2742,6 +2761,100 @@ def mmw_code_matches_name(make, model, vdg_colour, mmw_code, names):
         return False
 
 
+#: paint354: makes whose mmw answers keep the catalogue's name. partslink24 and
+#: Ezyvin name these cars' colours with Stellantis' group names, not the
+#: maker's own: a 2023 Mokka's EHU as "Matcha Green" (Vauxhall's Mamba Green),
+#: a 2023 Astra's ESM as "Vertigo Blue" (Vauxhall's Cobalt Blue), where the
+#: catalogue holds the maker's name (measured 24 Oct on the lookups since 14 Sep).
+_MMW_NAME_KEPT_MAKES = frozenset({'vauxhall', 'opel'})
+
+
+def mmw_supplier_name(make, sent, read, names, model=None):
+    """paint354: AN MMW CODE IS SHOWN WITH THE NAME A SUPPLIER GAVE THE COLOUR.
+
+    mmw sends a code and no name, so the page took our catalogue's name for
+    the code. When partslink24, VDG or Ezyvin named the colour in the same
+    search, that name was set aside, though it is one of the code's own names:
+    the same paint, often in the maker's own words where the catalogue holds
+    another market's or another language's. Measured on the 221 lookups mmw
+    answered from 14 Sep to 24 Oct: 45 were shown a name other than the one a
+    supplier gave in that search; among them Ford PNZAT "Absolute Black" where
+    partslink24 said Shadow Black (Mica), on a 2023 Mach-E too, AK5CWWA
+    "Brisbane Braun Metallic" for Lunar Sky, 3RSE "Dynamic Red" for Tango,
+    Peugeot ESU "Blanc Okenite Nacre Metallic" for Okenite White. Before mmw,
+    partslink24's own answers for those paints were shown with its names.
+
+    Returns (source, name) for the supplier name to show, or None to keep the
+    catalogue's. `sent` is the code as mmw's colour check passed it, `read`
+    the answer as the refusal rules read it with no name (the code given and
+    the name shown today), `names` [(source, name as sent)] in the order they
+    are tried: partslink24's, VDG's, Ezyvin's, each only when that supplier
+    had no code of its own. Each name is first tidied as its supplier's names
+    always are (tidy_provider_name; VDG's and Ezyvin's clutter, paint316;
+    partslink24's tags, paint324, with the car's `model` for CONFIRMED_NAMES),
+    so "Okenite White Paint-" is read as Okenite White. A name is taken when:
+      1. it is not a bare colour word ("Blue Metallic" says no more than the
+         registered colour, and paint243 prefers the catalogue's proper name
+         to one);
+      2. the catalogue lists the code given (or the row the site names it
+         from, or the code as sent) under it (PaintLookup.codes_listed_under,
+         paint298's test: the hand table, the rows, the operator's own table);
+      3. it is a name of that row or of the operator's entry for the code as
+         sent, or else without its trailing bracket it is: then that wording
+         is the one shown ("Polar White(Bms)" is shown as Polar White);
+      4. it is not today's name in another spelling: then today's stays
+         ("Ink Blue (Metallic)" leaves Ink Blue as it is).
+    The first supplier whose name passes 2 decides: its name is shown, or,
+    under 4, today's stays. Vauxhall and Opel keep the catalogue's name
+    (_MMW_NAME_KEPT_MAKES). Never raises: any failure keeps today's name."""
+    try:
+        from lookup.models import PaintLookup, OperatorPaintCode
+        mfr = PaintLookup.normalize_manufacturer(str(make or ''))
+        given = ((read or {}).get('paint_code') or '').strip()
+        shown = ((read or {}).get('paint_description') or '').strip()
+        if not mfr or mfr in _MMW_NAME_KEPT_MAKES or not given or not shown:
+            return None
+        ours, held = set(), set()
+        for code in {(sent or '').strip(), given} - {''}:
+            ours.add(PaintLookup.code_key(code))
+            row = PaintLookup.lookup(make, code)
+            if row is not None:
+                ours.add(PaintLookup.code_key(row.code))
+                held |= {n for n in (row.normalized_names or []) if n}
+                held.add(PaintLookup.normalize_name(row.name or ''))
+            held |= {n for n in OperatorPaintCode.objects.filter(manufacturer=mfr, code__iexact=code)
+                     .values_list('normalized_name', flat=True) if n}
+        ours.discard('')
+        held.discard('')
+        held |= {n.replace('gray', 'grey') for n in held} | {n.replace('grey', 'gray') for n in held}
+        today = PaintLookup.normalize_name(shown)
+        for source, name in names or ():
+            name = name.strip() if isinstance(name, str) else ''
+            if name:
+                name = tidy_provider_name(name)
+                if source in CLEANED_SOURCES:
+                    name = clean_supplier_name(name)
+                if source in TAGGED_SOURCES:
+                    name = tidy_supplier_tags(name, make, given, model)
+                name = (name or '').strip()
+            if not name or is_bare_colour_name(name):
+                continue
+            if not (ours & PaintLookup.codes_listed_under(make, name)):
+                continue
+            wording = name
+            if PaintLookup.normalize_name(name) not in held:
+                bare = PaintLookup._TRAILING_PAREN_RE.sub('', name).strip()
+                if bare and bare != name and PaintLookup.normalize_name(bare) in held:
+                    wording = bare
+            if PaintLookup.normalize_name(wording) == today:
+                return None
+            return source, wording
+        return None
+    except Exception:  # noqa: BLE001 - a name we cannot read leaves today's name in place
+        logger.warning('mmw supplier name not read', exc_info=True)
+        return None
+
+
 def _mmw_settle(f_mmw, make, vdg_colour, telemetry, wait=0.0):
     """Read mmw's held answer. Records agreement; returns a usable code or None.
 
@@ -3560,6 +3673,32 @@ def resolve_paint(registration, vin, make, category=None, telemetry=None, model=
                 read['vin'] = vdg_vin
             return read
 
+        def _mmw_named(entry, sent):
+            """paint354: mmw's code, read with the colour name a supplier gave
+            in this search when that name is one of the code's own names
+            (mmw_supplier_name). Read again by the same rules with the name
+            beside it, and taken only if the code given is the same; anything
+            else, or any failure, gives the answer as it was read without it."""
+            try:
+                from lookup.models import PaintLookup
+                pick = mmw_supplier_name(make, sent, entry[1], [
+                    ('pl24', said.get('pl24')), ('vdg_retry', said.get('vdg_retry')),
+                    ('ezyvin', said.get('ezyvin'))], model=model)
+                if not pick:
+                    return entry
+                named = _read({'paint_code': sent, 'paint_description': pick[1],
+                               'all_paint_codes': [], 'source': 'mmw', 'name_source': pick[0]})
+                if (named[0] == 'code' and (named[1].get('paint_description') or '').strip()
+                        and PaintLookup.code_key(named[1].get('paint_code'))
+                        == PaintLookup.code_key(entry[1].get('paint_code'))):
+                    logger.info('mmw code %s shown with the name %s gave: %r (was %r)',
+                                named[1].get('paint_code'), pick[0], named[1].get('paint_description'),
+                                entry[1].get('paint_description'))
+                    return named
+            except Exception:  # noqa: BLE001 - the name is a nicety; the code must still be given
+                logger.warning('mmw code not named by a supplier', exc_info=True)
+            return entry
+
         def _gives_code(entry):
             """True for a held name our catalogue turned into one code."""
             return bool(entry and entry[0] == 'name'
@@ -3728,6 +3867,8 @@ def resolve_paint(registration, vin, make, category=None, telemetry=None, model=
                         # that way: 'MARINER BLUE', 'DEEP CRYSTAL BLUE MICA'.
                         # Held as a fallback, same as pl24's.
                         _t['ezyvin_name_only'] = True
+                        # paint354: kept as sent, for an mmw code given in the end (_mmw_named).
+                        said['ezyvin'] = (ez.get('description') or '').strip()
                     if entry[0]:
                         held['ezyvin'] = entry
             # BOTH LEGS DONE, NEITHER HAD A CODE — the trigger. Checked here
@@ -3808,7 +3949,8 @@ def resolve_paint(registration, vin, make, category=None, telemetry=None, model=
             entry = _read({'paint_code': _mmw_code, 'paint_description': '',
                            'all_paint_codes': [], 'source': 'mmw'})
             if entry[0] == 'code':
-                return _give(entry)
+                # paint354: with the name a supplier gave the colour, where it is the code's own.
+                return _give(_mmw_named(entry, _mmw_code))
             if entry[0] in ('special', 'unsure'):       # paint320
                 held['mmw'] = entry
 
