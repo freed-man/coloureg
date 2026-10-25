@@ -543,6 +543,26 @@ class Search(models.Model):
         """Which gate made this lookup not automated, in words (paint211)."""
         return self.GATE_LABELS.get(self.gate_reason, 'reason not recorded')
 
+    #: The marker the gate stores in error_message (paint132); the same string at every call site.
+    NOT_AUTOMATED_MARK = 'make_not_automated'
+
+    @property
+    def not_automated_label(self):
+        """paint355: why the gate would stop this lookup TODAY, in the dashboard's words
+        ('make list', 'vehicle class', 'wheelplan', 'reason not recorded'), or '' when
+        it would not, or when the lookup holds a code (a code is an answer, whatever
+        the make). SiteConfig.gate_now_label decides; the stats use the same rule
+        (SiteConfig.gated_now_q), so the row's mark and the counts agree."""
+        if (self.paint_code or '').strip():
+            return ''
+        return SiteConfig.get().gate_now_label(self.make, self.category, self.error_message, self.gate_reason)
+
+    @property
+    def not_automated_now(self):
+        """paint355: True when the dashboard shows this lookup as not automated: no code,
+        and the gate would stop it today (or stopped it for its class or wheelplan)."""
+        return bool(self.not_automated_label)
+
     # paint297: a name made of two paints. "Two-tone ..." at the start, or a
     # "+" or "/" anywhere ("Black + Red", "Grey/Black"). The colour test below
     # reads every colour word in a name, so on these it trips on the second
@@ -4171,6 +4191,89 @@ class SiteConfig(models.Model):
         if not make:
             return False
         return self._norm_make(make) in self.unsupported_make_set()
+
+    # paint355: THE GATE DECIDES THE STATS AND THE DASHBOARD, AT READ TIME.
+    #
+    # Until paint355 a lookup counted as "not automated" only if the gate had
+    # refused it when it ran and stored the marker (error_message
+    # 'make_not_automated'). A make added to the unsupported list later left its
+    # old misses as red crosses and genuine misses until a script marked them
+    # (mark_bikes.py on 16 Oct, mark_heavy.py on 23 Oct, mark_gated_makes.py on
+    # 25 Oct), and a make taken off the list kept its old grey circles for good.
+    # The operator's rule of 25 Oct: three states, answered (a code, by anyone:
+    # the tick), not answered (the red cross, a miss), and not automated (an
+    # unanswered lookup the gate would stop TODAY: the grey circle, outside the
+    # success rate). "Whatever makes go into the unsupported list they
+    # automatically ... mark all lookups in the database of that make from x
+    # not found to grey not found ... and then when make is removed all lookups
+    # that were grey turn into x not found".
+    #
+    # What "the gate would stop it today" means here, the live gate's own
+    # tests in the live gate's own order (views.lookup_results):
+    #   the make is on the unsupported list now (is_make_unsupported), or
+    #   the class is a lorry or a coach (heavy_class_word, paint348), or
+    #   the class is a motorbike's and the make's bikes are not searched
+    #     (is_category_unsupported and BIKE_MAKES_SEARCHED, paint317), or
+    #   the gate refused it at the time for its CLASS or its WHEELPLAN, or
+    #     before paint132 recorded reasons (the stored marker with any reason
+    #     but 'make'): DVLA's wheelplan is not kept on the row, and an old
+    #     bike's class is often blank, so those refusals have no other record.
+    # A marker with the reason 'make' decides nothing by itself any more: the
+    # live list does, so a make taken off the list turns its old grey circles
+    # back into crosses, as asked. The marker itself is still stored by the
+    # gate as before (the record of what happened to that lookup).
+    #
+    # Two faces of one rule: gated_now_q() for the stats' aggregates (a Q over
+    # Search, built from the DISTINCT make values the table holds so the SQL
+    # matches exactly what _norm_make would match) and gate_now_label() for
+    # one row (the dashboard's mark and its title). The battery holds them to
+    # the same answers on the same rows.
+    #: The two heavy classes as SQL: the first two characters, any case, after any spaces (heavy_class_word).
+    HEAVY_CLASS_REGEX = r'^\s*[nm]3'
+    #: A motorbike's class as SQL: an L, alone or followed by a digit (is_category_unsupported).
+    BIKE_CLASS_REGEX = r'^\s*l(\d|\s*$)'
+
+    def gated_make_values(self):
+        """Every distinct `make` the lookups table holds that is on the unsupported
+        list now, as stored ('MG' and 'Mg' both), so a SQL IN matches what
+        is_make_unsupported matches. Read fresh each call; the list is small."""
+        return sorted({m for m in Search.objects.exclude(make='').values_list('make', flat=True).distinct()
+                       if self.is_make_unsupported(m)})
+
+    @classmethod
+    def bike_make_values(cls):
+        """The distinct `make` values whose motorbikes ARE searched (BIKE_MAKES_SEARCHED, BMW), as stored."""
+        keys = {cls._norm_make(m) for m in cls.BIKE_MAKES_SEARCHED}
+        return sorted({m for m in Search.objects.exclude(make='').values_list('make', flat=True).distinct()
+                       if cls._norm_make(m) in keys})
+
+    def gated_now_q(self):
+        """paint355: a Q over Search: the vehicle is one the gate would stop today,
+        or the gate stopped it at the time for its class or wheelplan (see above).
+        Says nothing about the code: the callers add paint_code='' where they
+        mean "and still unanswered". Never raises; an empty list gates nothing."""
+        q = (models.Q(category__iregex=self.HEAVY_CLASS_REGEX)
+             | (models.Q(category__iregex=self.BIKE_CLASS_REGEX) & ~models.Q(make__in=self.bike_make_values()))
+             | (models.Q(error_message=Search.NOT_AUTOMATED_MARK) & ~models.Q(gate_reason=Search.GATE_MAKE)))
+        listed = self.gated_make_values()
+        if listed:
+            q = models.Q(make__in=listed) | q
+        return q
+
+    def gate_now_label(self, make, category, error_message='', gate_reason=''):
+        """paint355: why the gate would stop this vehicle today, in the dashboard's
+        words ('make list', 'vehicle class', 'wheelplan', 'reason not recorded'),
+        or '' when it would not. The same tests as gated_now_q, in the live gate's
+        order, so a row's mark and the stats agree."""
+        if not (make or '').strip():
+            return ''
+        if self.is_make_unsupported(make):
+            return Search.GATE_LABELS[Search.GATE_MAKE]
+        if self.heavy_class_word(category) or self.is_bike_gated(make, category, ''):
+            return Search.GATE_LABELS[Search.GATE_CLASS]
+        if error_message == Search.NOT_AUTOMATED_MARK and gate_reason != Search.GATE_MAKE:
+            return Search.GATE_LABELS.get(gate_reason, 'reason not recorded')
+        return ''
 
     def access_key_map(self):
         """{key: label} from the admin textarea. Malformed lines are ignored."""

@@ -2031,8 +2031,12 @@
                         {% comment %} paint350: a PARKED car (paint335) is marked here like any other: the red cross when no code was
                            found. Parking only moves it to the PARKED section of the open cars file (the operator's words, 23 Oct:
                            "parked was only meant for the open_cars.txt ... in the table it would just show them as a regular failure"). {% endcomment %}
-                        {% elif s.error_message == 'make_not_automated' %}
-                        <span class="outcome-none" title="Not automated ({{ s.gate_reason_label }}), manual lookup offered" aria-label="Not automated"></span>
+                        {% comment %} paint355: the grey circle is decided by the gate TODAY (Search.not_automated_now: the make on the
+                           unsupported list now, a lorry, coach or motorbike by class, or a refusal stored for the class or wheelplan),
+                           not by the marker the gate stored at the time. A make added to the list turns its old crosses grey at once;
+                           a make taken off turns them back (the operator's rule, 25 Oct). The stats count by the same rule. {% endcomment %}
+                        {% elif s.not_automated_now %}
+                        <span class="outcome-none" title="Not automated ({{ s.not_automated_label }}), manual lookup offered" aria-label="Not automated"></span>
                         {% else %}
                         <span class="outcome-cross" title="Not found">✗</span>
                         {% endif %}
@@ -2090,8 +2094,9 @@
                     {% elif s.paint_description %}
                     <span class="outcome-partial" title="Colour name found — no code">◐</span>
                     {% comment %} paint350: a parked car is marked like any other here too (see the table above). {% endcomment %}
-                    {% elif s.error_message == 'make_not_automated' %}
-                    <span class="outcome-none" title="Not automated ({{ s.gate_reason_label }}), manual lookup offered" aria-label="Not automated"></span>
+                    {% comment %} paint355: by the live gate, as in the table above. {% endcomment %}
+                    {% elif s.not_automated_now %}
+                    <span class="outcome-none" title="Not automated ({{ s.not_automated_label }}), manual lookup offered" aria-label="Not automated"></span>
                     {% else %}
                     <span class="outcome-cross" title="Not found">✗</span>
                     {% endif %}
@@ -2472,15 +2477,16 @@
             labels: CHART.labels,
             datasets: [
                 // Ordered best to worst, and worded so each is distinguishable
-                // at a glance. 'No code found' and 'No code exists' were a
-                // confusing pair — one is the pipeline failing, the other is a
-                // determination YOU make by hand when replying from the manual
-                // queue (no_code_available), which sends a different email.
-                // Naming the second 'Manufacturer has none' says whose finding
-                // it is; 'Searched, nothing found' says the machine tried.
+                // at a glance. 'Searched, nothing found' says the machine tried.
+                // paint355: the 'Manufacturer has none' series is gone. It counted the
+                // rows the operator answered from the manual queue with no code, and
+                // those turned out to be mostly a choice between known codes the
+                // customer settles by looking, not makers with no code (his finding,
+                // 25 Oct): such a row is now read like any other unanswered one. 'Not
+                // automated' is decided by the gate today (SiteConfig.gated_now_q),
+                // not by the marker stored at the time.
                 { label: 'Delivered',            data: CHART.delivered,     backgroundColor: '#1b7f4d' },
                 { label: 'Searched, nothing found', data: CHART.failed,     backgroundColor: '#c8102e' },
-                { label: 'Manufacturer has none', data: CHART.nocode,       backgroundColor: '#b8860b' },
                 { label: 'Not automated',        data: CHART.not_automated, backgroundColor: '#8a8a8a' },
                 { label: 'Plate not recognised', data: CHART.bad_plate,     backgroundColor: '#d9d9d9' },
                 { label: 'Left before finishing', data: CHART.abandoned,    backgroundColor: '#efefef' },

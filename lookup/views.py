@@ -4287,8 +4287,10 @@ def _make_tables(lookups, min_cars=10, limit=10):
     top = list(mine.values('make')
                .annotate(count=Count('registration', distinct=True))
                .order_by('-count', 'make')[:limit])
-    tried = (mine.exclude(error_message__contains='make_not_automated')
-             .exclude(no_code_available=True)
+    # paint355: a car the gate would stop TODAY is not one the pipeline tries, whether
+    # or not the gate ran when it was looked up (SiteConfig.gated_now_q); a "no code
+    # exists" answer is a car the pipeline tried and did not answer, like any other.
+    tried = (mine.exclude(SiteConfig.get().gated_now_q())
              # paint305 (M13): A COPY IS NOT A CAR THE PIPELINE TRIED. A row
              # served from the 7 day cache or from memory (paint288) ran no
              # search: it gives an earlier answer again. Counted here, a plate
@@ -4836,6 +4838,30 @@ def admin_stats(request):
     real_lookups = Search.objects.exclude(error_message__contains='turnstile_blocked')
     lookups = real_lookups
 
+    # paint355: THE GATE DECIDES, AT READ TIME, WHICH UNANSWERED LOOKUPS ARE
+    # "NOT AUTOMATED" (SiteConfig.gated_now_q: the make on the unsupported list
+    # now, a lorry, coach or motorbike by class, or a refusal stored at the time
+    # for the class or the wheelplan). Until now the stored marker alone
+    # decided, so a make added to the list left its old misses in the rate
+    # until a script marked them, and a make taken off kept its grey circles.
+    # The operator's three states (25 Oct): answered (a code, by anyone), not
+    # answered (a miss), not automated (the gate would stop it today). The "no
+    # code exists" flag (paint16) is no longer a fourth outcome of its own: such
+    # a row is read like any other unanswered one (gated, a miss, or incomplete),
+    # the operator's finding of 25 Oct being that of the eight rows carrying it
+    # only two were makers with no code, and five were a choice between known
+    # codes the customer settles by looking. The flag itself is still written by
+    # the manual queue reply and read by memory (paint312) as his word on a plate.
+    #
+    # A row the gate refused at the time whose make has since LEFT the list is
+    # a miss, not "left before finishing": the customer did not leave, the gate
+    # stopped the search. So the stored marker (any reason) stands in for a
+    # completed recovery in the miss tests below, and is kept out of
+    # `incomplete` and `abandoned`.
+    _gate_now = SiteConfig.get().gated_now_q()
+    _marked = Q(error_message=Search.NOT_AUTOMATED_MARK)
+    _recovery_done = Q(recovery_attempted=True) & Q(recovery_duration_ms__isnull=False)
+
     top_metrics = lookups.aggregate(
         # Volume / time windows
         total=Count('id'),
@@ -4843,10 +4869,8 @@ def admin_stats(request):
         today_delivered=Count('id', filter=Q(timestamp__gte=today_start,
                                              paint_code__gt='')),
         today_genuine_miss=Count('id', filter=Q(
-            timestamp__gte=today_start, paint_code='', no_code_available=False,
-            recovery_attempted=True, recovery_duration_ms__isnull=False)
-            & ~Q(make='')
-            & ~Q(error_message='make_not_automated')),             # paint349, see genuine_miss below
+            timestamp__gte=today_start, paint_code='')
+            & ~Q(make='') & ~_gate_now & (_recovery_done | _marked)),    # paint355, see genuine_miss below
         week=Count('id', filter=Q(timestamp__gte=week_ago)),
         month=Count('id', filter=Q(timestamp__gte=month_ago)),
         # Success / paint hit rate
@@ -4881,15 +4905,15 @@ def admin_stats(request):
         # without them (measured on the operator's export of 23 Oct, with the marks). Left
         # out of both sides, as a gated lookup is; today's count and the daily chart's
         # failed bar leave them out the same way.
+        # paint355: a genuine miss is an unanswered lookup of a found vehicle that the
+        # gate would NOT stop today, whose recovery ran to the end or whose search the
+        # gate stopped at the time (the make has since left the list). The "no code
+        # exists" flag no longer takes a row out of here.
         genuine_miss=Count('id', filter=(
-            ~Q(make='') & Q(paint_code='') & Q(no_code_available=False)
-            & Q(recovery_attempted=True) & Q(recovery_duration_ms__isnull=False)
-            & ~Q(error_message='make_not_automated')
+            ~Q(make='') & Q(paint_code='') & ~_gate_now & (_recovery_done | _marked)
         )),
         incomplete=Count('id', filter=(
-            ~Q(make='') & Q(paint_code='')
-            & ~(Q(recovery_attempted=True) & Q(recovery_duration_ms__isnull=False))
-            & ~Q(error_message='make_not_automated')
+            ~Q(make='') & Q(paint_code='') & ~_recovery_done & ~_marked & ~_gate_now
             & ~Q(error_message=BUDGET_PAUSED_NOTE)                  # paint305, below
         )),
         # paint305 (M14): A SEARCH THE DAILY BUDGET HELD BACK, counted apart.
@@ -4920,7 +4944,9 @@ def admin_stats(request):
         # with recovery_attempted=False cannot be a genuine miss, so this is
         # already outside it — the exclusion here is what keeps `incomplete`
         # honest, not what keeps the rate honest.
-        not_automated=Count('id', filter=Q(error_message='make_not_automated')),
+        # paint355: counted by the live gate, and only while unanswered: a gated car
+        # the operator answered by hand is a tick, not a non attempt.
+        not_automated=Count('id', filter=~Q(make='') & Q(paint_code='') & _gate_now),
         # Sub-count: vehicle found and a colour NAME recovered, but still no code.
         name_only_miss=Count('id', filter=Q(recovery_name_only=True) & Q(paint_code='')),
         # Email pipeline
@@ -4999,11 +5025,10 @@ def admin_stats(request):
     # recovery leg existed, since they never had one to run). The rule is
     # self-scoping: no launch dates or era cutoffs needed.
     #
-    # paint16: rows flagged no_code_available are a THIRD outcome — we searched
-    # every source and the manufacturer has no published code. They are excluded
-    # from BOTH sides: counting them as failures punishes us for a gap in the
-    # manufacturer's data, counting them as successes claims a code we never
-    # delivered. They are reported separately instead.
+    # paint16 made rows flagged no_code_available a third outcome, outside both
+    # sides. paint355 ends that: such a row is read like any other unanswered
+    # one, so a car with a code the operator has not pinned down yet is a miss
+    # until he does, and a car the gate would stop is not automated.
     searched_to_completion = success_with_code + genuine_miss_count
     success_rate = (
         (success_with_code / searched_to_completion * 100)
@@ -5034,11 +5059,12 @@ def admin_stats(request):
         .values('date')
         .annotate(
             delivered=Count('id', filter=Q(paint_code__gt='')),
-            no_code=Count('id', filter=Q(no_code_available=True)),
-            failed=Count('id', filter=Q(
-                paint_code='', no_code_available=False,
-                recovery_attempted=True, make__gt='')
-                & ~Q(error_message='make_not_automated')),          # paint349: it is in not_automated
+            # paint355: the "Manufacturer has none" series is gone (its rows are read
+            # like any other unanswered ones), and "not automated" is decided by the
+            # live gate, as in top_metrics above: the same five series add up to every
+            # lookup, as before.
+            failed=Count('id', filter=Q(paint_code='', make__gt='')
+                         & ~_gate_now & (Q(recovery_attempted=True) | _marked)),
             # `excluded` WAS ONE BAR holding two unrelated things: rows where
             # VDG could not identify the vehicle at all (a mistyped plate, 183
             # of 249 measured 17 Aug 2026) and rows where the vehicle WAS found
@@ -5046,18 +5072,15 @@ def admin_stats(request):
             # could act on, and unsupported makes land there too by design
             # (recovery_attempted is False for those), quietly growing a bar
             # nobody could interpret. Split into three.
-            bad_plate=Count('id', filter=Q(paint_code='', no_code_available=False,
-                                           make='')),
-            not_automated=Count('id', filter=Q(error_message='make_not_automated')),
-            abandoned=Count('id', filter=Q(paint_code='', no_code_available=False,
-                                           recovery_attempted=False)
-                            & ~Q(make='') & ~Q(error_message='make_not_automated')
+            bad_plate=Count('id', filter=Q(paint_code='', make='')),
+            not_automated=Count('id', filter=Q(paint_code='') & ~Q(make='') & _gate_now),
+            abandoned=Count('id', filter=Q(paint_code='', recovery_attempted=False)
+                            & ~Q(make='') & ~_gate_now & ~_marked
                             & ~Q(error_message=BUDGET_PAUSED_NOTE)),        # paint305
             # paint305 (M14): the searches the daily budget held back, taken
             # out of "Left before finishing" above and given a series of their
             # own (see budget_held in top_metrics). The customer did not leave.
-            budget_held=Count('id', filter=Q(paint_code='', no_code_available=False,
-                                             recovery_attempted=False,
+            budget_held=Count('id', filter=Q(paint_code='', recovery_attempted=False,
                                              error_message=BUDGET_PAUSED_NOTE)
                               & ~Q(make='')),
             # paint98: the pre-15 Aug VDG series is GONE. PROVIDER_VDG stopped
@@ -5113,7 +5136,7 @@ def admin_stats(request):
     daily_map = {r['date']: r for r in daily_rows}
 
     chart_labels = []
-    chart_delivered, chart_failed, chart_nocode = [], [], []
+    chart_delivered, chart_failed = [], []
     chart_bad_plate, chart_not_automated, chart_abandoned = [], [], []
     chart_budget_held = []                                      # paint305 (M14)
     src_ezyvin, src_retry, src_retry2 = [], [], []
@@ -5132,7 +5155,6 @@ def admin_stats(request):
         chart_labels.append(d.strftime('%b %d'))
         chart_delivered.append(row.get('delivered', 0))
         chart_failed.append(row.get('failed', 0))
-        chart_nocode.append(row.get('no_code', 0))
         chart_bad_plate.append(row.get('bad_plate', 0))
         chart_not_automated.append(row.get('not_automated', 0))
         chart_abandoned.append(row.get('abandoned', 0))
@@ -5494,7 +5516,6 @@ def admin_stats(request):
             'labels': chart_labels,
             'delivered': chart_delivered,
             'failed': chart_failed,
-            'nocode': chart_nocode,
             'bad_plate': chart_bad_plate,
             'not_automated': chart_not_automated,
             'abandoned': chart_abandoned,
@@ -5883,9 +5904,11 @@ def submit_manual_lookup(request):
         paint_description=paint_description_clean,
         provider=Search.PROVIDER_MANUAL,
         # success stays False for the no-code outcome: nothing was delivered, so
-        # counting it as a success would overstate the hit rate. It is NOT a
-        # failure either — no_code_available marks it as the third state, which
-        # the stats exclude from the denominator entirely.
+        # counting it as a success would overstate the hit rate. The flag is still
+        # written as the operator's word on the plate (memory reads it, paint312,
+        # and so does the open cars file), but since paint355 the stats no longer
+        # read it as a third state: such a row is an unanswered lookup like any
+        # other (not automated if the gate would stop it today, else a miss).
         success=not no_code,
         no_code_available=no_code,
         operator_answered_at=timezone.now(),         # paint312: his word, and when he gave it
