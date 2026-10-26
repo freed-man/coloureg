@@ -1374,6 +1374,11 @@
         {% comment %}/* Outcome badges in the recent-lookups table */{% endcomment %}
         .outcome-tick { color: #2e7d32; font-weight: 600; font-size: 16px; }
         .outcome-partial { color: #2e7d32; font-weight: 600; font-size: 17px; }
+        {% comment %}/* paint358: a colour name and no code on a car the gate would stop today. The half
+           circle says a name exists (maybe a code too, the operator's reason for keeping it, 25 Oct);
+           the grey of the empty circle says it is not counted in the rate, as the stats count it.
+           The green half circle is a name only MISS, and counts as a failure. */{% endcomment %}
+        .outcome-partial.na { color: #6e6e6e; }
         .db-badge { display: inline-block; font-size: 10px; font-weight: 600; color: #185FA5; background: #E6F1FB; border: 0.5px solid #85B7EB; border-radius: 4px; padding: 1px 5px; vertical-align: middle; letter-spacing: 0.5px; }
         {% comment %}/* paint297: "check", beside a paint name that states a colour the car
            is not registered as (Search.colour_check). The DB badge's shape in
@@ -2035,12 +2040,17 @@
                         {% endif %}
                     </td>
                     <td style="text-align: center;">
-                        {% if s.recovery_name_only %}
+                        {% comment %} paint358: the two half circle branches as one (a name only result, or a name with no
+                           code on a row the search did not answer: the same rows, the same order as before), grey when
+                           the gate would stop the car today: a name exists, and the row is outside the rate. {% endcomment %}
+                        {% if s.recovery_name_only or s.paint_description and not s.success %}
+                        {% if s.not_automated_now %}
+                        <span class="outcome-partial na" title="Colour name found, no code; not automated ({{ s.not_automated_label }})" aria-label="Colour name found, not automated">◐</span>
+                        {% else %}
                         <span class="outcome-partial" title="Colour name found — no code">◐</span>
+                        {% endif %}
                         {% elif s.success %}
                         <span class="outcome-tick" title="Colour found">✓</span>
-                        {% elif s.paint_description %}
-                        <span class="outcome-partial" title="Colour name found — no code">◐</span>
                         {% comment %} paint350: a PARKED car (paint335) is marked here like any other: the red cross when no code was
                            found. Parking only moves it to the PARKED section of the open cars file (the operator's words, 23 Oct:
                            "parked was only meant for the open_cars.txt ... in the table it would just show them as a regular failure"). {% endcomment %}
@@ -2100,12 +2110,15 @@
             <div class="recent-card{% if s.manual_note or s.customer_message %} has-note-card{% endif %}"{% if s.manual_note or s.customer_message %} data-note-card="{{ s.id }}" role="button" tabindex="0" aria-expanded="false"{% endif %}>
                 <div class="recent-card-row1">
                     <span class="recent-card-date">{{ s.timestamp|date:"M j Y, H:i" }}{% if s.manual_note or s.customer_message %} <span class="note-marker" aria-hidden="true">&#9998;</span>{% endif %}{% if s.email_sent %} <button type="button" class="tip email-marker" aria-label="Result emailed to {{ s.email }}">&#9993;<span class="tip-src" hidden>{{ s.email }}</span></button>{% endif %}{% if s.access_label %} <span class="access-marker" title="Unlimited access: {{ s.access_label }}">&#9679;</span>{% endif %}</span>
-                    {% if s.recovery_name_only %}
+                    {% comment %} paint358: as in the table above. {% endcomment %}
+                    {% if s.recovery_name_only or s.paint_description and not s.success %}
+                    {% if s.not_automated_now %}
+                    <span class="outcome-partial na" title="Colour name found, no code; not automated ({{ s.not_automated_label }})" aria-label="Colour name found, not automated">◐</span>
+                    {% else %}
                     <span class="outcome-partial" title="Colour name found — no code">◐</span>
+                    {% endif %}
                     {% elif s.success %}
                     <span class="outcome-tick" title="Colour found">✓</span>
-                    {% elif s.paint_description %}
-                    <span class="outcome-partial" title="Colour name found — no code">◐</span>
                     {% comment %} paint350: a parked car is marked like any other here too (see the table above). {% endcomment %}
                     {% comment %} paint355: by the live gate, as in the table above. {% endcomment %}
                     {% elif s.not_automated_now %}

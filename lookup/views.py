@@ -4871,6 +4871,14 @@ def admin_stats(request):
     # 6 answered since). It is neither a plate nobody knows nor a search that ran: its own
     # line, excluded from the rate as before, and its own series on the chart.
     _repeat = Q(error_message=Search.RECENT_MISS_MARK)
+    # paint358: THE "SEARCHED FULLY, NO CODE" LINE, defined once, so the count of
+    # those that got a colour name (name_only_miss) is a part of it by
+    # construction. That sub count read recovery_name_only alone: since paint355
+    # a name only miss of a make added to the list later leaves the line (it is
+    # not automated) but stayed in the sub count, and a repeat served from the
+    # hour's name only memory (paint254, recovery_name_only set, no search run)
+    # is in no misses line at all. 0 of either on the export of 25 Oct.
+    _genuine_miss_q = ~Q(make='') & Q(paint_code='') & ~_gate_now & (_recovery_done | _marked)
 
     top_metrics = lookups.aggregate(
         # Volume / time windows
@@ -4922,9 +4930,7 @@ def admin_stats(request):
         # gate would NOT stop today, whose recovery ran to the end or whose search the
         # gate stopped at the time (the make has since left the list). The "no code
         # exists" flag no longer takes a row out of here.
-        genuine_miss=Count('id', filter=(
-            ~Q(make='') & Q(paint_code='') & ~_gate_now & (_recovery_done | _marked)
-        )),
+        genuine_miss=Count('id', filter=_genuine_miss_q),           # paint358: the same filter, named above
         incomplete=Count('id', filter=(
             ~Q(make='') & Q(paint_code='') & ~_recovery_done & ~_marked & ~_gate_now
             & ~Q(error_message=BUDGET_PAUSED_NOTE)                  # paint305, below
@@ -4970,7 +4976,8 @@ def admin_stats(request):
         # the operator answered by hand is a tick, not a non attempt.
         not_automated=Count('id', filter=~Q(make='') & Q(paint_code='') & _gate_now),
         # Sub-count: vehicle found and a colour NAME recovered, but still no code.
-        name_only_miss=Count('id', filter=Q(recovery_name_only=True) & Q(paint_code='')),
+        # paint358: of the genuine misses only (see _genuine_miss_q above).
+        name_only_miss=Count('id', filter=_genuine_miss_q & Q(recovery_name_only=True)),
         # Email pipeline
         with_email=Count('id', filter=~Q(email='')),
         emails_sent_count=Count('id', filter=Q(email_sent=True)),
