@@ -67,6 +67,7 @@ from .services.protection import (
     verify_turnstile,
     is_recent_miss,
     record_miss,
+    get_recent_miss, MISS_NO_VEHICLE,                   # paint359
     clear_miss,
     sliding_rate_limited,
     should_alert_on_ip,
@@ -1019,7 +1020,7 @@ def index(request):
                 # before recovery ran" — quietly corrupting the one statistic
                 # this marker exists to keep honest.
                 error_message=('make_not_automated' if _cached_gated
-                               else 'name-only cache hit (VDG skipped)' if _name_only_replay else ''),
+                               else Search.NAME_ONLY_REPEAT_MARK if _name_only_replay else ''),    # paint359: named
                 recovery_name_only=_name_only_replay,                 # paint254
                 # THE ACCESS LABEL WAS MISSING HERE. The normal path stamps it
                 # from _access_label(); this branch never did, so a visitor
@@ -1084,7 +1085,29 @@ def index(request):
         # miss each time. Short TTL so a reg that only failed because VDG
         # flaked gets a genuine fresh attempt soon after. Logs a lightweight
         # Search row (provider=cache) so the failure is still visible.
+        #
+        # paint359: WHAT THE MISS WAS DECIDES WHAT THE REPEAT GETS. The
+        # operator's rule of 26 Oct: a repeat is a lookup like any other,
+        # whoever makes it and from whichever browser. Still no search inside
+        # the hour (a search again would find nothing new: of the 34 repeats to
+        # 26 Oct, every code found later for a car whose search had run to the
+        # end was his, by hand), but:
+        #   * a found car every route was tried for (record_miss kept its
+        #     payload): a lookup of its own carrying the car, and the same
+        #     results page again, the car, "no code found" and the free manual
+        #     check, whose email lands on THIS row (submit_email only takes the
+        #     lookup in the browser's own session). Counted against the
+        #     visitor's allowance like any lookup (taken above), and on the
+        #     dashboard a red cross, a miss, until he answers it;
+        #   * a plate a supplier said does not exist: the words its first
+        #     lookup was given (the message below spoke of a paint code);
+        #   * anything else (a miss of no stated kind, or one remembered before
+        #     paint359): as before.
+        # Every such row keeps the one marker (paint357): the stats tell a
+        # repeat that carries a car from one that does not.
         if is_recent_miss(registration):
+            _miss = get_recent_miss(registration)
+            _miss_car = _miss if isinstance(_miss, dict) and (_miss.get('make') or '').strip() else None
             miss_search = Search(
                 registration=registration,
                 ip_address=get_client_ip(request),
@@ -1093,20 +1116,57 @@ def index(request):
                 provider=Search.PROVIDER_CACHE,
                 success=False,
                 error_message=Search.RECENT_MISS_MARK,          # paint357: the same string, named
+                access_label=access_label or '',                # paint359: as on the 7 day cache's copy above
                 lookup_duration_ms=int((time.time() - start_time) * 1000),
             )
+            payload = None
+            if _miss_car:
+                payload = dict(_miss_car)
+                payload['paint_pending'] = False
+                # The gate as a fresh lookup would meet it now (as the 7 day
+                # cache decides it, paint94): a make added to the list inside
+                # the hour gets the gate's page, its manual offer too; the
+                # stats read the row by the live gate either way.
+                _miss_gated = bool(
+                    config.is_make_unsupported(payload.get('make', ''))
+                    or SiteConfig.is_bike_gated(payload.get('make', ''), payload.get('category') or '',
+                                                payload.get('wheelplan') or '')
+                    or SiteConfig.heavy_class_word(payload.get('category') or ''))
+                payload['make_not_automated'] = _miss_gated
+                _miss_word = SiteConfig.heavy_class_word(payload.get('category') or '') if _miss_gated else ''
+                if _miss_word:
+                    payload['gated_class'] = _miss_word
+                else:
+                    payload.pop('gated_class', None)
+                # `or ''` on every NOT NULL column, as the 7 day cache's copy has it.
+                miss_search.make = payload.get('make') or ''
+                miss_search.model = payload.get('model') or ''
+                miss_search.year = payload.get('year')
+                miss_search.colour = payload.get('colour') or ''
+                miss_search.vehicle_title = payload.get('vehicle_title') or ''
+                miss_search.category = payload.get('category') or ''
+                miss_search.vin = payload.get('vin') or ''
+                miss_search.paint_description = payload.get('paint_description') or ''
+                miss_search.details = remembered.details_of(payload)          # paint288
             miss_search.save()
-            # Point them at the contact form, which is on /help/ — the
-            # manual-lookup capture lives on the results page, and we are
-            # deliberately not sending them there (that is the page this
-            # short-circuit exists to avoid re-running). Saying "below"
-            # would be wrong: the homepage has no such form.
-            messages.error(
-                request,
-                'We checked that registration very recently and could not '
-                'find a paint code for it. Send us a message and we will '
-                'look into it by hand.'
-            )
+            if payload is not None:
+                payload['search_id'] = miss_search.id
+                request.session['vehicle_data'] = payload
+                return redirect('results')
+            if _miss == MISS_NO_VEHICLE:
+                messages.error(request, 'Vehicle not found. Please check the registration and try again.')
+            else:
+                # Point them at the contact form, which is on /help/ — the
+                # manual-lookup capture lives on the results page, and we are
+                # deliberately not sending them there (that is the page this
+                # short-circuit exists to avoid re-running). Saying "below"
+                # would be wrong: the homepage has no such form.
+                messages.error(
+                    request,
+                    'We checked that registration very recently and could not '
+                    'find a paint code for it. Send us a message and we will '
+                    'look into it by hand.'
+                )
             return render(request, 'lookup/index.html', {
                 'turnstile_site_key': dj_settings.TURNSTILE_SITE_KEY,
                 'payments_on': payments_active(config),
@@ -1498,7 +1558,9 @@ def index(request):
                         # a fact about the registration, so it is safe to say so
                         # and to remember it — this is the common exit, an
                         # invalid reg, and the main thing a proxy pool hammers.
-                        record_miss(registration)
+                        # paint359: remembered as such, so a repeat inside the
+                        # hour is given these same words.
+                        record_miss(registration, no_vehicle=True)
                         messages.error(
                             request,
                             'Vehicle not found. Please check the '
@@ -2640,7 +2702,9 @@ def _lookup_status(request, search_id):
         # identified. And the per-registration window still bounds repeats.
         reg_missed = vehicle_data.get('registration')
         if reg_missed and vin:
-            record_miss(reg_missed)
+            # paint359: with the car's page, so a repeat inside the hour is
+            # given it again (index: the negative cache).
+            record_miss(reg_missed, car=vehicle_data)
         return JsonResponse({'status': 'not_found'})
 
     # A VDG retry carries the whole bundle, so it can supply a VIN the first
@@ -4871,6 +4935,18 @@ def admin_stats(request):
     # 6 answered since). It is neither a plate nobody knows nor a search that ran: its own
     # line, excluded from the rate as before, and its own series on the chart.
     _repeat = Q(error_message=Search.RECENT_MISS_MARK)
+    # paint359: A REPEAT IS A LOOKUP LIKE ANY OTHER (the operator, 26 Oct: "a red
+    # cross towards every lookup ... once I have the answer I will close them
+    # all"). A repeat of a found car's miss now carries the car and is given the
+    # same page with the manual check, and a repeat of a name only answer
+    # (paint254) has always carried it: no search ran on either, but each stands
+    # for the search the first lookup ran, so each is a miss until he answers it
+    # (a tick then), never "left before finishing". As a repeat of a found
+    # answer (the 7 day cache) has always counted as found. Only a repeat with no
+    # car on the row stays on paint357's line: a plate no supplier knew, and the
+    # repeats written before paint359. The copies stay out of the make tables
+    # as before (provider cache, no search: views._make_tables).
+    _replayed = (_repeat & ~Q(make='')) | Q(error_message=Search.NAME_ONLY_REPEAT_MARK)
     # paint358: THE "SEARCHED FULLY, NO CODE" LINE, defined once, so the count of
     # those that got a colour name (name_only_miss) is a part of it by
     # construction. That sub count read recovery_name_only alone: since paint355
@@ -4878,7 +4954,7 @@ def admin_stats(request):
     # not automated) but stayed in the sub count, and a repeat served from the
     # hour's name only memory (paint254, recovery_name_only set, no search run)
     # is in no misses line at all. 0 of either on the export of 25 Oct.
-    _genuine_miss_q = ~Q(make='') & Q(paint_code='') & ~_gate_now & (_recovery_done | _marked)
+    _genuine_miss_q = ~Q(make='') & Q(paint_code='') & ~_gate_now & (_recovery_done | _marked | _replayed)    # paint359: | _replayed
 
     top_metrics = lookups.aggregate(
         # Volume / time windows
@@ -4888,7 +4964,7 @@ def admin_stats(request):
                                              paint_code__gt='')),
         today_genuine_miss=Count('id', filter=Q(
             timestamp__gte=today_start, paint_code='')
-            & ~Q(make='') & ~_gate_now & (_recovery_done | _marked)),    # paint355, see genuine_miss below
+            & ~Q(make='') & ~_gate_now & (_recovery_done | _marked | _replayed)),    # paint355, see genuine_miss below; paint359
         week=Count('id', filter=Q(timestamp__gte=week_ago)),
         month=Count('id', filter=Q(timestamp__gte=month_ago)),
         # Success / paint hit rate
@@ -4903,7 +4979,7 @@ def admin_stats(request):
         # paint357: a repeat served from the hour's miss memory has no make either, but
         # the plate may well be a real car (see _repeat above): counted on its own line.
         no_vehicle=Count('id', filter=Q(make='') & ~_repeat),
-        repeats=Count('id', filter=_repeat),
+        repeats=Count('id', filter=_repeat & Q(make='')),          # paint359: a repeat with a car is a lookup of its own
         # Of the vehicle-found rows with no code: a "genuine miss" is one where the
         # recovery pipeline actually RAN to completion (attempted + a duration
         # recorded) and still found nothing; "incomplete" is everything else —
@@ -4934,6 +5010,7 @@ def admin_stats(request):
         incomplete=Count('id', filter=(
             ~Q(make='') & Q(paint_code='') & ~_recovery_done & ~_marked & ~_gate_now
             & ~Q(error_message=BUDGET_PAUSED_NOTE)                  # paint305, below
+            & ~_replayed                                            # paint359: a repeat is not a customer who left
         )),
         # paint305 (M14): A SEARCH THE DAILY BUDGET HELD BACK, counted apart.
         # Since paint294 the status call does not start a paint search once
@@ -5093,7 +5170,7 @@ def admin_stats(request):
             # live gate, as in top_metrics above: the same five series add up to every
             # lookup, as before.
             failed=Count('id', filter=Q(paint_code='', make__gt='')
-                         & ~_gate_now & (Q(recovery_attempted=True) | _marked)),
+                         & ~_gate_now & (Q(recovery_attempted=True) | _marked | _replayed)),    # paint359: | _replayed
             # `excluded` WAS ONE BAR holding two unrelated things: rows where
             # VDG could not identify the vehicle at all (a mistyped plate, 183
             # of 249 measured 17 Aug 2026) and rows where the vehicle WAS found
@@ -5104,11 +5181,14 @@ def admin_stats(request):
             # paint357: a repeat served from the hour's miss memory (no make, no search)
             # was drawn here as a plate not recognised; its own series now.
             bad_plate=Count('id', filter=Q(paint_code='', make='') & ~_repeat),
-            repeats=Count('id', filter=_repeat),
+            # paint359: a repeat that carries a car is drawn as the lookup it is (failed, delivered once
+            # answered, or not automated), so this series holds only the repeats with no car on the row.
+            repeats=Count('id', filter=_repeat & Q(make='')),
             not_automated=Count('id', filter=Q(paint_code='') & ~Q(make='') & _gate_now),
             abandoned=Count('id', filter=Q(paint_code='', recovery_attempted=False)
                             & ~Q(make='') & ~_gate_now & ~_marked
-                            & ~Q(error_message=BUDGET_PAUSED_NOTE)),        # paint305
+                            & ~Q(error_message=BUDGET_PAUSED_NOTE)        # paint305
+                            & ~_replayed),                                  # paint359
             # paint305 (M14): the searches the daily budget held back, taken
             # out of "Left before finishing" above and given a series of their
             # own (see budget_held in top_metrics). The customer did not leave.

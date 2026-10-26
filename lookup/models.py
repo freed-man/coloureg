@@ -550,7 +550,14 @@ class Search(models.Model):
     #: source, or a vehicle found whose search found nothing): make blank, provider cache. The
     #: same string the view has written since the negative cache began; the stats read it as a
     #: line of its own ("Looked up again within the hour"), not as "No vehicle found".
+    #: paint359: a repeat of a found car's miss carries the car (make, model, VIN, saved details),
+    #: and is a lookup like any other in the stats: a miss until he answers it. Only a repeat with
+    #: no car on the row (a plate no supplier knew, or one written before paint359) stays on that line.
     RECENT_MISS_MARK = 'negative-cache hit (recent miss, VDG skipped)'
+    #: paint359: the row the index view writes when a name only answer of the last hour is given
+    #: again with no search (paint254); the same string it has always written, named. Like a
+    #: repeat that carries a car, a lookup like any other in the stats (a name only miss).
+    NAME_ONLY_REPEAT_MARK = 'name-only cache hit (VDG skipped)'
 
     @property
     def not_automated_label(self):

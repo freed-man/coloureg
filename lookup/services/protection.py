@@ -460,20 +460,59 @@ def get_name_only_payload(registration):
     return dict(found) if found else None
 
 
-def record_miss(registration):
+# paint359: WHAT THE HOUR REMEMBERS OF A MISS. It was only True, so a repeat
+# inside the hour could only be told "We checked that registration very
+# recently", on the home page, with no car and no manual lookup offer, whether
+# the plate was one no supplier knew or a real car every route had been tried
+# for. 34 such repeats to 26 Oct: 14 of plates no supplier knew, 20 of found
+# cars, whose people lost their results page and its free manual check (one
+# of those plates ever had an email left). The operator's rule of 26 Oct: a
+# repeat is a lookup like any other, shown the same page and counted (a red
+# cross until he answers it). So a found car's miss keeps its results payload,
+# and a plate a supplier said does not exist is kept as MISS_NO_VEHICLE.
+MISS_NO_VEHICLE = 'no vehicle'
+
+
+def record_miss(registration, car=None, no_vehicle=False):
     """Remember that this reg just failed, for VRM_NEGATIVE_TTL_SECONDS.
 
     Called after a live lookup returns no paint code. Best-effort.
+
+    paint359: `car` is the results payload of a found car whose every route was
+    tried; it is kept (without the request's own search_id and paint_pending),
+    so a repeat inside the hour gets the same page again on a lookup of its own.
+    `no_vehicle` marks a plate a supplier said does not exist. A miss of neither
+    kind is kept as True, the shape every miss had before paint359.
     """
     from django.core.cache import caches
+    if isinstance(car, dict) and (car.get('make') or '').strip():
+        value = dict(car)
+        value.pop('search_id', None)
+        value.pop('paint_pending', None)
+    elif no_vehicle:
+        value = MISS_NO_VEHICLE
+    else:
+        value = True
     try:
         caches['default'].set(
-            _neg_key(registration), True, VRM_NEGATIVE_TTL_SECONDS
+            _neg_key(registration), value, VRM_NEGATIVE_TTL_SECONDS
         )
     except Exception:
         # paint158: same cost as above. A miss that is not remembered means the
         # next attempt on a dud plate pays for a fresh VDG call.
         logger.exception('negative cache write failed')
+
+
+def get_recent_miss(registration):
+    """paint359: what the hour remembers of this reg's miss: the found car's
+    payload (a copy), MISS_NO_VEHICLE, True (a miss of no stated kind, or one
+    remembered before paint359), or None. Never raises."""
+    from django.core.cache import caches
+    try:
+        found = caches['default'].get(_neg_key(registration))
+    except Exception:
+        return None
+    return dict(found) if isinstance(found, dict) else found
 
 
 def clear_miss(registration):
