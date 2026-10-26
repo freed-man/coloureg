@@ -393,6 +393,58 @@ def _tidy_on_exit(fn):
     return wrapper
 
 
+#: paint360: Mitsubishi's paint code as partslink24 writes it: a letter, two
+#: digits and a fourth letter (P17B, X42A, W13A, U17C).
+_MITSUBISHI_FOUR = re.compile(r'^[A-Z]\d\d[A-Z]$')
+
+
+def mitsubishi_three_character(make, code, colour):
+    """paint360: MITSUBISHI'S FOURTH LETTER. The three character code a
+    Mitsubishi code with partslink24's fourth letter stands for, or ''.
+
+    partslink24 writes every Mitsubishi paint code with a fourth letter: all
+    19 it had given to 26 Oct (P17B, X42A, W13A, U17C, A02B, P26B and the
+    rest). No paint list carries that form and no catalogue row does: the
+    repository's 3,335 Mitsubishi rows hold none of the shape, Mitsubishi's
+    codes being three characters (P17 Medium Red Mica, X42 Amethyst Black
+    Pearl), as paint85 found for P26B and mapped by hand
+    (PaintLookup.CURATED_CODE_OVERRIDES). The page showed the code as sent,
+    named by the three character row (paint156's trim), so a customer was
+    given P17B, which no supplier can look up; one reported it on 26 Oct.
+
+    On paint156's terms exactly, so the code given is always the row whose
+    name is given: the four character code is no catalogue row of its own,
+    the three character code is one, and that row's colour agrees with the
+    registered colour. When the colour cannot tell (no registered colour, a
+    name and swatch that name no colour), the code stays as sent, as
+    paint156 leaves the name blank. Mitsubishi only: paint85 measured a
+    general trailing letter strip across the catalogue as a different colour
+    most of the time. The supplier's own string stays on the lookup
+    (pl24_code); the operator's typed answers never come through here
+    (memory gives them back as typed). Never raises."""
+    try:
+        from lookup.models import PaintLookup
+        if PaintLookup.normalize_manufacturer(make or '') != 'mitsubishi':
+            return ''
+        raw = (code or '').strip().upper()
+        if not _MITSUBISHI_FOUR.match(raw):
+            return ''
+        rows = PaintLookup.objects.filter(manufacturer='mitsubishi')
+        stem = raw[:3]
+        if rows.filter(code__iexact=raw).exists() or not rows.filter(code__iexact=stem).exists():
+            return ''
+        hex_val, name, _canonical = PaintLookup.lookup_with_canonical(
+            manufacturer=make, paint_code=stem, vdg_colour=colour or '')
+        if not name:
+            return ''
+        want = _colour_families(colour or '')
+        got = _colour_families(name) or ({_hex_family(hex_val)} - {None})
+        return stem if (want and got and (want & got)) else ''
+    except Exception:  # noqa: BLE001 - the code is given as sent
+        logger.warning('mitsubishi code not read as three characters', exc_info=True)
+        return ''
+
+
 @_tidy_on_exit
 def _enrich_from_lookup(result, make, model=None, vdg_colour=None,
                         telemetry=None):
@@ -595,6 +647,14 @@ def _enrich_from_lookup(result, make, model=None, vdg_colour=None,
             logger.info('code %s mapped to %s for %s', code, mapped, make)
             code = mapped
             result['paint_code'] = mapped
+        # paint360: Mitsubishi's fourth letter (P17B is given as P17), here for
+        # the same reason as the mapping above: the row, the page, the email
+        # and memory all read the code from here.
+        _three = mitsubishi_three_character(make, code, vdg_colour or result.get('colour') or '')
+        if _three:
+            logger.info('mitsubishi code %s given as %s', code, _three)
+            code = _three
+            result['paint_code'] = _three
         desc = (result.get('paint_description') or '').strip()
 
         # A NAME THAT IS JUST THE CODE IS NOT A NAME. One Auto returned
