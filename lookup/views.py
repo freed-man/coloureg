@@ -4276,12 +4276,14 @@ def _make_tables(lookups, min_cars=10, limit=10):
     only because it is searched most, while 85% of Ford cars got a code.
 
     Top searched: distinct plates per make, the operator's own lookups left
-    out. Misses: of the cars the pipeline actually TRIED (gated makes and "no
-    code exists" answers left out, the operator's own lookups too, and since
-    paint305 the copies given again from the cache or from memory), how many
-    never got a code AUTOMATICALLY. A hand answer counts as a miss: it is the
-    pipeline's miss, answered by a person. A rate, not a raw count, and only
-    for makes with at least `min_cars` cars, so one unlucky car cannot top it.
+    out. Misses: of the cars the pipeline actually TRIED (the cars the gate
+    would stop today left out, since paint355; the operator's own lookups too,
+    and since paint305 the copies given again from the cache or from memory),
+    how many never got a code AUTOMATICALLY. A hand answer counts as a miss: it
+    is the pipeline's miss, answered by a person; so does a "no code exists"
+    answer (paint356: the docstring said those were left out, which paint355
+    had ended). A rate, not a raw count, and only for makes with at least
+    `min_cars` cars, so one unlucky car cannot top it.
     """
     mine = lookups.exclude(make='').exclude(access_label__gt='')
     top = list(mine.values('make')
@@ -4926,10 +4928,19 @@ def admin_stats(request):
         # carry the note are counted here and no longer there. (A row that
         # already carried another message when it was held back never gets
         # the note, by paint294's own rule, and still counts as left.)
+        # paint356: AND NOT A LOOKUP THE GATE WOULD STOP TODAY. The note is only
+        # ever written on a row the gate let through (error_message empty, above
+        # in the status poll), so until paint355 a held back lookup could never
+        # be a not automated one. Since the gate decides at read time, a held
+        # back lookup whose make is LATER added to the list, or whose class the
+        # gate has since learnt to stop, is not automated like `incomplete` and
+        # `abandoned` already say, and is not counted here as well: every lookup
+        # in one bucket, on this panel and on the daily chart.
         budget_held=Count('id', filter=(
             ~Q(make='') & Q(paint_code='')
             & ~(Q(recovery_attempted=True) & Q(recovery_duration_ms__isnull=False))
             & Q(error_message=BUDGET_PAUSED_NOTE)
+            & ~_gate_now
         )),
         # A FOURTH outcome, reported on its own. Unsupported makes never run
         # recovery, so without this they would fall into `incomplete` — which
@@ -5080,9 +5091,11 @@ def admin_stats(request):
             # paint305 (M14): the searches the daily budget held back, taken
             # out of "Left before finishing" above and given a series of their
             # own (see budget_held in top_metrics). The customer did not leave.
+            # paint356: not a lookup the gate would stop today (see budget_held in
+            # top_metrics), so the six series still add up to every lookup once.
             budget_held=Count('id', filter=Q(paint_code='', recovery_attempted=False,
                                              error_message=BUDGET_PAUSED_NOTE)
-                              & ~Q(make='')),
+                              & ~Q(make='') & ~_gate_now),
             # paint98: the pre-15 Aug VDG series is GONE. PROVIDER_VDG stopped
             # being reachable when paint66 split the packages on 15 Aug — the
             # last row is 15 Aug 14:40 — so from 14 Sep it sits permanently at
