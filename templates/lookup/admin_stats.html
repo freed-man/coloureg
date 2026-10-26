@@ -942,6 +942,7 @@
             <span style="width: {% widthratio incomplete_count total_searches 100 %}%; background: #B9C0C9;"></span>
             <span style="width: {% widthratio budget_held_count total_searches 100 %}%; background: #5B7FB5;"></span>
             <span style="width: {% widthratio no_vehicle_count total_searches 100 %}%; background: #E4E7EB;"></span>
+            <span style="width: {% widthratio repeat_count total_searches 100 %}%; background: #CBD5E1;"></span>
         </div>
         {% endif %}
 
@@ -957,6 +958,18 @@
                     <span class="oc-detail">mistyped or non-existent reg — not a paint failure</span>
                 </div>
                 <span class="oc-num">{{ no_vehicle_count }}</span>
+            </div>
+            {% comment %}paint357: a plate looked up again within the hour of a miss is answered from the hour's memory
+               with no search (the negative cache), and its row has no make, so it sat in "No vehicle found" above with
+               the mistyped plates: 32 of 407 on the export of 25 Oct, and of the 31 to 21 Oct, 18 were of a vehicle the
+               first lookup HAD found. Its own line, excluded from the rate as before: the first lookup is the one that
+               counts.{% endcomment %}
+            <div class="oc-row">
+                <div>
+                    <span class="oc-dot" style="background: #CBD5E1;"></span><span class="oc-label">Looked up again within the hour</span><span class="oc-tag excl">excluded</span>
+                    <span class="oc-detail">the same plate again inside an hour of a miss, answered from memory with no search; the first lookup is the one counted</span>
+                </div>
+                <span class="oc-num">{{ repeat_count }}</span>
             </div>
 
             <div class="oc-row">
@@ -2489,6 +2502,9 @@
                 { label: 'Searched, nothing found', data: CHART.failed,     backgroundColor: '#c8102e' },
                 { label: 'Not automated',        data: CHART.not_automated, backgroundColor: '#8a8a8a' },
                 { label: 'Plate not recognised', data: CHART.bad_plate,     backgroundColor: '#d9d9d9' },
+                {% comment %}paint357: the repeats served from the hour's miss memory, drawn until now inside
+                "Plate not recognised" (no make on the row). Their own series, in their line's colour.{% endcomment %}
+                { label: 'Looked up again within the hour', data: CHART.repeats, backgroundColor: '#cbd5e1' },
                 { label: 'Left before finishing', data: CHART.abandoned,    backgroundColor: '#efefef' },
                 {% comment %}paint305 (M14): the searches the daily budget held back
                 (paint294), which were drawn inside "Left before finishing". The

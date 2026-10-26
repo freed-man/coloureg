@@ -1092,7 +1092,7 @@ def index(request):
                 device=parse_device(request.META.get('HTTP_USER_AGENT', '')),
                 provider=Search.PROVIDER_CACHE,
                 success=False,
-                error_message='negative-cache hit (recent miss, VDG skipped)',
+                error_message=Search.RECENT_MISS_MARK,          # paint357: the same string, named
                 lookup_duration_ms=int((time.time() - start_time) * 1000),
             )
             miss_search.save()
@@ -4863,6 +4863,14 @@ def admin_stats(request):
     _gate_now = SiteConfig.get().gated_now_q()
     _marked = Q(error_message=Search.NOT_AUTOMATED_MARK)
     _recovery_done = Q(recovery_attempted=True) & Q(recovery_duration_ms__isnull=False)
+    # paint357: A PLATE LOOKED UP AGAIN WITHIN THE HOUR OF A MISS is served from
+    # the hour's memory with no search (index: the negative cache), and its row
+    # has no make, so it was counted under "No vehicle found" with the mistyped
+    # plates. On the export of 25 Oct that was 32 of 407 rows, and of the 31 to
+    # 21 Oct, 18 followed a lookup that HAD found the vehicle (12 with no code,
+    # 6 answered since). It is neither a plate nobody knows nor a search that ran: its own
+    # line, excluded from the rate as before, and its own series on the chart.
+    _repeat = Q(error_message=Search.RECENT_MISS_MARK)
 
     top_metrics = lookups.aggregate(
         # Volume / time windows
@@ -4884,7 +4892,10 @@ def admin_stats(request):
         # paint-code failures. The success-rate denominator is narrower still —
         # see the definitive-outcome rule where success_rate is computed.
         vehicle_found=Count('id', filter=~Q(make='')),
-        no_vehicle=Count('id', filter=Q(make='')),
+        # paint357: a repeat served from the hour's miss memory has no make either, but
+        # the plate may well be a real car (see _repeat above): counted on its own line.
+        no_vehicle=Count('id', filter=Q(make='') & ~_repeat),
+        repeats=Count('id', filter=_repeat),
         # Of the vehicle-found rows with no code: a "genuine miss" is one where the
         # recovery pipeline actually RAN to completion (attempted + a duration
         # recorded) and still found nothing; "incomplete" is everything else —
@@ -5083,7 +5094,10 @@ def admin_stats(request):
             # could act on, and unsupported makes land there too by design
             # (recovery_attempted is False for those), quietly growing a bar
             # nobody could interpret. Split into three.
-            bad_plate=Count('id', filter=Q(paint_code='', make='')),
+            # paint357: a repeat served from the hour's miss memory (no make, no search)
+            # was drawn here as a plate not recognised; its own series now.
+            bad_plate=Count('id', filter=Q(paint_code='', make='') & ~_repeat),
+            repeats=Count('id', filter=_repeat),
             not_automated=Count('id', filter=Q(paint_code='') & ~Q(make='') & _gate_now),
             abandoned=Count('id', filter=Q(paint_code='', recovery_attempted=False)
                             & ~Q(make='') & ~_gate_now & ~_marked
@@ -5152,6 +5166,7 @@ def admin_stats(request):
     chart_delivered, chart_failed = [], []
     chart_bad_plate, chart_not_automated, chart_abandoned = [], [], []
     chart_budget_held = []                                      # paint305 (M14)
+    chart_repeats = []                                          # paint357
     src_ezyvin, src_retry, src_retry2 = [], [], []
     src_mmw = []
     src_pl24, src_manual, src_cache = [], [], []
@@ -5172,6 +5187,7 @@ def admin_stats(request):
         chart_not_automated.append(row.get('not_automated', 0))
         chart_abandoned.append(row.get('abandoned', 0))
         chart_budget_held.append(row.get('budget_held', 0))     # paint305 (M14)
+        chart_repeats.append(row.get('repeats', 0))             # paint357
         src_ezyvin.append(row.get('s_ezyvin', 0))
         src_mmw.append(row.get('s_mmw', 0))
         src_retry.append(row.get('s_retry', 0))
@@ -5502,6 +5518,7 @@ def admin_stats(request):
         'vehicle_found': vehicle_found,
         'searched_to_completion': searched_to_completion,
         'no_vehicle_count': no_vehicle_count,
+        'repeat_count': top_metrics['repeats'],                 # paint357
         'genuine_miss_count': genuine_miss_count,
         'incomplete_count': incomplete_count,
         'budget_held_count': top_metrics['budget_held'],        # paint305 (M14)
@@ -5533,6 +5550,7 @@ def admin_stats(request):
             'not_automated': chart_not_automated,
             'abandoned': chart_abandoned,
             'budget_held': chart_budget_held,                   # paint305 (M14)
+            'repeats': chart_repeats,                           # paint357
             'src_ezyvin': src_ezyvin,
             'src_mmw': src_mmw,
             'src_retry': src_retry,

@@ -545,6 +545,12 @@ class Search(models.Model):
 
     #: The marker the gate stores in error_message (paint132); the same string at every call site.
     NOT_AUTOMATED_MARK = 'make_not_automated'
+    #: paint357: the row the index view writes when a plate is looked up again within the hour
+    #: of a miss and served from the hour's memory with no search (no vehicle known from either
+    #: source, or a vehicle found whose search found nothing): make blank, provider cache. The
+    #: same string the view has written since the negative cache began; the stats read it as a
+    #: line of its own ("Looked up again within the hour"), not as "No vehicle found".
+    RECENT_MISS_MARK = 'negative-cache hit (recent miss, VDG skipped)'
 
     @property
     def not_automated_label(self):
