@@ -185,13 +185,29 @@ def via_cloudflare(request):
 
     compare_digest, not ==, so the comparison does not leak the secret one
     character at a time through response timing.
+
+    paint362: COMPARED AS BYTES, AND IT NEVER RAISES. compare_digest refuses a
+    text that holds anything but plain ASCII with a TypeError, and this header
+    is whatever the caller sends: one byte above 127 in it made this function
+    raise. The block decision in the middleware then took its "could not decide,
+    serve it" path, so a direct request carrying such a header was SERVED with
+    block mode on: the home page, the Django admin's sign in without Cloudflare
+    Access in front of it, everything (audit of 26 Oct, proved on a scratch
+    server). The same raise stopped the direct hit from being counted or logged,
+    and gave the request's IP lookups a 500. As bytes, any header compares, and
+    only the secret matches. The real secret is plain ASCII, so a request through
+    Cloudflare compares exactly as before.
     """
     if not ORIGIN_SECRET:
         return False
     sent = request.META.get('HTTP_X_COLOUREG_ORIGIN', '')
     if not sent:
         return False
-    return secrets.compare_digest(sent, ORIGIN_SECRET)
+    try:
+        return secrets.compare_digest(str(sent).encode('utf-8', 'surrogateescape'),
+                                      ORIGIN_SECRET.encode('utf-8', 'surrogateescape'))
+    except Exception:  # noqa: BLE001 - a header that cannot be read did not come from Cloudflare
+        return False
 
 
 def get_client_ip(request):

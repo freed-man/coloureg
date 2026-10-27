@@ -224,7 +224,19 @@ class OriginGateObserverMiddleware:
             return False
         if request.path.startswith(self._BLOCK_EXEMPT):
             return False
-        return not via_cloudflare(request)
+        # paint362: THE REQUEST'S OWN HEADER CAN NEVER REACH THE FAIL OPEN
+        # PATH. The handler around this call serves the request when deciding
+        # raises, and that is right for the gate's own state (the mode, the
+        # secret): a config that cannot be read must not take the site down.
+        # But a header is the caller's to write. via_cloudflare raised on one
+        # byte above 127 (it no longer does, see there), and every such request
+        # went round block mode. So whatever goes wrong while the HEADER is
+        # read means "not from Cloudflare": the request is refused, as any
+        # other request without the tag is.
+        try:
+            return not via_cloudflare(request)
+        except Exception:  # noqa: BLE001
+            return True
 
     def _observe(self, request):
         from lookup.views import ORIGIN_SECRET, via_cloudflare
