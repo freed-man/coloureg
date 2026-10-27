@@ -316,6 +316,10 @@ def store_vrm_payload(registration, payload):
 # ---------------------------------------------------------------------------
 
 TURNSTILE_VERIFY_URL = 'https://challenges.cloudflare.com/turnstile/v0/siteverify'
+#: paint365: the longest token Cloudflare issues ("Maximum length: 2048
+#: characters", its server side validation page). A longer one is not a token
+#: the widget wrote, so it is refused without asking Cloudflare.
+TURNSTILE_TOKEN_MAX_CHARS = 2048
 
 
 def turnstile_configured():
@@ -334,31 +338,69 @@ def verify_turnstile(token, remote_ip=None, timeout=5):
 
     Called BEFORE anything costs money: a failed or missing token rejects the
     lookup with zero Stripe and zero VDG spend. Fails CLOSED on a bad/missing
-    token but fails OPEN on a Cloudflare outage (network error / non-JSON):
-    if Cloudflare's verify endpoint itself is down we'd rather serve real
-    users unprotected for a few minutes than take the whole site down with it —
-    the budget breaker still bounds the worst case underneath.
+    token but fails OPEN on a Cloudflare outage: if Cloudflare's verify
+    endpoint itself is down we'd rather serve real users unprotected for a few
+    minutes than take the whole site down with it; the budget breaker still
+    bounds the worst case underneath.
+
+    paint365: AN OUTAGE IS A TIMEOUT, A LOST CONNECTION OR A 5xx FROM
+    CLOUDFLARE, AND NOTHING ELSE. Every exception used to count as one, so an
+    answer that could not be read (a 400 or 413 error page in HTML, a body
+    that is not a JSON object) let the lookup through, and a token of any
+    length was sent on. Cloudflare documents that siteverify always answers
+    in JSON, so such an answer is not a pass. Now: a token longer than
+    Cloudflare's 2,048 characters is refused before any call; a timeout, a
+    lost connection or a 5xx still passes, and is logged; any other answer
+    that is not a 200 carrying a JSON object refuses, logged with its status
+    (never the token or the secret); an error of our own refuses, logged in
+    full; "success" false refuses, and the hostname pin is as before.
     """
     # paint155: `import requests` was here and unused — this function moved to
     # get_session() and the import was left behind. It ran on every POST and
     # implied a direct dependency that is not there.
+    # paint365: the one name it needs from requests is the family of errors
+    # that means Cloudflare could not be reached.
     from django.conf import settings
+    from requests.exceptions import RequestException
 
     if not turnstile_configured():
         return True  # feature off -> pass-through
     if not token:
         return False  # feature on + no token -> reject (this is the bot case)
+    if len(token) > TURNSTILE_TOKEN_MAX_CHARS:
+        logger.warning('Turnstile: a token of %d characters refused without asking Cloudflare '
+                       '(its tokens are at most %d)', len(token), TURNSTILE_TOKEN_MAX_CHARS)
+        return False
     try:
-        resp = get_session().post(
-            TURNSTILE_VERIFY_URL,
-            data={
-                'secret': settings.TURNSTILE_SECRET_KEY,
-                'response': token,
-                **({'remoteip': remote_ip} if remote_ip else {}),
-            },
-            timeout=timeout,
-        )
-        data = resp.json()
+        try:
+            resp = get_session().post(
+                TURNSTILE_VERIFY_URL,
+                data={
+                    'secret': settings.TURNSTILE_SECRET_KEY,
+                    'response': token,
+                    **({'remoteip': remote_ip} if remote_ip else {}),
+                },
+                timeout=timeout,
+            )
+        except RequestException as exc:
+            # Cloudflare's verify endpoint could not be reached (a timeout, a
+            # lost connection): fail open, see the docstring.
+            logger.warning('Turnstile: Cloudflare could not be reached (%s); the lookup is let through',
+                           type(exc).__name__)
+            return True
+        status = resp.status_code
+        if status >= 500:
+            # An error on Cloudflare's side: fail open, as for an outage.
+            logger.warning('Turnstile: Cloudflare answered %s; the lookup is let through', status)
+            return True
+        try:
+            data = resp.json()
+        except ValueError:  # not JSON at all (requests' JSONDecodeError is a ValueError)
+            data = None
+        if status != 200 or not isinstance(data, dict):
+            logger.warning('Turnstile: Cloudflare answered %s %s; the lookup is refused', status,
+                           'with a JSON object' if isinstance(data, dict) else 'with no JSON object')
+            return False
         if not data.get('success'):
             return False
         # Hostname pinning (paint17), OPT-IN and off by default. Cloudflare
@@ -392,8 +434,10 @@ def verify_turnstile(token, remote_ip=None, timeout=5):
                 return False
         return True
     except Exception:
-        # Cloudflare verify unreachable/broken -> fail open (see docstring).
-        return True
+        # paint365: an error of our own refuses (Cloudflare being unreachable
+        # passes above): an answer that cannot be read is not a pass.
+        logger.exception('Turnstile: the check failed; the lookup is refused')
+        return False
 
 
 # ---------------------------------------------------------------------------
