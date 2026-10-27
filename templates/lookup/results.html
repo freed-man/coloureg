@@ -191,19 +191,30 @@
         font-feature-settings: "zero" 0;
         font-variant-numeric: normal;
     }
-    .paint-special-order, .paint-unconfirmed, .paint-colour-doubt {   {% comment %} paint320: the unconfirmed note looks the same; paint339: and the colour doubt note {% endcomment %}
-            font-size: .95rem;
-            line-height: 1.45;
-            color: #4a4a4a;
-            margin-top: .5rem;
-            text-align: left;
-        }
-        .paint-desc {
+    .paint-desc {
         font-family: 'IBM Plex Sans', sans-serif;
         font-size: 18px;
         color: #666;
         margin: 0;
         font-weight: 400;
+    }
+    {% comment %} paint320: the unconfirmed note looks the same as the special order note; paint339: and the colour
+       doubt note. paint367: THE THREE NOTES IN A SOFT YELLOW BOX, SMALLER AND LOWER, the operator's choice (B of five
+       previews, 27 Oct). Their rule used to come BEFORE .paint-desc, which every note also carries, with the same
+       weight, so .paint-desc's size, colour and margin won: since paint320 the notes were drawn as large as the
+       paint's name and straight under it, and their own size and gap never showed. The rule now names both classes,
+       and it comes after. {% endcomment %}
+    .paint-desc.paint-special-order, .paint-desc.paint-unconfirmed, .paint-desc.paint-colour-doubt {
+        font-size: 14px;
+        line-height: 1.55;
+        color: #5f4b12;
+        background: #fff8e6;
+        border: 1px solid #f0dca0;
+        border-radius: 8px;
+        padding: 10px 16px;
+        margin: 20px auto 0;
+        max-width: 600px;
+        text-align: left;
     }
     {% comment %} Name-only state: pl24 found the colour NAME but no code. The name takes
        the headline slot (where the code normally sits) but is deliberately
