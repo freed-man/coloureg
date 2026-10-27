@@ -4249,15 +4249,26 @@ class SiteConfig(models.Model):
     def gated_make_values(self):
         """Every distinct `make` the lookups table holds that is on the unsupported
         list now, as stored ('MG' and 'Mg' both), so a SQL IN matches what
-        is_make_unsupported matches. Read fresh each call; the list is small."""
-        return sorted({m for m in Search.objects.exclude(make='').values_list('make', flat=True).distinct()
+        is_make_unsupported matches. Read fresh each call; the list is small.
+
+        paint364: ONE ROW PER MAKE, NOT PER LOOKUP. Search is ordered by
+        -timestamp (Meta.ordering), and Django keeps an ordering column in a
+        DISTINCT, so `.values_list('make').distinct()` alone asked for
+        SELECT DISTINCT make, timestamp: one row per lookup (4,762 rows on the
+        export of 26 Oct where there are 102 makes), each folded in Python, on
+        every call; a dashboard page sends four such queries (gated_now_q
+        twice, each asking this list and bike_make_values).
+        `.order_by()` drops the ordering, so the database returns each make
+        once. The values, and so the list, are the same: they were put in a set."""
+        return sorted({m for m in Search.objects.exclude(make='').values_list('make', flat=True).order_by().distinct()
                        if self.is_make_unsupported(m)})
 
     @classmethod
     def bike_make_values(cls):
-        """The distinct `make` values whose motorbikes ARE searched (BIKE_MAKES_SEARCHED, BMW), as stored."""
+        """The distinct `make` values whose motorbikes ARE searched (BIKE_MAKES_SEARCHED, BMW), as stored.
+        paint364: `.order_by()` for one row per make, as gated_make_values says."""
         keys = {cls._norm_make(m) for m in cls.BIKE_MAKES_SEARCHED}
-        return sorted({m for m in Search.objects.exclude(make='').values_list('make', flat=True).distinct()
+        return sorted({m for m in Search.objects.exclude(make='').values_list('make', flat=True).order_by().distinct()
                        if cls._norm_make(m) in keys})
 
     def gated_now_q(self):
