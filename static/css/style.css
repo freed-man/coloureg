@@ -1,5 +1,3 @@
-/* coloureg custom styles */
-
 .brand-text {
     font-size: 2.5rem;
     letter-spacing: 3px;
@@ -18,9 +16,6 @@
     vertical-align: baseline;
 }
 
-/* Inline brand mention — for using "coloureg" inside body text on any page.
-   Inherits the surrounding font-size so it blends naturally into prose.
-   Use as: <span class="coloureg-brand">colou<strong>reg</strong></span> */
 .coloureg-brand {
     display: inline-block;
     background: linear-gradient(90deg, #e74c3c, #f39c12, #f1c40f, #2ecc71, #3498db, #9b59b6);
@@ -35,9 +30,6 @@
     font-weight: 900;
 }
 
-/* Decorative rainbow text — for emphasis spans that are NOT the brand mark.
-   Each usage sets its own font-weight (the brand class hard-codes 600/900).
-   Use as: <span class="rainbow-text" style="font-weight: 700;">fast</span> */
 .rainbow-text {
     display: inline-block;
     background: linear-gradient(90deg, #e74c3c, #f39c12, #f1c40f, #2ecc71, #3498db, #9b59b6);

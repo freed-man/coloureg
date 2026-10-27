@@ -10,11 +10,14 @@ Disallow: /warm/
 Disallow: /lookup-status/
 Disallow: /paid/
 Disallow: /vehicle-make/
-# paint233: Cloudflare hides the email address from spam bots by rewriting its
-# links to /cdn-cgi/l/email-protection, which answers 404 to anything that does
-# not run its script. Crawlers are asked not to follow them, so site audits stop
-# counting them as broken while the address stays hidden.
-Disallow: /cdn-cgi/l/
+{% comment %} paint233: Cloudflare hides the email address from spam bots by rewriting its
+links to /cdn-cgi/l/email-protection, which answers 404 to anything that does
+not run its script. Crawlers are asked not to follow them, so site audits stop
+counting them as broken while the address stays hidden.
+paint361: a template comment, so it is not served. This file is drawn as a template
+(coloureg/urls.py), and the note was four "#" lines that went out as written. Closed
+on the next rule's own line, so no blank line appears in the file served: an old
+style reader takes a blank line as the end of the group above it. {% endcomment %}Disallow: /cdn-cgi/l/
 Allow: /.well-known/security.txt
 
 Sitemap: https://coloureg.com/sitemap.xml

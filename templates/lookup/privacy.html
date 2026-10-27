@@ -122,7 +122,10 @@
                 We use a small number of cookies:
             </p>
             <ul style="line-height: 1.8;">
-                <li><strong>Essential cookies</strong> — Django session cookie and CSRF token. Required for the site to function. These don't track you and don't need your consent under UK PECR.</li>
+                {% comment %} paint361: "Django session cookie" read "session cookie" from here on, the operator's word
+                   of 27 Oct: the page names no supplier, and needs no framework's name either. Not a material change
+                   (the same cookie, the same purpose), so the "Last updated" date above is left as it is. {% endcomment %}
+                <li><strong>Essential cookies</strong> — session cookie and CSRF token. Required for the site to function. These don't track you and don't need your consent under UK PECR.</li>
                 <li><strong>Analytics cookies</strong> — set by our analytics provider to count visits and pages viewed in aggregate. They're not used for advertising or cross-site tracking. You can prevent them by using a privacy-respecting browser (e.g. Brave) or browser extensions like uBlock Origin or Privacy Badger, which block tracking cookies before they're set.</li>
             </ul>
 

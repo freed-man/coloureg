@@ -44,7 +44,7 @@
     .vehicle-divider {
         border-top: 0.5px solid rgba(0, 0, 0, 0.1);
     }
-    /* paint244: a value with a detail line under it, and a tick or a cross */
+    {% comment %} paint244: a value with a detail line under it, and a tick or a cross {% endcomment %}
     .vehicle-value-stack {
         display: flex;
         flex-direction: column;
@@ -56,7 +56,7 @@
         font-weight: 500;
         font-size: 14px;
     }
-    /* paint250: a value and its bracketed detail on one line, the detail lighter */
+    {% comment %} paint250: a value and its bracketed detail on one line, the detail lighter {% endcomment %}
     .vehicle-inline {
         display: inline-flex;
         flex-wrap: wrap;
@@ -70,10 +70,10 @@
         align-items: center;
         gap: 6px;
     }
-    /* paint249: the MOT history belongs to the MOT row, so no line between them */
+    {% comment %} paint249: the MOT history belongs to the MOT row, so no line between them {% endcomment %}
     .vehicle-row-joined { border-bottom: none; padding-bottom: 6px; }
-    /* paint261: the "+" beside MOT and Tax, the detail it opens, and the tax table */
-    .vc-more-hit { cursor: pointer; }   /* paint276 */
+    {% comment %} paint261: the "+" beside MOT and Tax, the detail it opens, and the tax table {% endcomment %}
+    .vc-more-hit { cursor: pointer; }   {% comment %} paint276 {% endcomment %}
     .vc-more-btn { display: inline-flex; align-items: center; justify-content: center; width: 26px; height: 26px; margin-left: 8px; padding: 0; border: 1px solid rgba(0, 0, 0, 0.25); border-radius: 50%; background: none; color: #6c757d; font-size: 11px; vertical-align: middle; }
     .vc-more { display: block; margin-top: 4px; text-align: right; }
     .vc-more .vehicle-sub { display: block; }
@@ -81,14 +81,14 @@
     .tax-table th, .tax-table td { padding: 3px 0 3px 12px; text-align: right; border-top: 1px solid rgba(0, 0, 0, 0.08); font-weight: 400; }
     .tax-table thead th { border-top: none; font-weight: 600; }
     .tax-table th[scope="row"], .tax-table thead th:first-child { text-align: left; padding-left: 0; }
-    /* paint263: the opened MOT history sits in a panel inset from its bar; the chart
-       has a fixed height, only its width follows the screen */
+    {% comment %} paint263: the opened MOT history sits in a panel inset from its bar; the chart
+       has a fixed height, only its width follows the screen {% endcomment %}
     .mot-history-panel { margin: 6px 12px 0; padding: 10px 12px; border: 1px solid rgba(0, 0, 0, 0.08); border-radius: 10px; background: #fff; }
     .mileage-chart { padding: 0 0 4px; }
     .mileage-chart-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; flex-wrap: wrap; }
     .mileage-chart-title { font-weight: 600; font-size: 15px; }
     .mileage-chart-avg { color: #6c757d; font-size: 13px; }
-    /* paint264: one marker per visit (a tick or cross per test, no key), a dashed line where each year starts, 13px labels */
+    {% comment %} paint264: one marker per visit (a tick or cross per test, no key), a dashed line where each year starts, 13px labels {% endcomment %}
     .mileage-chart-plot { position: relative; height: 150px; margin: 18px 16px 26px 40px; }
     .mc-svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
     .mc-grid { stroke: #e9ecef; stroke-width: 1; }
@@ -104,14 +104,14 @@
     .mc-visit:focus { outline: none; } .mc-visit:focus-visible { box-shadow: 0 0 0 2px #212529; }
     .mc-tip { position: absolute; transform: translate(-50%, calc(-100% - 14px)); background: #212529; color: #fff; font-size: 13px; line-height: 1.4; padding: 6px 9px; border-radius: 7px; white-space: nowrap; pointer-events: none; z-index: 2; }
     .mc-tip .mc-drop { color: #ffb3ba; }
-    /* paint269: compact markers when each visit has less than 28px (a long history on a phone):
-       a pass is a small green dot, a fail a small red cross, a fail and its pass a cross and a dot */
+    {% comment %} paint269: compact markers when each visit has less than 28px (a long history on a phone):
+       a pass is a small green dot, a fail a small red cross, a fail and its pass a cross and a dot {% endcomment %}
     .mc-compact .mc-visit { padding: 1px; gap: 3px; align-items: center; }
     .mc-compact .mc-res { width: 13px; height: 13px; font-size: 7px; }
     .mc-compact .mc-ok { width: 9px; height: 9px; }
     .mc-compact .mc-ok i { display: none; }
     .mc-compact .mc-no + .mc-no, .mc-compact .mc-ok + .mc-ok { display: none; }
-    /* paint246: the MOT history, under the MOT row, collapsed until asked for */
+    {% comment %} paint246: the MOT history, under the MOT row, collapsed until asked for {% endcomment %}
     .mot-history { padding: 4px 0 12px; border-bottom: 0.5px solid rgba(0, 0, 0, 0.1); }
     .mot-toggle {
         width: 100%; display: flex; justify-content: space-between; align-items: center; gap: 12px;
@@ -191,7 +191,7 @@
         font-feature-settings: "zero" 0;
         font-variant-numeric: normal;
     }
-    .paint-special-order, .paint-unconfirmed, .paint-colour-doubt {   /* paint320: the unconfirmed note looks the same; paint339: and the colour doubt note */
+    .paint-special-order, .paint-unconfirmed, .paint-colour-doubt {   {% comment %} paint320: the unconfirmed note looks the same; paint339: and the colour doubt note {% endcomment %}
             font-size: .95rem;
             line-height: 1.45;
             color: #4a4a4a;
@@ -958,7 +958,7 @@ the request directly. {% endcomment %}
                 .cp-dots span:nth-child(3) { animation-delay: .3s; }
                 @keyframes cp-bounce { 0%, 80%, 100% { transform: translateY(0); opacity: .35; } 40% { transform: translateY(-4px); opacity: 1; } }
                 @media (prefers-reduced-motion: reduce) { .cp-dots span { animation: none; opacity: .7; } }
-                .car-thumb-note { margin: 6px 0 0; text-align: center; color: #6c757d; font-size: 12px; line-height: 1.3; }   /* paint274 */
+                .car-thumb-note { margin: 6px 0 0; text-align: center; color: #6c757d; font-size: 12px; line-height: 1.3; }   {% comment %} paint274 {% endcomment %}
                 .car-lightbox { position: fixed; inset: 0; z-index: 1050; background: #fff; overflow: auto; }
                 .car-lightbox[hidden] { display: none; }
                 .car-lightbox-figure { position: relative; margin: 0; width: 100%; height: 100%; box-sizing: border-box;
@@ -973,12 +973,12 @@ the request directly. {% endcomment %}
                                       border: none; border-radius: 50%; background: #f1f3f5; color: #333;
                                       display: flex; align-items: center; justify-content: center; cursor: pointer; }
                 .car-lightbox-close:hover { background: #e5e7eb; }
-                /* paint275: ON A WIDE SCREEN, A BIGGER PICTURE. There the picture is held back by
+                {% comment %} paint275: ON A WIDE SCREEN, A BIGGER PICTURE. There the picture is held back by
                    the height, and white bands sit either side of it; the close button moves
                    into the band (its corner, never the picture: at 16:10 or wider the band
                    is at least 56px), so only 56px of height is reserved instead of 120.
                    About 12% more picture on a laptop. Taller and narrower screens keep
-                   paint252's layout, button above the picture, which costs them nothing. */
+                   paint252's layout, button above the picture, which costs them nothing. {% endcomment %}
                 @media (min-aspect-ratio: 16/10) {
                     .car-lightbox-figure { padding: 12px 12px 10px; }
                     .car-lightbox-figure img { max-height: calc(100vh - 56px); }
@@ -1013,7 +1013,7 @@ the request directly. {% endcomment %}
             </div>
             <script>
             (function () {
-                var URL = "{{ picture_url }}", tries = 0, MAX = 120;   // once a second, two minutes at most
+                var URL = "{{ picture_url }}", tries = 0, MAX = 120;   {# once a second, two minutes at most #}
                 var ready = {% if picture_ready_url %}true{% else %}false{% endif %};
                 var started = ready, lastFocus = null;
                 var slot = document.getElementById('car-thumb');
@@ -1036,7 +1036,7 @@ the request directly. {% endcomment %}
                         if (wait) { wait.style.display = 'none'; }
                         img.style.display = 'block';
                         zoom.style.display = 'flex';
-                        var note = document.getElementById('car-thumb-note');   // paint274
+                        var note = document.getElementById('car-thumb-note');   {# paint274 #}
                         if (note) { note.style.display = ''; }
                         btn.disabled = false;
                         ready = true;
@@ -1258,7 +1258,7 @@ window.cregReportWait();
             headers: {'Content-Type': 'application/x-www-form-urlencoded',
                       'X-CSRFToken': CSRF_TOKEN},
             body: body.toString()
-        }).catch(function () { /* swallowed on purpose — see below */ })
+        }).catch(function () { {% comment %} swallowed on purpose — see below {% endcomment %} })
           .then(function () {
             {% comment %}
                THE SAME MESSAGE WHATEVER HAPPENED, including a duplicate, a
@@ -1332,7 +1332,7 @@ window.cregReportWait();
         { at: 45000, text: 'final checks, nearly done' }
     ];
     var stageTimers = [];
-    var TERM_PROMPT = '<span class="cg-p">&gt;</span> ';   // paint277: a plain prompt
+    var TERM_PROMPT = '<span class="cg-p">&gt;</span> ';   {# paint277: a plain prompt #}
     var TERM_DOTS = '<span class="cg-dots" aria-hidden="true"><i>.</i><i>.</i><i>.</i></span>';
     var TERM_MARK = { ok: '<span class="cg-mark ok">&#10003;</span>', bad: '<span class="cg-mark bad">&#10007;</span>',
                       half: '<span class="cg-mark half">~</span>' };
@@ -1388,7 +1388,7 @@ window.cregReportWait();
                 }
             }
             termQueued = false;
-            termLine('resuming the search', 'busy');      // one working line again while the retry runs
+            termLine('resuming the search', 'busy');      {# one working line again while the retry runs #}
         }
     }
     runStages();
@@ -1473,7 +1473,7 @@ window.cregReportWait();
             html += '<p class="paint-desc paint-unconfirmed">' + escapeHtml(UNCONFIRMED_NOTE) + '</p>';
         }
         if (colourDoubt) {
-            html += '<p class="paint-desc paint-colour-doubt">' + escapeHtml(COLOUR_DOUBT_NOTE) + '</p>';   // paint339
+            html += '<p class="paint-desc paint-colour-doubt">' + escapeHtml(COLOUR_DOUBT_NOTE) + '</p>';   {# paint339 #}
         }
         html += '</div>';
         return html;
@@ -1489,11 +1489,11 @@ window.cregReportWait();
         if (data.special_order) {
             {% comment %} paint299: the code and the note, and nothing that says a colour (no swatch, no
                "also" code, no name, no list, no two-tone), whatever else the reply holds. {% endcomment %}
-            html += paintBlockHtml(data.paint_code, null, null, null, true, false, data.special_order_label);   // paint333: the label too
+            html += paintBlockHtml(data.paint_code, null, null, null, true, false, data.special_order_label);   {# paint333: the label too #}
         } else if (data.unconfirmed_code) {
-            html += paintBlockHtml(data.paint_code, null, null, null, false, true);   // paint320
+            html += paintBlockHtml(data.paint_code, null, null, null, false, true);   {# paint320 #}
         } else if (tt && tt.length) {
-            html += twoToneHtml(data.paint_code, tt);   // paint228: as the template draws it
+            html += twoToneHtml(data.paint_code, tt);   {# paint228: as the template draws it #}
         } else if (list && list.length > 1) {
             for (var i = 0; i < list.length; i++) {
                 var it = list[i] || {};
@@ -1502,11 +1502,11 @@ window.cregReportWait();
         } else {
             html += paintBlockHtml(
                 data.paint_code, data.paint_hex, data.canonical_code, data.paint_description,
-                false, false, null, data.colour_doubt   // paint339: the note when the name is not the registered colour
+                false, false, null, data.colour_doubt   {# paint339: the note when the name is not the registered colour #}
             );
         }
         card.innerHTML = '<div id="paint-found-state">' + html + '<div id="car-thumb-anchor"></div>' + reportControl() + '</div>';
-        if (window.startCarPicture) { window.startCarPicture(); }   // paint224: a code, so its picture, in the card
+        if (window.startCarPicture) { window.startCarPicture(); }   {# paint224: a code, so its picture, in the card #}
 
         {% comment %}Reveal the disclaimer (it was rendered hidden during the pending state).{% endcomment %}
         var disc = el('paint-disclaimer');
@@ -1514,7 +1514,7 @@ window.cregReportWait();
 
         {% comment %} paint299: for a special order code the email box is the manual lookup one, as the
            template draws it: the request goes to the manual queue, not out as the automatic email. {% endcomment %}
-        revealEmail(!data.special_order && !data.unconfirmed_code && !data.colour_doubt);     // paint320: the manual box; paint339: for a colour doubt too
+        revealEmail(!data.special_order && !data.unconfirmed_code && !data.colour_doubt);     {# paint320: the manual box; paint339: for a colour doubt too #}
     }
 
     {% comment %}
@@ -1686,7 +1686,7 @@ window.cregReportWait();
     function finish(fn, ending) {
         if (stopped) return;
         stopped = true;
-        stopStages();   // paint16: halt the staged copy the moment we have a real answer
+        stopStages();   {# paint16: halt the staged copy the moment we have a real answer #}
         {% comment %}
            paint152: THIS is when the customer has their answer, on the pending
            path — up to 65s after the page rendered. Reporting on render
@@ -1698,7 +1698,7 @@ window.cregReportWait();
            replaces the card as before. Only after the answer exists, so it never slows one. {% endcomment %}
         var end = TERM_ENDINGS[ending];
         if (!end || !termBody()) { fn(); return; }
-        termSettle('ok');            // the step that was running did run; the outcome line says what came of it
+        termSettle('ok');            {# the step that was running did run; the outcome line says what came of it #}
         termLine(end.text, end.mark);
         if (ending === 'found') {
             termBody().insertAdjacentHTML('beforeend', '<div class="cg-ln done">' + TERM_PROMPT + '<span class="cg-cur" aria-hidden="true"></span></div>');
@@ -1732,7 +1732,7 @@ window.cregReportWait();
 
     function runRecovery() {
         if (stopped) return;
-        termQueue(false);             // paint274: the retry is going out
+        termQueue(false);             {# paint274: the retry is going out #}
 
         var controller = new AbortController();
         var killer = setTimeout(function () { controller.abort(); }, MAX_WAIT_MS);
@@ -1767,7 +1767,7 @@ window.cregReportWait();
                     {% endcomment %}
                     busyRetries += 1;
                     var waitMs = ((data && data.retry_after) || 4) * 1000;
-                    termQueue(true);          // paint274
+                    termQueue(true);          {# paint274 #}
                     setTimeout(runRecovery, waitMs);
                 } else if (s === 'paused' || s === 'busy') {
                     {% comment %} paint303: not run, which is not "not found". No closing line in the
@@ -1826,7 +1826,7 @@ window.cregReportWait();
                                 stopped = true;
                                 window.location.reload();
                             } else if (s2 === 'paused') {
-                                finish(showPaused);        // paint303
+                                finish(showPaused);        {# paint303 #}
                             } else {
                                 finish(showMissed, 'missed');
                             }
@@ -1847,7 +1847,7 @@ window.cregReportWait();
 </script>
 {% endif %}
 <script>
-/* paint261: the "+" beside MOT and Tax, and the labels on the mileage chart's points */
+{% comment %} paint261: the "+" beside MOT and Tax, and the labels on the mileage chart's points {% endcomment %}
 (function () {
     document.querySelectorAll('.vc-more-btn').forEach(function (btn) {
         {% comment %} paint276: the whole status (tick, label and +) opens the details, not only the
@@ -1857,7 +1857,7 @@ window.cregReportWait();
         if (inline) {
             inline.classList.add('vc-more-hit');
             inline.addEventListener('click', function (e) {
-                if (e.target.closest('.vc-more-btn')) { return; }       // the + handles its own click
+                if (e.target.closest('.vc-more-btn')) { return; }       {# the + handles its own click #}
                 btn.click();
             });
         }
@@ -1874,8 +1874,8 @@ window.cregReportWait();
     document.querySelectorAll('.mileage-chart-plot').forEach(function (plot) {
         var tip = plot.querySelector('.mc-tip'), shown = null;
         if (!tip) { return; }
-        /* paint269: compact markers only when the visits do not fit: measured on the
-           real width, again whenever it changes (also when the history is opened). */
+        {% comment %} paint269: compact markers only when the visits do not fit: measured on the
+           real width, again whenever it changes (also when the history is opened). {% endcomment %}
         var visitCount = plot.querySelectorAll('.mc-visit').length;
         function fit() {
             var width = plot.clientWidth;
@@ -1896,15 +1896,15 @@ window.cregReportWait();
             });
             tip.hidden = false; shown = v;
             var half = tip.offsetWidth / 2, width = plot.clientWidth || 1;
-            tip.style.left = Math.max(half - 40, Math.min(width - half + 16, v.offsetLeft)) + 'px';    /* never past the card's edge on a phone */
+            tip.style.left = Math.max(half - 40, Math.min(width - half + 16, v.offsetLeft)) + 'px';    {% comment %} never past the card's edge on a phone {% endcomment %}
             tip.style.top = v.offsetTop + 'px';
         }
         function hide() { tip.hidden = true; shown = null; }
-        /* paint264: a mouse or finger press moves focus to the marker BEFORE its click
+        {% comment %} paint264: a mouse or finger press moves focus to the marker BEFORE its click
            arrives, so opening on focus and toggling on click fought: the focus opened it
            and the click closed it again (and closed the one open before). Now a press
            marks the interaction as pointer: clicks toggle, and focus opens a label only
-           when it comes from the keyboard (Tab). */
+           when it comes from the keyboard (Tab). {% endcomment %}
         var byPointer = false;
         plot.addEventListener('pointerdown', function () { byPointer = true; }, true);
         plot.addEventListener('mousedown', function () { byPointer = true; }, true);

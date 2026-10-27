@@ -2515,8 +2515,9 @@ def _lookup_status(request, search_id):
     immediately and only this request waits, so the user is never blocked.
 
     Response shapes:
-      {"status": "found",     "source": "...", "paint_code": "...",
+      {"status": "found",     "paint_code": "...",
        "paint_description": "...", "paint_hex": "...", "canonical_code": "..."}
+                                                   (no supplier's name: paint361)
       {"status": "not_found"}                      -- both paths missed
       {"status": "already_resolved", ...}          -- paint was found earlier
       {"status": "error"}                          -- unexpected failure
@@ -2793,9 +2794,14 @@ def _lookup_status(request, search_id):
     # "#00937F" and "Pistazie") and nothing to say it was one, so the script
     # drew a colour and no note. _special_order_shown empties those and marks
     # the reply; the script draws the note from the mark.
+    #
+    # paint361: AND IT NAMES NO SUPPLIER. It carried 'source' ('pl24',
+    # 'vdg_retry', 'ezyvin', 'mmw'), which the page's script never read, so
+    # anyone opening the browser's network tab could see which supplier had
+    # answered. The operator's rule is that nothing a visitor can read names
+    # one. The row still records the source (_record_paint_hit, above).
     return JsonResponse(_special_order_shown(make, {
         'status': 'found',
-        'source': source,
         'paint_code': paint_code,
         'paint_description': paint_description,
         'paint_hex': paint_hex,
@@ -2873,17 +2879,12 @@ def _wait_for_recovery_result(search_id):
                 vdg_colour=row.colour,
                 answer_name=row.paint_description,                  # paint341
             )
-            if row.provider == Search.PROVIDER_PARTSLINK24:
-                source = 'pl24'
-            elif row.provider == Search.PROVIDER_VDG_RETRY:
-                source = 'vdg_retry'
-            else:
-                source = row.provider or ''
             # paint299: marked, and with no colour, for a special order code,
             # exactly as the winner's own reply is.
+            # paint361: and with no supplier's name in it, as the winner's own
+            # reply now has none (the row's provider was sent as 'source').
             return JsonResponse(_special_order_shown(row.make, {
                 'status': 'found',
-                'source': source,
                 'paint_code': row.paint_code,
                 'paint_description': row.paint_description,
                 'paint_hex': paint_hex,
