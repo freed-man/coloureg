@@ -5350,9 +5350,19 @@ def admin_stats(request):
             return _dash_note(request, 'recent-lookups', False, 'That lookup no longer exists.')
         _had_code = (row.paint_code or '').strip()
         _had_name = (row.paint_description or '').strip()
+        # paint366: A NAME WITH NO CODE, ON A LOOKUP THAT HOLDS NO CODE, IS HIS
+        # WORD THAT NO CODE EXISTS FOR THE CAR, WITH THE COLOUR'S NAME. Some
+        # makers publish no paint codes at all (LEVC sells the TX's paints by
+        # name, 27 Oct), and the box refused a Save without a code, so such an
+        # answer could only go in through the manual queue, which needs the
+        # customer's email. It is written as that queue's reply with an empty
+        # code box writes it (no email from here). A code is still never
+        # cleared from here: on a lookup that holds one, the code must be typed.
+        _name_only = not code and bool(name) and not _had_code
         _refused = ''
-        if not code:
-            _refused = 'Type the paint code.'
+        if not code and not _name_only:
+            _refused = ('Type the paint code.' if _had_code
+                        else 'Type the paint code, or the name alone if no code exists.')
         elif len(code) > CORRECTION_CODE_MAX_CHARS:
             _refused = f'Paint code too long ({len(code)} chars, max {CORRECTION_CODE_MAX_CHARS}).'
         elif len(name) > CORRECTION_NAME_MAX_CHARS:
@@ -5362,7 +5372,7 @@ def admin_stats(request):
                         'so the code is sent to them.')
         elif not row.edit_box:
             _refused = 'That lookup has no make, so it cannot take an answer.'
-        elif code == _had_code and name == _had_name:
+        elif not _name_only and code == _had_code and name == _had_name:
             # paint318: SAVE WITH NOTHING CHANGED CONFIRMS IT. Only the time he
             # looked is written: the code, the name and their source stay, and
             # the dashboard's "check" mark goes from the row (the mark's own rule in models).
@@ -5373,7 +5383,14 @@ def admin_stats(request):
         if not _refused:
             _now = timezone.now()
             _fields = dict(paint_description=name, operator_answered_at=_now, enriched_from='')
-            if _code_changed:
+            if _name_only:
+                # paint366: as the manual queue's empty code reply writes it:
+                # his answer, nothing delivered (success stays False), and the
+                # flag that is his word on the plate (memory and the open cars
+                # file read it; the stats do not, since paint355).
+                _fields.update(provider=Search.PROVIDER_MANUAL, success=False, no_code_available=True,
+                               recovery_name_only=False)
+            elif _code_changed:
                 # His own answer, whether the row had a code or not.
                 _fields.update(paint_code=code, provider=Search.PROVIDER_MANUAL, success=True,
                                no_code_available=False, recovery_name_only=False)
@@ -5383,6 +5400,16 @@ def admin_stats(request):
                 _refused = 'That lookup was changed a moment ago. Look at it again.'
         if _refused:
             return _dash_note(request, row.id, False, _refused + ' Nothing was saved.', page=recent_page_of(row))   # paint336
+        if _name_only:
+            # paint366: nothing else is written, as the queue's no code reply
+            # writes nothing else: his table keys on a code (a car with no code
+            # is a fact about that car, not about a colour), and no code is ever
+            # cached, so the 7 day answer and the hour's miss stay as they are.
+            # Memory reads his word: nothing is remembered for the plate, and a
+            # repeat lookup searches afresh, as it did before he answered.
+            return _dash_note(request, row.id, True,
+                              f'{row.registration}: saved {name} with no code, as your word that no code '
+                              f'exists. No email was sent.', page=recent_page_of(row))
         _twin = ''
         try:
             # The operator's own table, as a manual answer writes it (paint92).

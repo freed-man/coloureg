@@ -6,13 +6,16 @@
    to the dashboard itself, like the report forms. Cancel shuts the strip and puts both
    boxes back as they were. What a Save means is in views.admin_stats. No email is ever
    sent from here, and the one line below is shown only where a customer was emailed
-   this code, so a correction is not taken for one they were told of. {% endcomment %}
+   this code, so a correction is not taken for one they were told of.
+   paint366: on a lookup that holds no code the code box may be left empty when a name is
+   typed (his word that no code exists, with the colour's name), so it is required only
+   where the lookup holds a code, and a line under the boxes says so. {% endcomment %}
 <div class="edit-strip">
     <form method="post" action="{% url 'admin_stats' %}" style="display: flex; flex-wrap: wrap; gap: 6px; align-items: center;">
         {% csrf_token %}
         <input type="hidden" name="action" value="answer_lookup">
         <input type="hidden" name="search_id" value="{{ s.id }}">
-        <input type="text" name="answer_code" value="{{ s.paint_code }}" maxlength="{{ correction_code_max }}" placeholder="PAINT CODE" aria-label="Paint code" required style="flex: 1 1 110px; min-width: 0; max-width: 200px;">
+        <input type="text" name="answer_code" value="{{ s.paint_code }}" maxlength="{{ correction_code_max }}" placeholder="PAINT CODE" aria-label="Paint code"{% if s.paint_code %} required{% endif %} style="flex: 1 1 110px; min-width: 0; max-width: 200px;">
         <input type="text" name="answer_name" value="{{ s.paint_description }}" maxlength="{{ correction_name_max }}" placeholder="PAINT NAME" aria-label="Paint name" style="flex: 2 1 160px; min-width: 0;">
         {% comment %}Save and Cancel travel together: beside the boxes on a wide screen, on a line of
            their own in the middle of a phone card (the dashboard's style sheet centres them there).{% endcomment %}
@@ -21,5 +24,6 @@
             <button type="button" onclick="cgEditToggle('edit-{{ where }}-{{ s.id }}')" style="background: transparent; color: #444; border: 1px solid #ccc; border-radius: 4px; padding: 6px 12px; cursor: pointer;">Cancel</button>
         </span>
         {% if s.email_sent and s.paint_code %}<div style="flex: 1 1 100%; font-size: 11px; color: #7a5600;">This code was emailed to the customer. They are not told of a change.</div>{% endif %}
+        {% if not s.paint_code %}<div style="flex: 1 1 100%; font-size: 11px; color: #555;">No code exists for this car? Leave the code empty and type the colour's name.</div>{% endif %}
     </form>
 </div>
