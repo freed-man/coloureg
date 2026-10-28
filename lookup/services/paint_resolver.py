@@ -2966,6 +2966,21 @@ def _mmw_lookup(registration, search_id=None):
 
     Never raises. A leg that cannot make things worse must not be able to break
     a lookup either.
+
+    paint368: EVERY CALL NOW LEAVES ITS REASON ON THE ROW, as pl24's has since
+    paint213. mmw's reply carries an `error` text beside its outcome word (the
+    storefront's own reply, "HTTP 500", "no response: ...", "slow (21.3s)"),
+    and only the word was kept, so its 3 "error" outcomes in 2,144 calls to
+    27 Oct could never be explained. Worse, a call that failed on our side (no
+    connection, a timeout, a reply that is not a 200, a body that is not JSON)
+    kept nothing and logged nothing, not even that it was made: 24 searches
+    from 14 Sep to 27 Oct ran the race and left no mmw trace. One possible
+    cause: mmw gives the storefront up to 20 seconds and we stop waiting at 12. Now
+    mmw's text goes into mmw_error (the plate masked), and a failure on our side
+    is recorded as tried, with an outcome named as pl24's are (client_timeout,
+    client_connection_error, client_error; http_NNN for a reply that is not a
+    200; empty_reply for a 200 we cannot read) and its reason, and is logged.
+    What the search does with the answer is unchanged.
     """
     if not registration:
         return None
@@ -2976,33 +2991,96 @@ def _mmw_lookup(registration, search_id=None):
             params={'reg': registration}, headers=headers,
             timeout=_MMW_HTTP_TIMEOUT,
         )
-    except requests.exceptions.RequestException:
-        return None
-    if resp.status_code != 200:
+    except requests.exceptions.RequestException as exc:
+        _mmw_failed(search_id, *_mmw_failure(exc))
         return None
     try:
         data = resp.json()
     except ValueError:
+        data = None
+    if not isinstance(data, dict):
+        data = None                     # a list or a string is no answer either
+    if resp.status_code != 200:
+        # mmw's service says why in the body ("unauthorized", "not configured",
+        # "reg must be 2 to 8 letters and digits"); a proxy's error page does not.
+        _said = _mmw_masked((data or {}).get('error'), registration)
+        _mmw_failed(search_id, f'http_{resp.status_code}',
+                    _said or f'HTTP {resp.status_code}')
+        return None
+    if data is None:
+        _mmw_failed(search_id, 'empty_reply', 'HTTP 200 but the reply is not a JSON object')
         return None
 
     row = {
         'code': (data.get('paint_code') or '').strip()[:100],
         'colour': (data.get('paint_description') or '').strip()[:60],
         'outcome': (data.get('outcome') or '').strip()[:40],
+        'error': _mmw_masked(data.get('error'), registration),
         'ms': int((data.get('elapsed_s') or 0) * 1000),
     }
+    if not row['code'] and not row['outcome']:
+        # A 200 that names neither a code nor an outcome: nothing to use, and
+        # the row says so rather than looking as if mmw was never asked.
+        _mmw_failed(search_id, 'empty_reply',
+                    row['error'] or 'HTTP 200 with no code and no outcome')
+        return row
     # Recorded whether or not the answer is ever used — that is the entire
     # reason the columns exist. A leg used last still teaches you its accuracy.
-    if search_id is not None and (row['code'] or row['outcome']):
+    if search_id is not None:
         _record_worker_result(
             search_id,
             mmw_attempted=True,
             **({'mmw_code': row['code']} if row['code'] else {}),
             **({'mmw_colour': row['colour']} if row['colour'] else {}),
             **({'mmw_outcome': row['outcome']} if row['outcome'] else {}),
+            **({'mmw_error': row['error']} if row['error'] else {}),
             mmw_ms=row['ms'],
         )
     return row
+
+
+def _mmw_masked(text, registration):
+    """paint368: mmw's words on one line, the plate taken out, at most 200 characters.
+
+    For a car the storefront does not know, its reply text, which mmw passes on
+    as `error`, names the plate. The plate is on the row already; masking it
+    keeps it out of a second column and makes one reason read the same on every
+    car, as mmw's own log line does (<reg>). Never raises.
+    """
+    try:
+        text = ' '.join(str(text or '').split())
+        reg = re.sub(r'[^A-Z0-9]', '', str(registration or '').upper())
+        if reg and text:
+            plate = r'\s*'.join(map(re.escape, reg))
+            text = re.sub(rf'(?<![A-Za-z0-9]){plate}(?![A-Za-z0-9])', '<reg>',
+                          text, flags=re.IGNORECASE)
+        return text[:200]
+    except Exception:  # noqa: BLE001 (a reason must never cost an answer)
+        return ''
+
+
+def _mmw_failure(exc):
+    """paint368: (outcome, reason) for an mmw call that raised, named as pl24's are (paint296)."""
+    try:
+        cause = type(failure_chain(exc)[-1]).__name__
+        connect_s, read_s = _MMW_HTTP_TIMEOUT
+        if failure_kind(exc) == 'timeout':
+            return 'client_timeout', f'{cause}: no reply, coloureg gave up after {read_s:g}s'
+        if isinstance(exc, requests.exceptions.ConnectTimeout):
+            return 'client_timeout', f'{cause}: could not connect within {connect_s:g}s'
+        if isinstance(exc, requests.exceptions.ConnectionError):
+            return 'client_connection_error', cause
+    except Exception:  # noqa: BLE001
+        pass
+    return 'client_error', type(exc).__name__
+
+
+def _mmw_failed(search_id, outcome, why):
+    """paint368: an mmw call that gave nothing we could read: logged (no plate), and kept on the row."""
+    outcome, why = str(outcome)[:40], str(why)[:200]
+    logger.warning('mmw gave no answer we could read: %s (%s)', outcome, why)
+    _record_worker_result(search_id, mmw_attempted=True,
+                          mmw_outcome=outcome, mmw_error=why)
 
 
 def _pl24_lookup(vin, make, category=None, search_id=None):

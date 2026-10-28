@@ -499,6 +499,23 @@ class Search(models.Model):
     #: Stored anyway: it is what the validation gate compares against.
     mmw_colour = models.CharField(max_length=60, blank=True, default='')
     mmw_outcome = models.CharField(max_length=40, blank=True, default='')
+    #: paint368: WHY, IN mmw's OWN WORDS, OR OURS WHEN mmw SAID NOTHING.
+    #: mmw's reply carries an `error` text beside its outcome word, and only
+    #: the word was kept, so its 3 "error" outcomes in 2,144 calls (to 27 Oct)
+    #: could never be explained. A call that failed on our side kept nothing
+    #: at all, not even that it was made: 24 searches from 14 Sep to 27 Oct ran
+    #: the race and left no mmw trace. Now mmw's text is kept as sent (the
+    #: plate masked as <reg>), and a failure on our side writes its own outcome
+    #: (client_timeout, client_connection_error or client_error when the call
+    #: raised; http_NNN for a reply that is not a 200; empty_reply for a 200 we
+    #: cannot read) with the status or the exception here. Telemetry only:
+    #: nothing a customer sees reads it.
+    #: db_default AS WELL AS default: Django drops a column's database default
+    #: once the existing rows are filled, and Railway runs the migration while
+    #: the release before is still serving. That code saves lookups without
+    #: naming this column, and with no default in the database each such save
+    #: would fail until the new code took over. The database keeps '' instead.
+    mmw_error = models.CharField(max_length=200, blank=True, default='', db_default='')
     mmw_ms = models.PositiveIntegerField(null=True, blank=True)
     #: True when mmw's code matched the code actually delivered, False when it
     #: differed, NULL when there was nothing to compare. The whole point.

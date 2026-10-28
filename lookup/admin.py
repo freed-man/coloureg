@@ -161,6 +161,8 @@ class SearchAdmin(admin.ModelAdmin):
         'pl24_outcome',
         'pl24_name',
         'pl24_started_because',
+        # paint368: why an mmw call ended as it did. Written by the pipeline.
+        'mmw_error',
         'paywalled',
         'paid_unlocked',
         'access_label',
@@ -261,7 +263,7 @@ class SearchAdmin(admin.ModelAdmin):
         ('mmw detail', {
             'classes': ('collapse',),
             'fields': ('mmw_attempted', 'mmw_code', 'mmw_colour',
-                       'mmw_outcome', 'mmw_agreed', 'mmw_used', 'mmw_ms'),
+                       'mmw_outcome', 'mmw_error', 'mmw_agreed', 'mmw_used', 'mmw_ms'),    # paint368
         }),
         ('VDG paint detail', {
             'classes': ('collapse',),

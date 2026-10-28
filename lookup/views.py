@@ -3405,10 +3405,32 @@ def _record_paint_hit(search_id, paint_code, paint_description, source, telemetr
         # `PN4DQ` is a different Ford paint, so an unbounded containment test
         # would call real disagreements agreement. Each affix is listed because
         # each was measured.
+        #
+        # paint368: RENAULT'S PAINT TYPE LETTERS. partslink24 writes some Renault
+        # and Dacia codes with two letters in front, and mmw sends the bare code:
+        #
+        #   OV     solid        pl24 OV369 Ice White      -> mmw 369
+        #   MV     metallic     pl24 MV632 Grey Boreal    -> mmw 632
+        #   NV     pearl        pl24 NV676 Pearlescent Black -> mmw 676
+        #
+        # Measured on the export of 27 Oct 18:45: 7 of the 53 Renault, Dacia and
+        # Alpine disagreements were these (OV369 three times, MV632 twice, OVNNF,
+        # NV676), each the same paint. In the catalogue, all 33 Renault and Dacia
+        # codes of that shape whose bare code is also a row are one paint: 28
+        # agree on colour family and the other 5 name the same colour (OVD16 Blanc
+        # Ivoire and D16 Ivoire, NVB66 Gris Eclipse and B66 Eclipsegrau, ...).
+        # RENAULT, DACIA AND ALPINE ONLY: codes of other makes begin with these
+        # letters too (Ford, Nissan, Hyundai, Kia and others), and nothing says
+        # they are this notation there. mmw's own 141xxx numbers (141D7N where
+        # the code given was TERQH) share nothing with the code, so they stay
+        # disagreements; so does OQNG against mmw's NG.
+        _renault368 = (search.make or '').strip().lower() in ('renault', 'dacia', 'alpine')
+        _pre368 = ('L', 'TE') + (('OV', 'MV', 'NV') if _renault368 else ())
+
         def _same_code156(a, b):
             if a == b:
                 return True
-            for pre in ('L', 'TE'):
+            for pre in _pre368:
                 if a == pre + b or b == pre + a:
                     return True
             # paint159: mmw returns B0Nxx for the Stellantis Exx codes. Seen
