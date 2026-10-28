@@ -97,7 +97,13 @@ def known_answers(codes=None):
             .filter(provider__in=KNOWN_PROVIDERS)
             .exclude(enriched_from=Search.ENRICHED_NAME)
             .values_list('make', 'paint_code', 'paint_description'))
+    from lookup.services.paint_resolver import marks_special_order
     for make, code, name in rows:
+        if marks_special_order(make, code):
+            # paint371: a special order code's row now stores the line "<make>
+            # Individual (special order paint)" as its name. That is ours, not a
+            # name a supplier gave for a paint, and no name says which paint it is.
+            continue
         hit = _match(make, code, wanted)
         if hit:
             known[hit][name.strip()] += 1

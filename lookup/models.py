@@ -688,6 +688,12 @@ class Search(models.Model):
         name = (self.paint_description or '').strip()
         if not code or not name or self._TWO_PAINTS_RE.search(name):
             return False
+        # paint371: nor a special order code, whose row now stores its line
+        # ("<make> Individual (special order paint)") as its name: that names
+        # no colour, whatever words a make's own name holds.
+        from lookup.services.paint_resolver import marks_special_order
+        if marks_special_order(self.make, code):
+            return False
         from lookup.services.remembered import contradicts
         if not contradicts(name, self.colour or ''):
             return False
@@ -907,7 +913,49 @@ class Search(models.Model):
                     field.name, len(value), max_length,
                 )
                 setattr(self, field.name, value[:max_length])
+        self._name_special_order(kwargs)
         super().save(*args, **kwargs)
+
+    def _name_special_order(self, kwargs):
+        """paint371: A SPECIAL ORDER CODE IS STORED WITH ITS LINE AS ITS NAME.
+
+        The operator, 28 Oct: "let the name also be filled in when special
+        order code is came across". A special order code (marks_special_order)
+        names no paint, so the search keeps no name for it (paint299) and the
+        page draws "<make> Individual (special order paint)" in the name's
+        place (paint333). The row's name stayed blank, and each such lookup
+        waited for a one off fill: paint333's seven rows, fix_audi_q0.py's
+        two, and on 28 Oct a Bentley's 999, twice. Now the row takes that
+        line as its name when it is saved with such a code and no name.
+
+        HERE, ONCE, because the ways in are many: the paint search's answer
+        (_record_paint_hit), the vehicle call's own paint, a 7 day cache
+        replay, a miss replayed. Only the stored row: the search, the replies
+        and the 7 day answer keep no name, and the page still draws the line
+        from the view, so nothing is drawn twice.
+
+        NEVER OVER A NAME: a name already on the row stays (the operator's,
+        or a supplier's on a row from before paint299). And a save naming its
+        fields writes the name only if it writes the code or the name: one
+        that writes something else (the email, a telemetry field) leaves the
+        name to the save that set the code, so it can never write over a name
+        the operator gave since this row was read. Never raises: a lookup is
+        never lost over its name."""
+        try:
+            code = (self.paint_code or '').strip()
+            if not code or (self.paint_description or '').strip():
+                return
+            fields = kwargs.get('update_fields')
+            if fields is not None and not {'paint_code', 'paint_description'} & set(fields):
+                return
+            from lookup.services.paint_resolver import marks_special_order, special_order_label
+            if not marks_special_order(self.make, code):
+                return
+            self.paint_description = special_order_label(self.make)[:200]
+            if fields is not None and 'paint_description' not in fields:
+                kwargs['update_fields'] = list(fields) + ['paint_description']
+        except Exception:  # noqa: BLE001 (the lookup is saved without the name)
+            logger.warning('special order name not filled', exc_info=True)
 
     class Meta:
         ordering = ['-timestamp']

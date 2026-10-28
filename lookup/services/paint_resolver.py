@@ -2236,6 +2236,27 @@ def marks_special_order(make, code):
         PaintLookup.normalize_manufacturer(str(make or '')), ())
 
 
+def special_order_label(make):
+    """paint333: the line drawn in the name's place for a special order code,
+    which names what the code is since it cannot name a paint: "<make>
+    Individual (special order paint)", the make as the lookup holds it ("BMW
+    Individual (special order paint)" for a 490, the name the operator gave the
+    catalogue's 490 row on 2 Oct; "Volkswagen Individual (special order
+    paint)" for the VW group's 999 and its spellings). One format for every
+    make, the operator's choice of 16 Oct. Never raises.
+
+    paint371: AND THE LOOKUP'S STORED NAME (Search.save), the operator's
+    decision of 28 Oct. Until then the row's name stayed blank (paint299) and
+    each new such lookup waited for a one off fill: paint333's seven rows,
+    fix_audi_q0.py's two, and on 28 Oct a Bentley's 999 twice, blank. Moved
+    here from views, which imports it from here, so the model can ask it."""
+    try:
+        shown = ' '.join(str(make or '').split())
+        return f'{shown} Individual (special order paint)' if shown else 'Individual (special order paint)'
+    except Exception:
+        return 'Individual (special order paint)'
+
+
 def special_order_code_spellings():
     """paint299: every code marks_special_order says yes to for at least one
     make (999, L999, 0999 and 490 today), sorted. It is NOT the test: 490 is

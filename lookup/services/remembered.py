@@ -257,7 +257,9 @@ class Remembered:
 def _catalogue_name(row, code):
     """paint306: the catalogue's name for a hand answer typed without one, as
     a 7-day replay fills it (views._fill_cached_name). Never for a special
-    order code, whose name is blank on purpose. '' when there is none."""
+    order code: the catalogue's row for one is some other car's paint, and
+    its lookup's row takes the line in place of a name when it is saved
+    (paint371, Search.save). '' when there is none."""
     try:
         from lookup.models import PaintLookup
         from lookup.services.paint_resolver import marks_special_order

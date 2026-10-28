@@ -47,6 +47,7 @@ from .services.paint_resolver import (
     _display_tidy,
     is_placeholder_code,
     marks_special_order,
+    special_order_label,      # paint371: moved to the resolver, so the model's save can ask it too
     is_unconfirmed_code,
     special_order_code_spellings,
     mmw_unpadded_code,
@@ -2163,23 +2164,6 @@ def paige(request):
     response['X-Robots-Tag'] = ('noindex, nofollow, noarchive, nosnippet, '
                                 'noimageindex, noai, noimageai')
     return response
-
-
-def special_order_label(make):
-    """paint333: the line drawn in the name's place for a special order code,
-    which names what the code is since it cannot name a paint: "<make>
-    Individual (special order paint)", the make as the lookup holds it ("BMW
-    Individual (special order paint)" for a 490, the name the operator gave the
-    catalogue's 490 row on 2 Oct; "Volkswagen Individual (special order
-    paint)" for the VW group's 999 and its spellings). One format for every
-    make, the operator's choice of 16 Oct. The stored row's name stays blank
-    on purpose (paint299): this is for the page and its script only, and for
-    the one off fill of the rows from before this release. Never raises."""
-    try:
-        shown = ' '.join(str(make or '').split())
-        return f'{shown} Individual (special order paint)' if shown else 'Individual (special order paint)'
-    except Exception:
-        return 'Individual (special order paint)'
 
 
 def _special_order_shown(make, shown, row=None):
@@ -5394,6 +5378,15 @@ def admin_stats(request):
                         'so the code is sent to them.')
         elif not row.edit_box:
             _refused = 'That lookup has no make, so it cannot take an answer.'
+        elif name == special_order_label(row.make) and not marks_special_order(row.make, code):
+            # paint371: THE SPECIAL ORDER LINE IS NOT A COLOUR'S NAME. A special
+            # order lookup's row now stores "<make> Individual (special order
+            # paint)" as its name, and this box opens filled in with it. Typing
+            # the car's real code over the special order code and leaving the
+            # box as it was would make the line that paint's name: on the row,
+            # in his table and in the plate's 7 day answer.
+            _refused = ("That name is the special order line, not a colour's name. "
+                        "Type the colour's name, or empty the name box.")
         elif not _name_only and code == _had_code and name == _had_name:
             # paint318: SAVE WITH NOTHING CHANGED CONFIRMS IT. Only the time he
             # looked is written: the code, the name and their source stay, and
