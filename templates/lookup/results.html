@@ -401,6 +401,7 @@
     .save-pdf-wrap { text-align: center; margin: 18px 0 0; }
     .save-pdf-btn i { margin-right: 8px; }
     .print-only { display: none; }
+    #pdf-logo { display: none; }
 </style>
 {% comment %} paint374: THE PRINT SHEET, the PDF. The operator's words (29 Oct): one page, always; the logo and
    coloureg.com bigger. A4 with 12mm margins. In: the logo, coloureg.com and the day it was saved; the vehicle details
@@ -410,7 +411,14 @@
    grow has a ceiling (the title two lines, each value one line, each "+" line two, several codes smaller). The
    colours a printer leaves out by default (the logo's, the colour bar's) are kept. And the safety net: before the PDF is made, the script
    further down draws the page with this sheet at the A4 width and, if it is taller than one page, shrinks it to fit
-   (--pdf-zoom). The sheet is its own style element, so the script can switch it on for that one measure. {% endcomment %}
+   (--pdf-zoom). The sheet is its own style element, so the script can switch it on for that one measure.
+   paint375 (the operator, 29 Oct: "how come there is no line between mot and tax?" and "what is that line after the letter g in the
+   logo?"): on screen the line under the MOT row is the MOT History bar's, which the PDF leaves out, so the MOT row draws its own
+   here; and the last row printed draws none, as the last row on screen (the Insurance row, left out here) draws none. The
+   logo's rainbow is a colour bar clipped to its letters (background-clip: text), which Chrome writes into a PDF as a soft mask
+   that viewers draw differently: measured in four (poppler's two, MuPDF, pdf.js), two drew an edge of the bar (the line after
+   the g) and one the whole bar, a rainbow block in place of the logo. So the logo is drawn once on a canvas (the script below),
+   from the logo on the page, and the PDF shows the canvas, a picture every viewer draws the same. {% endcomment %}
 <style id="pdf-css" media="print">
     @page { size: A4; margin: 12mm; }
     body { zoom: var(--pdf-zoom, 1); background: #fff; }
@@ -425,6 +433,8 @@
     .navbar { padding: 0 0 6px; }
     .navbar .navbar-brand { padding: 0; margin: 0; }
     .navbar .brand-text { font-size: 40px; }
+    html.pdf-logo-ready .navbar .brand-text { position: relative; background: none !important; -webkit-text-fill-color: transparent !important; color: transparent !important; }
+    html.pdf-logo-ready #pdf-logo { display: block !important; position: absolute; left: 0; top: 0; }
     .print-source { position: absolute; top: 2px; right: 0; text-align: right; font-family: 'IBM Plex Sans', sans-serif; font-size: 14px; line-height: 1.35; color: #555; }
     .print-source b { display: block; font-size: 24px; font-weight: 600; color: #1a1a1a; }
     .col-lg-10 > h2 { font-size: 21px; margin: 10px 0 6px !important; break-after: avoid; }
@@ -433,6 +443,8 @@
     .vehicle-card-title { font-size: 20px; line-height: 1.25; margin-bottom: 6px; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden; }
     .vehicle-card img[height="50"] { height: 34px; }
     .vehicle-row { padding: 3px 0; font-size: 13px; break-inside: avoid; }
+    .vehicle-row-joined { border-bottom: 0.5px solid rgba(0, 0, 0, 0.1); }
+    .vehicle-row:not(:has(~ .vehicle-row:not(.print-hide))) { border-bottom: none; }
     .vehicle-value { min-width: 0; }
     .vehicle-inline { flex-wrap: nowrap; max-width: 100%; }
     .vehicle-inline > span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -463,6 +475,7 @@
         <div class="col-lg-10 col-md-12">
             {# paint374: on the PDF only, top right beside the logo #}
             <p class="print-only print-source"><b>coloureg.com</b>Saved {% now "j F Y" %}</p>
+            <canvas id="pdf-logo" aria-hidden="true"></canvas>{# paint375: the logo for the PDF, drawn by the script below #}
             <a href="{% url 'index' %}" class="btn btn-outline-dark mb-3 print-hide">
                 <i class="fas fa-arrow-left"></i> Look Up Another Vehicle
             </a>
@@ -1934,6 +1947,65 @@ window.cregReportWait();
 })();
 </script>
 {% endif %}
+<script>
+{% comment %} paint375: THE PDF'S LOGO, DRAWN ONCE AS A PICTURE. Once the page's fonts are ready, the logo on the page is copied onto
+   the canvas at four times its size: every letter and the spray can in its own font, at its own place, on the logo's own baseline,
+   filled with the logo's own rainbow (read from the logo, so a change to the logo's colours follows). The canvas then goes inside
+   the logo and the html element is marked pdf-logo-ready; only then does the print sheet lay the canvas over the logo, whose
+   letters stay where they are, unpainted, so nothing on the page moves by a pixel. Anything missing or any error leaves the page
+   unmarked, and the PDF shows the logo as before (paint374). The
+   print sheet's logo is the screen's size (40px, 2.5rem), so the canvas drawn from the screen fits it. {% endcomment %}
+(function () {
+    var brand = document.querySelector('.navbar .brand-text');
+    var canvas = document.getElementById('pdf-logo');
+    if (!brand || !canvas || !canvas.getContext || !document.fonts || !document.createRange) { return; }
+    document.fonts.ready.then(function () {
+        try {
+            var box = brand.getBoundingClientRect(), W = box.width, H = box.height, S = 4;
+            if (!W || !H) { return; }
+            var mark = document.createElement('span');
+            mark.style.cssText = 'display: inline-block; width: 0; height: 0; vertical-align: baseline;';
+            brand.appendChild(mark);
+            var base = mark.getBoundingClientRect().top - box.top;
+            brand.removeChild(mark);
+            var parts = [], icon = brand.querySelector('i');
+            if (icon) {
+                var ch = (getComputedStyle(icon, '::before').content || '').replace(/^["']|["']$/g, '');
+                parts.push([ch, icon.getBoundingClientRect().left - box.left, icon]);
+            }
+            var walk = document.createTreeWalker(brand, NodeFilter.SHOW_TEXT), node;
+            while ((node = walk.nextNode())) {
+                for (var i = 0; i < node.length; i++) {
+                    if (!node.data[i].trim()) { continue; }
+                    var r = document.createRange();
+                    r.setStart(node, i);
+                    r.setEnd(node, i + 1);
+                    parts.push([node.data[i], r.getBoundingClientRect().left - box.left, node.parentNode]);
+                }
+            }
+            var cols = getComputedStyle(brand).backgroundImage.match(/rgba?\([^)]*\)/g) || [];
+            if (cols.length < 2) { return; }
+            canvas.width = Math.ceil(W * S);
+            canvas.height = Math.ceil(H * S);
+            canvas.style.width = W + 'px';
+            canvas.style.height = H + 'px';
+            var ctx = canvas.getContext('2d');
+            ctx.scale(S, S);
+            var grad = ctx.createLinearGradient(0, 0, W, 0);
+            cols.forEach(function (c, k) { grad.addColorStop(k / (cols.length - 1), c); });
+            ctx.fillStyle = grad;
+            ctx.textBaseline = 'alphabetic';
+            parts.forEach(function (p) {
+                var cs = getComputedStyle(p[2]);
+                ctx.font = cs.fontWeight + ' ' + cs.fontSize + ' ' + cs.fontFamily;
+                ctx.fillText(p[0], p[1], base);
+            });
+            brand.appendChild(canvas);
+            document.documentElement.classList.add('pdf-logo-ready');
+        } catch (e) {}
+    });
+})();
+</script>
 <script>
 {% comment %} paint374: SAVE AS PDF. The button opens the browser's print window, where saving as a PDF is a choice.
    While the window is open the page's title, which names the saved file, reads "coloureg paint code": never the plate,
