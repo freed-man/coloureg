@@ -39,3 +39,11 @@
     -webkit-text-fill-color: transparent;
     -moz-text-fill-color: transparent;
 }
+
+.site-messages .alert {
+    width: -moz-fit-content;
+    width: fit-content;
+    max-width: 100%;
+    margin-left: auto;
+    margin-right: auto;
+}

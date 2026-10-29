@@ -197,7 +197,8 @@
 
     <div class="container" style="position: relative; z-index: 10;">
         <div class="row">
-            <div class="col-md-8 offset-md-2">
+            {# paint372: .site-messages makes each message box as wide as its words and centres it (static/css/style.css); a long message still wraps inside the column. #}
+            <div class="col-md-8 offset-md-2 site-messages">
                 {% for message in messages %}
                 {% if 'dash' not in message.tags %}{# paint319: a dashboard line is drawn beside the press, not here #}
                 {# Colour by message tag. Uses `in` rather than `==` so the    #}

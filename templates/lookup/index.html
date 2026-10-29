@@ -497,6 +497,47 @@
            has to be read. Shrinking it to fit the box was the wrong trade:
            the text may now wrap to three lines and that is fine. */{% endcomment %}
     }
+
+    {% comment %}/* paint372: "Did you mean ...?" under the search box, after a plate no
+       supplier knows where one swap of I and 1, or O and 0, gives a plate DVLA
+       knows (preview C, his choice of 28 Oct). The soft yellow of the notes
+       under a code (paint367); the plate drawn as the title's plates are, so it
+       needs no font of its own; the swapped character underlined in red in both
+       plates. The two badge rules name .plate-suggest so they outweigh the
+       title's own .plate-badge rules on smaller screens. */{% endcomment %}
+    .plate-suggest {
+        margin: 16px auto 0;
+        padding: 14px 16px 16px;
+        background: #fff8e6;
+        border: 1px solid #f0dca0;
+        border-radius: 10px;
+        text-align: center;
+        color: #3d3214;
+        font-size: 15px;
+        line-height: 1.5;
+    }
+    .plate-suggest-missed { font-size: 14px; color: #5f4b12; margin-bottom: 10px; }
+    .plate-suggest-missed strong { letter-spacing: 1px; }
+    .plate-suggest-q { font-weight: 600; margin-bottom: 8px; }
+    .plate-suggest-line { display: inline-flex; align-items: center; gap: 6px; }
+    .plate-suggest .plate-badge { font-size: 24px; opacity: 1; }
+    .plate-suggest .plate-badge .plate-text { background: #f5c518; padding: 2px 12px; letter-spacing: 2px; }
+    .plate-suggest .gb-strip small { font-size: 0.42em; color: #fff; font-weight: 700; }
+    .plate-suggest-qmark { font-size: 24px; font-weight: 700; color: #3d3214; }
+    .plate-suggest-swap { color: #C8102E; text-decoration: underline; text-underline-offset: 4px; text-decoration-thickness: 2px; }
+    .plate-suggest-missed .plate-suggest-swap { text-underline-offset: 3px; }
+    .plate-suggest-car { font-size: 14px; color: #5f4b12; margin-top: 6px; }
+    .plate-suggest-btn {
+        margin-top: 12px;
+        border: none;
+        border-radius: 8px;
+        padding: 9px 20px;
+        background: #222;
+        color: #fff;
+        font-weight: 600;
+        font-size: 15px;
+        cursor: pointer;
+    }
 </style>
 <style>
     .home-guide {
@@ -649,6 +690,19 @@
                         <p id="turnstile-note" class="turnstile-note" style="display: none;"></p>
                         {% endif %}
                     </form>
+                    {% if plate_suggestion %}
+                    {% comment %} paint372: "Did you mean ...?" (lookup/services/plate_suggest.py). Drawn only
+                       on the not found answer that offers it, in place of the red line. The
+                       button puts the plate in the box and sends the form, so a press is an
+                       ordinary lookup, Turnstile and every gate included. {% endcomment %}
+                    <div class="plate-suggest" id="plate-suggest" role="alert">
+                        <div class="plate-suggest-missed">We couldn't find <strong>{{ plate_suggestion.typed_before }}<span class="plate-suggest-swap">{{ plate_suggestion.typed_swapped }}</span>{{ plate_suggestion.typed_after }}</strong>.</div>
+                        <div class="plate-suggest-q">Did you mean</div>
+                        <span class="plate-suggest-line"><span class="plate-badge"><span class="gb-strip"><small>GB</small></span><span class="plate-text">{{ plate_suggestion.before }}<span class="plate-suggest-swap">{{ plate_suggestion.swapped }}</span>{{ plate_suggestion.after }}</span></span><span class="plate-suggest-qmark">?</span></span>
+                        <div class="plate-suggest-car">{{ plate_suggestion.car }}</div>
+                        <button type="button" class="plate-suggest-btn" id="plate-suggest-btn" data-reg="{{ plate_suggestion.shown }}">Yes, look it up</button>
+                    </div>
+                    {% endif %}
                     {% if payments_on %}
                     {% comment %} Paid mode notice (F). Everything here is PRE-PURCHASE disclosure,
                        which is what actually protects the business: an accurate,
@@ -935,6 +989,23 @@ checkout and the disclaimer. {% endcomment %}
         }
     });
 
+    {% comment %}
+       paint372: "Did you mean ...?" The button puts its plate in the box and
+       sends the form through requestSubmit, so the submit handler below runs
+       exactly as for a typed plate (the Turnstile hold, the loader). The box
+       goes when the lookup starts (the valid submit below).
+    {% endcomment %}
+    var plateSuggest = document.getElementById('plate-suggest');
+    var plateSuggestBtn = document.getElementById('plate-suggest-btn');
+    if (plateSuggest && plateSuggestBtn) {
+        plateSuggestBtn.addEventListener('click', function () {
+            plateActive = false;
+            regInput.placeholder = '';
+            regInput.value = plateSuggestBtn.getAttribute('data-reg') || '';
+            if (lookupForm.requestSubmit) { lookupForm.requestSubmit(); } else { lookupForm.submit(); }
+        });
+    }
+
     lookupForm.addEventListener('submit', function(e) {
         {% comment %}
            paint151: stamp the FIRST commit and never overwrite it.
@@ -1024,6 +1095,7 @@ checkout and the disclaimer. {% endcomment %}
 
         form.style.display = 'none';
         loader.classList.add('active');
+        if (plateSuggest) plateSuggest.style.display = 'none';
 
         {% comment %}
            Two honest stages — message stays put until the 10s threshold is hit.

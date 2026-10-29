@@ -32,6 +32,7 @@ from django.views.decorators.csrf import csrf_exempt
 from django_ratelimit.core import is_ratelimited
 from lookup.services import vehicle_checks
 from lookup.services import remembered          # paint288
+from lookup.services import plate_suggest       # paint372
 from .models import (Search, PaintLookup, SiteConfig, VrmCache,
                      OperatorPaintCode, PaintCodeReport)
 from .services.vdg import (
@@ -1170,8 +1171,14 @@ def index(request):
                 payload['search_id'] = miss_search.id
                 request.session['vehicle_data'] = payload
                 return redirect('results')
+            # paint372: a repeat of a plate whose first lookup offered "Did you
+            # mean" is shown the same box again, from the hour's memory: nobody
+            # is asked, DVLA included.
+            _page_sugg372 = None
             if _miss == MISS_NO_VEHICLE:
-                messages.error(request, 'Vehicle not found. Please check the registration and try again.')
+                _page_sugg372 = plate_suggest.for_page(plate_suggest.recall(registration))
+                if not _page_sugg372:
+                    messages.error(request, 'Vehicle not found. Please check the registration and try again.')
             else:
                 # Point them at the contact form, which is on /help/ — the
                 # manual-lookup capture lives on the results page, and we are
@@ -1189,6 +1196,7 @@ def index(request):
                 'payments_on': payments_active(config),
                 'payments_configured': payments_configured(),
                 'lookup_price': dj_settings.LOOKUP_PRICE_PENCE / 100.0,
+                'plate_suggestion': _page_sugg372,           # paint372
             })
 
         # --- Per-registration window (paint54) -----------------------------
@@ -1578,6 +1586,34 @@ def index(request):
                         # paint359: remembered as such, so a repeat inside the
                         # hour is given these same words.
                         record_miss(registration, no_vehicle=True)
+                        # paint372: "DID YOU MEAN ...?" Only when DVLA's own
+                        # answer for the plate as typed was no (DVLA was asked
+                        # and answered, and had nothing); the rule itself is in
+                        # services/plate_suggest.py. The home page is then drawn
+                        # here, as the repeat inside the hour draws it, with a
+                        # box under the search box that says the plate was not
+                        # found and offers the one plate with DVLA's colour and
+                        # make, in place of the red line; the hour remembers it
+                        # for a repeat. Drawn here rather than carried through
+                        # the session, so the plain home page still never reads
+                        # the database.
+                        _sugg372 = None
+                        if dvla_answered:
+                            _sugg372 = plate_suggest.suggest(
+                                registration,
+                                lambda p: _timed_call('dvla_suggest', p, lambda: get_dvla_data(p)),
+                                config.is_reg_blocked,
+                            )
+                        _page_sugg372 = plate_suggest.for_page(_sugg372)
+                        if _page_sugg372:
+                            plate_suggest.remember(registration, _sugg372)
+                            return render(request, 'lookup/index.html', {
+                                'turnstile_site_key': dj_settings.TURNSTILE_SITE_KEY,
+                                'payments_on': payments_active(config),
+                                'payments_configured': payments_configured(),
+                                'lookup_price': dj_settings.LOOKUP_PRICE_PENCE / 100.0,
+                                'plate_suggestion': _page_sugg372,
+                            })
                         messages.error(
                             request,
                             'Vehicle not found. Please check the '
