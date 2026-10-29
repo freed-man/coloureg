@@ -20,7 +20,8 @@ from datetime import date, datetime, timedelta
 from django.db import close_old_connections
 
 from lookup.services.http import get_session
-from lookup.services.tax_rates import TAX_YEAR, get_annual_tax
+from lookup.services.tax_rates import (TAX_YEAR, get_annual_tax, PRE_2001_SMALL, PRE_2001_SMALL_6M,     # paint373: the PLG figures
+                                       PRE_2001_LARGE, PRE_2001_LARGE_6M)
 
 logger = logging.getLogger(__name__)
 
@@ -155,6 +156,8 @@ def facts(dvla, mot, lez=None):
         'reg_month': dvla.get('monthOfFirstRegistration') or '',
         'engine_cc': dvla.get('engineCapacity'),
         'type_approval': dvla.get('typeApproval') or '',          # paint248: M1 is a car
+        'art_end': dvla.get('artEndDate') or '',                  # paint373: the day the expensive car rate stops
+        'rev_weight': dvla.get('revenueWeight'),                  # paint373: private/light goods is 3,500kg or less
     }
     # paint246: the MOT tests, kept small: date, result, mileage, expiry, and each
     # defect's type and text.
@@ -199,11 +202,77 @@ def facts(dvla, mot, lez=None):
 #     for a zero-emission car first registered on or after 1 April 2025). The
 #     list price is not known here, so the higher figure is shown beside it
 #     while that can apply.
+# paint373: DVLA'S OWN END DATE OF THE EXPENSIVE CAR RATE (its artEndDate, kept
+# as art_end). Measured on 335 real cars first registered from April 2017 (29 Oct
+# 2026, DVLA asked about recent lookups):
+#   * every car that is not zero-emission and carries the date cost around or
+#     over £40,000 new (56 of 56), and no cheap one carries it: for those the
+#     date proves the rate, so ONE price is shown, with the day it stops;
+#   * the date is missing on a car that cost over £40,000 (a 2023 Genesis
+#     Luxury AWD saloon, too new for the rate to have ended), so a missing date
+#     proves nothing: the two rows stay, as before;
+#   * for a zero-emission car first registered from 1 April 2025 the date does
+#     not follow the £50,000 limit either way (a £49,290 car carries it, a
+#     £57,290 one does not): the two rows stay, with DVLA's date as the end;
+#   * the dates end on the last day of a month, mostly 71 months after the month
+#     of first registration, as early as 59 (a first licence ended early, as when
+#     a car changes keeper), and in the 335 never later than the last day of the
+#     month six years on. That is how long the "List price over" row now shows
+#     when there is no date (it went at six years to the day, up to a month
+#     early). A car off the road between its first and second licence could pay
+#     later; none was seen.
+# paint373: THE RENEWAL, NOT TODAY. Tax is bought in whole calendar months (DVLA's
+# due dates are always the first of a month), so the next renewal pays from the
+# day the tax is due, or from the first of this month for a car that is not
+# taxed. The expensive rate is judged on that day: one that ends before it is not
+# in the renewal. A renewal that runs past the end date is adjusted to pay the
+# higher rate only up to it (GOV.UK, vehicle tax for cars registered from 1 April
+# 2017), so the full rates are shown, and that is said under them when the next
+# twelve months run past the date. The rates are this tax year's: what follows
+# the end date is named "the standard rate", with today's figure.
+# paint373: NO CO2 FIGURE. A car (M1) first registered from 1 April 2017 that
+# holds no CO2 figure (DVLA's 0 on a petrol or diesel vehicle: motorhomes and
+# campers, 3 of the 335) is taxed in the private/light goods class by engine
+# size (DVLA, 27 March 2017; V149 of April 2026, "weighing no more than 3,500kg":
+# £230 up to 1549cc, £375 over), where it was shown the car rates and the £40k
+# row. Heavier, it is a private HGV, so the class is shown only when DVLA's
+# revenue weight is 3,500kg or less. With no weight, with an end date (DVLA's
+# notes about tax classes give that class no expensive rate), on another fuel,
+# with no CO2 value at all, or first registered from March 2001 to March 2017
+# (where band A's £20 was shown), nothing is shown. Before March 2001 the engine
+# size decides, CO2 or none, as it always has.
 SUPPLEMENT_12, SUPPLEMENT_6 = 640, 352          # V149: the standard rate with the £440 added
+# paint373: the private/light goods class by engine size: V149's figures, the ones
+# tax_rates.py holds for cars registered before 1 March 2001.
+PLG_RATES = ((1549, PRE_2001_SMALL, PRE_2001_SMALL_6M), (None, PRE_2001_LARGE, PRE_2001_LARGE_6M))
+PLG_MAX_WEIGHT = 3500                           # kg, V149
+PLG_FUELS = ('PETROL', 'DIESEL')                # always some CO2, so a 0 means no figure
 
 
 def _money(value):
     return f'£{value:,.2f}'.replace('.00', '')
+
+
+def _add_months(d, n):
+    y, m = divmod(d.month - 1 + n, 12)
+    y, m = d.year + y, m + 1
+    last = (date(y + (m == 12), m % 12 + 1, 1) - timedelta(days=1)).day
+    return date(y, m, min(d.day, last))
+
+
+def _latest_end(first):
+    """paint373: the last day the expensive car rate is taken to run when DVLA
+    gives no date: the end of the month six years after first registration (the
+    latest of the 335 measured, above)."""
+    return _add_months(first.replace(day=1), 73) - timedelta(days=1)
+
+
+def _renewal_start(f, today):
+    """paint373: the first day the next renewal pays for (above)."""
+    due = _date(f.get('tax_due'))
+    if str(f.get('tax_status', '')) == 'Taxed' and due and due > today:
+        return due
+    return today.replace(day=1)
 
 
 def tax_estimate(f, today):
@@ -212,6 +281,11 @@ def tax_estimate(f, today):
         return ''
     if parts.get('historic'):
         return '(historic vehicle: exempt from tax)'
+    if parts.get('plg'):
+        return f"(annual tax: {_money(parts['annual'])}, 6 months: {_money(parts['six'])}, as private/light goods: no CO2 figure)"
+    if parts.get('until'):
+        return (f"(annual tax: {_money(SUPPLEMENT_12)}, 6 months: {_money(SUPPLEMENT_6)}, "
+                f"with the expensive car rate until {_shown(parts['until'])})")
     text = f"annual tax: {_money(parts['annual'])}"          # paint250: DVLA's rate, not an estimate
     if parts.get('six'):
         text += f", 6 months: {_money(parts['six'])}"
@@ -225,25 +299,50 @@ def tax_estimate(f, today):
 def tax_table(f, today):
     """paint261: the same facts as tax_estimate(), as the small table opened with
     the Tax row's "+": {'cols': [...], 'rows': [[label, 12 months, 6 months]]},
-    {'note': ...} for a historic vehicle, or None. The second row is the
-    expensive-car rate; DVLA's rule is the LIST PRICE (the published price with
-    factory options, before any discount), not what the owner paid."""
+    with paint373's 'note' (above the table) and 'foot' (under it) where they
+    apply, {'note': ...} for a historic vehicle, or None. The "List price over"
+    row is the expensive-car rate while it can apply; DVLA's rule is the LIST
+    PRICE (the published price with factory options, before any discount), not
+    what the owner paid. paint373: DVLA's end date of that rate, when it proves
+    the rate, gives one price and the day it stops instead."""
     parts = _tax_parts(f, today)
     if not parts:
         return None
     if parts.get('historic'):
         return {'note': 'Historic vehicle: exempt from tax'}
+    if parts.get('plg'):
+        return {'note': 'No CO2 figure, so taxed as private/light goods',
+                'cols': ['12 months', '6 months'],
+                'rows': [['Private/light goods', _money(parts['annual']), _money(parts['six'])]]}
+    if parts.get('until'):
+        until = _shown(parts['until'])
+        foot = f"Until {until}, then the standard rate (now {_money(parts['annual'])} a year)."
+        if parts.get('crosses'):
+            foot += ' A renewal past that date pays the higher rate only until then.'
+        return {'cols': ['12 months', '6 months'],
+                'rows': [['Expensive car rate', _money(SUPPLEMENT_12), _money(SUPPLEMENT_6)]],
+                'foot': foot}
     rows = [['Standard', _money(parts['annual']), _money(parts['six']) if parts.get('six') else '']]
     if parts.get('limit'):
         rows.append([f"List price over £{parts['limit'] // 1000}k", _money(SUPPLEMENT_12), _money(SUPPLEMENT_6)])
     cols = ['12 months', '6 months'] if all(r[2] for r in rows) else ['12 months']
-    return {'cols': cols, 'rows': [r[:1 + len(cols)] for r in rows]}
+    out = {'cols': cols, 'rows': [r[:1 + len(cols)] for r in rows]}
+    if parts.get('ends'):
+        out['foot'] = f"The expensive car rate ends on {_shown(parts['ends'])}, before the tax is due."
+    elif parts.get('limit') and parts.get('art_end'):
+        out['foot'] = f"If the higher rate applies, it ends on {_shown(parts['art_end'])}."
+    return out
 
 
 def _tax_parts(f, today):
-    """The rules behind both: {'historic': True}, or {'annual', 'six', 'limit'}
-    (limit is 40000 or 50000 while the expensive-car rate can apply, else None),
-    or None when any deciding fact is missing (paint248)."""
+    """The rules behind both: {'historic': True}; {'plg': True, 'annual', 'six'}
+    (paint373: no CO2 figure); otherwise {'annual', 'six', 'limit'}, where limit
+    is 40000 or 50000 while the expensive-car rate can apply (else None), with
+    paint373's 'until' and 'crosses' (DVLA's end date proves that rate, which
+    stops on 'until'; 'crosses' when the next twelve months run past it), 'ends'
+    (it stops before the next renewal) or 'art_end' (DVLA's end date for a
+    zero-emission car that may pay it); or None when any deciding fact is
+    missing (paint248)."""
     year_start = int(TAX_YEAR[:4])
     if not (date(year_start, 4, 1) <= today <= date(year_start + 1, 3, 31)):
         return None
@@ -262,7 +361,24 @@ def _tax_parts(f, today):
         return None
     exact = first if to_the_day else None
     reg_year, reg_month = first.year, first.month
+    registered = exact or date(reg_year, reg_month, 1)
     co2 = f.get('co2')
+    fuel = str(f.get('fuel', '')).upper()
+    if registered >= date(2017, 4, 1) and co2 is None:
+        return None                             # paint373: car class or private/light goods? (above)
+    if co2 == 0 and fuel != 'ELECTRICITY' and registered >= date(2001, 3, 1):
+        # paint373: NO CO2 FIGURE (above). Before March 2001 CO2 decides nothing.
+        if registered < date(2017, 4, 1) or fuel not in PLG_FUELS or f.get('art_end'):
+            return None
+        try:
+            cc, weight = int(f.get('engine_cc')), int(f.get('rev_weight'))
+        except (TypeError, ValueError):
+            return None
+        if cc <= 0 or not 0 < weight <= PLG_MAX_WEIGHT:
+            return None                         # a size or a weight of 0 is none at all
+        for top, annual, six in PLG_RATES:
+            if top is None or cc <= top:
+                return {'plg': True, 'annual': annual, 'six': six}
     if reg_year < 2017 and co2 is not None and co2 > 225 and (reg_year, reg_month) == (2006, 3):
         if not exact:
             return None                         # band K turns on the day in March 2006
@@ -275,13 +391,10 @@ def _tax_parts(f, today):
     if not est or not est.get('annual_rate'):
         return None
     parts = {'annual': est['annual_rate'], 'six': est.get('six_month_rate'), 'limit': None}
-    registered = exact or date(reg_year, reg_month, 1)
     if registered >= date(2017, 4, 1):
-        try:
-            ends = registered.replace(year=registered.year + 6)
-        except ValueError:                      # 29 February
-            ends = registered.replace(year=registered.year + 6, day=28)
-        if today < ends:
+        art_end = _date(f.get('art_end'))
+        start = _renewal_start(f, today)        # paint373: the renewal, not today (above)
+        if fuel == 'ELECTRICITY':
             # paint311: AN ELECTRIC CAR REGISTERED BEFORE 1 APRIL 2025 NEVER
             # PAYS THE SUPPLEMENT. It was given the 40,000 limit here, so the
             # page showed "List price over £40k: £640" beside its £200, for a
@@ -290,10 +403,25 @@ def _tax_parts(f, today):
             # the standard rate; the supplement is for those registered on or
             # after 1 April 2025, over £50,000). 17 of 484 cached answers on
             # 10 Oct were such cars.
-            if str(f.get('fuel', '')).upper() == 'ELECTRICITY':
-                parts['limit'] = 50000 if registered >= date(2025, 4, 1) else None
-            else:
-                parts['limit'] = 40000
+            # paint373: one registered from 1 April 2025 keeps the two rows
+            # (DVLA's date does not follow the £50,000 limit), until DVLA's
+            # date when it gives one.
+            end = art_end or _latest_end(registered)
+            if registered >= date(2025, 4, 1) and today <= end and start <= end:
+                parts['limit'] = 50000
+                parts['art_end'] = art_end
+        elif art_end:
+            # paint373: DVLA's date proves the rate while it lasts: one price
+            # when the renewal starts by that day, else the line that it ends
+            # first. Once the date is past, the standard rate alone.
+            if today <= art_end:
+                if start <= art_end:
+                    parts['until'] = art_end
+                    parts['crosses'] = art_end < _add_months(start, 12) - timedelta(days=1)
+                else:
+                    parts['ends'] = art_end
+        elif start <= _latest_end(registered):
+            parts['limit'] = 40000
     return parts
 
 

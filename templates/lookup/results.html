@@ -528,6 +528,7 @@
                                 {% if vc_tax.more %}<span class="vehicle-sub">{{ vc_tax.more }}</span>{% endif %}
                                 {% if vc_tax.table.note %}<span class="vehicle-sub">{{ vc_tax.table.note }}</span>{% endif %}
                                 {% if vc_tax.table.rows %}<table class="tax-table"><thead><tr><th scope="col">To renew</th>{% for c in vc_tax.table.cols %}<th scope="col">{{ c }}</th>{% endfor %}</tr></thead><tbody>{% for r in vc_tax.table.rows %}<tr>{% for cell in r %}{% if forloop.first %}<th scope="row">{{ cell }}</th>{% else %}<td>{{ cell }}</td>{% endif %}{% endfor %}</tr>{% endfor %}</tbody></table>{% endif %}
+                                {% if vc_tax.table.foot %}<span class="vehicle-sub">{{ vc_tax.table.foot }}</span>{% endif %}{# paint373: when the expensive car rate stops #}
                             </span>{% endif %}
                         </span>
                     </div>
