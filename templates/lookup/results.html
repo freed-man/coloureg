@@ -393,6 +393,67 @@
         .lookup-spinner .dot:nth-child(16) { transform: rotateY(337deg) rotateX(-55deg) translateZ(40px); }
         .paint-pending-message { font-size: 16px; }
     }
+    {% comment %} paint374: SAVE AS PDF (the operator's choice B of three previews, 29 Oct): the button sits under the
+       disclaimer, above the email box, only with a confirmed code (the pages that offer "Email me this code"). It opens
+       the browser's own print window, where saving as a PDF is one of the choices, so the site needs no PDF library.
+       What the PDF holds is the print sheet below. The icon is a file with a down arrow: in Font Awesome 6.5.0, the
+       version this site loads, the PDF icon draws the letters PNG (6.4.2 and 6.5.1 draw PDF). {% endcomment %}
+    .save-pdf-wrap { text-align: center; margin: 18px 0 0; }
+    .save-pdf-btn i { margin-right: 8px; }
+    .print-only { display: none; }
+</style>
+{% comment %} paint374: THE PRINT SHEET, the PDF. The operator's words (29 Oct): one page, always; the logo and
+   coloureg.com bigger. A4 with 12mm margins. In: the logo, coloureg.com and the day it was saved; the vehicle details
+   with the MOT and tax "+" lines open; the paint code, its name, the colour bar and the picture once it is drawn; the
+   disclaimer. Out: every button, the email box, "Is this wrong?", the Insurance row and a ULEZ row that are only a
+   link, the MOT history (it alone can fill a page), the picture while it is still being drawn. Every part that can
+   grow has a ceiling (the title two lines, each value one line, each "+" line two, several codes smaller). The
+   colours a printer leaves out by default (the logo's, the colour bar's) are kept. And the safety net: before the PDF is made, the script
+   further down draws the page with this sheet at the A4 width and, if it is taller than one page, shrinks it to fit
+   (--pdf-zoom). The sheet is its own style element, so the script can switch it on for that one measure. {% endcomment %}
+<style id="pdf-css" media="print">
+    @page { size: A4; margin: 12mm; }
+    body { zoom: var(--pdf-zoom, 1); background: #fff; }
+    body.min-vh-100 { min-height: 0 !important; }
+    .menu-toggle, .offcanvas, .site-messages, .print-hide, .mot-history, .vc-more-btn, #report-wrap,
+    .save-pdf-wrap, .car-thumb-zoom, .car-lightbox, .cp-wait, .paint-disclaimer a { display: none !important; }
+    .print-only { display: block !important; }
+    .vc-more[hidden] { display: block !important; }
+    .container, main.container { max-width: none; padding-left: 0; padding-right: 0; margin-top: 0 !important; margin-bottom: 0 !important; }
+    .col-lg-10 { flex: 0 0 100%; width: 100%; max-width: 100%; padding: 0; }
+    .row { margin: 0; }
+    .navbar { padding: 0 0 6px; }
+    .navbar .navbar-brand { padding: 0; margin: 0; }
+    .navbar .brand-text { font-size: 40px; }
+    .print-source { position: absolute; top: 2px; right: 0; text-align: right; font-family: 'IBM Plex Sans', sans-serif; font-size: 14px; line-height: 1.35; color: #555; }
+    .print-source b { display: block; font-size: 24px; font-weight: 600; color: #1a1a1a; }
+    .col-lg-10 > h2 { font-size: 21px; margin: 10px 0 6px !important; break-after: avoid; }
+    .col-lg-10 > h2 img { height: 26px; }
+    .vehicle-card .card-body { padding: 8px 16px !important; }
+    .vehicle-card-title { font-size: 20px; line-height: 1.25; margin-bottom: 6px; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden; }
+    .vehicle-card img[height="50"] { height: 34px; }
+    .vehicle-row { padding: 3px 0; font-size: 13px; break-inside: avoid; }
+    .vehicle-value { min-width: 0; }
+    .vehicle-inline { flex-wrap: nowrap; max-width: 100%; }
+    .vehicle-inline > span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .vehicle-sub, .tax-table { font-size: 12px; }
+    .vc-more .vehicle-sub { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden; }
+    .paint-swatch-bar, .paint-swatch-split { height: 44px; break-after: avoid; }
+    .paint-block { padding: 12px 16px 6px; break-inside: avoid; }
+    #paint-card .paint-code { font-size: 46px; letter-spacing: 3px; margin-bottom: 8px; overflow-wrap: anywhere; }
+    #paint-card .paint-desc { font-size: 16px; }
+    #paint-card .paint-name-only { font-size: 34px; }
+    #paint-found-state .paint-block ~ .paint-block { padding: 6px 16px 4px; }
+    #paint-found-state .paint-block ~ .paint-block .paint-code { font-size: 30px; }
+    #paint-found-state .paint-block:has(~ .paint-block) { padding: 6px 16px 4px; }
+    #paint-found-state .paint-block:has(~ .paint-block) .paint-code { font-size: 30px; }
+    .two-tone-parts { flex-wrap: nowrap; margin-top: 8px; }
+    .tt-text { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .car-thumb.car-thumb { margin: 2px auto 0; break-inside: avoid; }
+    .car-thumb .car-thumb-btn { width: 220px; }
+    .car-thumb-note { font-size: 11px; }
+    .paint-disclaimer { font-size: 10px; margin-top: 8px; max-width: none; }
+    .brand-text, .paint-swatch-bar, .paint-swatch-split span, .tt-dot, .badge, #paint-card * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
 </style>
 {% endblock %}
 
@@ -400,7 +461,9 @@
 <div class="container mt-2">
     <div class="row justify-content-center">
         <div class="col-lg-10 col-md-12">
-            <a href="{% url 'index' %}" class="btn btn-outline-dark mb-3">
+            {# paint374: on the PDF only, top right beside the logo #}
+            <p class="print-only print-source"><b>coloureg.com</b>Saved {% now "j F Y" %}</p>
+            <a href="{% url 'index' %}" class="btn btn-outline-dark mb-3 print-hide">
                 <i class="fas fa-arrow-left"></i> Look Up Another Vehicle
             </a>
             <h1 class="sr-only">Paint code lookup result for {{ registration }}</h1>
@@ -534,7 +597,7 @@
                     </div>
                     {% endif %}
                     {% if vc_ulez %}
-                    <div class="vehicle-row">
+                    <div class="vehicle-row{% if vc_ulez.ok is None %} print-hide{% endif %}">{# paint374: a row that is only a link to TfL stays off the PDF #}
                         {% comment %} paint283: one label for both schemes the row answers. {% endcomment %}
                         <span class="vehicle-label">London ULEZ / Scottish LEZ</span>
                         <span class="vehicle-value vehicle-inline">
@@ -546,7 +609,7 @@
                     </div>
                     {% endif %}
                     {% if vc_insurance_url %}
-                    <div class="vehicle-row">
+                    <div class="vehicle-row print-hide">{# paint374: only a link to MIB, so off the PDF #}
                         <span class="vehicle-label">Insurance</span>
                         <span class="vehicle-value"><a href="{{ vc_insurance_url }}" target="_blank" rel="noopener noreferrer" class="text-decoration-none">Check on MIB <i class="fas fa-external-link-alt small" aria-hidden="true"></i></a></span>
                     </div>
@@ -916,6 +979,12 @@
                 <a href="{% url 'disclaimer' %}">Read more</a>
             </p>
             {% endif %}
+            {% comment %} paint374: SAVE AS PDF, only with a confirmed code: the pages whose email box offers "Email me this
+               code", never beside a special order code, an unconfirmed code or a colour doubt, whose next step is the free
+               manual check. While the search runs it is here hidden, and showFound shows it for a confirmed code. {% endcomment %}
+            {% if paint_pending or paint_code and not special_order and not unconfirmed_code and not colour_doubt %}
+            <div class="save-pdf-wrap" id="save-pdf-wrap"{% if paint_pending %} style="display: none;"{% endif %}><button type="button" class="btn btn-outline-dark save-pdf-btn"><i class="fas fa-file-arrow-down" aria-hidden="true"></i>Save as PDF</button></div>
+            {% endif %}
 
             {% comment %} paint194: not while locked. The locked page carries no paint code,
 so this section read "no code found" and offered a FREE manual lookup beside the
@@ -1104,7 +1173,7 @@ the request directly. {% endcomment %}
                offered to email the code, sent the automatic email and said the code was sent.
                The four tests on paint_code below each gained "and not special_order"; the
                script's showFound does the same through revealEmail. {% endcomment %}
-            <div id="email-section" class="mx-auto mt-4" style="max-width: 540px;{% if paint_pending %} display: none;{% endif %}">
+            <div id="email-section" class="mx-auto mt-4 print-hide" style="max-width: 540px;{% if paint_pending %} display: none;{% endif %}">
                 {% if email_submitted %}
                 <div class="card" style="border: 2px solid #22c55e; background: #f0fdf4;">
                     <div class="card-body text-center py-4">
@@ -1527,6 +1596,13 @@ window.cregReportWait();
         {% comment %} paint299: for a special order code the email box is the manual lookup one, as the
            template draws it: the request goes to the manual queue, not out as the automatic email. {% endcomment %}
         revealEmail(!data.special_order && !data.unconfirmed_code && !data.colour_doubt);     {# paint320: the manual box; paint339: for a colour doubt too #}
+        showSavePdf(!data.special_order && !data.unconfirmed_code && !data.colour_doubt);     {# paint374: Save as PDF with a confirmed code only #}
+    }
+
+    {% comment %} paint374: the Save as PDF button under the disclaimer, drawn hidden on a page that waits for the search. {% endcomment %}
+    function showSavePdf(on) {
+        var wrap = el('save-pdf-wrap');
+        if (wrap) { wrap.style.display = on ? '' : 'none'; }
     }
 
     {% comment %}
@@ -1858,6 +1934,46 @@ window.cregReportWait();
 })();
 </script>
 {% endif %}
+<script>
+{% comment %} paint374: SAVE AS PDF. The button opens the browser's print window, where saving as a PDF is a choice.
+   While the window is open the page's title, which names the saved file, reads "coloureg paint code": never the plate,
+   which Analytics would read (paint304); it comes back afterwards. ONE PAGE, ALWAYS (the operator, 29 Oct): before
+   anything is printed, with the button or the browser's own Print, the page is drawn once with the print sheet at the
+   width of A4 less its margins; if it is taller than the page, the print sheet's zoom shrinks it to fit. Nothing is
+   drawn on screen in between: the measure is read and undone at once. {% endcomment %}
+(function () {
+    var sheet = document.getElementById('pdf-css');
+    var root = document.documentElement;
+    var PAGE_WIDTH = 702, PAGE_HEIGHT = 1031, ROOM = 8;   {# A4 less the 12mm margins: 186mm by 273mm, at 96px an inch, rounded down #}
+    function fitOnePage() {
+        root.style.removeProperty('--pdf-zoom');
+        if (!sheet || !document.body) { return; }
+        var body = document.body, width = body.style.width, high = 0;
+        try {
+            sheet.media = 'all';
+            body.style.width = PAGE_WIDTH + 'px';
+            high = body.getBoundingClientRect().height;
+        } finally {
+            body.style.width = width;
+            sheet.media = 'print';
+        }
+        if (high > PAGE_HEIGHT - ROOM) {
+            root.style.setProperty('--pdf-zoom', String(Math.floor((PAGE_HEIGHT - ROOM) / high * 1000) / 1000));
+        }
+    }
+    window.addEventListener('beforeprint', fitOnePage);
+    window.addEventListener('afterprint', function () { root.style.removeProperty('--pdf-zoom'); });
+    document.addEventListener('click', function (e) {
+        if (!e.target.closest || !e.target.closest('.save-pdf-btn')) { return; }
+        var title = document.title;
+        function back() { document.title = title; window.removeEventListener('afterprint', back); }
+        window.addEventListener('afterprint', back);
+        document.title = 'coloureg paint code';
+        fitOnePage();
+        window.print();
+    });
+})();
+</script>
 <script>
 {% comment %} paint261: the "+" beside MOT and Tax, and the labels on the mileage chart's points {% endcomment %}
 (function () {
