@@ -4545,6 +4545,84 @@ def _picture_panel(now=None):
     }
 
 
+# paint377: THE DAILY SPEND CHART. The operator, 3 Nov: "we have a monthly graph for other things but how about a
+# daily expenditure/usage?" The dashboard counted lookups by the day (the two charts above it) and gave money only
+# as today's and all time's. The panel was drawn as a preview on his own figures the same evening and his answer
+# was "Yes, build it": spend per day by supplier for the 30 days, what a lookup cost, and how long VDG's balance
+# lasts at the last 7 days' pace.
+SPEND_PACE_DAYS = 7
+
+
+def _spend_panel(now, vdg_balance=None):
+    """paint377: the dashboard's spend per London day, by supplier, its two boxes and VDG's runway.
+
+    THE MONEY IS THE BUDGET BREAKER'S (protection.spend_today_by_provider): what VDG billed, net of refunds
+    (vdg_transaction_cost), and Ezyvin's credits at EZYVIN_CREDIT_GBP. One Auto left the race in paint95 and spends
+    nothing inside 30 days. Read from every row, as the breaker reads it. A lookup Turnstile refused spends nothing,
+    so that changes no figure, but it is not a lookup: a day's money is shared over the dashboard's real lookups.
+
+    THE DAYS ARE THE OTHER TWO CHARTS': 31 London days to today, the rows from 30 days ago to the minute, so the
+    first bar holds part of its day as theirs do.
+
+    Returns (series, boxes). series: 'vdg', 'ezyvin', 'total' in pounds (two places), 'lookups', and 'pence' a
+    lookup (one place, None on a day with no lookup), one value a day, oldest first. boxes: 'week' and 'month',
+    each {'per_day': pounds a day, 'per_lookup': pence a lookup or None}, over the last 7 and 30 days to the
+    minute; and 'runway': None when VDG's balance or its spend over the last 7 days is not known or nothing, else
+    {'days': the balance at that pace to the nearest day, 'date': the London day it lasts to, 'pace': VDG's
+    pounds a day}.
+    """
+    from decimal import ROUND_HALF_UP
+    p2, p1, zero = Decimal('0.01'), Decimal('0.1'), Decimal('0')
+    rate = getattr(dj_settings, 'EZYVIN_CREDIT_GBP', None)
+    rate = Decimal(str(rate)) if rate else zero
+    is_lookup = ~Q(error_message__contains='turnstile_blocked')
+    month_ago = now - timedelta(days=30)
+    week_ago = now - timedelta(days=SPEND_PACE_DAYS)
+
+    by_day = list(Search.objects.filter(timestamp__gte=month_ago)
+                  .annotate(date=TruncDate('timestamp'))
+                  .values('date')
+                  .annotate(vdg=Sum('vdg_transaction_cost'), credits=Sum('ezyvin_credits'),
+                            lookups=Count('id', filter=is_lookup))
+                  .order_by('date'))
+    week = Search.objects.filter(timestamp__gte=week_ago).aggregate(
+        vdg=Sum('vdg_transaction_cost'), credits=Sum('ezyvin_credits'), lookups=Count('id', filter=is_lookup))
+
+    def money(row):
+        return (row.get('vdg') or zero), Decimal(int(row.get('credits') or 0)) * rate
+
+    def pence(total, n):
+        return (total * 100 / n).quantize(p1, ROUND_HALF_UP) if n else None
+
+    def box(rows, days):
+        total = sum((sum(money(r)) for r in rows), zero)
+        n = sum((r.get('lookups') or 0) for r in rows)
+        return {'per_day': (total / days).quantize(p2, ROUND_HALF_UP), 'per_lookup': pence(total, n)}
+
+    series = {'vdg': [], 'ezyvin': [], 'total': [], 'lookups': [], 'pence': []}
+    days = {r['date']: r for r in by_day}
+    local_now = timezone.localtime(now)
+    for i in range(30, -1, -1):
+        row = days.get((local_now - timedelta(days=i)).date(), {})
+        vdg, ezyvin = money(row)
+        n = row.get('lookups') or 0
+        series['vdg'].append(float(vdg.quantize(p2, ROUND_HALF_UP)))
+        series['ezyvin'].append(float(ezyvin.quantize(p2, ROUND_HALF_UP)))
+        series['total'].append(float((vdg + ezyvin).quantize(p2, ROUND_HALF_UP)))
+        series['lookups'].append(n)
+        p = pence(vdg + ezyvin, n)
+        series['pence'].append(float(p) if p is not None else None)
+
+    boxes = {'week': box([week], SPEND_PACE_DAYS), 'month': box(by_day, 30), 'runway': None}
+    pace = (week['vdg'] or zero) / SPEND_PACE_DAYS
+    if vdg_balance is not None and pace > 0:
+        lasts = max(Decimal(str(vdg_balance)), zero) / pace
+        boxes['runway'] = {'days': int(lasts.quantize(Decimal('1'), ROUND_HALF_UP)),
+                           'date': (local_now + timedelta(days=float(lasts))).date(),
+                           'pace': pace.quantize(p2, ROUND_HALF_UP)}
+    return series, boxes
+
+
 @staff_member_required
 def admin_stats(request):
     """Admin-only stats dashboard."""
@@ -5717,6 +5795,9 @@ def admin_stats(request):
     else:
         vdg_balance_manual = False
 
+    # paint377: spend per day by supplier, its boxes and VDG's runway (the balance just read, newer wins).
+    _spend_series, _spend_boxes = _spend_panel(now, vdg_balance)
+
     _cache_hits = VrmCache.objects.aggregate(h=Sum('hit_count'))['h'] or 0
     _avg_real_cost = float(real_cost_sum / real_cost_count) if real_cost_count else 0.0
 
@@ -5772,7 +5853,14 @@ def admin_stats(request):
             'src_pl24': src_pl24,
             'src_manual': src_manual,
             'src_cache': src_cache,
+            # paint377: the spend chart's days, the same 31 labels as the two charts above.
+            'spend_vdg': _spend_series['vdg'],
+            'spend_ezyvin': _spend_series['ezyvin'],
+            'spend_total': _spend_series['total'],
+            'spend_lookups': _spend_series['lookups'],
+            'spend_pence': _spend_series['pence'],
         },
+        'spend_boxes': _spend_boxes,                            # paint377
         'top_makes': top_makes,
         'manual_note_max': MANUAL_NOTE_MAX_CHARS,
         'correction_code_max': CORRECTION_CODE_MAX_CHARS,       # paint305 (F9)

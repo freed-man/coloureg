@@ -274,6 +274,20 @@
         position: relative;
         height: 300px;
     }
+    {% comment %}/* paint377: the three boxes under the spend chart, in the stat cards' look: three to a row, one above
+       another on a phone. The figure large, its words small. */{% endcomment %}
+    .spend-boxes {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: 16px;
+        margin-top: 16px;
+    }
+    .spend-boxes .stat-card { padding: 16px 20px; }
+    .spend-unit {
+        font-size: 15px;
+        font-weight: 500;
+        color: #666;
+    }
     .cost-row {
         display: flex;
         justify-content: space-between;
@@ -1053,6 +1067,40 @@
         <p style="margin: 10px 0 0; font-size: 12px; color: #888;">
             Each band is a stage of the pipeline. If one disappears while the total holds, that stage has broken.
         </p>
+    </div>
+
+    {% comment %}paint377: spend per day by supplier (the operator, 3 Nov: "how about a daily expenditure/usage?", and
+       "Yes, build it" to the preview drawn on his own figures). The money is the budget breaker's: what VDG billed,
+       net of refunds, and Ezyvin's credits at their price. The bars are the two charts' 31 days; the boxes are the
+       last 7 and 30 days to the minute; VDG's balance is the card's, read at the last 7 days' VDG pace. Every figure
+       is worked out by the view (_spend_panel).{% endcomment %}
+    <div class="panel" id="spend">
+        <h3>Spend per day, by supplier (last 30 days)</h3>
+        <div class="chart-wrapper">
+            <canvas id="spendChart"></canvas>
+        </div>
+        <div class="spend-boxes">
+            <div class="stat-card">
+                <p class="stat-label">Last 7 days</p>
+                <p class="stat-value">&pound;{{ spend_boxes.week.per_day }}<span class="spend-unit"> a day</span></p>
+                <p class="stat-subvalue">{% if spend_boxes.week.per_lookup is not None %}{{ spend_boxes.week.per_lookup }}p a lookup{% else %}no lookups{% endif %}</p>
+            </div>
+            <div class="stat-card">
+                <p class="stat-label">Last 30 days</p>
+                <p class="stat-value">&pound;{{ spend_boxes.month.per_day }}<span class="spend-unit"> a day</span></p>
+                <p class="stat-subvalue">{% if spend_boxes.month.per_lookup is not None %}{{ spend_boxes.month.per_lookup }}p a lookup{% else %}no lookups{% endif %}</p>
+            </div>
+            <div class="stat-card">
+                <p class="stat-label">VDG balance lasts</p>
+                {% if spend_boxes.runway %}
+                <p class="stat-value">{% if spend_boxes.runway.days %}<span class="spend-unit">about </span>{{ spend_boxes.runway.days }}<span class="spend-unit"> day{{ spend_boxes.runway.days|pluralize }}</span>{% else %}<span class="spend-unit">under a day</span>{% endif %}</p>
+                <p class="stat-subvalue">to about {{ spend_boxes.runway.date|date:"j M" }} &middot; VDG &pound;{{ spend_boxes.runway.pace }} a day over the last 7 days</p>
+                {% else %}
+                <p class="stat-value" style="color: #999;">Not known</p>
+                <p class="stat-subvalue">{% if vdg_balance is None %}no VDG balance yet{% else %}no VDG spend in the last 7 days{% endif %}</p>
+                {% endif %}
+            </div>
+        </div>
     </div>
 
     {% comment %}<!-- Side-by-side panels -->{% endcomment %}
@@ -2604,6 +2652,46 @@
             scales: {
                 x: { stacked: true, grid: { display: false } },
                 y: { stacked: true, beginAtZero: true, ticks: { stepSize: 1, precision: 0 } }
+            }
+        }
+    });
+
+    {% comment %}paint377: spend per day, by supplier, in the source chart's colours for VDG and Ezyvin, on one axis
+       in pounds. A day's tooltip: its two suppliers, then its total, its lookups and what a lookup cost, each as
+       the view worked it out (nothing is added up here).{% endcomment %}
+    var spctx = document.getElementById('spendChart').getContext('2d');
+    var pounds = function (v) { return '\u00a3' + Number(v).toFixed(2); };
+    new Chart(spctx, {
+        type: 'bar',
+        data: {
+            labels: CHART.labels,
+            datasets: [
+                { label: 'VDG',    data: CHART.spend_vdg,    backgroundColor: '#4a7bd4' },
+                { label: 'Ezyvin', data: CHART.spend_ezyvin, backgroundColor: '#00857a' }
+            ]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            interaction: { mode: 'index', intersect: false },
+            plugins: {
+                legend: { display: true, position: 'bottom', labels: { boxWidth: 14, font: { size: 13 } } },
+                tooltip: {
+                    callbacks: {
+                        label: function (c) { return c.dataset.label + ' ' + pounds(c.raw); },
+                        footer: function (items) {
+                            if (!items.length) return '';
+                            var i = items[0].dataIndex, n = CHART.spend_lookups[i], p = CHART.spend_pence[i];
+                            var lines = ['Total ' + pounds(CHART.spend_total[i]), n + (n === 1 ? ' lookup' : ' lookups')];
+                            if (p !== null) lines.push(p.toFixed(1) + 'p a lookup');
+                            return lines;
+                        }
+                    }
+                }
+            },
+            scales: {
+                x: { stacked: true, grid: { display: false } },
+                y: { stacked: true, beginAtZero: true, ticks: { callback: function (v) { return pounds(v); } } }
             }
         }
     });
