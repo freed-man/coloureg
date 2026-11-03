@@ -189,6 +189,10 @@
        hovering names who. */{% endcomment %}
     .email-marker { color: #0F9D58; cursor: default; }
     .access-marker { color: #6f42c1; cursor: default; font-size: 11px; }
+    {% comment %}/* paint380: the customer's answer to "Was this helpful?", after the envelope: a green thumbs up, a red thumbs down. */{% endcomment %}
+    .fb-marker { cursor: default; font-size: 12px; }
+    .fb-marker.fb-yes { color: #2e7d32; }
+    .fb-marker.fb-no { color: #c8102e; }
     .stats-table {
         width: 100%;
         border-collapse: collapse;
@@ -710,6 +714,14 @@
             <p class="stat-label">Blocked by Turnstile</p>
             <p class="stat-value">{{ turnstile_blocks_today }}</p>
             <p class="stat-subvalue">today · {{ turnstile_blocks_week }} in the last 7 days</p>
+        </div>
+        {% comment %} paint380: "Was this helpful?" on the results page: the share of Yes among the answers given on the last
+           30 days' lookups (a dash when nobody has answered). The sixth card of this row: the second row already holds six
+           at a laptop's width, and a seventh there wrapped onto a line of its own (tried in the preview of 3 Nov). {% endcomment %}
+        <div class="stat-card">
+            <p class="stat-label">Helpful, last 30 days</p>
+            <p class="stat-value">{% if helpful %}{{ helpful.pct }}%{% else %}&mdash;{% endif %}</p>
+            {% if helpful %}<p class="stat-subvalue">{{ helpful.yes }} of {{ helpful.answers }} answers said yes</p>{% endif %}
         </div>
     </div>
 
@@ -1536,6 +1548,7 @@
                 margin-bottom: 4px;
             }
             .recent-card-note-label.ours { color: #003399; }
+            .recent-card-note-label.theirs-no { color: #c8102e; }   {% comment %} paint380 {% endcomment %}
             .recent-card-note-text {
                 font-size: 13px;
                 color: #1a1a1a;
@@ -2031,8 +2044,8 @@
                    which is where this dashboard actually gets read. A marker that
                    toggles a full-width row below costs no horizontal space, works
                    on touch, and only appears on rows that have something.{% endcomment %}
-                <tr id="lookup-{{ s.id }}"{% if s.manual_note or s.customer_message %} class="has-note" data-note-row="{{ s.id }}" style="cursor: pointer;"{% endif %}>
-                    <td style="color: #666; font-size: 13px; white-space: nowrap;">{{ s.timestamp|date:"M j Y, H:i" }}{% if s.manual_note or s.customer_message %} <span class="note-marker" title="Has notes — click to expand">&#9998;</span>{% endif %}{% if s.email_sent %} <button type="button" class="tip email-marker" aria-label="Result emailed to {{ s.email }}">&#9993;<span class="tip-src" hidden>{{ s.email }}</span></button>{% endif %}{% if s.access_label %} <span class="access-marker" title="Unlimited access: {{ s.access_label }}">&#9679;</span>{% endif %}</td>
+                <tr id="lookup-{{ s.id }}"{% if s.manual_note or s.customer_message or s.feedback_note %} class="has-note" data-note-row="{{ s.id }}" style="cursor: pointer;"{% endif %}>
+                    <td style="color: #666; font-size: 13px; white-space: nowrap;">{{ s.timestamp|date:"M j Y, H:i" }}{% if s.manual_note or s.customer_message or s.feedback_note %} <span class="note-marker" title="Has notes — click to expand">&#9998;</span>{% endif %}{% if s.email_sent %} <button type="button" class="tip email-marker" aria-label="Result emailed to {{ s.email }}">&#9993;<span class="tip-src" hidden>{{ s.email }}</span></button>{% endif %}{% if s.feedback == 'yes' %} <span class="fb-marker fb-yes" title="Helpful" aria-label="Helpful"><i class="fas fa-thumbs-up" aria-hidden="true"></i></span>{% elif s.feedback == 'no' %} <span class="fb-marker fb-no" title="Not helpful" aria-label="Not helpful"><i class="fas fa-thumbs-down" aria-hidden="true"></i></span>{% endif %}{% if s.access_label %} <span class="access-marker" title="Unlimited access: {{ s.access_label }}">&#9679;</span>{% endif %}</td>
                     <td>{{ s.vehicle_title|default:"—" }}</td>
                     <td>{{ s.registration }}{% if s.car_picture %}{% with p=s.car_picture %} {% if p.status == "ready" %}<a href="{{ p.url }}" target="_blank" rel="noopener" class="car-picture-link" title="AI picture{% if p.verdict %}, wheel {{ p.verdict }}{% endif %}{% if p.plate %}, plate {{ p.plate }}{% endif %}{% if p.cost %}, about ${{ p.cost|floatformat:3 }}{% endif %}">View</a>{% elif p.status == "pending" %}<span class="car-picture-pending" style="color: #888;" title="AI picture being drawn">drawing…</span>{% else %}<span class="car-picture-failed" style="color: #b00;" title="AI picture failed: {{ p.error }}">&#10007;</span>{% endif %}{% endwith %}{% endif %}</td>
                     <td style="white-space: nowrap;">{{ s.vin|default:"—" }}</td>
@@ -2117,13 +2130,20 @@
                 {% if s.edit_box %}
                 <tr class="edit-detail" id="edit-row-{{ s.id }}" hidden onclick="event.stopPropagation()"><td colspan="11" style="padding: 0;">{% include 'lookup/_answer_box.html' with where='row' %}</td></tr>
                 {% endif %}
-                {% if s.manual_note or s.customer_message %}
+                {% if s.manual_note or s.customer_message or s.feedback_note %}
                 <tr class="note-detail" id="note-{{ s.id }}" hidden>
                     <td colspan="11" style="background: #fafbfc; padding: 14px 18px;">
                         {% if s.customer_message %}
                         <div style="margin-bottom: 10px;">
                             <div style="font-size: 11px; font-weight: 600; letter-spacing: 0.6px; text-transform: uppercase; color: #666; margin-bottom: 4px;">Customer said</div>
                             <div style="font-size: 13px; color: #1a1a1a; white-space: pre-wrap;">{{ s.customer_message }}</div>
+                        </div>
+                        {% endif %}
+                        {% comment %} paint380: the note a customer left with "No" to "Was this helpful?". {% endcomment %}
+                        {% if s.feedback_note %}
+                        <div style="margin-bottom: 10px;">
+                            <div style="font-size: 11px; font-weight: 600; letter-spacing: 0.6px; text-transform: uppercase; color: #c8102e; margin-bottom: 4px;">Not helpful, their note</div>
+                            <div style="font-size: 13px; color: #1a1a1a; white-space: pre-wrap;">{{ s.feedback_note }}</div>
                         </div>
                         {% endif %}
                         {% if s.manual_note %}
@@ -2152,9 +2172,9 @@
                lookup could not be read back on a phone — there was nothing to
                open. Same markers and same content as the desktop row; tap the
                card to reveal it. {% endcomment %}
-            <div class="recent-card{% if s.manual_note or s.customer_message %} has-note-card{% endif %}"{% if s.manual_note or s.customer_message %} data-note-card="{{ s.id }}" role="button" tabindex="0" aria-expanded="false"{% endif %}>
+            <div class="recent-card{% if s.manual_note or s.customer_message or s.feedback_note %} has-note-card{% endif %}"{% if s.manual_note or s.customer_message or s.feedback_note %} data-note-card="{{ s.id }}" role="button" tabindex="0" aria-expanded="false"{% endif %}>
                 <div class="recent-card-row1">
-                    <span class="recent-card-date">{{ s.timestamp|date:"M j Y, H:i" }}{% if s.manual_note or s.customer_message %} <span class="note-marker" aria-hidden="true">&#9998;</span>{% endif %}{% if s.email_sent %} <button type="button" class="tip email-marker" aria-label="Result emailed to {{ s.email }}">&#9993;<span class="tip-src" hidden>{{ s.email }}</span></button>{% endif %}{% if s.access_label %} <span class="access-marker" title="Unlimited access: {{ s.access_label }}">&#9679;</span>{% endif %}</span>
+                    <span class="recent-card-date">{{ s.timestamp|date:"M j Y, H:i" }}{% if s.manual_note or s.customer_message or s.feedback_note %} <span class="note-marker" aria-hidden="true">&#9998;</span>{% endif %}{% if s.email_sent %} <button type="button" class="tip email-marker" aria-label="Result emailed to {{ s.email }}">&#9993;<span class="tip-src" hidden>{{ s.email }}</span></button>{% endif %}{% if s.feedback == 'yes' %} <span class="fb-marker fb-yes" title="Helpful" aria-label="Helpful"><i class="fas fa-thumbs-up" aria-hidden="true"></i></span>{% elif s.feedback == 'no' %} <span class="fb-marker fb-no" title="Not helpful" aria-label="Not helpful"><i class="fas fa-thumbs-down" aria-hidden="true"></i></span>{% endif %}{% if s.access_label %} <span class="access-marker" title="Unlimited access: {{ s.access_label }}">&#9679;</span>{% endif %}</span>
                     {% comment %} paint358: as in the table above. {% endcomment %}
                     {% if s.recovery_name_only or s.paint_description and not s.success %}
                     {% if s.not_automated_now %}
@@ -2205,12 +2225,18 @@
                         {% endif %}
                     </span>
                 </div>
-                {% if s.manual_note or s.customer_message %}
+                {% if s.manual_note or s.customer_message or s.feedback_note %}
                 <div class="recent-card-note" id="note-card-{{ s.id }}" hidden>
                     {% if s.customer_message %}
                     <div class="recent-card-note-block">
                         <div class="recent-card-note-label">Customer said</div>
                         <div class="recent-card-note-text">{{ s.customer_message }}</div>
+                    </div>
+                    {% endif %}
+                    {% if s.feedback_note %}
+                    <div class="recent-card-note-block">
+                        <div class="recent-card-note-label theirs-no">Not helpful, their note</div>
+                        <div class="recent-card-note-text">{{ s.feedback_note }}</div>
                     </div>
                     {% endif %}
                     {% if s.manual_note %}

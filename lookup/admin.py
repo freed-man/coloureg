@@ -167,6 +167,10 @@ class SearchAdmin(admin.ModelAdmin):
         'paid_unlocked',
         'access_label',
         'customer_message',
+        # paint380: the customer's answer to "Was this helpful?" and a No's note.
+        # Written by the customer from the results page, so readonly.
+        'feedback',
+        'feedback_note',
         'enriched_from',
         # paint288: the car details saved with the lookup. Written by the lookup
         # itself and read back for a remembered answer, so readonly.
@@ -276,7 +280,8 @@ class SearchAdmin(admin.ModelAdmin):
         }),
         ('Customer and manual handling', {
             'classes': ('collapse',),
-            'fields': ('customer_message', 'manual_note', 'no_code_available',
+            'fields': ('customer_message', 'feedback', 'feedback_note',          # paint380
+                       'manual_note', 'no_code_available',
                        'enriched_from', 'operator_answered_at', 'parked_at'),     # paint335: parked (editable: the admin is the escape hatch)
         }),
         # paint288. What a remembered answer draws its page from: the car details

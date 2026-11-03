@@ -841,6 +841,20 @@ class Search(models.Model):
     # file treats a car with a code as answered whatever this holds.
     parked_at = models.DateTimeField(null=True, blank=True, db_index=True)
 
+    # paint380: "WAS THIS HELPFUL?", the customer's answer on the results page,
+    # kept on the lookup's own row (the operator's choice of 3 Nov: on the row,
+    # so the answer sits beside the car it was about). '' until answered; the
+    # first answer stands. A No may carry a note of up to 300 characters, sent
+    # once, never one holding a link or an email address (views.submit_feedback).
+    # The database keeps its default ('') so the release before, still serving
+    # while Railway runs the migration, goes on saving lookups.
+    FEEDBACK_YES = 'yes'
+    FEEDBACK_NO = 'no'
+    FEEDBACK_CHOICES = [(FEEDBACK_YES, 'Helpful'), (FEEDBACK_NO, 'Not helpful')]
+    FEEDBACK_NOTE_MAX = 300
+    feedback = models.CharField(max_length=3, choices=FEEDBACK_CHOICES, blank=True, default='', db_default='')
+    feedback_note = models.CharField(max_length=FEEDBACK_NOTE_MAX, blank=True, default='', db_default='')
+
     @classmethod
     def _plates_of(cls, ids):
         """paint335: the registrations of these lookup ids (unknown ids are left out)."""

@@ -31,5 +31,7 @@ urlpatterns = [
     path('dismiss-manual-lookup/', views.dismiss_manual_lookup, name='dismiss_manual_lookup'),
     # paint113: a customer flagging a delivered code as wrong.
     path('report-paint-code/', views.report_paint_code, name='report_paint_code'),
+    # paint380: "Was this helpful?" on the results page.
+    path('submit-feedback/', views.submit_feedback, name='submit_feedback'),
     path('send-compose-email/', views.send_compose_email, name='send_compose_email'),
 ]

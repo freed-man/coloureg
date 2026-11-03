@@ -400,6 +400,21 @@
        version this site loads, the PDF icon draws the letters PNG (6.4.2 and 6.5.1 draw PDF). {% endcomment %}
     .save-pdf-wrap { text-align: center; margin: 18px 0 0; }
     .save-pdf-btn i { margin-right: 8px; }
+    {% comment %} paint380: "WAS THIS HELPFUL?" under the email box (the operator's design and wording of 3 Nov): the question
+       and two round outline buttons with thumbs; after No, a box like the email box. {% endcomment %}
+    .fb-ask { display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 10px; }
+    .fb-q { font-size: 15px; font-weight: 500; color: #333; }
+    .fb-btn { display: inline-flex; align-items: center; gap: 7px; padding: 6px 16px; font-size: 14px; line-height: 1.3;
+              color: #333; background: #fff; border: 1px solid #c4c9cf; border-radius: 999px; cursor: pointer; }
+    .fb-btn:hover, .fb-btn:focus-visible { border-color: #333; }
+    .fb-thanks { margin: 0; text-align: center; font-size: 14px; color: #555; }
+    .fb-no-title { display: block; font-size: 1.05rem; font-weight: 600; margin-bottom: 10px; }
+    .fb-no-title span { font-weight: 400; color: #6c757d; }
+    .fb-foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 8px; }
+    .fb-count { font-size: 12px; color: #888; font-variant-numeric: tabular-nums; }
+    .fb-done { margin: 0; padding: 10px 14px; text-align: center; font-size: 14px; color: #166534;
+               background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 8px; }
+    .fb-done i { margin-right: 7px; color: #22c55e; }
     .print-only { display: none; }
     #pdf-logo { display: none; }
 </style>
@@ -1246,6 +1261,30 @@ the request directly. {% endcomment %}
                 </div>
                 {% endif %}
             </div>
+            {% comment %} paint380: "WAS THIS HELPFUL?", under the email box on every result with a lookup (found, missed, not
+               automated, special order, a 7 day or remembered answer); while the search runs it waits hidden and comes with
+               the email box (revealEmail). Not in print, so not on the PDF. The words are the operator's, approved 3 Nov.
+               The answer on the row decides what a reload shows: the question, the thanks for Yes, the box after a No that
+               has no note yet, or the thanks for the note. {% endcomment %}
+            <div id="feedback-section" class="mx-auto mt-3 print-hide" style="max-width: 540px;{% if paint_pending %} display: none;{% endif %}" aria-live="polite">
+                <div class="fb-ask" id="fb-ask"{% if feedback %} hidden{% endif %}>
+                    <span class="fb-q">Was this helpful?</span>
+                    <button type="button" class="fb-btn" data-answer="yes"><i class="fa-regular fa-thumbs-up" aria-hidden="true"></i>Yes</button>
+                    <button type="button" class="fb-btn" data-answer="no"><i class="fa-regular fa-thumbs-down" aria-hidden="true"></i>No</button>
+                </div>
+                <p class="fb-thanks" id="fb-yes"{% if feedback != 'yes' %} hidden{% endif %}>Thanks, glad it helped.</p>
+                <div class="card" id="fb-no"{% if feedback != 'no' or feedback_noted %} hidden{% endif %}>
+                    <div class="card-body p-4">
+                        <label class="fb-no-title" for="fb-note">Sorry about that. What went wrong? <span>(optional)</span></label>
+                        <textarea id="fb-note" class="form-control" rows="3" maxlength="{{ feedback_note_max }}" placeholder="A few words help us put it right"></textarea>
+                        <div class="fb-foot">
+                            <span class="fb-count" id="fb-count">0 / {{ feedback_note_max }}</span>
+                            <button type="button" class="btn btn-dark" id="fb-send">Send</button>
+                        </div>
+                    </div>
+                </div>
+                <p class="fb-done" id="fb-done"{% if not feedback_noted %} hidden{% endif %}><i class="fas fa-check" aria-hidden="true"></i>Thanks for telling us.</p>
+            </div>
             {% endif %}
 
         </div>
@@ -1366,6 +1405,56 @@ window.cregReportWait();
                     'Thanks, we\u2019ll take a look at this one.</div>';
             }
         });
+    });
+})();
+</script>
+{% comment %} paint380: "WAS THIS HELPFUL?". A tap shows its thanks (or, for No, the box) at once and sends the answer; Send
+   shows "Thanks for telling us." and sends the note, if one was typed. THE SAME WHATEVER THE SERVER SAYS, as "Is this
+   wrong?" does: a second answer, the hourly limit, a note it does not keep or a network failure all read the same, so
+   nobody learns the limits. One answer and one note from this page; the server keeps the first of each. {% endcomment %}
+<script>
+(function () {
+    var FEEDBACK_URL = "{% url 'submit_feedback' %}";
+    var SEARCH_ID = "{{ search_id }}";
+    var CSRF_TOKEN = "{{ csrf_token }}";
+    var answered = false, noted = false;
+    function el(id) { return document.getElementById(id); }
+    function setHidden(id, on) { var n = el(id); if (n) { n.hidden = on; } }
+    function send(fields) {
+        fields.search_id = SEARCH_ID;
+        fetch(FEEDBACK_URL, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/x-www-form-urlencoded', 'X-CSRFToken': CSRF_TOKEN},
+            body: new URLSearchParams(fields).toString()
+        }).catch(function () {});
+    }
+    document.addEventListener('click', function (ev) {
+        var t = ev.target && ev.target.closest ? ev.target : null;
+        if (!t) return;
+        var btn = t.closest('#fb-ask .fb-btn');
+        if (btn) {
+            if (answered) return;
+            answered = true;
+            var answer = btn.getAttribute('data-answer') === 'no' ? 'no' : 'yes';
+            setHidden('fb-ask', true);
+            setHidden(answer === 'no' ? 'fb-no' : 'fb-yes', false);
+            send({answer: answer});
+            return;
+        }
+        if (t.closest('#fb-send')) {
+            if (noted) return;
+            noted = true;
+            var box = el('fb-note');
+            var text = box ? box.value.trim() : '';
+            setHidden('fb-no', true);
+            setHidden('fb-done', false);
+            if (text) { send({note: text}); }
+        }
+    });
+    document.addEventListener('input', function (ev) {
+        if (!ev.target || ev.target.id !== 'fb-note') return;
+        var count = el('fb-count');
+        if (count) { count.textContent = ev.target.value.length + ' / ' + ev.target.maxLength; }
     });
 })();
 </script>
@@ -1725,6 +1814,8 @@ window.cregReportWait();
        false / 'missed'=> the manual-lookup ("we'll find it") offer
     {% endcomment %}
     function revealEmail(mode) {
+        var fb = el('feedback-section');                {# paint380: "Was this helpful?" comes with the email box #}
+        if (fb) fb.style.display = '';
         var section = el('email-section');
         if (!section) return;
 

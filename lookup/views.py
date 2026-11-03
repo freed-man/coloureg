@@ -2450,6 +2450,11 @@ def results(request):
         # again after a reload (a second press filed nothing). One small
         # query, and only for a result that has a code.
         'already_reported': _already_reported(vehicle_data.get('search_id')) if paint_code else False,
+        # paint380: the answer to "Was this helpful?" already on the row, so a
+        # reload shows its thanks line (after a No with no note yet, the box).
+        'feedback': _locked_search.feedback if _locked_search is not None else '',
+        'feedback_noted': bool(_locked_search is not None and _locked_search.feedback_note),
+        'feedback_note_max': Search.FEEDBACK_NOTE_MAX,
         'email_submitted': email_submitted,
         # True when VDG returned a vehicle but no paint: the template shows the
         # "finding your paint code" state and polls /lookup-status. Only true if
@@ -4630,6 +4635,18 @@ def _spend_panel(now):
     return series, boxes
 
 
+def _helpful_card(yes, no):
+    """paint380: the dashboard's "Helpful, last 30 days" card, from the answers
+    to "Was this helpful?" on the last 30 days' real lookups: the share of Yes
+    among Yes and No, a whole percent rounded as "Success rate today" is (and
+    the picture panel's shares), with the counts beside it. None when nobody
+    has answered (the card shows a dash)."""
+    answers = (yes or 0) + (no or 0)
+    if not answers:
+        return None
+    return {'pct': round(100 * (yes or 0) / answers), 'yes': yes or 0, 'answers': answers}
+
+
 @staff_member_required
 def admin_stats(request):
     """Admin-only stats dashboard."""
@@ -5143,6 +5160,9 @@ def admin_stats(request):
             & ~Q(make='') & ~_gate_now & (_recovery_done | _marked | _replayed)),    # paint355, see genuine_miss below; paint359
         week=Count('id', filter=Q(timestamp__gte=week_ago)),
         month=Count('id', filter=Q(timestamp__gte=month_ago)),
+        # paint380: the answers to "Was this helpful?" on the last 30 days' lookups.
+        month_helpful=Count('id', filter=Q(timestamp__gte=month_ago, feedback=Search.FEEDBACK_YES)),
+        month_not_helpful=Count('id', filter=Q(timestamp__gte=month_ago, feedback=Search.FEEDBACK_NO)),
         # Success / paint hit rate
         with_code=Count('id', filter=~Q(paint_code='')),
         # --- Outcome buckets for a fair success rate (see success_rate below) ---
@@ -5292,6 +5312,7 @@ def admin_stats(request):
     today_rate = round(_t_ok / (_t_ok + _t_miss) * 100) if (_t_ok + _t_miss) else None
     week_searches = top_metrics['week']
     month_searches = top_metrics['month']
+    helpful = _helpful_card(top_metrics['month_helpful'], top_metrics['month_not_helpful'])   # paint380
     success_with_code = top_metrics['with_code']
     vehicle_found = top_metrics['vehicle_found']
     no_vehicle_count = top_metrics['no_vehicle']
@@ -5814,6 +5835,7 @@ def admin_stats(request):
         'today_rate': today_rate,
         'week_searches': week_searches,
         'month_searches': month_searches,
+        'helpful': helpful,                                                        # paint380
         'success_rate': round(success_rate, 1),
         'not_automated': top_metrics['not_automated'],
         'success_with_code': success_with_code,
@@ -6445,6 +6467,82 @@ def report_paint_code(request):
     except Exception:  # noqa: BLE001 — the report is saved; the mail is a courtesy
         logger.exception('paint report email failed for %s', report.pk)
 
+    return JsonResponse({'ok': True})
+
+
+#: paint380: answers to "Was this helpful?" an hour from one connection (the
+#: sliding window, its own group). A customer answers the lookup in front of
+#: them; a sixth answer within the hour from one address is someone testing.
+FEEDBACK_PER_HOUR = 5
+#: paint380: a note that holds a link is not kept: an address with a scheme
+#: (http://, https:// or any other), one beginning www., or a name ending in
+#: one of these top levels. A full stop typed between two words without a
+#: space ("wrong.The code") is not a link, so only these endings count.
+_FEEDBACK_LINK = re.compile(
+    r'[a-z][a-z0-9+.-]*://|\bwww\.'
+    r'|\b[a-z0-9-]+(?:\.[a-z0-9-]+)*\.(?:com|net|org|info|biz|io|ly|me|ru|cn|xyz|top|site|online|shop|app|uk)\b',
+    re.I)
+#: paint380: nor a note that holds an email address.
+_FEEDBACK_EMAIL = re.compile(r'[^\s@]+@[^\s@]+\.[^\s@]+')
+
+
+@require_POST
+def submit_feedback(request):
+    """paint380: "WAS THIS HELPFUL?" on the results page.
+
+    The operator's design of 3 Nov: Yes or No under the email box on every
+    result with a lookup; after No, an optional note. Both are kept on the
+    lookup's own row (Search.feedback, Search.feedback_note) and shown on his
+    dashboard: a thumbs up or down by the date, a No's note under the row, and
+    the share of Yes over the last 30 days. Nothing is emailed to him.
+
+    Two requests, from the page's script:
+      answer=yes|no   saved at the tap, the first answer only;
+      note=<text>     saved when Send is pressed, only on a lookup answered No,
+                      once, 300 characters at most.
+
+    The guards, as report_paint_code's (paint113, paint189):
+    1. SESSION OWNERSHIP: only the lookup this session did. A session with no
+       lookup owns nothing.
+    2. ONE ANSWER AND ONE NOTE PER LOOKUP: each is written only while its field
+       is empty, in the UPDATE itself, so two quick taps cannot both land.
+    3. THE SLIDING WINDOW, 5 answers an hour from one connection. A note needs
+       no hit of its own: it rides on a No, one per lookup, so the answers bound
+       the notes.
+    4. A NOTE HOLDING A LINK OR AN EMAIL ADDRESS IS NOT KEPT (the answer is,
+       already). Nor an empty one. A longer note is cut at 300 characters (the
+       box stops at 300 itself).
+
+    THE SAME ANSWER WHATEVER HAPPENED: {"ok": true} for a saved answer, a
+    second one, a refused note and the limit alike, so nobody learns the
+    limits; the page's script shows its thanks without reading the reply. A
+    request from a session that does not own the lookup gets the error
+    report_paint_code gives."""
+    search_id = request.POST.get('search_id')
+    session_search_id = (request.session.get('vehicle_data') or {}).get('search_id')
+    if (not search_id or session_search_id is None
+            or str(session_search_id) != str(search_id)):
+        return JsonResponse({'ok': False, 'error': 'session'}, status=400)
+    try:
+        rows = Search.objects.filter(id=int(search_id))
+    except (ValueError, TypeError):
+        # A SECOND LAYER, as in report_paint_code: the guard above lets only
+        # the session's own id through.
+        return JsonResponse({'ok': False, 'error': 'not_found'}, status=404)
+
+    answer = (request.POST.get('answer') or '').strip().lower()
+    if answer in (Search.FEEDBACK_YES, Search.FEEDBACK_NO):
+        # Answered already (or no such row): the same thanks, and no hit on the
+        # window, as a second report is not counted either.
+        if rows.filter(feedback='').exists():
+            ip = get_client_ip(request)
+            if not (ip and sliding_rate_limited('feedback', ip, limit=FEEDBACK_PER_HOUR)):
+                rows.filter(feedback='').update(feedback=answer)
+    elif 'note' in request.POST:
+        note = (request.POST.get('note') or '').replace('\x00', '').strip()   # Postgres refuses a NUL in text
+        if note and not _FEEDBACK_LINK.search(note) and not _FEEDBACK_EMAIL.search(note):
+            rows.filter(feedback=Search.FEEDBACK_NO, feedback_note='').update(
+                feedback_note=note[:Search.FEEDBACK_NOTE_MAX].strip())
     return JsonResponse({'ok': True})
 
 
