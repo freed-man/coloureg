@@ -229,6 +229,47 @@ def same_car(row, dvla, marks=None):
     return True, ''
 
 
+def copy_is_another_car(payload, dvla):
+    """paint376: (True, why) when DVLA's reply today describes another car than
+    the 7 day answer's (protection.get_cached_vrm_payload), else (False, '').
+
+    Only a POSITIVE difference counts: a make, a year or a colour that both
+    hold and that differ, or one of DVLA's marks of the car (engine size, fuel,
+    month of first registration) that the answer's own stored facts hold and
+    DVLA now gives otherwise. Unknown is no difference here, the other way
+    round from same_car: the 7 day answer was served with no test at all
+    before paint376, and a test that set it aside for a missing value would
+    send repeats back to the paid search for nothing. No reply from DVLA is
+    no difference either.
+
+    The year is read from the answer's stored DVLA facts when they hold it
+    (DVLA then against DVLA now), else from the answer itself (VDG's year,
+    which memory's same_car compares too)."""
+    if not isinstance(dvla, dict) or not isinstance(payload, dict):
+        return False, ''
+    vin = payload.get('vin') or ''
+    make, make_now = _car_make_key(payload.get('make'), vin), _car_make_key(dvla.get('make'), vin)
+    if make and make_now and make != make_now:
+        return True, 'the make differs'
+    status = payload.get('vehicle_status') if isinstance(payload.get('vehicle_status'), dict) else {}
+    try:
+        if int(status.get('year') or payload.get('year')) != int(dvla.get('yearOfManufacture')):
+            return True, 'the year differs'
+    except (TypeError, ValueError):
+        pass
+    colour, colour_now = _colour_key(payload.get('colour')), _colour_key(dvla.get('colour'))
+    if colour and colour_now and colour != colour_now:
+        return True, 'the colour differs'
+    marks = identity_of(status)
+    if marks:
+        now = _identity_now(dvla)
+        for key, what in (('engine_cc', 'the engine size'), ('fuel', 'the fuel'), ('reg_month', 'the month of first registration')):
+            then = _mark(marks.get(key))
+            if then and now[key] and then != now[key]:
+                return True, what + ' differs'
+    return False, ''
+
+
 class Remembered:
     """An earlier answer for a plate: the lookup it came from, the code and
     name as they would be given today, and the saved car details if any

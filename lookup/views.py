@@ -974,6 +974,37 @@ def index(request):
             cached_payload = _fill_cached_name(cached_payload)       # paint281
             cached_payload = _tidy_replayed_name(cached_payload, registration)    # paint288
             cached_payload = _reread_catalogue_name(cached_payload, registration)   # paint303
+        # paint376: TODAY'S FACTS ON EVERY 7 DAY REPEAT. The 7 day answer holds
+        # the whole page as it was stored, DVLA's and the MOT service's facts
+        # with it (tax, MOT and its history, the V5C date, ULEZ), and a repeat
+        # inside the week was shown them as they were: a car whose tax fell due
+        # after its first lookup read "Taxed ... 1 day overdue" whether or not
+        # it had been renewed (the operator's question, 31 Oct; 45 of October's
+        # 140 such repeats showed facts more than a day old). Both are free, so
+        # they are asked again on every such repeat, as memory has always done
+        # (paint288), and the page shows what they say today; when they do not
+        # answer in time, the rows they feed are left out, as on any lookup.
+        # The paint answer is still the stored one, and nothing is written back
+        # to the 7 day answer (its week does not start again).
+        #
+        # With today's facts beside it, the answer must still be this car's: a
+        # plate moved to another car inside the week would show one car's paint
+        # beside another's tax and MOT. So DVLA's reply is read for the same car
+        # too (remembered.copy_is_another_car): only a make, year, colour or mark
+        # of the car that DVLA now gives otherwise sends the lookup on to the
+        # search; anything unknown is no difference (the answer was served
+        # untested before). The checks started here are handed on, so DVLA is
+        # asked once. Not for the hour's name only answer (paint254).
+        _checks376 = None
+        if cached_payload and not _name_only_replay:
+            _checks376 = vehicle_checks.start(registration, _CHECKS_DVLA, _CHECKS_MOT, _CHECKS_LEZ)
+            _other376, _why376 = remembered.copy_is_another_car(
+                cached_payload, vehicle_checks.dvla_reply(_checks376, remembered.DVLA_WAIT_SECONDS))
+            if _other376:
+                logger.info('7 day answer not used for %s: %s', _log_reg(registration), _why376)
+                cached_payload = None
+            else:
+                cached_payload = dict(cached_payload, vehicle_status=vehicle_checks.collect(_checks376))
         if cached_payload:
             # paint94: DECIDE THE GATE HERE, do not replay the stored verdict.
             #
@@ -1282,9 +1313,10 @@ def index(request):
         #     remembered code is used in place of the paint search, further
         #     down. DVLA has had that call's time to answer by then.
         _mem = remembered.find(registration)
-        _checks = None
+        _checks = _checks376        # paint376: already started when a 7 day answer was set aside
         if _mem is not None:
-            _checks = vehicle_checks.start(registration, _CHECKS_DVLA, _CHECKS_MOT, _CHECKS_LEZ)
+            if _checks is None:
+                _checks = vehicle_checks.start(registration, _CHECKS_DVLA, _CHECKS_MOT, _CHECKS_LEZ)
             if _mem.has_details:
                 if _mem.confirm(vehicle_checks.dvla_reply(_checks, remembered.DVLA_WAIT_SECONDS)):
                     return _serve_remembered(request, registration, _mem, _checks,
