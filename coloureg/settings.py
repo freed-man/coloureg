@@ -436,6 +436,26 @@ if EZYVIN_CREDIT_GBP:
             'EZYVIN_CREDIT_GBP must be a price in pounds written with a dot, '
             f'like 0.09. It is set to {EZYVIN_CREDIT_GBP!r}.')
 
+# paint378: WHAT THE partslink24 SUBSCRIPTIONS COST IN ALL, A MONTH, IN POUNDS, as the operator pays them (3 Nov: three
+# accounts, all on the Monthly plan at the same price, which partslink24 lists at 32.40 a month with VAT). The
+# dashboard's spend panel adds it to the last 30 days of VDG and Ezyvin as "A month, all in"; it is spent on no
+# lookup and so is never spread over the daily bars. A Railway variable of this name replaces it when the price or
+# the number of accounts changes, with no release. Empty means not priced: the box is not drawn.
+#
+# CHECKED HERE, AT STARTUP, as EZYVIN_CREDIT_GBP is above (paint190): a mistyped value stops the deploy with this
+# message instead of breaking the dashboard. Kept as the text, as that one is.
+PL24_MONTHLY_GBP = os.environ.get('PL24_MONTHLY_GBP', '97.20').strip()
+if PL24_MONTHLY_GBP:
+    from decimal import Decimal as _Decimal, InvalidOperation as _BadDecimal
+    try:
+        _pl24_price = _Decimal(PL24_MONTHLY_GBP)
+    except _BadDecimal:
+        _pl24_price = None
+    if _pl24_price is None or not _pl24_price.is_finite() or _pl24_price < 0:
+        raise ImproperlyConfigured(
+            'PL24_MONTHLY_GBP must be what the partslink24 subscriptions cost a month in all, in pounds, written '
+            f'with a dot, like 97.20. It is set to {PL24_MONTHLY_GBP!r}.')
+
 CACHES = {
     # DEFAULT stays the database cache. django-ratelimit reads/writes here, and
     # the rate limit MUST be shared across all gunicorn workers — the database is

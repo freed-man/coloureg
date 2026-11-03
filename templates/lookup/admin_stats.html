@@ -942,6 +942,38 @@
             {% endif %}
     </div>
 
+    {% comment %}paint377: spend per day by supplier (the operator, 3 Nov: "how about a daily expenditure/usage?", and
+       "Yes, build it" to the preview drawn on his own figures). The money is the budget breaker's: what VDG billed,
+       net of refunds, and Ezyvin's credits at their price. The bars are the two charts' 31 days; the boxes are the
+       last 7 and 30 days to the minute. paint378, his word once it was live: under "API costs", no box for how long
+       VDG's balance lasts, and a month all in with his partslink24 subscriptions (settings.PL24_MONTHLY_GBP), a fixed
+       fee kept out of the daily bars. Every figure is worked out by the view (_spend_panel).{% endcomment %}
+    <div class="panel" id="spend">
+        <h3>Spend per day, by supplier (last 30 days)</h3>
+        <div class="chart-wrapper">
+            <canvas id="spendChart"></canvas>
+        </div>
+        <div class="spend-boxes">
+            <div class="stat-card">
+                <p class="stat-label">Last 7 days</p>
+                <p class="stat-value">&pound;{{ spend_boxes.week.per_day }}<span class="spend-unit"> a day</span></p>
+                <p class="stat-subvalue">{% if spend_boxes.week.per_lookup is not None %}{{ spend_boxes.week.per_lookup }}p a lookup{% else %}no lookups{% endif %}</p>
+            </div>
+            <div class="stat-card">
+                <p class="stat-label">Last 30 days</p>
+                <p class="stat-value">&pound;{{ spend_boxes.month.per_day }}<span class="spend-unit"> a day</span></p>
+                <p class="stat-subvalue">{% if spend_boxes.month.per_lookup is not None %}{{ spend_boxes.month.per_lookup }}p a lookup{% else %}no lookups{% endif %}</p>
+            </div>
+            {% if spend_boxes.all_in %}
+            <div class="stat-card">
+                <p class="stat-label">A month, all in</p>
+                <p class="stat-value">&pound;{{ spend_boxes.all_in.total }}</p>
+                <p class="stat-subvalue">VDG and Ezyvin &pound;{{ spend_boxes.all_in.suppliers }} + partslink24 &pound;{{ spend_boxes.all_in.pl24 }} &middot; {% if spend_boxes.all_in.per_lookup is not None %}{{ spend_boxes.all_in.per_lookup }}p a lookup{% else %}no lookups{% endif %}</p>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+
     {% comment %}<!-- Lookup outcomes: a funnel from every logged lookup down to the two
          definitive buckets that form the success rate. Colours match the bar:
          green counts as a success, red counts as a failure, grey is excluded
@@ -1067,40 +1099,6 @@
         <p style="margin: 10px 0 0; font-size: 12px; color: #888;">
             Each band is a stage of the pipeline. If one disappears while the total holds, that stage has broken.
         </p>
-    </div>
-
-    {% comment %}paint377: spend per day by supplier (the operator, 3 Nov: "how about a daily expenditure/usage?", and
-       "Yes, build it" to the preview drawn on his own figures). The money is the budget breaker's: what VDG billed,
-       net of refunds, and Ezyvin's credits at their price. The bars are the two charts' 31 days; the boxes are the
-       last 7 and 30 days to the minute; VDG's balance is the card's, read at the last 7 days' VDG pace. Every figure
-       is worked out by the view (_spend_panel).{% endcomment %}
-    <div class="panel" id="spend">
-        <h3>Spend per day, by supplier (last 30 days)</h3>
-        <div class="chart-wrapper">
-            <canvas id="spendChart"></canvas>
-        </div>
-        <div class="spend-boxes">
-            <div class="stat-card">
-                <p class="stat-label">Last 7 days</p>
-                <p class="stat-value">&pound;{{ spend_boxes.week.per_day }}<span class="spend-unit"> a day</span></p>
-                <p class="stat-subvalue">{% if spend_boxes.week.per_lookup is not None %}{{ spend_boxes.week.per_lookup }}p a lookup{% else %}no lookups{% endif %}</p>
-            </div>
-            <div class="stat-card">
-                <p class="stat-label">Last 30 days</p>
-                <p class="stat-value">&pound;{{ spend_boxes.month.per_day }}<span class="spend-unit"> a day</span></p>
-                <p class="stat-subvalue">{% if spend_boxes.month.per_lookup is not None %}{{ spend_boxes.month.per_lookup }}p a lookup{% else %}no lookups{% endif %}</p>
-            </div>
-            <div class="stat-card">
-                <p class="stat-label">VDG balance lasts</p>
-                {% if spend_boxes.runway %}
-                <p class="stat-value">{% if spend_boxes.runway.days %}<span class="spend-unit">about </span>{{ spend_boxes.runway.days }}<span class="spend-unit"> day{{ spend_boxes.runway.days|pluralize }}</span>{% else %}<span class="spend-unit">under a day</span>{% endif %}</p>
-                <p class="stat-subvalue">to about {{ spend_boxes.runway.date|date:"j M" }} &middot; VDG &pound;{{ spend_boxes.runway.pace }} a day over the last 7 days</p>
-                {% else %}
-                <p class="stat-value" style="color: #999;">Not known</p>
-                <p class="stat-subvalue">{% if vdg_balance is None %}no VDG balance yet{% else %}no VDG spend in the last 7 days{% endif %}</p>
-                {% endif %}
-            </div>
-        </div>
     </div>
 
     {% comment %}<!-- Side-by-side panels -->{% endcomment %}

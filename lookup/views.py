@@ -4548,13 +4548,17 @@ def _picture_panel(now=None):
 # paint377: THE DAILY SPEND CHART. The operator, 3 Nov: "we have a monthly graph for other things but how about a
 # daily expenditure/usage?" The dashboard counted lookups by the day (the two charts above it) and gave money only
 # as today's and all time's. The panel was drawn as a preview on his own figures the same evening and his answer
-# was "Yes, build it": spend per day by supplier for the 30 days, what a lookup cost, and how long VDG's balance
-# lasts at the last 7 days' pace.
-SPEND_PACE_DAYS = 7
+# was "Yes, build it": spend per day by supplier for the 30 days and what a lookup cost.
+# paint378 (the operator, the same evening, once it was live): the panel moved under "API costs", the box saying how
+# long VDG's balance lasts taken out ("so it will just have 7 days and 30 days"), and the partslink24 subscriptions
+# added as a month's total ("i have 3 accounts there so total per month?"). A subscription is a fixed fee, the same
+# however many lookups run, so it is never spread over the daily bars: it is added to the last 30 days in a box of
+# its own, "A month, all in" (settings.PL24_MONTHLY_GBP).
+SPEND_WEEK_DAYS = 7
 
 
-def _spend_panel(now, vdg_balance=None):
-    """paint377: the dashboard's spend per London day, by supplier, its two boxes and VDG's runway.
+def _spend_panel(now):
+    """paint377: the dashboard's spend per London day, by supplier, and its boxes (paint378: a month all in).
 
     THE MONEY IS THE BUDGET BREAKER'S (protection.spend_today_by_provider): what VDG billed, net of refunds
     (vdg_transaction_cost), and Ezyvin's credits at EZYVIN_CREDIT_GBP. One Auto left the race in paint95 and spends
@@ -4567,9 +4571,8 @@ def _spend_panel(now, vdg_balance=None):
     Returns (series, boxes). series: 'vdg', 'ezyvin', 'total' in pounds (two places), 'lookups', and 'pence' a
     lookup (one place, None on a day with no lookup), one value a day, oldest first. boxes: 'week' and 'month',
     each {'per_day': pounds a day, 'per_lookup': pence a lookup or None}, over the last 7 and 30 days to the
-    minute; and 'runway': None when VDG's balance or its spend over the last 7 days is not known or nothing, else
-    {'days': the balance at that pace to the nearest day, 'date': the London day it lasts to, 'pace': VDG's
-    pounds a day}.
+    minute; and 'all_in' (paint378): None when PL24_MONTHLY_GBP is empty, else the last 30 days' VDG and Ezyvin
+    ('suppliers') plus a month of the partslink24 subscriptions ('pl24'), their 'total', and its 'per_lookup'.
     """
     from decimal import ROUND_HALF_UP
     p2, p1, zero = Decimal('0.01'), Decimal('0.1'), Decimal('0')
@@ -4577,7 +4580,7 @@ def _spend_panel(now, vdg_balance=None):
     rate = Decimal(str(rate)) if rate else zero
     is_lookup = ~Q(error_message__contains='turnstile_blocked')
     month_ago = now - timedelta(days=30)
-    week_ago = now - timedelta(days=SPEND_PACE_DAYS)
+    week_ago = now - timedelta(days=SPEND_WEEK_DAYS)
 
     by_day = list(Search.objects.filter(timestamp__gte=month_ago)
                   .annotate(date=TruncDate('timestamp'))
@@ -4613,13 +4616,14 @@ def _spend_panel(now, vdg_balance=None):
         p = pence(vdg + ezyvin, n)
         series['pence'].append(float(p) if p is not None else None)
 
-    boxes = {'week': box([week], SPEND_PACE_DAYS), 'month': box(by_day, 30), 'runway': None}
-    pace = (week['vdg'] or zero) / SPEND_PACE_DAYS
-    if vdg_balance is not None and pace > 0:
-        lasts = max(Decimal(str(vdg_balance)), zero) / pace
-        boxes['runway'] = {'days': int(lasts.quantize(Decimal('1'), ROUND_HALF_UP)),
-                           'date': (local_now + timedelta(days=float(lasts))).date(),
-                           'pace': pace.quantize(p2, ROUND_HALF_UP)}
+    boxes = {'week': box([week], SPEND_WEEK_DAYS), 'month': box(by_day, 30), 'all_in': None}
+    pl24 = getattr(dj_settings, 'PL24_MONTHLY_GBP', None)
+    if pl24:
+        suppliers = sum((sum(money(r)) for r in by_day), zero)
+        pl24 = Decimal(str(pl24))
+        boxes['all_in'] = {'suppliers': suppliers.quantize(p2, ROUND_HALF_UP), 'pl24': pl24.quantize(p2, ROUND_HALF_UP),
+                           'total': (suppliers + pl24).quantize(p2, ROUND_HALF_UP),
+                           'per_lookup': pence(suppliers + pl24, sum((r.get('lookups') or 0) for r in by_day))}
     return series, boxes
 
 
@@ -5795,8 +5799,8 @@ def admin_stats(request):
     else:
         vdg_balance_manual = False
 
-    # paint377: spend per day by supplier, its boxes and VDG's runway (the balance just read, newer wins).
-    _spend_series, _spend_boxes = _spend_panel(now, vdg_balance)
+    # paint377: spend per day by supplier and its boxes (paint378: no runway; a month all in).
+    _spend_series, _spend_boxes = _spend_panel(now)
 
     _cache_hits = VrmCache.objects.aggregate(h=Sum('hit_count'))['h'] or 0
     _avg_real_cost = float(real_cost_sum / real_cost_count) if real_cost_count else 0.0
