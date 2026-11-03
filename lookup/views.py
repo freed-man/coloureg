@@ -4570,7 +4570,8 @@ def _spend_panel(now):
 
     Returns (series, boxes). series: 'vdg', 'ezyvin', 'total' in pounds (two places), 'lookups', and 'pence' a
     lookup (one place, None on a day with no lookup), one value a day, oldest first. boxes: 'week' and 'month',
-    each {'per_day': pounds a day, 'per_lookup': pence a lookup or None}, over the last 7 and 30 days to the
+    each {'total': pounds, 'per_day': pounds a day, 'per_lookup': pence a lookup or None} (the total since paint379),
+    over the last 7 and 30 days to the
     minute; and 'all_in' (paint378): None when PL24_MONTHLY_GBP is empty, else the last 30 days' VDG and Ezyvin
     ('suppliers') plus a month of the partslink24 subscriptions ('pl24'), their 'total', and its 'per_lookup'.
     """
@@ -4598,9 +4599,11 @@ def _spend_panel(now):
         return (total * 100 / n).quantize(p1, ROUND_HALF_UP) if n else None
 
     def box(rows, days):
+        # paint379: the period's total too, shown first in its box (the operator: "should have total and then average").
         total = sum((sum(money(r)) for r in rows), zero)
         n = sum((r.get('lookups') or 0) for r in rows)
-        return {'per_day': (total / days).quantize(p2, ROUND_HALF_UP), 'per_lookup': pence(total, n)}
+        return {'total': total.quantize(p2, ROUND_HALF_UP), 'per_day': (total / days).quantize(p2, ROUND_HALF_UP),
+                'per_lookup': pence(total, n)}
 
     series = {'vdg': [], 'ezyvin': [], 'total': [], 'lookups': [], 'pence': []}
     days = {r['date']: r for r in by_day}

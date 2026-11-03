@@ -275,7 +275,7 @@
         height: 300px;
     }
     {% comment %}/* paint377: the three boxes under the spend chart, in the stat cards' look: three to a row, one above
-       another on a phone. The figure large, its words small. */{% endcomment %}
+       another on a phone. */{% endcomment %}
     .spend-boxes {
         display: grid;
         grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
@@ -283,11 +283,6 @@
         margin-top: 16px;
     }
     .spend-boxes .stat-card { padding: 16px 20px; }
-    .spend-unit {
-        font-size: 15px;
-        font-weight: 500;
-        color: #666;
-    }
     .cost-row {
         display: flex;
         justify-content: space-between;
@@ -947,7 +942,8 @@
        net of refunds, and Ezyvin's credits at their price. The bars are the two charts' 31 days; the boxes are the
        last 7 and 30 days to the minute. paint378, his word once it was live: under "API costs", no box for how long
        VDG's balance lasts, and a month all in with his partslink24 subscriptions (settings.PL24_MONTHLY_GBP), a fixed
-       fee kept out of the daily bars. Every figure is worked out by the view (_spend_panel).{% endcomment %}
+       fee kept out of the daily bars. paint379, his word: each of the two boxes gives its total first, then its average
+       a day and what a lookup cost. Every figure is worked out by the view (_spend_panel).{% endcomment %}
     <div class="panel" id="spend">
         <h3>Spend per day, by supplier (last 30 days)</h3>
         <div class="chart-wrapper">
@@ -956,13 +952,13 @@
         <div class="spend-boxes">
             <div class="stat-card">
                 <p class="stat-label">Last 7 days</p>
-                <p class="stat-value">&pound;{{ spend_boxes.week.per_day }}<span class="spend-unit"> a day</span></p>
-                <p class="stat-subvalue">{% if spend_boxes.week.per_lookup is not None %}{{ spend_boxes.week.per_lookup }}p a lookup{% else %}no lookups{% endif %}</p>
+                <p class="stat-value">&pound;{{ spend_boxes.week.total }}</p>
+                <p class="stat-subvalue">&pound;{{ spend_boxes.week.per_day }} a day &middot; {% if spend_boxes.week.per_lookup is not None %}{{ spend_boxes.week.per_lookup }}p a lookup{% else %}no lookups{% endif %}</p>
             </div>
             <div class="stat-card">
                 <p class="stat-label">Last 30 days</p>
-                <p class="stat-value">&pound;{{ spend_boxes.month.per_day }}<span class="spend-unit"> a day</span></p>
-                <p class="stat-subvalue">{% if spend_boxes.month.per_lookup is not None %}{{ spend_boxes.month.per_lookup }}p a lookup{% else %}no lookups{% endif %}</p>
+                <p class="stat-value">&pound;{{ spend_boxes.month.total }}</p>
+                <p class="stat-subvalue">&pound;{{ spend_boxes.month.per_day }} a day &middot; {% if spend_boxes.month.per_lookup is not None %}{{ spend_boxes.month.per_lookup }}p a lookup{% else %}no lookups{% endif %}</p>
             </div>
             {% if spend_boxes.all_in %}
             <div class="stat-card">
