@@ -4637,18 +4637,6 @@ def _spend_panel(now):
     return series, boxes
 
 
-def _helpful_card(yes, no):
-    """paint380: the dashboard's "Helpful, last 30 days" card, from the answers
-    to "Was this helpful?" on the last 30 days' real lookups: the share of Yes
-    among Yes and No, a whole percent rounded as "Success rate today" is (and
-    the picture panel's shares), with the counts beside it. None when nobody
-    has answered (the card shows a dash)."""
-    answers = (yes or 0) + (no or 0)
-    if not answers:
-        return None
-    return {'pct': round(100 * (yes or 0) / answers), 'yes': yes or 0, 'answers': answers}
-
-
 @staff_member_required
 def admin_stats(request):
     """Admin-only stats dashboard."""
@@ -5162,9 +5150,8 @@ def admin_stats(request):
             & ~Q(make='') & ~_gate_now & (_recovery_done | _marked | _replayed)),    # paint355, see genuine_miss below; paint359
         week=Count('id', filter=Q(timestamp__gte=week_ago)),
         month=Count('id', filter=Q(timestamp__gte=month_ago)),
-        # paint380: the answers to "Was this helpful?" on the last 30 days' lookups.
-        month_helpful=Count('id', filter=Q(timestamp__gte=month_ago, feedback=Search.FEEDBACK_YES)),
-        month_not_helpful=Count('id', filter=Q(timestamp__gte=month_ago, feedback=Search.FEEDBACK_NO)),
+        # paint386: paint380's "Helpful, last 30 days" card and its two counts removed at the operator's
+        # word (4 Nov: "no need"); each answer still shows on its row, the thumbs by the date.
         # Success / paint hit rate
         with_code=Count('id', filter=~Q(paint_code='')),
         # --- Outcome buckets for a fair success rate (see success_rate below) ---
@@ -5314,7 +5301,6 @@ def admin_stats(request):
     today_rate = round(_t_ok / (_t_ok + _t_miss) * 100) if (_t_ok + _t_miss) else None
     week_searches = top_metrics['week']
     month_searches = top_metrics['month']
-    helpful = _helpful_card(top_metrics['month_helpful'], top_metrics['month_not_helpful'])   # paint380
     success_with_code = top_metrics['with_code']
     vehicle_found = top_metrics['vehicle_found']
     no_vehicle_count = top_metrics['no_vehicle']
@@ -5837,7 +5823,6 @@ def admin_stats(request):
         'today_rate': today_rate,
         'week_searches': week_searches,
         'month_searches': month_searches,
-        'helpful': helpful,                                                        # paint380
         'success_rate': round(success_rate, 1),
         'not_automated': top_metrics['not_automated'],
         'success_with_code': success_with_code,

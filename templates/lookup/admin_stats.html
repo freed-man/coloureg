@@ -715,14 +715,8 @@
             <p class="stat-value">{{ turnstile_blocks_today }}</p>
             <p class="stat-subvalue">today · {{ turnstile_blocks_week }} in the last 7 days</p>
         </div>
-        {% comment %} paint380: "Was this helpful?" on the results page: the share of Yes among the answers given on the last
-           30 days' lookups (a dash when nobody has answered). The sixth card of this row: the second row already holds six
-           at a laptop's width, and a seventh there wrapped onto a line of its own (tried in the preview of 3 Nov). {% endcomment %}
-        <div class="stat-card">
-            <p class="stat-label">Helpful, last 30 days</p>
-            <p class="stat-value">{% if helpful %}{{ helpful.pct }}%{% else %}&mdash;{% endif %}</p>
-            {% if helpful %}<p class="stat-subvalue">{{ helpful.yes }} of {{ helpful.answers }} answers said yes</p>{% endif %}
-        </div>
+        {% comment %} paint386: paint380's "Helpful, last 30 days" card, the sixth here, removed at the operator's word
+           (4 Nov: "no need"). Each answer still shows on its row below, the thumbs by the date. {% endcomment %}
     </div>
 
     {% comment %}<!-- Top metrics: row 2 = quality + balance -->{% endcomment %}

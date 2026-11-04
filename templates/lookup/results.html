@@ -409,14 +409,19 @@
     .fb-q { font-size: 15px; font-weight: 500; color: #333; }
     .fb-btn { display: inline-flex; align-items: center; gap: 7px; padding: 6px 16px; font-size: 14px; line-height: 1.3;
               color: #333; background: #fff; border: 1px solid #c4c9cf; border-radius: 999px; cursor: pointer; }
-    .fb-btn:hover, .fb-btn:focus-visible { border-color: #333; }
+    {% comment %} paint386 (the operator, 4 Nov: "when hovering over yes and no it should show their colour too"): Yes green and
+       No red under the pointer or the keyboard's focus, while the question is still open. {% endcomment %}
+    .fb-ask:not(.fb-answered) .fb-btn[data-answer="yes"]:hover, .fb-ask:not(.fb-answered) .fb-btn[data-answer="yes"]:focus-visible { color: #fff; background: #2e7d32; border-color: #2e7d32; }
+    .fb-ask:not(.fb-answered) .fb-btn[data-answer="no"]:hover, .fb-ask:not(.fb-answered) .fb-btn[data-answer="no"]:focus-visible { color: #fff; background: #c8102e; border-color: #c8102e; }
     {% comment %} paint384: the button tapped takes its colour (the dashboard's own two: the tick's green, the red of
        "Not helpful"), the other fades, and neither can be tapped again. {% endcomment %}
     .fb-ask.fb-answered .fb-btn { cursor: default; opacity: .45; border-color: #c4c9cf; }
     .fb-ask.fb-answered .fb-btn.fb-on { opacity: 1; color: #fff; }
     .fb-ask.fb-answered .fb-btn.fb-on[data-answer="yes"] { background: #2e7d32; border-color: #2e7d32; }
     .fb-ask.fb-answered .fb-btn.fb-on[data-answer="no"] { background: #c8102e; border-color: #c8102e; }
-    #fb-yes, #fb-no, #fb-done { margin-top: 12px; }
+    {% comment %} paint386: the No box's X, top right of the box. {% endcomment %}
+    #fb-no { position: relative; }
+    .fb-close { position: absolute; top: 14px; right: 14px; }
     .fb-thanks { margin: 0; text-align: center; font-size: 14px; color: #555; }
     .fb-no-title { display: block; font-size: 1.05rem; font-weight: 600; margin-bottom: 10px; }
     .fb-no-title span { font-weight: 400; color: #6c757d; }
@@ -1276,16 +1281,20 @@ the request directly. {% endcomment %}
                paint384, the operator's word of 4 Nov: ONLY WHERE A CODE IS SHOWN, as a No now files a report and a report needs a
                code (the "Is this wrong?" link in the card is gone). While the search runs it waits hidden, and only a found
                code brings it (showFound); a name only, a miss, a pause, a car not automated never show it. A tap colours the
-               button tapped, Yes green and No red, the other faded; both stay, so a reload shows the answer the same way. {% endcomment %}
+               button tapped, Yes green and No red, the other faded; paint386: for half a second, then the question gives way to its
+               thanks or the No box, as a reload shows it. {% endcomment %}
             {% if paint_code or paint_pending %}
             <div id="feedback-section" class="mx-auto mt-3 print-hide" style="max-width: 540px;{% if paint_pending %} display: none;{% endif %}" aria-live="polite">
-                <div class="fb-ask{% if feedback %} fb-answered{% endif %}" id="fb-ask">
+                {% comment %} paint386 (the operator, 4 Nov: "shouldn't was it helpful disappear once the person selected their
+                   choice?"): once answered the question goes, so a reload shows only what came after it. {% endcomment %}
+                <div class="fb-ask" id="fb-ask"{% if feedback %} hidden{% endif %}>
                     <span class="fb-q">Was this helpful?</span>
-                    <button type="button" class="fb-btn{% if feedback == 'yes' %} fb-on{% endif %}" data-answer="yes"{% if feedback %} disabled{% endif %}><i class="fa-regular fa-thumbs-up" aria-hidden="true"></i>Yes</button>
-                    <button type="button" class="fb-btn{% if feedback == 'no' %} fb-on{% endif %}" data-answer="no"{% if feedback %} disabled{% endif %}><i class="fa-regular fa-thumbs-down" aria-hidden="true"></i>No</button>
+                    <button type="button" class="fb-btn" data-answer="yes"><i class="fa-regular fa-thumbs-up" aria-hidden="true"></i>Yes</button>
+                    <button type="button" class="fb-btn" data-answer="no"><i class="fa-regular fa-thumbs-down" aria-hidden="true"></i>No</button>
                 </div>
                 <p class="fb-thanks" id="fb-yes"{% if feedback != 'yes' %} hidden{% endif %}>Thanks, glad it helped.</p>
                 <div class="card" id="fb-no"{% if feedback != 'no' or feedback_noted %} hidden{% endif %}>
+                    <button type="button" class="btn-close fb-close" id="fb-close" aria-label="Close"></button>
                     <div class="card-body p-4">
                         <label class="fb-no-title" for="fb-note">Sorry about that. What went wrong? <span>(optional)</span></label>
                         <textarea id="fb-note" class="form-control" rows="3" maxlength="{{ feedback_note_max }}" placeholder="A few words help us put it right"></textarea>
@@ -1406,6 +1415,11 @@ window.cregReportWait();
         btn.classList.add('fb-on');
         if (ask) { ask.classList.add('fb-answered'); }
     }
+    function reveal(node) {
+        if (!node || !node.scrollIntoView) return;
+        var still = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+        node.scrollIntoView({behavior: still ? 'auto' : 'smooth', block: 'nearest'});
+    }
     function send(fields) {
         fields.search_id = SEARCH_ID;
         fetch(FEEDBACK_URL, {
@@ -1423,8 +1437,22 @@ window.cregReportWait();
             answered = true;
             var answer = btn.getAttribute('data-answer') === 'no' ? 'no' : 'yes';
             pick(btn);
-            setHidden(answer === 'no' ? 'fb-no' : 'fb-yes', false);
+            {% comment %} paint386: the chosen colour shows for half a second, then the question gives way to its thanks or,
+               after No, to the box, which is brought fully into view. The answer is sent at once. {% endcomment %}
+            setTimeout(function () {
+                setHidden('fb-ask', true);
+                setHidden(answer === 'no' ? 'fb-no' : 'fb-yes', false);
+                if (answer === 'no') { reveal(el('fb-no')); }
+            }, 500);
             send({answer: answer});
+            return;
+        }
+        if (t.closest('#fb-close')) {
+            {% comment %} paint386: the X closes the box with no note; the No stands, and the thanks show. {% endcomment %}
+            if (noted) return;
+            noted = true;
+            setHidden('fb-no', true);
+            setHidden('fb-done', false);
             return;
         }
         if (t.closest('#fb-send')) {
@@ -1458,8 +1486,11 @@ window.cregReportWait();
         btn.setAttribute('aria-expanded', open ? 'true' : 'false');
         btn.classList.toggle('active', open);
         if (open) {
+            {% comment %} paint386: the opened box is brought fully into view, then the cursor goes into it without a second jump. {% endcomment %}
+            var still = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+            box.scrollIntoView({behavior: still ? 'auto' : 'smooth', block: 'nearest'});
             var field = box.querySelector('input[type="email"]');
-            if (field) { field.focus(); }
+            if (field) { field.focus({preventScroll: true}); }
         }
     });
 })();
