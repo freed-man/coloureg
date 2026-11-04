@@ -398,8 +398,11 @@
        the browser's own print window, where saving as a PDF is one of the choices, so the site needs no PDF library.
        What the PDF holds is the print sheet below. The icon is a file with a down arrow: in Font Awesome 6.5.0, the
        version this site loads, the PDF icon draws the letters PNG (6.4.2 and 6.5.1 draw PDF). {% endcomment %}
-    .save-pdf-wrap { text-align: center; margin: 18px 0 0; }
+    {% comment %} paint385 (the operator's word of 4 Nov, 5L's list): Save as PDF and an "Email me" button side by side, the
+       button opening the email box under them; the row wraps on a narrow screen. {% endcomment %}
+    .save-pdf-wrap { display: flex; justify-content: center; flex-wrap: wrap; gap: 10px; margin: 18px 0 0; }
     .save-pdf-btn i { margin-right: 8px; }
+    .email-open-btn i { margin-right: 8px; }
     {% comment %} paint380: "WAS THIS HELPFUL?" under the email box (the operator's design and wording of 3 Nov): the question
        and two round outline buttons with thumbs; after No, a box like the email box. {% endcomment %}
     .fb-ask { display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 10px; }
@@ -1014,7 +1017,7 @@
                code", never beside a special order code, an unconfirmed code or a colour doubt, whose next step is the free
                manual check. While the search runs it is here hidden, and showFound shows it for a confirmed code. {% endcomment %}
             {% if paint_pending or paint_code and not special_order and not unconfirmed_code and not colour_doubt %}
-            <div class="save-pdf-wrap" id="save-pdf-wrap"{% if paint_pending %} style="display: none;"{% endif %}><button type="button" class="btn btn-outline-dark save-pdf-btn"><i class="fas fa-file-arrow-down" aria-hidden="true"></i>Save as PDF</button></div>
+            <div class="save-pdf-wrap" id="save-pdf-wrap"{% if paint_pending %} style="display: none;"{% endif %}><button type="button" class="btn btn-outline-dark save-pdf-btn"><i class="fas fa-file-arrow-down" aria-hidden="true"></i>Save as PDF</button>{% if search_id and not locked and not email_submitted %}<button type="button" class="btn btn-outline-dark email-open-btn" id="email-open-btn" aria-expanded="false" aria-controls="email-section"><i class="fas fa-envelope" aria-hidden="true"></i>Email me</button>{% endif %}</div>
             {% endif %}
 
             {% comment %} paint194: not while locked. The locked page carries no paint code,
@@ -1204,7 +1207,10 @@ the request directly. {% endcomment %}
                offered to email the code, sent the automatic email and said the code was sent.
                The four tests on paint_code below each gained "and not special_order"; the
                script's showFound does the same through revealEmail. {% endcomment %}
-            <div id="email-section" class="mx-auto mt-4 print-hide" style="max-width: 540px;{% if paint_pending %} display: none;{% endif %}">
+            {% comment %} paint385: with a confirmed code the box waits closed, and the "Email me" button beside Save as PDF opens it;
+               everywhere else (a manual lookup request, a name only, a special order or unconfirmed code, a colour doubt) it shows
+               as before, being the main step there; after an email was left it shows its confirmation. {% endcomment %}
+            <div id="email-section" class="mx-auto mt-4 print-hide" style="max-width: 540px;{% if paint_pending or paint_code and not special_order and not unconfirmed_code and not colour_doubt and not email_submitted %} display: none;{% endif %}">
                 {% if email_submitted %}
                 <div class="card" style="border: 2px solid #22c55e; background: #f0fdf4;">
                     <div class="card-body text-center py-4">
@@ -1435,6 +1441,26 @@ window.cregReportWait();
         if (!ev.target || ev.target.id !== 'fb-note') return;
         var count = el('fb-count');
         if (count) { count.textContent = ev.target.value.length + ' / ' + ev.target.maxLength; }
+    });
+})();
+</script>
+{% comment %} paint385: the "Email me" button beside Save as PDF opens the email box under them and closes it again; opened, the
+   address box takes the cursor. {% endcomment %}
+<script>
+(function () {
+    document.addEventListener('click', function (ev) {
+        var btn = ev.target && ev.target.closest ? ev.target.closest('#email-open-btn') : null;
+        if (!btn) return;
+        var box = document.getElementById('email-section');
+        if (!box) return;
+        var open = btn.getAttribute('aria-expanded') !== 'true';
+        box.style.display = open ? '' : 'none';
+        btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+        btn.classList.toggle('active', open);
+        if (open) {
+            var field = box.querySelector('input[type="email"]');
+            if (field) { field.focus(); }
+        }
     });
 })();
 </script>
@@ -1826,7 +1852,8 @@ window.cregReportWait();
                 '<h5 class="' + headingMargin + ' fw-semibold" style="display: flex; gap: 8px; align-items: baseline;">' + heading + '</h5>' +
                 blurb + formHtml;
         }
-        section.style.display = '';
+        {% comment %} paint385: for a confirmed code the box stays closed; the "Email me" button beside Save as PDF opens it. {% endcomment %}
+        section.style.display = (mode === 'found' && el('email-open-btn')) ? 'none' : '';
     }
 
     var TERM_ENDINGS = {
