@@ -407,6 +407,13 @@
     .fb-btn { display: inline-flex; align-items: center; gap: 7px; padding: 6px 16px; font-size: 14px; line-height: 1.3;
               color: #333; background: #fff; border: 1px solid #c4c9cf; border-radius: 999px; cursor: pointer; }
     .fb-btn:hover, .fb-btn:focus-visible { border-color: #333; }
+    {% comment %} paint384: the button tapped takes its colour (the dashboard's own two: the tick's green, the red of
+       "Not helpful"), the other fades, and neither can be tapped again. {% endcomment %}
+    .fb-ask.fb-answered .fb-btn { cursor: default; opacity: .45; border-color: #c4c9cf; }
+    .fb-ask.fb-answered .fb-btn.fb-on { opacity: 1; color: #fff; }
+    .fb-ask.fb-answered .fb-btn.fb-on[data-answer="yes"] { background: #2e7d32; border-color: #2e7d32; }
+    .fb-ask.fb-answered .fb-btn.fb-on[data-answer="no"] { background: #c8102e; border-color: #c8102e; }
+    #fb-yes, #fb-no, #fb-done { margin-top: 12px; }
     .fb-thanks { margin: 0; text-align: center; font-size: 14px; color: #555; }
     .fb-no-title { display: block; font-size: 1.05rem; font-weight: 600; margin-bottom: 10px; }
     .fb-no-title span { font-weight: 400; color: #6c757d; }
@@ -421,7 +428,7 @@
 {% comment %} paint374: THE PRINT SHEET, the PDF. The operator's words (29 Oct): one page, always; the logo and
    coloureg.com bigger. A4 with 12mm margins. In: the logo, coloureg.com and the day it was saved; the vehicle details
    with the MOT and tax "+" lines open; the paint code, its name, the colour bar and the picture once it is drawn; the
-   disclaimer. Out: every button, the email box, "Is this wrong?", the Insurance row and a ULEZ row that are only a
+   disclaimer. Out: every button, the email box, "Was this helpful?", the Insurance row and a ULEZ row that are only a
    link, the MOT history (it alone can fill a page), the picture while it is still being drawn. Every part that can
    grow has a ceiling (the title two lines, each value one line, each "+" line two, several codes smaller). The
    colours a printer leaves out by default (the logo's, the colour bar's) are kept. And the safety net: before the PDF is made, the script
@@ -438,7 +445,7 @@
     @page { size: A4; margin: 12mm; }
     body { zoom: var(--pdf-zoom, 1); background: #fff; }
     body.min-vh-100 { min-height: 0 !important; }
-    .menu-toggle, .offcanvas, .site-messages, .print-hide, .mot-history, .vc-more-btn, #report-wrap,
+    .menu-toggle, .offcanvas, .site-messages, .print-hide, .mot-history, .vc-more-btn,
     .save-pdf-wrap, .car-thumb-zoom, .car-lightbox, .cp-wait, .paint-disclaimer a { display: none !important; }
     .print-only { display: block !important; }
     .vc-more[hidden] { display: block !important; }
@@ -887,13 +894,9 @@
                         </div>
                     {% endif %}
                     <div id="car-thumb-anchor"></div>
-                    {% comment %} paint303: "IS THIS WRONG?" ON A CARD THE SERVER DREW TOO (audit of 8 Oct, F5).
-                       The link was only on a result drawn by the page's script (reportControl,
-                       below), so a cached or remembered answer, and any reload, had no way to say
-                       the code was wrong. The same element, words and place as the script's; a
-                       battery check fails if the two ever differ. The script that sends the
-                       report is further down, on every page that has a lookup. {% endcomment %}
-                    {% if search_id and not already_reported %}<div class="text-center mt-4 mb-2" id="report-wrap"><button type="button" id="report-btn" class="btn btn-link btn-sm p-0" style="font-size: 13px; color: #888; text-decoration: underline;">Is this wrong? Let us know</button></div>{% endif %}
+                    {% comment %} paint384: the "Is this wrong? Let us know" link that sat here (paint113, paint303) is gone,
+                       at the operator's word of 4 Nov: a No to "Was this helpful?", under the email box, files the report it
+                       filed. {% endcomment %}
                 </div>
                 {% elif paint_pending %}
                 {# Paint not in the first VDG response, but a VIN exists, so a       #}
@@ -1261,16 +1264,19 @@ the request directly. {% endcomment %}
                 </div>
                 {% endif %}
             </div>
-            {% comment %} paint380: "WAS THIS HELPFUL?", under the email box on every result with a lookup (found, missed, not
-               automated, special order, a 7 day or remembered answer); while the search runs it waits hidden and comes with
-               the email box (revealEmail). Not in print, so not on the PDF. The words are the operator's, approved 3 Nov.
-               The answer on the row decides what a reload shows: the question, the thanks for Yes, the box after a No that
-               has no note yet, or the thanks for the note. {% endcomment %}
+            {% comment %} paint380: "WAS THIS HELPFUL?", under the email box. Not in print, so not on the PDF. The words are the
+               operator's, approved 3 Nov. The answer on the row decides what a reload shows: the question, the thanks for Yes,
+               the box after a No that has no note yet, or the thanks for the note.
+               paint384, the operator's word of 4 Nov: ONLY WHERE A CODE IS SHOWN, as a No now files a report and a report needs a
+               code (the "Is this wrong?" link in the card is gone). While the search runs it waits hidden, and only a found
+               code brings it (showFound); a name only, a miss, a pause, a car not automated never show it. A tap colours the
+               button tapped, Yes green and No red, the other faded; both stay, so a reload shows the answer the same way. {% endcomment %}
+            {% if paint_code or paint_pending %}
             <div id="feedback-section" class="mx-auto mt-3 print-hide" style="max-width: 540px;{% if paint_pending %} display: none;{% endif %}" aria-live="polite">
-                <div class="fb-ask" id="fb-ask"{% if feedback %} hidden{% endif %}>
+                <div class="fb-ask{% if feedback %} fb-answered{% endif %}" id="fb-ask">
                     <span class="fb-q">Was this helpful?</span>
-                    <button type="button" class="fb-btn" data-answer="yes"><i class="fa-regular fa-thumbs-up" aria-hidden="true"></i>Yes</button>
-                    <button type="button" class="fb-btn" data-answer="no"><i class="fa-regular fa-thumbs-down" aria-hidden="true"></i>No</button>
+                    <button type="button" class="fb-btn{% if feedback == 'yes' %} fb-on{% endif %}" data-answer="yes"{% if feedback %} disabled{% endif %}><i class="fa-regular fa-thumbs-up" aria-hidden="true"></i>Yes</button>
+                    <button type="button" class="fb-btn{% if feedback == 'no' %} fb-on{% endif %}" data-answer="no"{% if feedback %} disabled{% endif %}><i class="fa-regular fa-thumbs-down" aria-hidden="true"></i>No</button>
                 </div>
                 <p class="fb-thanks" id="fb-yes"{% if feedback != 'yes' %} hidden{% endif %}>Thanks, glad it helped.</p>
                 <div class="card" id="fb-no"{% if feedback != 'no' or feedback_noted %} hidden{% endif %}>
@@ -1285,6 +1291,7 @@ the request directly. {% endcomment %}
                 </div>
                 <p class="fb-done" id="fb-done"{% if not feedback_noted %} hidden{% endif %}><i class="fas fa-check" aria-hidden="true"></i>Thanks for telling us.</p>
             </div>
+            {% endif %}
             {% endif %}
 
         </div>
@@ -1370,48 +1377,15 @@ window.cregReportWait();
 {% endif %}
 
 {% if search_id and not locked %}
-{% comment %} paint303: THE "IS THIS WRONG?" LINK IS SENT FROM HERE, on every page that has a lookup
-   and is not locked. This handler lived inside the script below, which is on the page only
-   while a paint search is pending, so a link drawn by the server would have done nothing.
-   The handler itself is unchanged. It listens on the document, so it serves the link
-   whichever of the two drew it, and whenever it was drawn. {% endcomment %}
-<script>
-(function () {
-    var REPORT_URL = "{% url 'report_paint_code' %}";
-    var SEARCH_ID = "{{ search_id }}";
-    var CSRF_TOKEN = "{{ csrf_token }}";
-    document.addEventListener('click', function (ev) {
-        var btn = ev.target && ev.target.closest ? ev.target.closest('#report-btn') : null;
-        if (!btn) return;
-        btn.disabled = true;
-        var wrap = document.getElementById('report-wrap');
-        var body = new URLSearchParams({search_id: SEARCH_ID, reason: 'other', note: ''});
-        fetch(REPORT_URL, {
-            method: 'POST',
-            headers: {'Content-Type': 'application/x-www-form-urlencoded',
-                      'X-CSRFToken': CSRF_TOKEN},
-            body: body.toString()
-        }).catch(function () { {% comment %} swallowed on purpose — see below {% endcomment %} })
-          .then(function () {
-            {% comment %}
-               THE SAME MESSAGE WHATEVER HAPPENED, including a duplicate, a
-               rate-limit refusal or a network failure. Telling someone their
-               press did nothing invites another press; an error on a courtesy
-               button reads as the site being broken, and the report itself is
-               worth far less than the customer's confidence in the answer.
-            {% endcomment %}
-            if (wrap) {
-                wrap.innerHTML = '<div style="font-size: 13px; color: #666;">' +
-                    'Thanks, we\u2019ll take a look at this one.</div>';
-            }
-        });
-    });
-})();
-</script>
+{% comment %} paint384: the script that sent the "Is this wrong?" link's report (paint303) went with the link; a No to
+   "Was this helpful?" files the report now, on the server. report_paint_code stays for a page loaded before then. {% endcomment %}
+{% if paint_code or paint_pending %}
 {% comment %} paint380: "WAS THIS HELPFUL?". A tap shows its thanks (or, for No, the box) at once and sends the answer; Send
-   shows "Thanks for telling us." and sends the note, if one was typed. THE SAME WHATEVER THE SERVER SAYS, as "Is this
-   wrong?" does: a second answer, the hourly limit, a note it does not keep or a network failure all read the same, so
-   nobody learns the limits. One answer and one note from this page; the server keeps the first of each. {% endcomment %}
+   shows "Thanks for telling us." and sends the note, if one was typed. THE SAME WHATEVER THE SERVER SAYS: a second
+   answer, the hourly limit, a note it does not keep or a network failure all read the same, so nobody learns the
+   limits. One answer and one note from this page; the server keeps the first of each.
+   paint384: the tap colours the button tapped and fades the other (pick); a No files the report on the server. Only on a
+   page that shows a code, or waits for one. {% endcomment %}
 <script>
 (function () {
     var FEEDBACK_URL = "{% url 'submit_feedback' %}";
@@ -1420,6 +1394,12 @@ window.cregReportWait();
     var answered = false, noted = false;
     function el(id) { return document.getElementById(id); }
     function setHidden(id, on) { var n = el(id); if (n) { n.hidden = on; } }
+    function pick(btn) {
+        var ask = el('fb-ask'), all = ask ? ask.querySelectorAll('.fb-btn') : [];
+        for (var i = 0; i < all.length; i++) { all[i].disabled = true; }
+        btn.classList.add('fb-on');
+        if (ask) { ask.classList.add('fb-answered'); }
+    }
     function send(fields) {
         fields.search_id = SEARCH_ID;
         fetch(FEEDBACK_URL, {
@@ -1436,7 +1416,7 @@ window.cregReportWait();
             if (answered) return;
             answered = true;
             var answer = btn.getAttribute('data-answer') === 'no' ? 'no' : 'yes';
-            setHidden('fb-ask', true);
+            pick(btn);
             setHidden(answer === 'no' ? 'fb-no' : 'fb-yes', false);
             send({answer: answer});
             return;
@@ -1459,6 +1439,7 @@ window.cregReportWait();
 })();
 </script>
 {% endif %}
+{% endif %}
 
 {% if paint_pending and search_id %}
 {# Paint-recovery: the page rendered with the vehicle shown and a spinner in the #}
@@ -1472,7 +1453,6 @@ window.cregReportWait();
 <script>
 (function () {
     var STATUS_URL = "{% url 'lookup_status' search_id %}";
-    var REPORT_URL = "{% url 'report_paint_code' %}";
     var SEARCH_ID = "{{ search_id }}";
     var CSRF_TOKEN = "{{ csrf_token }}";
     var MAKE = "{{ make|escapejs }}" || "your vehicle";
@@ -1688,7 +1668,7 @@ window.cregReportWait();
                 false, false, null, data.colour_doubt   {# paint339: the note when the name is not the registered colour #}
             );
         }
-        card.innerHTML = '<div id="paint-found-state">' + html + '<div id="car-thumb-anchor"></div>' + reportControl() + '</div>';
+        card.innerHTML = '<div id="paint-found-state">' + html + '<div id="car-thumb-anchor"></div></div>';
         if (window.startCarPicture) { window.startCarPicture(); }   {# paint224: a code, so its picture, in the card #}
 
         {% comment %}Reveal the disclaimer (it was rendered hidden during the pending state).{% endcomment %}
@@ -1699,6 +1679,7 @@ window.cregReportWait();
            template draws it: the request goes to the manual queue, not out as the automatic email. {% endcomment %}
         revealEmail(!data.special_order && !data.unconfirmed_code && !data.colour_doubt);     {# paint320: the manual box; paint339: for a colour doubt too #}
         showSavePdf(!data.special_order && !data.unconfirmed_code && !data.colour_doubt);     {# paint374: Save as PDF with a confirmed code only #}
+        showFeedback();     {# paint384: "Was this helpful?" with any code shown #}
     }
 
     {% comment %} paint374: the Save as PDF button under the disclaimer, drawn hidden on a page that waits for the search. {% endcomment %}
@@ -1707,34 +1688,14 @@ window.cregReportWait();
         if (wrap) { wrap.style.display = on ? '' : 'none'; }
     }
 
-    {% comment %}
-       paint113: a quiet way for a customer to say "this code is wrong".
-
-       DELIBERATELY UNDERSTATED — a small grey link below the code, after
-       everything the customer actually came for. A prominent "report a
-       problem" button invites doubt in the great majority of cases where the
-       answer is right; this is for the person who already knows something is
-       off, not an invitation to wonder.
-
-       One press, one confirmation, no form. Asking for a reason before
-       accepting the report would cost more reports than the reasons are worth,
-       and the reason is the least valuable part: the COUNT against a code is
-       what identifies a catalogue error.
-    {% endcomment %}
-    function reportControl() {
-        {% comment %}
-           mt-4 sat the link hard against the card's lower border. mb-2 lifts it
-           clear so it reads as a separate offer rather than a caption on the
-           paint block above it.
-        {% endcomment %}
-        return '<div class="text-center mt-4 mb-2" id="report-wrap">' +
-               '<button type="button" id="report-btn" class="btn btn-link btn-sm p-0" ' +
-               'style="font-size: 13px; color: #888; text-decoration: underline;">' +
-               'Is this wrong? Let us know</button></div>';
+    {% comment %} paint384: "Was this helpful?", drawn hidden on a page that waits for the search, comes only with a found
+       code, since a No files a report and a report needs a code. It came with the email box on every outcome before
+       (paint380, in revealEmail). The "Is this wrong?" link this script drew in the card (paint113's reportControl) is
+       gone: the No is the report. {% endcomment %}
+    function showFeedback() {
+        var fb = el('feedback-section');
+        if (fb) { fb.style.display = ''; }
     }
-
-    {% comment %} paint303: the press on that link is handled by a script of its own, further up this
-       file, which is on the page whether the card was drawn here or by the server. {% endcomment %}
 
     {% comment %}Render the "servers timed out / manual lookup" state into the paint card.{% endcomment %}
     function showMissed() {
@@ -1814,8 +1775,6 @@ window.cregReportWait();
        false / 'missed'=> the manual-lookup ("we'll find it") offer
     {% endcomment %}
     function revealEmail(mode) {
-        var fb = el('feedback-section');                {# paint380: "Was this helpful?" comes with the email box #}
-        if (fb) fb.style.display = '';
         var section = el('email-section');
         if (!section) return;
 

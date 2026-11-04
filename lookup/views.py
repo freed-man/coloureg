@@ -2462,12 +2462,10 @@ def results(request):
         'paint_name': paint_name,
         'canonical_code': canonical_code,
         'search_id': vehicle_data.get('search_id'),
-        # paint313: a lookup already reported is not offered "Is this wrong?"
-        # again after a reload (a second press filed nothing). One small
-        # query, and only for a result that has a code.
-        'already_reported': _already_reported(vehicle_data.get('search_id')) if paint_code else False,
         # paint380: the answer to "Was this helpful?" already on the row, so a
         # reload shows its thanks line (after a No with no note yet, the box).
+        # paint384: the "Is this wrong?" link is gone (a No files the report),
+        # and with it paint313's question whether the lookup was reported.
         'feedback': _locked_search.feedback if _locked_search is not None else '',
         'feedback_noted': bool(_locked_search is not None and _locked_search.feedback_note),
         'feedback_note_max': Search.FEEDBACK_NOTE_MAX,
@@ -2505,18 +2503,6 @@ BUDGET_PAUSED_NOTE = 'paint search not run: daily budget reached'
 #: retries the same way. A page loaded before this release reads any status
 #: it does not know as "not found", as it did before.
 PAUSED_STATUS = 'paused'
-
-
-def _already_reported(search_id):
-    """paint313: has a customer already reported this lookup's code? False
-    when it cannot be read: the link is then drawn, as it always was."""
-    if not search_id:
-        return False
-    try:
-        return PaintCodeReport.objects.filter(search_id=search_id).exists()
-    except Exception:  # noqa: BLE001
-        logger.warning('reports could not be read for the results page', exc_info=True)
-        return False
 
 
 def _dressed_code_list(make, model, year, colour, items):
@@ -6409,14 +6395,26 @@ def report_paint_code(request):
         # for a future change that lets one through.
         return JsonResponse({'ok': False, 'error': 'not_found'}, status=404)
 
+    body, status = _file_paint_report(request, search, reason, note)
+    return JsonResponse(body, status=status)
+
+
+def _file_paint_report(request, search, reason, note):
+    """A report on a lookup the session owns, with every guard but ownership.
+
+    paint384: report_paint_code's own steps, moved here unchanged so that a No
+    to "Was this helpful?" files a report exactly as the "Is this wrong?" link
+    did (the link is gone; report_paint_code stays for a page loaded before
+    that release). The caller has checked the session owns `search`. Returns
+    the reply report_paint_code gives, as (body, status)."""
     if not search.paint_code:
-        return JsonResponse({'ok': False, 'error': 'no_code'}, status=400)
+        return {'ok': False, 'error': 'no_code'}, 400
 
     # ALREADY REPORTED: answer as though it worked. Telling someone their
     # second press did nothing invites a third; showing the same confirmation
     # ends it.
     if PaintCodeReport.objects.filter(search=search).exists():
-        return JsonResponse({'ok': True, 'duplicate': True})
+        return {'ok': True, 'duplicate': True}, 200
 
     ip = get_client_ip(request)
     # 5 in the standard window. A customer reports the lookup in front of
@@ -6425,7 +6423,7 @@ def report_paint_code(request):
         # Same answer again. A limiter that announces itself tells an abuser
         # exactly what to wait out, and tells an honest customer they have done
         # something wrong when they have not.
-        return JsonResponse({'ok': True, 'duplicate': True})
+        return {'ok': True, 'duplicate': True}, 200
 
     if reason not in dict(PaintCodeReport.REASON_CHOICES):
         reason = PaintCodeReport.REASON_OTHER
@@ -6483,7 +6481,7 @@ def report_paint_code(request):
     except Exception:  # noqa: BLE001 — the report is saved; the mail is a courtesy
         logger.exception('paint report email failed for %s', report.pk)
 
-    return JsonResponse({'ok': True})
+    return {'ok': True}, 200
 
 
 #: paint380: answers to "Was this helpful?" an hour from one connection (the
@@ -6506,11 +6504,19 @@ _FEEDBACK_EMAIL = re.compile(r'[^\s@]+@[^\s@]+\.[^\s@]+')
 def submit_feedback(request):
     """paint380: "WAS THIS HELPFUL?" on the results page.
 
-    The operator's design of 3 Nov: Yes or No under the email box on every
-    result with a lookup; after No, an optional note. Both are kept on the
-    lookup's own row (Search.feedback, Search.feedback_note) and shown on his
-    dashboard: a thumbs up or down by the date, a No's note under the row, and
-    the share of Yes over the last 30 days. Nothing is emailed to him.
+    The operator's design of 3 Nov: Yes or No under the email box; after No,
+    an optional note. Both are kept on the lookup's own row (Search.feedback,
+    Search.feedback_note) and shown on his dashboard: a thumbs up or down by
+    the date, a No's note under the row, and the share of Yes over the last 30
+    days. A Yes and a note email nobody.
+
+    paint384, the operator's word of 4 Nov: the question is asked only where a
+    code is shown, and A NO FILES A REPORT, exactly as the "Is this wrong?"
+    link did (that link is gone): in "Reported lookups", an email to him, the
+    plate's 7 day answer dropped, memory paused until he marks it, with every
+    guard report_paint_code has (_file_paint_report). Only the first answer
+    files one, and only on a lookup with a code. The No's note goes onto that
+    report as well as the row, so he reads it in either place.
 
     Two requests, from the page's script:
       answer=yes|no   saved at the tap, the first answer only;
@@ -6553,12 +6559,20 @@ def submit_feedback(request):
         if rows.filter(feedback='').exists():
             ip = get_client_ip(request)
             if not (ip and sliding_rate_limited('feedback', ip, limit=FEEDBACK_PER_HOUR)):
-                rows.filter(feedback='').update(feedback=answer)
+                kept = rows.filter(feedback='').update(feedback=answer)
+                # paint384: the No just kept files the report. Its reply is not
+                # this one's: the page thanks the same whatever happened.
+                search = rows.first() if kept and answer == Search.FEEDBACK_NO else None
+                if search is not None:
+                    _file_paint_report(request, search, PaintCodeReport.REASON_OTHER, '')
     elif 'note' in request.POST:
         note = _no_nul(request.POST.get('note')).strip()                 # paint383: Postgres refuses a NUL in text
         if note and not _FEEDBACK_LINK.search(note) and not _FEEDBACK_EMAIL.search(note):
-            rows.filter(feedback=Search.FEEDBACK_NO, feedback_note='').update(
-                feedback_note=note[:Search.FEEDBACK_NOTE_MAX].strip())
+            note = note[:Search.FEEDBACK_NOTE_MAX].strip()
+            if rows.filter(feedback=Search.FEEDBACK_NO, feedback_note='').update(feedback_note=note):
+                # paint384: and onto the lookup's report, while it has no note
+                # (the No filed it with none, as the link did).
+                PaintCodeReport.objects.filter(search_id=int(search_id), note='').update(note=note)
     return JsonResponse({'ok': True})
 
 
