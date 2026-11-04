@@ -1010,7 +1010,12 @@ SECOND_CHANCE_S = float(os.environ.get('SECOND_CHANCE_S', '5'))
 # this way, about £100, recorded as £0.06. So an abandoned paint call is booked at
 # two paint prices. It errs high when VDG finds nothing (an empty answer is
 # refunded), which is the safe side for the daily budget breaker.
-ABANDONED_PAINT_ESTIMATE = 0.54
+# paint388: TWO PAINT PRICES AT TIER 5. The account moved to VDG's top tier on
+# 4 Nov (the operator: "i pay vehicle details £0.04 and paint £0.25"), so the
+# two calls are £0.50, not the £0.54 of the 27p days. Every real charge is read
+# from VDG's own receipt and needs nothing here; this is the one figure in the
+# code, for the call that left no receipt.
+ABANDONED_PAINT_ESTIMATE = 0.50
 
 # paint273: VDG'S SECOND CALL WAITS 23s, NOT 5s. It exists to collect an answer
 # VDG has already prepared, usually under a second. Measured on VDG's own
