@@ -670,6 +670,22 @@ def parse_device(user_agent):
     return 'desktop'
 
 
+def _no_nul(text):
+    """paint383: a customer's text as it may be kept: without the NUL character.
+
+    Postgres refuses a NUL in text, and psycopg2 says so (ValueError) before the
+    query is even sent, so a request carrying one failed whole with a 500: on
+    4 Nov, on a local Postgres, a report whose note held one was not kept (and
+    the operator not told), a manual lookup request whose message held one lost
+    the customer's address, and a refused lookup whose plate held one was not
+    recorded (an error logged instead). The scratch sqlite of the battery keeps
+    a NUL without complaint, so none of it showed there. In practice only a
+    request made by hand carries one (the report button sends no note, the
+    email box has had no message field since paint32, and gunicorn refuses a
+    header holding one before the site sees it). Taken out, the rest kept."""
+    return (text or '').replace('\x00', '')
+
+
 def _maybe_alert_budget(config):
     """Send the budget-tripped admin email at most once per London day.
 
@@ -2099,7 +2115,7 @@ def _record_turnstile_block(request, client_ip):
     """
     try:
         Search.objects.create(
-            registration=(request.POST.get('registration') or '')
+            registration=_no_nul(request.POST.get('registration'))     # paint383
                 .strip().upper().replace(' ', '')[:10],
             ip_address=client_ip,
             user_agent=request.META.get('HTTP_USER_AGENT', ''),
@@ -4033,7 +4049,7 @@ def submit_email(request):
     # often the difference between a dead end and a found code. Capped and
     # validated; neither is required, and a bad upload is silently ignored
     # rather than failing the request.
-    customer_message = request.POST.get('customer_message', '').strip()[:2000]
+    customer_message = _no_nul(request.POST.get('customer_message')).strip()[:2000]   # paint383
     # paint303: THE PHOTO IS NOT TOUCHED HERE ANY MORE (audit of 8 Oct, F3). It
     # was opened and re-encoded on this line, before the address, the session,
     # the lock and the hourly limit had been looked at, so a request that was
@@ -6370,7 +6386,7 @@ def report_paint_code(request):
     """
     search_id = request.POST.get('search_id')
     reason = (request.POST.get('reason') or '').strip()
-    note = (request.POST.get('note') or '').strip()[:2000]
+    note = _no_nul(request.POST.get('note')).strip()[:2000]                          # paint383
 
     session_search_id = (request.session.get('vehicle_data') or {}).get('search_id')
     # paint189: A SESSION WITH NO SEARCH ID OWNS NOTHING. The comparison is on
@@ -6539,7 +6555,7 @@ def submit_feedback(request):
             if not (ip and sliding_rate_limited('feedback', ip, limit=FEEDBACK_PER_HOUR)):
                 rows.filter(feedback='').update(feedback=answer)
     elif 'note' in request.POST:
-        note = (request.POST.get('note') or '').replace('\x00', '').strip()   # Postgres refuses a NUL in text
+        note = _no_nul(request.POST.get('note')).strip()                 # paint383: Postgres refuses a NUL in text
         if note and not _FEEDBACK_LINK.search(note) and not _FEEDBACK_EMAIL.search(note):
             rows.filter(feedback=Search.FEEDBACK_NO, feedback_note='').update(
                 feedback_note=note[:Search.FEEDBACK_NOTE_MAX].strip())
