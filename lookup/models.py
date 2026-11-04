@@ -554,6 +554,30 @@ class Search(models.Model):
     pl24_returned = models.BooleanField(default=False)
     recovery_name_only = models.BooleanField(default=False)
     recovery_duration_ms = models.IntegerField(null=True, blank=True)
+    # paint387: PARTSLINK24'S AND VDG'S PAINT CALLS' OWN TIMES, in milliseconds,
+    # as mmw_ms has been since paint140. recovery_duration_ms is the whole search's time
+    # and says nothing about who answered when: measured on the export of 4 Nov,
+    # since 29 Oct about 66 pounds a month went on VDG paint calls billed after
+    # partslink24 had already given the code (its code came at a median 2.5s
+    # of the search), and whether holding VDG's paint call a few seconds for
+    # partslink24's answer would save that without a long wait on the searches
+    # partslink24 cannot answer could not be measured, because no column held
+    # either leg's own time. Written by the worker threads themselves
+    # (_record_worker_result, _record_retry_billing), so the time lands even
+    # when the race ended and the row was saved before the leg finished.
+    # NULL when a leg was not run (partslink24 skipped for no real VIN, a
+    # gated make, an answer served from memory). Telemetry only: nothing a
+    # customer sees reads them, and no dashboard panel does.
+    #: partslink24's call, from its start to its answer, whatever it said (a
+    #: code, a name only, not found, an unsupported make, an error or a
+    #: timeout), its one quick retry (paint258) included.
+    pl24_ms = models.PositiveIntegerField(null=True, blank=True)
+    #: VDG's first paint call in the search (_vdg_retry's first paint_lookup),
+    #: start to answer, a timeout or an error included; beside vdg_paint_cost.
+    vdg_paint_ms = models.PositiveIntegerField(null=True, blank=True)
+    #: VDG's second chance (paint73, paint273), only when it was made; beside
+    #: vdg_paint_retry_cost, the same call's charge.
+    vdg_paint_retry_ms = models.PositiveIntegerField(null=True, blank=True)
 
     @property
     def gate_reason_label(self):

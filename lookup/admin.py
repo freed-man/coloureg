@@ -121,6 +121,11 @@ class SearchAdmin(admin.ModelAdmin):
         'pl24_via', 'pl24_http_status', 'pl24_error',
         'recovery_name_only',
         'recovery_duration_ms',
+        # paint387: each leg's own time, written by the worker threads like
+        # mmw_ms, so readonly like every other diagnostic.
+        'pl24_ms',
+        'vdg_paint_ms',
+        'vdg_paint_retry_ms',
         'vdg_second_chance',
         'oneauto_second_chance',
         'second_chance_after_race',
@@ -208,6 +213,11 @@ class SearchAdmin(admin.ModelAdmin):
                 'pl24_returned',
                 'recovery_name_only',
                 'recovery_duration_ms',
+                # paint387: partslink24's and VDG's paint calls' own times, in
+                # milliseconds, beside the whole search's time above.
+                'pl24_ms',
+                'vdg_paint_ms',
+                'vdg_paint_retry_ms',
                 # Which attempt produced the answer, and whether the race was
                 # already decided when it fired. Readonly: both are written by
                 # worker threads and mean nothing if edited by hand.

@@ -1107,6 +1107,21 @@ _PL24_RETRY_PAUSE_S = 1.0       # paint258: the pause before the one retry
 _PL24_RETRY_WITHIN_S = 10.0     # paint258: only a failure this fast is retried
 
 
+def _ms_since(started):
+    """paint387: whole milliseconds since a time.monotonic() reading, never below 0.
+
+    The legs' own times (pl24_ms, vdg_paint_ms, vdg_paint_retry_ms) are read
+    with this and written by the worker threads, so each lands on the row even
+    when the race ended and the row was saved before the leg finished. Whole
+    numbers because the columns are, and 0 at least because they refuse a
+    negative. Never raises: a time must never cost an answer.
+    """
+    try:
+        return max(0, int((time.monotonic() - started) * 1000))
+    except Exception:  # noqa: BLE001
+        return None
+
+
 # Counter of retry-billing writes still in flight. Production does not need
 # this — the write lands whenever it lands, and nothing reads the cost that
 # quickly. It exists so tests can wait for the asynchronous write deterministically
@@ -1158,8 +1173,17 @@ def _record_worker_result(search_id, **fields):
 
 
 def _record_retry_billing(search_id, cost, balance, retry_code, retry_name='',
-                          paint_cost=None, paint_retry_cost=None):
+                          paint_cost=None, paint_retry_cost=None,
+                          paint_ms=None, paint_retry_ms=None):
     """Write the retry's own spend straight to its Search row (paint21).
+
+    paint387: AND THE TWO PAINT CALLS' OWN TIMES (vdg_paint_ms, vdg_paint_retry_ms),
+    whole milliseconds from each call's start to its answer, a timeout or an
+    error included. They ride on this write because it is the one the retry
+    worker always makes, whoever won the race and however long after it ended,
+    which is the property each time needs (see _record_worker_result); one
+    write, so no second connection from the thread. Written only when the call
+    was made (None leaves the column as it is).
 
     The retry used to hand its cost back through the telemetry dict, which the
     caller read AFTER resolve_paint returned. That works only if the retry
@@ -1216,6 +1240,10 @@ def _record_retry_billing(search_id, cost, balance, retry_code, retry_name='',
         # alone rather than erase it.
         if retry_name:
             updates['vdg_paint_name'] = retry_name[:120]
+        # paint387: each paint call's own time, only when that call was made.
+        for column, ms in (('vdg_paint_ms', paint_ms), ('vdg_paint_retry_ms', paint_retry_ms)):
+            if ms is not None:
+                updates[column] = ms
         if updates:
             Search.objects.filter(pk=search_id).update(**updates)
     except Exception:  # noqa: BLE001 — never let bookkeeping break a lookup
@@ -1292,6 +1320,11 @@ def _vdg_retry(registration, telemetry=None, search_id=None, race_over=None,
     second = None
     data = None
     first_error = second_error = None       # paint272: why a call left no receipt
+    # paint387: each call's own time, start to answer, whatever it answered
+    # (a timeout and an error included), kept on the row beside its charge
+    # (vdg_paint_ms, vdg_paint_retry_ms) by _record_retry_billing below.
+    first_ms = second_ms = None
+    _first_started = time.monotonic()
     try:
         # PAINT package only (paint66). The retry never needed the vehicle
         # half — it exists because a cold first call warms VDG's upstream cache,
@@ -1320,6 +1353,7 @@ def _vdg_retry(registration, telemetry=None, search_id=None, race_over=None,
                              _log_reg(registration))
         first_error = e
         data = None
+    first_ms = _ms_since(_first_started)        # paint387: however the call ended
 
     # SECOND CHANCE (paint73). The first call has warmed VDG's upstream cache
     # whether it succeeded, came back empty, or timed out — that is the whole
@@ -1350,12 +1384,14 @@ def _vdg_retry(registration, telemetry=None, search_id=None, race_over=None,
         # Was the race already decided when this fired? Every True here is spend
         # a race-over flag would have prevented.
         after_race = bool(race_over is not None and race_over.is_set())
+        _second_started = time.monotonic()
         try:
             second = paint_lookup(registration, billing_sink=second_sink,
                                   timeout=VDG_SECOND_CHANCE_S)          # paint273
         except Exception as e:  # noqa: BLE001 — a second chance must never raise
             second_error = e
             second = None
+        second_ms = _ms_since(_second_started)   # paint387: however the call ended
         if second and second.get('paint_returned'):
             logger.info('VDG second chance recovered paint for %s',
                         _log_reg(registration))
@@ -1425,7 +1461,8 @@ def _vdg_retry(registration, telemetry=None, search_id=None, race_over=None,
     _t['vdg_paint_name'] = retry_name
     _record_retry_billing(search_id, retry_cost, retry_balance, retry_code,
                           retry_name=retry_name,
-                          paint_cost=first_cost, paint_retry_cost=second_cost)     # paint347: each call's own
+                          paint_cost=first_cost, paint_retry_cost=second_cost,     # paint347: each call's own
+                          paint_ms=first_ms, paint_retry_ms=second_ms)             # paint387: and its own time
     if data is None:
         return None
     if not data or not data.get('paint_returned'):
@@ -3130,6 +3167,11 @@ def _pl24_lookup(vin, make, category=None, search_id=None):
         params['category'] = category
     headers = {'X-API-Key': PL24_API_KEY} if PL24_API_KEY else {}
     _started = time.monotonic()
+    # paint387: THE CALL'S OWN TIME goes on the row with whatever ended it
+    # (pl24_ms): a code, a name only, not found, an unsupported make, a refusal,
+    # an error or a timeout, the one quick retry and its pause included. It
+    # rides on the record each ending already writes, so no write is added.
+    # Not written when nothing was sent (the client_skipped return above).
     for _attempt in (1, 2):
         try:
             resp = get_session().get(
@@ -3153,7 +3195,8 @@ def _pl24_lookup(vin, make, category=None, search_id=None):
                 _record_worker_result(
                     search_id, pl24_outcome='client_timeout',
                     pl24_error=(f'{_cause}: no reply, coloureg gave up after '
-                                f'{_read_s:g}s')[:200])
+                                f'{_read_s:g}s')[:200],
+                    pl24_ms=_ms_since(_started))
                 return None
             if isinstance(exc, requests.exceptions.ConnectTimeout):
                 # Connecting took the whole connect allowance. Not retried: the
@@ -3161,11 +3204,13 @@ def _pl24_lookup(vin, make, category=None, search_id=None):
                 _record_worker_result(
                     search_id, pl24_outcome='client_timeout',
                     pl24_error=(f'{_cause}: could not connect within '
-                                f'{_connect_s:g}s')[:200])
+                                f'{_connect_s:g}s')[:200],
+                    pl24_ms=_ms_since(_started))
                 return None
             if not isinstance(exc, requests.exceptions.ConnectionError):
                 _record_worker_result(search_id, pl24_outcome='client_error',
-                                      pl24_error=type(exc).__name__[:200])
+                                      pl24_error=type(exc).__name__[:200],
+                                      pl24_ms=_ms_since(_started))
                 return None
             # paint258: ONE QUICK RETRY after a connection that failed fast. pl24
             # is our own service on Railway's private network; a failed
@@ -3181,8 +3226,13 @@ def _pl24_lookup(vin, make, category=None, search_id=None):
             # paint296: the cause by name (it always said "ConnectionError").
             _record_worker_result(
                 search_id, pl24_outcome='client_connection_error',
-                pl24_error=(_cause + (' (after one retry)' if _attempt == 2 else ''))[:200])
+                pl24_error=(_cause + (' (after one retry)' if _attempt == 2 else ''))[:200],
+                pl24_ms=_ms_since(_started))
             return None
+    # paint387: the time is read the moment the reply is in, before the slot
+    # record below is written (a round trip to the database, which is our
+    # bookkeeping, not pl24's time).
+    _pl24_ms = _ms_since(_started)
     # paint144: READ THE BODY BEFORE GIVING UP ON THE STATUS. pl24 puts `slot`
     # on its 502 and 504 bodies too, and that is where it is most informative —
     # a failure tells you nothing until you know WHICH session failed. Bailing
@@ -3213,7 +3263,8 @@ def _pl24_lookup(vin, make, category=None, search_id=None):
             pl24_outcome=(str(data.get('outcome') or '').strip()
                           or ('empty_reply' if resp.status_code == 200
                               else f'http_{resp.status_code}'))[:40],
-            **({'pl24_error': _err} if _err else {}))
+            **({'pl24_error': _err} if _err else {}),
+            pl24_ms=_pl24_ms)
         return None
     code = (data.get('paint_code') or '').strip()
     desc = (data.get('paint_description') or '').strip()
@@ -3234,7 +3285,8 @@ def _pl24_lookup(vin, make, category=None, search_id=None):
                               **({'pl24_code': code[:100]} if code else {}),
                               **({'pl24_name': name} if name else {}),
                               **({'pl24_outcome': outcome} if outcome else {}),
-                              **({'pl24_error': _err} if _err else {}))
+                              **({'pl24_error': _err} if _err else {}),
+                              pl24_ms=_pl24_ms)
     # Keep the result if pl24 returned EITHER a code OR a colour name. The
     # name-only case (code == '' but desc set) covers brands partslink24 carries
     # a colour name but no code for (Ford passenger, Jaguar, older Land Rover,
