@@ -1393,7 +1393,7 @@ window.cregReportWait();
 
 {% if search_id and not locked %}
 {% comment %} paint384: the script that sent the "Is this wrong?" link's report (paint303) went with the link; a No to
-   "Was this helpful?" files the report now, on the server. report_paint_code stays for a page loaded before then. {% endcomment %}
+   "Was this helpful?" files the report now, on the server. paint389: report_paint_code and its route are gone too. {% endcomment %}
 {% if paint_code or paint_pending %}
 {% comment %} paint380: "WAS THIS HELPFUL?". A tap shows its thanks (or, for No, the box) at once and sends the answer; Send
    shows "Thanks for telling us." and sends the note, if one was typed. THE SAME WHATEVER THE SERVER SAYS: a second

@@ -711,7 +711,15 @@ def send_admin_origin_gate_alert(kind, what, tagged):
 
 def send_admin_paint_report(report, total_for_code=1, vehicle_title='',
                             vin_full='', dvla_colour='', total_reports=None):
-    """Tell the operator a customer says a delivered code is wrong.
+    """Tell the operator a customer answered No to "Was this helpful?" on a code.
+
+    paint389, the operator's word of 4 Nov: the subject says "Not helpful"
+    ("Not helpful: <plate>", or "[Nx] Not helpful: <make>/<code>" once several
+    people have said it of one code), where it said "Paint code reported". A No
+    is the one way a report is filed now (paint384 took the "Is this wrong?"
+    link off the page and paint389 its route), so the subject names what the
+    customer did. The banner still counts reports, and the report is in
+    "Reported lookups" as before.
 
     paint116. THE COUNT LEADS, because it is the only part that carries
     information. One report is a shrug — wrong panel, wrong part, bad mood.
@@ -727,9 +735,9 @@ def send_admin_paint_report(report, total_for_code=1, vehicle_title='',
     in the HTML *and* _attachments() in the payload — the first version of this
     mail had neither and arrived unbranded.
 
-    The reason the customer picked is NOT shown. The control offers one button
-    and no form, so it is always "something else", and a row that never varies
-    is furniture.
+    The reason is NOT shown. A No offers no choice of reason (nor did the link:
+    one button and no form), so it is always "something else", and a row that
+    never varies is furniture.
     """
     repeat = total_for_code > 1
     banner = f'{_ordinal(total_for_code)} report against {report.manufacturer}/{report.code}'
@@ -745,9 +753,9 @@ def send_admin_paint_report(report, total_for_code=1, vehicle_title='',
     if total_reports and total_reports != total_for_code:
         banner = (f'{_ordinal(total_for_code)} reporter, {_ordinal(total_reports)} report '
                   f'against {report.manufacturer}/{report.code}')
-    subject = (f'[{total_for_code}x] {report.manufacturer}/{report.code} reported'
+    subject = (f'[{total_for_code}x] Not helpful: {report.manufacturer}/{report.code}'
                if repeat else
-               f'Paint code reported: {report.registration}')
+               f'Not helpful: {report.registration}')
     html = f"""
     <div style="background: #f5f5f5; padding: 40px 20px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;">
         <div style="max-width: 560px; margin: 0 auto; background: #ffffff; border-radius: 8px; overflow: hidden;">

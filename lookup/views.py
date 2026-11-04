@@ -4063,7 +4063,7 @@ def submit_email(request):
     session_search_id = (request.session.get('vehicle_data') or {}).get('search_id')
     # paint189: a session with no search id owns nothing. str(None) is 'None',
     # so the literal text "None" used to match a fresh session and crash the
-    # lookup below with a 500 (N9). See report_paint_code.
+    # lookup below with a 500 (N9). See submit_feedback.
     if session_search_id is None or str(session_search_id) != str(search_id):
         messages.error(request, 'Your session has expired. Please look up your vehicle again.')
         return redirect('index')
@@ -4071,7 +4071,7 @@ def submit_email(request):
     try:
         search = Search.objects.get(id=search_id)
     except (Search.DoesNotExist, ValueError, TypeError):
-        # A second layer, as in report_paint_code: unreachable behind the guard.
+        # A second layer, as in submit_feedback: unreachable behind the guard.
         messages.error(request, 'Search record not found.')
         return redirect('index')
 
@@ -6333,65 +6333,31 @@ def submit_manual_lookup(request):
     })
 
 
-@require_POST
-def report_paint_code(request):
-    """A customer flagging a delivered code or colour as wrong.
-
-    paint113. Four safeguards, each against a different failure — and none of
-    them a CAPTCHA, because a report is worth far less than a lookup and a
-    challenge on a "this is wrong" button would stop the honest reports while
-    barely inconveniencing anyone determined.
-
-    1. SESSION OWNERSHIP. The same guard submit_email uses: you can only report
-       the lookup you just did. That alone stops drive-by POSTing at arbitrary
-       search ids, which is the shape a bot would take.
-    2. ONE PER LOOKUP. A second report on the same search is a silent no-op, so
-       leaning on the button forty times produces one row and one email.
-    3. A PER-IP CEILING, shared with the existing sliding window. Someone
-       reporting twenty different lookups in an hour is not a customer.
-    4. THERE MUST BE A CODE TO REPORT. Reporting a lookup that returned nothing
-       is meaningless, and a row with no code cannot be counted against one.
-
-    Deliberately NOT rejected: a report with no note. Most people will not type
-    a reason, and demanding one would cost more reports than it saves.
-    """
-    search_id = request.POST.get('search_id')
-    reason = (request.POST.get('reason') or '').strip()
-    note = _no_nul(request.POST.get('note')).strip()[:2000]                          # paint383
-
-    session_search_id = (request.session.get('vehicle_data') or {}).get('search_id')
-    # paint189: A SESSION WITH NO SEARCH ID OWNS NOTHING. The comparison is on
-    # strings, and str(None) is 'None' — so a fresh session posting the literal
-    # text "None" matched, passed the ownership check, and crashed the lookup
-    # below with a 500. Found by an external audit (N9), reproduced. It is the
-    # same shape submit_email had, and the same one both staff endpoints were
-    # already guarded against: fixed once on the operator side, never carried
-    # to the customer side.
-    if (not search_id or session_search_id is None
-            or str(session_search_id) != str(search_id)):
-        return JsonResponse({'ok': False, 'error': 'session'}, status=400)
-
-    try:
-        search = Search.objects.get(id=search_id)
-    except (Search.DoesNotExist, ValueError, TypeError):
-        # ValueError/TypeError as in submit_manual_lookup and
-        # dismiss_manual_lookup. A SECOND LAYER: with the guard above, nothing
-        # that is not a real id reaches here, so no test can see this. It is
-        # for a future change that lets one through.
-        return JsonResponse({'ok': False, 'error': 'not_found'}, status=404)
-
-    body, status = _file_paint_report(request, search, reason, note)
-    return JsonResponse(body, status=status)
-
-
 def _file_paint_report(request, search, reason, note):
     """A report on a lookup the session owns, with every guard but ownership.
 
-    paint384: report_paint_code's own steps, moved here unchanged so that a No
-    to "Was this helpful?" files a report exactly as the "Is this wrong?" link
-    did (the link is gone; report_paint_code stays for a page loaded before
-    that release). The caller has checked the session owns `search`. Returns
-    the reply report_paint_code gives, as (body, status)."""
+    paint384: the "Is this wrong?" link's own steps (report_paint_code, paint113),
+    moved here unchanged so that a No to "Was this helpful?" files a report
+    exactly as the link did. paint389: report_paint_code and its route are gone
+    (the link left the page in paint384), so a No is the one way a report is
+    filed; submit_feedback calls this with the reason "other" and no note. The
+    caller has checked the session owns `search`. Returns the reply as (body,
+    status); submit_feedback does not read it (its page thanks the same).
+
+    paint113's safeguards, each against a different failure, and none of them a
+    CAPTCHA, because a report is worth far less than a lookup and a challenge on
+    the button would stop the honest reports while barely inconveniencing
+    anyone determined:
+    1. SESSION OWNERSHIP, checked by the caller (paint189: a session with no
+       search id owns nothing).
+    2. ONE PER LOOKUP. A second report on the same search is a silent no-op, so
+       leaning on the button forty times produces one row and one email.
+    3. A PER-IP CEILING, its own group in the sliding window. Someone reporting
+       twenty different lookups in an hour is not a customer.
+    4. THERE MUST BE A CODE TO REPORT. Reporting a lookup that returned nothing
+       is meaningless, and a row with no code cannot be counted against one.
+    Deliberately NOT refused: a report with no note. Most people will not type
+    a reason, and demanding one would cost more reports than it saves."""
     if not search.paint_code:
         return {'ok': False, 'error': 'no_code'}, 400
 
@@ -6499,16 +6465,18 @@ def submit_feedback(request):
     code is shown, and A NO FILES A REPORT, exactly as the "Is this wrong?"
     link did (that link is gone): in "Reported lookups", an email to him, the
     plate's 7 day answer dropped, memory paused until he marks it, with every
-    guard report_paint_code has (_file_paint_report). Only the first answer
-    files one, and only on a lookup with a code. The No's note goes onto that
-    report as well as the row, so he reads it in either place.
+    guard the link had (_file_paint_report). Only the first answer files one,
+    and only on a lookup with a code. The No's note goes onto that report as
+    well as the row, so he reads it in either place. paint389: the link's own
+    route (report_paint_code) is gone, so this is the one way a report is
+    filed, and the email it sends him says "Not helpful".
 
     Two requests, from the page's script:
       answer=yes|no   saved at the tap, the first answer only;
       note=<text>     saved when Send is pressed, only on a lookup answered No,
                       once, 300 characters at most.
 
-    The guards, as report_paint_code's (paint113, paint189):
+    The guards, as the link's were (paint113, paint189):
     1. SESSION OWNERSHIP: only the lookup this session did. A session with no
        lookup owns nothing.
     2. ONE ANSWER AND ONE NOTE PER LOOKUP: each is written only while its field
@@ -6523,8 +6491,8 @@ def submit_feedback(request):
     THE SAME ANSWER WHATEVER HAPPENED: {"ok": true} for a saved answer, a
     second one, a refused note and the limit alike, so nobody learns the
     limits; the page's script shows its thanks without reading the reply. A
-    request from a session that does not own the lookup gets the error
-    report_paint_code gives."""
+    request from a session that does not own the lookup gets the error the
+    link got."""
     search_id = request.POST.get('search_id')
     session_search_id = (request.session.get('vehicle_data') or {}).get('search_id')
     if (not search_id or session_search_id is None
@@ -6533,7 +6501,7 @@ def submit_feedback(request):
     try:
         rows = Search.objects.filter(id=int(search_id))
     except (ValueError, TypeError):
-        # A SECOND LAYER, as in report_paint_code: the guard above lets only
+        # A SECOND LAYER, as the link's view had: the guard above lets only
         # the session's own id through.
         return JsonResponse({'ok': False, 'error': 'not_found'}, status=404)
 

@@ -29,8 +29,9 @@ urlpatterns = [
     path('admin-stats/', views.admin_stats, name='admin_stats'),
     path('submit-manual-lookup/', views.submit_manual_lookup, name='submit_manual_lookup'),
     path('dismiss-manual-lookup/', views.dismiss_manual_lookup, name='dismiss_manual_lookup'),
-    # paint113: a customer flagging a delivered code as wrong.
-    path('report-paint-code/', views.report_paint_code, name='report_paint_code'),
+    # paint389: paint113's report-paint-code/ is gone. Its "Is this wrong?" link
+    # left the results page in paint384, and since then a No to "Was this
+    # helpful?" files the report (submit_feedback).
     # paint380: "Was this helpful?" on the results page.
     path('submit-feedback/', views.submit_feedback, name='submit_feedback'),
     path('send-compose-email/', views.send_compose_email, name='send_compose_email'),
