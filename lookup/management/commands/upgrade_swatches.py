@@ -14,6 +14,13 @@ alone a row changed since, and a row whose swatch has been locked since).
 
 The backup is written beside the history file, so with the files in etc/ (which
 .gitignore keeps out of the public repo) the backups stay there too.
+
+paint391: chipex's and colorndrive's own swatches too, from paintscraper's files
+(each file checked first, as the scraped top up checks it), and colorndrive's
+ten colour family stand ins count as guesses (see plan_guess_upgrades):
+
+    python manage.py upgrade_swatches chipex "C:\\path\\to\\chipex_2026-10-28.jsonl" etc\\HISTORY.json.gz
+    python manage.py upgrade_swatches colorndrive "C:\\path\\to\\colorndrive_2026-10-28.jsonl" etc\\HISTORY.json.gz
 """
 import gzip
 import json
@@ -25,7 +32,7 @@ from django.core.management.base import BaseCommand, CommandError
 
 from lookup.services import catalogue_topup as ct
 
-READERS = {'bsp': ct.read_bsp}
+READERS = {'bsp': ct.read_bsp, 'chipex': ct.read_chipex, 'colorndrive': ct.read_colorndrive}
 
 
 class Command(BaseCommand):
@@ -67,7 +74,12 @@ class Command(BaseCommand):
                 raise CommandError(f'No such file: {p}')
         with gzip.open(opts['history'], 'rt', encoding='utf-8') as f:
             history = json.load(f)
-        src = READERS[opts['source']](opts['path'])
+        try:
+            src = READERS[opts['source']](opts['path'])
+            if opts['source'] in ct.SCRAPED_READERS:
+                ct.check_scraped(src)              # paint391: the file is checked first
+        except ct.SourceChanged as exc:
+            raise CommandError(str(exc)) from exc
         plan = ct.plan_guess_upgrades(src, history)
         w(('SWATCH UPGRADE, WRITING' if opts['apply'] else 'SWATCH UPGRADE PREVIEW, nothing written (add --apply to write)')
           + f': {src.name}')
@@ -85,6 +97,6 @@ class Command(BaseCommand):
             backup = os.path.join(os.path.dirname(os.path.abspath(opts['history'])),
                                   f'swatch_upgrade_backup_{datetime.now():%Y%m%d_%H%M%S}.json')
             ct.apply_upgrades(plan, backup)
-            w(f'\nWritten: {len(plan.changes):,} swatches replaced, marked "{src.name}".')
+            w(f'\nWritten: {len(plan.changes):,} swatches replaced, marked "{src.mark or src.name}".')
             w(f'Backup of every old value: {backup}')
             w(f'To undo: python manage.py upgrade_swatches --restore "{backup}" --apply   (without --apply, a preview)')

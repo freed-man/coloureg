@@ -1428,7 +1428,12 @@ class PaintLookup(models.Model):
     # paint236: SOURCES THAT ONLY TOP UP. A row that comes only from these was
     # added by `topup_catalogue` (lookup/services/catalogue_topup.py) to fill a
     # gap, so it answers only when no established row would: see lookup().
-    TOPUP_SOURCES = frozenset({'bsp'})
+    # paint391: and the marks of the scraped sites' top up (catalogue_topup's
+    # TOPUP_MARK). chipex, colorndrive and peinturevoiture built the catalogue
+    # under their own names, which stay established; what they add now is
+    # marked apart, so it ranks as bsp's does.
+    TOPUP_SOURCES = frozenset({'bsp', 'chipex_topup', 'colorndrive_topup', 'peinturevoiture_topup',
+                               'atu', 'paintscratch'})
 
     @classmethod
     def is_topup_only(cls, row):
