@@ -137,7 +137,9 @@ def paint_words(make, code, name, dvla_colour):
             body = next((p for p in parts if p.get('is_body')), None)
             if body is not None:
                 rest = ' and '.join(_one_paint(make, p) for p in parts if p is not body)
-                return f'two-tone, the body in {_one_paint(make, body)} and the roof in {rest}'
+                # paint393: a BMW i colour pack's second paint is on the trim, not the roof.
+                where = 'accents' if any(p.get('is_accent') for p in parts if p is not body) else 'roof'
+                return f'two-tone, the body in {_one_paint(make, body)} and the {where} in {rest}'
             return 'two-tone, ' + ' and '.join(_one_paint(make, p) for p in parts)
         # paint239: the car's colour goes in, so a code covering two paints is
         # drawn as the one this car has (the same pick the page makes).

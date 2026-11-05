@@ -3700,8 +3700,11 @@ def _two_tone_json(make, paint_code, colour):
         parts = PaintLookup.two_tone_parts(make, paint_code, vdg_colour=colour) if paint_code else None
     except Exception:
         return []
-    return [{'code': p.get('code') or '', 'name': p.get('name') or '', 'hex': p.get('hex') or '',
-             'is_body': bool(p.get('is_body'))} for p in (parts or [])]
+    # paint393: and is_accent on a BMW i colour pack's accent paint, the key
+    # only there, so the script labels it as the template does.
+    return [dict({'code': p.get('code') or '', 'name': p.get('name') or '', 'hex': p.get('hex') or '',
+                  'is_body': bool(p.get('is_body'))}, **({'is_accent': True} if p.get('is_accent') else {}))
+            for p in (parts or [])]
 
 
 # paint260: A MANUAL ANSWER WITH A CODE GETS ITS PICTURE. The answer email waits

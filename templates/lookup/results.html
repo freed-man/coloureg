@@ -821,7 +821,9 @@
                                 <span class="tt-chip">
                                     {% if part.hex %}<span class="tt-dot" style="background: {{ part.hex }};"></span>{% endif %}
                                     <span class="tt-text"><b>{{ part.code }}</b> {{ part.name }}</span>
+                                    {% comment %} paint393: a BMW i colour pack's accent paint is tagged accents, not roof. {% endcomment %}
                                     {% if part.is_body %}<span class="tt-tag">body</span>
+                                    {% elif part.is_accent %}<span class="tt-tag">accents</span>
                                     {% elif forloop.counter > 1 and two_tone.0.is_body %}<span class="tt-tag">roof</span>{% endif %}
                                 </span>
                                 {% endfor %}
@@ -1624,7 +1626,8 @@ window.cregReportWait();
     {% comment %}Build one paint block's HTML (swatch + code + optional canonical/description).{% endcomment %}
     {% comment %} paint228: a two-tone, drawn exactly as the template's paint50 block
        draws it: the split swatch only when every paint has a colour (paint199),
-       both codes as chips, body and roof tagged. {% endcomment %}
+       both codes as chips, body and roof tagged (paint393: or body and accents, on a
+       BMW i colour pack, from the reply's is_accent). {% endcomment %}
     function twoToneHtml(code, parts) {
         var html = '', allHex = true, i;
         for (i = 0; i < parts.length; i++) { if (!parts[i].hex) { allHex = false; } }
@@ -1643,6 +1646,7 @@ window.cregReportWait();
             if (p.hex) { html += '<span class="tt-dot" style="background: ' + escapeHtml(p.hex) + ';"></span>'; }
             html += '<span class="tt-text"><b>' + escapeHtml(p.code) + '</b> ' + escapeHtml(p.name) + '</span>';
             if (p.is_body) { html += '<span class="tt-tag">body</span>'; }
+            else if (p.is_accent) { html += '<span class="tt-tag">accents</span>'; }
             else if (i > 0 && parts[0].is_body) { html += '<span class="tt-tag">roof</span>'; }
             html += '</span>';
         }

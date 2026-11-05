@@ -1921,7 +1921,11 @@ class PaintLookup(models.Model):
                     # paint49: name the halves as body/roof ONLY when the DVLA
                     # colour actually identified one. Otherwise say "and", which
                     # claims nothing about which is which.
-                    if _body.get('is_body'):
+                    if _body.get('is_body') and _roof.get('is_accent'):
+                        # paint393: a BMW i colour pack's second paint is its accents.
+                        _label = 'Two-tone: %s %s (body) with %s %s (accents)' % (
+                            _body['code'], _body['name'], _roof['code'], _roof['name'])
+                    elif _body.get('is_body'):
                         _label = 'Two-tone: %s %s (body) with %s %s (roof)' % (
                             _body['code'], _body['name'], _roof['code'], _roof['name'])
                     else:
@@ -3318,6 +3322,18 @@ class PaintLookup(models.Model):
     #: (expand_combination still declines anything else).
     _COMBINATION_NAME_RE = re.compile(r'^\s*\S+(?:\s+\+\s+\S+)+\s*$')
 
+    #: paint393: THE ACCENT PAINTS OF BMW i's COLOUR PACKS. An i3 or i8 is coded
+    #: by its colour pack, a body paint and an accent paint on the trim (the
+    #: kidney grille, the side skirts): C2W is Fluid Black (668) with BMW i Blue
+    #: (B94) accents. The catalogue holds 47 such packs as pairs ("668 + B94"),
+    #: and the page called the accent the roof. BMW i Blue (B94) and Frozen Grey
+    #: (U83) are the accents of the i3 and the i8. E-Copper (C1S) is the accent
+    #: on the i3s Edition RoadStyle (C5D, Fluid Black) and the i8 Ultimate
+    #: Sophisto Edition (C50, Sophisto Grey), and the body of the i8 Roadster
+    #: in E-Copper with Frozen Grey accents (C1U, "U83 + C1S"): the first of
+    #: these a pack holds is its accent, which settles all three.
+    _BMW_I_ACCENTS = ('B94', 'U83', 'C1S')
+
     @classmethod
     def is_combination_name(cls, name):
         """True when a name is two or more codes joined rather than a colour.
@@ -3349,6 +3365,11 @@ class PaintLookup(models.Model):
         White and QAB is the Pearl White — so position is not reliable, and we
         have the colour on every lookup anyway. With no colour to match on, the
         order is left as the data gives it and nothing is labelled.
+
+        paint393: a BMW i colour pack's accent paint is known by its code
+        (_BMW_I_ACCENTS), so its partner is the body when the colour cannot
+        say, and the accent half carries is_accent: True (the key is there
+        only then, so every other two-tone's parts are as they were).
         """
         if not cls.is_combination_name(name):
             return None
@@ -3405,8 +3426,27 @@ class PaintLookup(models.Model):
             if sum(1 for i in out if i['is_body']) != 1:
                 for item in out:
                     item['is_body'] = False
-            if any(i['is_body'] for i in out):
-                out.sort(key=lambda i: not i['is_body'])
+        # paint393: A BMW i COLOUR PACK IS A BODY AND ITS ACCENTS, not a body
+        # and a roof (the i3's roof is black whatever the pack). The registered
+        # colour still picks the body when it picks one half; when it cannot
+        # (C2U, Platinum Silver with BMW i Blue, on a car DVLA calls silver,
+        # where the catalogue says grey; or no colour at all), the accent's
+        # partner is the body, since the accent paint is known by its code.
+        # The other half is then marked as the accents, for the caption, the
+        # page, the email and the car's picture.
+        if cls.normalize_manufacturer(manufacturer) == 'bmw':
+            _codes = [(i['code'] or '').upper() for i in out]
+            _accent = next((a for a in cls._BMW_I_ACCENTS if a in _codes), None)
+            if _accent:
+                if not any(i['is_body'] for i in out):
+                    for item in out:
+                        item['is_body'] = (item['code'] or '').upper() != _accent
+                if sum(1 for i in out if i['is_body']) == 1:
+                    for item in out:
+                        if not item['is_body']:
+                            item['is_accent'] = True
+        if any(i['is_body'] for i in out):
+            out.sort(key=lambda i: not i['is_body'])
         for item in out:
             item.pop('_group', None)     # internal, never reaches the template
         return out

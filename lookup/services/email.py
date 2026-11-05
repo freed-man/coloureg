@@ -332,7 +332,9 @@ def send_user_paint_code(to_email, registration, vehicle_title, vin_masked, colo
     if parts:
         lines = []
         for i, p in enumerate(parts):
-            tag = 'body' if p.get('is_body') else ('roof' if i > 0 and parts[0].get('is_body') else '')
+            # paint393: a BMW i colour pack's accent paint is its accents, not a roof.
+            tag = 'body' if p.get('is_body') else ('accents' if p.get('is_accent') else
+                                                   ('roof' if i > 0 and parts[0].get('is_body') else ''))
             dot = (f'<span style="display: inline-block; width: 12px; height: 12px; border-radius: 50%; background: {_esc(p["hex"])}; '
                    'vertical-align: middle; margin-right: 6px; border: 1px solid #ddd;"></span>') if p.get('hex') else ''
             lines.append(f'<div style="margin-top: 6px; color: #1a1a1a; font-size: 14px;">{dot}<b>{_esc(p.get("code"))}</b> {_esc(p.get("name") or "")}'
