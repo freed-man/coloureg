@@ -422,7 +422,6 @@
     {% comment %} paint386: the No box's X, top right of the box. {% endcomment %}
     #fb-no { position: relative; }
     .fb-close { position: absolute; top: 14px; right: 14px; }
-    .fb-thanks { margin: 0; text-align: center; font-size: 14px; color: #555; }
     .fb-no-title { display: block; font-size: 1.05rem; font-weight: 600; margin-bottom: 10px; }
     .fb-no-title span { font-weight: 400; color: #6c757d; }
     .fb-foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 8px; }
@@ -1292,7 +1291,10 @@ the request directly. {% endcomment %}
                     <button type="button" class="fb-btn" data-answer="yes"><i class="fa-regular fa-thumbs-up" aria-hidden="true"></i>Yes</button>
                     <button type="button" class="fb-btn" data-answer="no"><i class="fa-regular fa-thumbs-down" aria-hidden="true"></i>No</button>
                 </div>
-                <p class="fb-thanks" id="fb-yes"{% if feedback != 'yes' %} hidden{% endif %}>Thanks, glad it helped.</p>
+                {% comment %} paint392 (the operator, 5 Nov: "I want that message to be in similar style, when clicked on Yes too"):
+                   the thanks for Yes is drawn as the No's is, in the pale green box with the tick, its words as they were. The grey
+                   line it was drawn as before (.fb-thanks) is gone. {% endcomment %}
+                <p class="fb-done" id="fb-yes"{% if feedback != 'yes' %} hidden{% endif %}><i class="fas fa-check" aria-hidden="true"></i>Thanks, glad it helped.</p>
                 <div class="card" id="fb-no"{% if feedback != 'no' or feedback_noted %} hidden{% endif %}>
                     <button type="button" class="btn-close fb-close" id="fb-close" aria-label="Close"></button>
                     <div class="card-body p-4">
