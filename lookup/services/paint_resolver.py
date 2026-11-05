@@ -919,6 +919,30 @@ MMW_BASE_URL = os.environ.get(
 ).rstrip('/')
 MMW_API_KEY = os.environ.get('MMW_API_KEY', '')
 
+# paint390: PartSouq, the operator's ps service (repo ps). Same shape as pl24
+# and mmw: private Railway hostname in production, X-API-Key, /lookup-paint,
+# here with ?vin= (a VIN or a Japanese frame number as VDG gives it). Its
+# reply: outcome, paint_code, paint_description, drivers_position, make,
+# error, elapsed_s; a 400 for a vin it cannot search, a 401 for a wrong key, a
+# 503 when four lookups are already running.
+PS_BASE_URL = os.environ.get(
+    'PS_BASE_URL', 'http://ps.railway.internal:8080'
+).rstrip('/')
+PS_API_KEY = os.environ.get('PS_API_KEY', '')
+#: The service bounds a whole lookup at 10 s (a wait for a free slot
+#: included) and answered in a median 0.35 s on 157 cars on 4 Nov, so this is
+#: a hang detector, as mmw's is.
+_PS_HTTP_TIMEOUT = (5.0, 12.0)
+#: paint390: the makes PartSouq gives a colour for. Its Toyota catalogue holds
+#: Lexus too (24 of 24 right on 4 Nov). Every other make tried (Honda, Nissan,
+#: Mitsubishi, Subaru, Suzuki, Mazda, MG, BYD, Isuzu, BMW, Daihatsu) lands in
+#: an older catalogue with no paint field, or is not found at all.
+PS_MAKES = frozenset({'toyota', 'lexus'})
+#: What the service will search (its own check, server.check_vin): letters,
+#: digits, spaces and hyphens, 6 to 17 letters and digits once the hyphens and
+#: spaces are out, 40 characters at most.
+_PS_VIN_SHAPE = re.compile(r'[A-Z0-9][A-Z0-9 \-]*')
+
 #: mmw answers in about a second warm (measured 14 Sep: 1.5s cold opening the
 #: session, then 1.2s and 1.0s). This is a hang detector, not a patience
 #: setting — it starts at t=0 and nothing waits on it, so a generous value
@@ -3146,6 +3170,112 @@ def _mmw_failed(search_id, outcome, why):
                           mmw_outcome=outcome, mmw_error=why)
 
 
+def ps_wanted(make, vin):
+    """paint390: True when PartSouq is asked: a Toyota or Lexus (PS_MAKES) with
+    a VIN or a frame number its service will search (_PS_VIN_SHAPE). Never
+    raises."""
+    try:
+        from lookup.models import PaintLookup
+        if PaintLookup.normalize_manufacturer(str(make or '')) not in PS_MAKES:
+            return False
+        text = str(vin or '').strip().upper()
+        if not text or len(text) > 40 or not _PS_VIN_SHAPE.fullmatch(text):
+            return False
+        return 6 <= len(re.sub(r'[^A-Z0-9]', '', text)) <= 17
+    except Exception:  # noqa: BLE001
+        return False
+
+
+def _ps_lookup(vin, search_id=None):
+    """paint390: ask the ps service (PartSouq) for this car's colour code.
+
+    Returns its row ({'code', 'name', 'drive', 'outcome', 'error', 'ms'}), or
+    None when the call gave nothing we could read. Never raises: like mmw, a
+    leg that cannot make things worse must not be able to break a lookup.
+
+    THE ROW KEEPS EVERY ANSWER, used or not, as mmw's does: the code and name as
+    sent, the drive side the page states, the outcome and its reason, and the
+    call's own time (read the moment the reply is in, before any write, as
+    paint387 reads partslink24's). Written here, by the worker, so it lands even
+    when the search has ended. A call that failed on our side is kept as tried,
+    with an outcome named as mmw's are (client_timeout,
+    client_connection_error, client_error; http_NNN for a reply that is not a
+    200, the service's own reason beside it; empty_reply for a 200 we cannot
+    read), and is logged without the VIN. What is done with the answer is the
+    race's business (resolve_paint)."""
+    started = time.monotonic()
+    headers = {'X-API-Key': PS_API_KEY} if PS_API_KEY else {}
+    try:
+        resp = get_session().get(
+            f'{PS_BASE_URL}/lookup-paint',
+            params={'vin': vin}, headers=headers,
+            timeout=_PS_HTTP_TIMEOUT,
+        )
+    except requests.exceptions.RequestException as exc:
+        _ps_failed(search_id, *_ps_failure(exc), ms=_ms_since(started))
+        return None
+    took = _ms_since(started)
+    try:
+        data = resp.json()
+    except ValueError:
+        data = None
+    if not isinstance(data, dict):
+        data = None
+    if resp.status_code != 200:
+        _said = ' '.join(str((data or {}).get('error') or '').split())[:200]
+        _ps_failed(search_id, f'http_{resp.status_code}', _said or f'HTTP {resp.status_code}', ms=took)
+        return None
+    if data is None:
+        _ps_failed(search_id, 'empty_reply', 'HTTP 200 but the reply is not a JSON object', ms=took)
+        return None
+    row = {
+        'code': str(data.get('paint_code') or '').strip()[:50],
+        'name': ' '.join(str(data.get('paint_description') or '').split())[:120],
+        'drive': str(data.get('drivers_position') or '').strip().upper()[:3],
+        'outcome': str(data.get('outcome') or '').strip()[:40],
+        'error': ' '.join(str(data.get('error') or '').split())[:200],
+        'ms': took,
+    }
+    if not row['code'] and not row['outcome']:
+        _ps_failed(search_id, 'empty_reply', row['error'] or 'HTTP 200 with no code and no outcome', ms=took)
+        return row
+    _record_worker_result(
+        search_id,
+        ps_attempted=True,
+        **({'ps_code': row['code']} if row['code'] else {}),
+        **({'ps_name': row['name']} if row['name'] else {}),
+        **({'ps_drive': row['drive']} if row['drive'] else {}),
+        **({'ps_outcome': row['outcome']} if row['outcome'] else {}),
+        **({'ps_error': row['error']} if row['error'] else {}),
+        **({'ps_ms': took} if took is not None else {}),
+    )
+    return row
+
+
+def _ps_failure(exc):
+    """paint390: (outcome, reason) for a ps call that raised, named as mmw's are (_mmw_failure)."""
+    try:
+        cause = type(failure_chain(exc)[-1]).__name__
+        connect_s, read_s = _PS_HTTP_TIMEOUT
+        if failure_kind(exc) == 'timeout':
+            return 'client_timeout', f'{cause}: no reply, coloureg gave up after {read_s:g}s'
+        if isinstance(exc, requests.exceptions.ConnectTimeout):
+            return 'client_timeout', f'{cause}: could not connect within {connect_s:g}s'
+        if isinstance(exc, requests.exceptions.ConnectionError):
+            return 'client_connection_error', cause
+    except Exception:  # noqa: BLE001
+        pass
+    return 'client_error', type(exc).__name__
+
+
+def _ps_failed(search_id, outcome, why, ms=None):
+    """paint390: a ps call that gave nothing we could read: logged (no VIN), and kept on the row."""
+    outcome, why = str(outcome)[:40], str(why)[:200]
+    logger.warning('ps gave no answer we could read: %s (%s)', outcome, why)
+    _record_worker_result(search_id, ps_attempted=True, ps_outcome=outcome, ps_error=why,
+                          **({'ps_ms': ms} if ms is not None else {}))
+
+
 def _pl24_lookup(vin, make, category=None, search_id=None):
     """Call the pl24 service. Returns a paint dict if pl24 found a code, else
     None. Never raises — network/HTTP/timeout errors degrade to None."""
@@ -3632,7 +3762,8 @@ def resolve_paint(registration, vin, make, category=None, telemetry=None, model=
     # paint140: 4, not 3 — mmw is a fourth leg. The RELATIONSHIP is what
     # matters (see above): max_workers >= the number of legs, or a leg silently
     # queues behind another and its timing measurements become fiction.
-    ex = concurrent.futures.ThreadPoolExecutor(max_workers=4)
+    # paint390: 5, not 4: PartSouq is a fifth leg (Toyota and Lexus only).
+    ex = concurrent.futures.ThreadPoolExecutor(max_workers=5)
     _t = telemetry if telemetry is not None else {}
     _start = time.monotonic()
     # Recovery telemetry, finalised in the `finally` block so it is written no
@@ -3695,6 +3826,24 @@ def resolve_paint(registration, vin, make, category=None, telemetry=None, model=
         # attempted. Two channels reporting the same fact must agree.
         _t['mmw_attempted'] = True
         f_mmw = ex.submit(_mmw_lookup, registration, search_id)
+
+        # paint390: PARTSOUQ STARTS HERE TOO, for a Toyota or Lexus with a VIN
+        # or a frame number (ps_wanted). Free, and it answers in about a third
+        # of a second. What its answer is worth depends on the VIN:
+        #   a frame number (not vin_is_real): partslink24 and the reserve are
+        #     never asked for one, so nothing else can give a code; PartSouq's
+        #     ends the search the moment it comes, as partslink24's code does;
+        #   a normal VIN: HELD, as mmw's is. partslink24's code (and VDG's)
+        #     still wins; PartSouq's is given when both have finished with no
+        #     code of their own, and then the paid reserve is not bought.
+        # Either way a code is refused when the page states left hand drive or
+        # the name to be shown states a colour the car is not registered as
+        # (_ps_entry). Measured on 4 Nov: of 153 answers with a code, those two
+        # tests refused both wrong ones and 2 right ones, and kept 149 right.
+        f_ps = None
+        if ps_wanted(make, vin):
+            _t['ps_attempted'] = True
+            f_ps = ex.submit(_ps_lookup, vin, search_id)
 
         f_vdg = ex.submit(_vdg_retry, registration, _t, search_id, race_over,
                           f_mmw, make, vdg_colour)      # paint273: mmw's code counts
@@ -3835,7 +3984,7 @@ def resolve_paint(registration, vin, make, category=None, telemetry=None, model=
         # deadline with room to spare.
         ezyvin_backstop_at = time.monotonic() + EZYVIN_BACKSTOP_S
         deadline = time.monotonic() + PL24_TIMEOUT
-        pending = {f for f in (f_vdg, f_pl24) if f is not None}     # paint255: pl24 may be skipped
+        pending = {f for f in (f_vdg, f_pl24, f_ps) if f is not None}     # paint255: pl24 may be skipped; paint390: PartSouq
         # paint294: WHAT IS HELD WHILE THE SEARCH GOES ON, by source. An answer
         # that is not a code of the provider's own (a colour name, a code our
         # catalogue worked out from that name, a special order code) waits
@@ -3944,6 +4093,49 @@ def resolve_paint(registration, vin, make, category=None, telemetry=None, model=
             _t['ezyvin_outcome'] = 'skipped_name_match'
             return True
 
+        def _ps_entry(row):
+            """paint390: PartSouq's answer as an entry (_read's shape), or None.
+
+            Only a found code counts. Read with no name first, so our
+            catalogue's name for the code is the one shown (the UK name: 089
+            Wind Chill Pearl, where PartSouq says Platinum White Pearl; a two
+            tone's combination row expanded as usual); PartSouq's own name only
+            when nothing we hold names the code. Then two refusals, each noted on
+            the row (ps_refused): the page states left hand drive ('lhd': both
+            wrong answers of 4 Nov were brand new cars shown as left hand drive
+            European models), or the name to be shown states a colour the car is
+            not registered as ('colour': remembered.contradicts, the test the
+            page's own colour note uses, and like that note never applied to a
+            two paint name). Never raises: any failure is no answer."""
+            try:
+                if not row or row.get('outcome') != 'found' or not row.get('code'):
+                    return None
+                if row.get('drive') == 'LHD':
+                    _t['ps_refused'] = 'lhd'
+                    return None
+                entry = _read({'paint_code': row['code'], 'paint_description': '',
+                               'all_paint_codes': [], 'source': 'partsouq'})
+                if entry[0] == 'unsure' and row.get('name'):
+                    entry = _read({'paint_code': row['code'], 'paint_description': row['name'],
+                                   'all_paint_codes': [], 'source': 'partsouq'})
+                if entry[0] not in ('code', 'unsure', 'special'):
+                    return None
+                from lookup.models import Search
+                from lookup.services.remembered import contradicts
+                shown = (entry[1].get('paint_description') or '').strip()
+                if (shown and not Search._TWO_PAINTS_RE.search(shown)
+                        and contradicts(shown, vdg_colour or '')):
+                    _t['ps_refused'] = 'colour'
+                    return None
+                return entry
+            except Exception:  # noqa: BLE001 - a free leg must never break the search
+                logger.warning('PartSouq answer not read', exc_info=True)
+                return None
+
+        def _ps_code():
+            """paint390: True when PartSouq's code is held and may be given."""
+            return bool(held.get('ps') and held['ps'][0] == 'code')
+
         while pending:
             remaining = deadline - time.monotonic()
             if remaining <= 0:
@@ -3985,6 +4177,11 @@ def resolve_paint(registration, vin, make, category=None, telemetry=None, model=
                     # Not when VDG's name already gives a code: the check at
                     # the top of the loop ends the search with that code.
                     if not _gives_code(held.get('vdg_retry')):
+                        # paint390: NOR WHEN PARTSOUQ HAS THE CAR'S OWN CODE. The
+                        # search ends here with it, for the reason above.
+                        if _ps_code():
+                            _t['ezyvin_outcome'] = 'skipped_ps_code'
+                            break
                         # paint298: NOR WHEN MMW'S CODE MATCHES THE NAME ONE
                         # SUPPLIER HAS ALREADY GIVEN. Then the search ENDS
                         # here, with that code, for the reason given at the
@@ -4052,6 +4249,18 @@ def resolve_paint(registration, vin, make, category=None, telemetry=None, model=
                     if entry[0]:
                         held['pl24'] = entry
 
+            # paint390: PARTSOUQ. For a frame number its code is the answer the
+            # moment it comes (nothing else can give one; a VDG code in the same
+            # batch was given above). For a normal VIN it is held, and given
+            # once VDG and partslink24 have finished with no code of their own.
+            if f_ps is not None and f_ps in done:
+                entry = _ps_entry(_result_or_none(f_ps))
+                if entry is not None:
+                    if entry[0] == 'code' and not vin_is_real(vin):
+                        race_over.set()
+                        return _give(entry)
+                    held['ps'] = entry
+
             # THE RESERVE. Started only once BOTH paid-and-free legs have
             # finished with nothing, so by the time it is inspected there is
             # nothing left to beat it — but it is read last regardless, because
@@ -4111,10 +4320,18 @@ def resolve_paint(registration, vin, make, category=None, telemetry=None, model=
             # corroborated code, which is the code that was tested. Where the
             # test does not hold the reserve is bought exactly as before, and
             # mmw's code is given only if the reserve has no code of its own.
+            #
+            # paint390: NOR BEFORE PARTSOUQ HAS ANSWERED (a third of a second,
+            # ten at most), NOR WHEN IT HAS THE CAR'S OWN CODE: the search ends
+            # and the order below gives that code.
             if (not reserve_done and f_pl24 is not None
                     and f_vdg not in pending and f_pl24 not in pending
+                    and (f_ps is None or f_ps not in pending)
                     and not _gives_code(held.get('vdg_retry'))):
                 reserve_done = True
+                if _ps_code():
+                    _t['ezyvin_outcome'] = 'skipped_ps_code'
+                    break
                 if not _mmw_stands_in():
                     started = _start_ezyvin('both_empty')
                     if started is not None:
@@ -4145,6 +4362,13 @@ def resolve_paint(registration, vin, make, category=None, telemetry=None, model=
         # ('Race Red' matches 13, 'Black Pearl' 481), so it declines far more
         # often than it resolves — deliberately, because a wrong code is worse
         # than none when the customer is about to buy paint.
+        # paint390: PARTSOUQ'S OWN CODE FOR THIS CAR COMES FIRST HERE: read off
+        # the car's own record, where everything below is a match on a name or
+        # a code from the registration alone. (A frame number's was given when
+        # it came; this is a normal VIN's, VDG and partslink24 having no code.)
+        if _ps_code():
+            return _give(held['ps'])
+
         if _gives_code(held.get('vdg_retry')):
             return _give(held['vdg_retry'])
 
@@ -4179,10 +4403,10 @@ def resolve_paint(registration, vin, make, category=None, telemetry=None, model=
         # paint320: A CODE NOTHING CAN NAME comes after every name, and before
         # a special order code. The page shows it with a note offering the
         # manual check (the operator, 12 Oct: name over code, less risky).
-        for _source in ('vdg_retry', 'pl24', 'ezyvin', 'mmw'):
+        for _source in ('vdg_retry', 'pl24', 'ps', 'ezyvin', 'mmw'):          # paint390: ps
             if held.get(_source) and held[_source][0] == 'unsure':
                 return _give(held[_source])
-        for _source in ('vdg_retry', 'pl24', 'ezyvin', 'mmw'):
+        for _source in ('vdg_retry', 'pl24', 'ps', 'ezyvin', 'mmw'):          # paint390: ps
             if held.get(_source):
                 return _give(held[_source])       # what is left is a special order code
         _t.pop('mmw_used', None)      # mmw answered, and its answer was not one to give

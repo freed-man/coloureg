@@ -2648,6 +2648,9 @@
                 { label: 'VDG',          data: CHART.src_retry,  backgroundColor: '#4a7bd4' },
                 { label: 'VDG (2nd)',    data: CHART.src_retry2, backgroundColor: '#8fb3e8' },
                 { label: 'PL24',        data: CHART.src_pl24,    backgroundColor: '#7fb069' },
+                {% comment %}paint390: PartSouq (Toyota and Lexus), after PL24 and before Ezyvin, its place
+                in the order of preference.{% endcomment %}
+                { label: 'PartSouq',    data: CHART.src_ps,      backgroundColor: '#e8862a' },
                 { label: 'Ezyvin',      data: CHART.src_ezyvin,  backgroundColor: '#00857a' },
                 {% comment %}paint142: mmw. Placed after Ezyvin to match the
                 pipeline's order of preference — VDG, pl24, Ezyvin, then mmw —

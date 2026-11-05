@@ -168,6 +168,10 @@ class SearchAdmin(admin.ModelAdmin):
         'pl24_started_because',
         # paint368: why an mmw call ended as it did. Written by the pipeline.
         'mmw_error',
+        # paint390: what PartSouq said and what was done with it. Written by the
+        # pipeline (the worker, the race and the paint hit), so readonly.
+        'ps_attempted', 'ps_code', 'ps_name', 'ps_drive', 'ps_outcome',
+        'ps_error', 'ps_refused', 'ps_agreed', 'ps_ms',
         'paywalled',
         'paid_unlocked',
         'access_label',
@@ -278,6 +282,12 @@ class SearchAdmin(admin.ModelAdmin):
             'classes': ('collapse',),
             'fields': ('mmw_attempted', 'mmw_code', 'mmw_colour',
                        'mmw_outcome', 'mmw_error', 'mmw_agreed', 'mmw_used', 'mmw_ms'),    # paint368
+        }),
+        # paint390: PartSouq (the ps service), Toyota and Lexus, as mmw's.
+        ('PartSouq detail', {
+            'classes': ('collapse',),
+            'fields': ('ps_attempted', 'ps_code', 'ps_name', 'ps_drive', 'ps_outcome',
+                       'ps_error', 'ps_refused', 'ps_agreed', 'ps_ms'),
         }),
         ('VDG paint detail', {
             'classes': ('collapse',),

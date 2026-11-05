@@ -27,6 +27,8 @@ class Search(models.Model):
     # the same defect paint98 fixed for Ezyvin, repeated because paint140 added
     # the leg and forgot the provider.
     PROVIDER_MMW = 'mmw'
+    # paint390: PartSouq (the operator's ps service), Toyota and Lexus only.
+    PROVIDER_PARTSOUQ = 'partsouq'
     PROVIDER_MANUAL = 'manual'
     PROVIDER_CACHE = 'cache'
     # paint288: an answer given again from an earlier lookup of the same plate,
@@ -98,6 +100,8 @@ class Search(models.Model):
         # 'VDG' and 'PL24' until this was fixed. The stored VALUE stays
         # lowercase; only the label changes.
         (PROVIDER_MMW, 'MMW'),
+        # paint390. One word for the badge, like PARTSLINK24; operator only.
+        (PROVIDER_PARTSOUQ, 'PartSouq'),
         (PROVIDER_MANUAL, 'Manual'),
         (PROVIDER_CACHE, 'Cache'),
         (PROVIDER_REMEMBERED, 'Remembered (3 months)'),       # paint288
@@ -578,6 +582,45 @@ class Search(models.Model):
     #: VDG's second chance (paint73, paint273), only when it was made; beside
     #: vdg_paint_retry_cost, the same call's charge.
     vdg_paint_retry_ms = models.PositiveIntegerField(null=True, blank=True)
+
+    # paint390: PARTSOUQ, THE OPERATOR'S ps SERVICE, ASKED FOR TOYOTA AND LEXUS
+    # (paint_resolver.PS_MAKES). It reads the car's own colour code from
+    # partsouq.com by VIN or by a Japanese frame number. Measured on 4 Nov: the
+    # 16 Toyotas with a frame number in the export of 27 Oct were all answered
+    # by hand (partslink24 and the reserve skip frame numbers), and PartSouq gave
+    # the right code for every one; on 140 cars with a normal VIN it gave 138
+    # right, and both wrong answers were brand new cars whose PartSouq page said
+    # left hand drive. Every answer is kept here whether or not it is used, as
+    # mmw's are: the code and name as sent, the drive side the page states, the
+    # outcome and its reason, the time the call took (written by the worker,
+    # _ps_lookup), why coloureg refused a code (the race), and whether the code
+    # agreed with the one given (_record_paint_hit). Telemetry only: nothing a
+    # customer sees reads them. db_default as well as default, for the reason
+    # mmw_error gives: the release before saves lookups without naming them
+    # while Railway runs the migration.
+    ps_attempted = models.BooleanField(default=False, db_default=False)
+    ps_code = models.CharField(max_length=50, blank=True, default='', db_default='')
+    #: PartSouq's own name, often the US or Japanese one (089 "Platinum White
+    #: Pearl" where the UK says "Wind Chill Pearl"); the name shown is our
+    #: catalogue's where it has the code.
+    ps_name = models.CharField(max_length=120, blank=True, default='', db_default='')
+    #: "RHD", "LHD" or empty (the Japanese pages state none).
+    ps_drive = models.CharField(max_length=3, blank=True, default='', db_default='')
+    #: found, not_found, no_colour, blocked or error from the service; ours
+    #: (client_timeout, client_connection_error, client_error, http_NNN,
+    #: empty_reply) when the call itself failed, named as mmw's are.
+    ps_outcome = models.CharField(max_length=40, blank=True, default='', db_default='')
+    ps_error = models.CharField(max_length=200, blank=True, default='', db_default='')
+    #: The call as coloureg waited for it, start to reply.
+    ps_ms = models.PositiveIntegerField(null=True, blank=True)
+    #: Why its code was not used: "lhd" (the page states left hand drive) or
+    #: "colour" (the name to be shown states a colour the car is not
+    #: registered as, the test the page's own colour note uses); empty when it
+    #: was not refused or the search had ended before it was read.
+    ps_refused = models.CharField(max_length=20, blank=True, default='', db_default='')
+    #: True when its code is the code given, False when another was, NULL when
+    #: there was nothing to compare (as mmw_agreed).
+    ps_agreed = models.BooleanField(null=True, blank=True)
 
     @property
     def gate_reason_label(self):

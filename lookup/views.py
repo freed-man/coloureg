@@ -3288,6 +3288,10 @@ def _apply_recovery_telemetry(search, telemetry):
         fields.append('name_match_codes')
     if telemetry.get('mmw_used'):
         fields.append('mmw_used')
+    # paint390: why PartSouq's code was not used, when the race refused it.
+    if telemetry.get('ps_refused'):
+        search.ps_refused = str(telemetry['ps_refused'])[:20]
+        fields.append('ps_refused')
 
     # One Auto (paint67). The COST is recorded whatever the outcome, because an
     # unrecorded charge is invisible to the daily budget breaker — and One Auto
@@ -3541,6 +3545,17 @@ def _record_paint_hit(search_id, paint_code, paint_description, source, telemetr
         # B570M by mmw and stored provider 'none', so the dashboard showed a
         # code from nowhere.
         search.provider = Search.PROVIDER_MMW
+    elif source == 'partsouq':
+        # paint390, and paint98's lesson again: a new leg gets its provider
+        # the day it ships.
+        search.provider = Search.PROVIDER_PARTSOUQ
+    # paint390: DID PARTSOUQ AGREE WITH THE CODE GIVEN? Its answer is on this
+    # row once it came (_ps_lookup writes it at once), as mmw's is. Compared as
+    # codes are between sources (PaintLookup.code_key); NULL when there was
+    # nothing to compare. The free cross check on Toyotas and Lexus that
+    # partslink24 answers, and the evidence for PartSouq's place in the order.
+    if search.ps_code and paint_code:
+        search.ps_agreed = PaintLookup.code_key(search.ps_code) == PaintLookup.code_key(paint_code)
     search.enriched_from = enriched_from or ''
     fields = ['paint_code', 'paint_description', 'success', 'provider', 'enriched_from']
     # paint140, and the paint78 rule: mmw_agreed is ASSIGNED above, so it has
@@ -3548,6 +3563,8 @@ def _record_paint_hit(search_id, paint_code, paint_description, source, telemetr
     # has cost four legs their telemetry already.
     if search.mmw_agreed is not None:
         fields.append('mmw_agreed')
+    if search.ps_agreed is not None:                                     # paint390, the same rule
+        fields.append('ps_agreed')
     fields += _apply_recovery_telemetry(search, telemetry)
     # We have a real code here (this is the paint-hit path), so this is a FULL
     # result, not name-only — even if pl24 originally returned a name that our
@@ -5405,6 +5422,9 @@ def admin_stats(request):
             # interesting number rather than an incidental one.
             s_mmw=Count('id', filter=Q(paint_code__gt='',
                                        provider=Search.PROVIDER_MMW)),
+            # paint390: PartSouq, so its answers are counted somewhere.
+            s_ps=Count('id', filter=Q(paint_code__gt='',
+                                      provider=Search.PROVIDER_PARTSOUQ)),
             # SPLIT BY WHICH VDG CALL WON, matching what the Source column
             # shows per row. A lookup makes one paint call, and a second only
             # when the first came back empty — so "VDG" and "VDG (2nd)" are
@@ -5441,6 +5461,7 @@ def admin_stats(request):
     chart_repeats = []                                          # paint357
     src_ezyvin, src_retry, src_retry2 = [], [], []
     src_mmw = []
+    src_ps = []                                                 # paint390
     src_pl24, src_manual, src_cache = [], [], []
     # LOCAL dates, not UTC. TruncDate above buckets by the CURRENT timezone
     # (Europe/London), so `now.date()` — which is UTC — disagrees with it
@@ -5462,6 +5483,7 @@ def admin_stats(request):
         chart_repeats.append(row.get('repeats', 0))             # paint357
         src_ezyvin.append(row.get('s_ezyvin', 0))
         src_mmw.append(row.get('s_mmw', 0))
+        src_ps.append(row.get('s_ps', 0))                       # paint390
         src_retry.append(row.get('s_retry', 0))
         src_retry2.append(row.get('s_retry2', 0))
         src_pl24.append(row.get('s_pl24', 0))
@@ -5864,6 +5886,7 @@ def admin_stats(request):
             'repeats': chart_repeats,                           # paint357
             'src_ezyvin': src_ezyvin,
             'src_mmw': src_mmw,
+            'src_ps': src_ps,                                   # paint390
             'src_retry': src_retry,
             'src_retry2': src_retry2,
             'src_pl24': src_pl24,
