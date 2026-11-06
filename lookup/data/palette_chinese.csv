@@ -1,0 +1,453 @@
+make,model,vin_prefix,powertrain,from_yyyy_mm,to_yyyy_mm,dvla_bucket,alt_bucket,code,name_uk,uk_sold,evidence
+byd,Atto 2,,,2025-08,,BLACK,,AAP,Obsidian Black,yes,D
+byd,Atto 2,,,2025-08,,GREEN,,HCJ,Hiking Green,yes,B
+byd,Atto 2,,,2025-08,,GREY,,HA4,Time Grey,yes,D
+byd,Atto 2,,,2025-08,,WHITE,,WAC,Skiing White,yes,B
+byd,Atto 2,,,2026-01,,BLACK,,AAP,Obsidian Black,yes,D
+byd,Atto 2,,,2026-01,,BLUE,,,Midnight Blue,yes,A
+byd,Atto 2,,,2026-01,,GREY,,HA4,Time Grey,yes,D
+byd,Atto 2,,,2026-01,,WHITE,,WAC,Skiing White,yes,B
+byd,Atto 3,LGXCE4,,2023-03,,BLUE,,LAP,Surfing Blue,yes,A
+byd,Atto 3,LGXCE4,,2023-03,2024-12,GREEN,,UA6,Exploring Green,yes,A
+byd,Atto 3,LGXCE4,,2023-03,2024-12,GREY,,HAN,Climbing Grey,yes,A
+byd,Atto 3,LGXCE4,,2023-03,2024-12,RED,,RA5,Parkour Red,yes,A
+byd,Atto 3,LGXCE4,,2023-03,,WHITE,,WAC,Skiing White,yes,A
+byd,Atto 3,LGXCE4,,2024-03,2025-03,BLACK,,AA1,Cosmos Black,yes,A
+byd,Atto 3,LGXCE4,,2025-01,,GREY,,HA4,Time Grey,yes,A
+byd,Atto 3,LGXCE4,,2025-04,2026-04,BLACK,,AAP,Obsidian Black,yes,B
+byd,Atto 3 Evo,,,2026-04,,BLACK,,AAP,Obsidian Black,yes,B
+byd,Atto 3 Evo,,,2026-04,,BLUE,,,Iris Blue,yes,A
+byd,Atto 3 Evo,,,2026-04,,GREY,,HA4,Time Grey,yes,B
+byd,Atto 3 Evo,,,2026-04,,GREY,BLUE,HB5,Atlantis Blue,yes,B
+byd,Atto 3 Evo,,,2026-04,,RED,,,Ruby Red,yes,A
+byd,Atto 3 Evo,,,2026-04,,WHITE,,WAC,Skiing White,yes,B
+byd,Dolphin,LC0CE4,,2023-09,,BLACK,,B1,Delan Black,yes,A
+byd,Dolphin,LC0CE4,,2023-09,,BLUE,GREY,HB5,Atlantis Grey,yes,A
+byd,Dolphin,LC0CE4,,2023-09,2024-12,BLUE,,LAP,Surfing Blue,yes,A
+byd,Dolphin,LC0CE4,,2023-09,,CREAM,WHITE,YB1,Cream White,yes,A
+byd,Dolphin,LC0CE4,,2023-09,,GREY,,HAN,Urban Grey,yes,A
+byd,Dolphin,LC0CE4,,2023-09,,PINK,,KW,Coral Pink,yes,A
+byd,Dolphin,LC0CE4,,2023-09,,PURPLE,,CA2,Amethyst Purple,yes,A
+byd,Dolphin,LC0CE4,,2023-09,,WHITE,,WAC,Skiing White,yes,A
+byd,Dolphin,LC0CE4,,2025-01,,GREY,,HA4,Time Grey,yes,D
+byd,Dolphin,LC0CE4,,2025-09,,BLACK,,AAP,Obsidian Black,yes,D
+byd,Dolphin Surf,,,2025-06,,BLACK,,B1,Polar Night Black,yes,C
+byd,Dolphin Surf,,,2025-06,,BLUE,,LAT,Ice Blue,yes,B
+byd,Dolphin Surf,,,2025-06,,GREEN,,UA5,Lime Green,yes,B
+byd,Dolphin Surf,,,2025-06,,WHITE,BEIGE,HBG,Apricity White,yes,B
+byd,Dolphin Surf,,,2026-10,,WHITE,,WAC,Skiing White,yes,D
+byd,Han,,,,,BLUE,,LAL,AI Blue,no,D
+byd,Han,,,,,BLUE,,LAN,Sky Blue,no,D
+byd,Han,,,,,GREEN,,UB9,Winter Cyan,no,D
+byd,Han,,,,,GREY,,HDC,Kiln Grey,no,D
+byd,Han,,,,,WHITE,,WA2,Snow White / Polar White,no,D
+byd,Seal,LGXCH6|LGXCF6,,2023-09,2026-02,BLACK,,AA1,Space Black,yes,A
+byd,Seal,LGXCH6|LGXCF6,,2023-09,,BLUE,GREY,HB5,Atlantis Grey,yes,A
+byd,Seal,LGXCH6|LGXCF6,,2023-09,2026-02,BLUE,,LAT,Ice Blue,yes,A
+byd,Seal,LGXCH6|LGXCF6,,2023-09,,BLUE,,LAV,Ice Blue Matt,no,A
+byd,Seal,LGXCH6|LGXCF6,,2023-09,2026-02,GREEN,,UY,Shadow Green,yes,A
+byd,Seal,LGXCH6|LGXCF6,,2023-09,,GREY,,HB4,Indigo Grey,yes,A
+byd,Seal,LGXCH6|LGXCF6,,2023-09,,GREY,BLUE,HB6,Atlantis Grey Matt,no,A
+byd,Seal,LGXCH6|LGXCF6,,2023-09,,WHITE,,WA2,Polar White,yes,A
+byd,Seal,LGXCH6|LGXCF6,,2026-02,,BLACK,,AAP,Obsidian Black,yes,B
+byd,Seal,LGXCH6|LGXCF6,,2026-02,,BLUE,,LAU,Lens Blue,no,A
+byd,Seal,LGXCH6|LGXCF6,,2026-02,,GREY,PURPLE,,Lavender Grey,yes,A
+byd,Seal,LGXCH6|LGXCF6,,2026-02,,RED,,,Ruby Red,yes,A
+byd,Seal 6,,,2025-11,,BEIGE,GOLD|BROWN,YB9,Sandstone,yes,C
+byd,Seal 6,,,2025-11,,BLACK,,AAP,Obsidian Black,yes,B
+byd,Seal 6,,,2025-11,,GREY,BLUE,HB5,Atlantis Blue,yes,B
+byd,Seal 6,,,2025-11,,WHITE,,WA2,Polar White,yes,B
+byd,Seal U,LGXC74|LGXCD4,,2024-05,,BLACK,,B1,Delan Black,yes,A
+byd,Seal U,LGXC74|LGXCD4,,2024-05,,BLUE,,LAN,Cang Qiong Lan,no,A
+byd,Seal U,LGXC74|LGXCD4,,2024-05,,BLUE,,UV,Tian Qing,yes,A
+byd,Seal U,LGXC74|LGXCD4,,2024-05,,GREY,,HA4,Time Grey,yes,A
+byd,Seal U,LGXC74|LGXCD4,,2024-05,,GREY,,HAZ,Boundless Cloud,yes,A
+byd,Seal U,LGXC74|LGXCD4,,2024-05,,WHITE,,WA2,Snow White,yes,A
+byd,Seal U,LGXC74|LGXCD4,,2026-01,,BLACK,,AAP,Obsidian Black (Carwow) or Delan Black B1 renamed,yes,D
+byd,Seal U,LGXC74|LGXCD4,,2026-01,,RED,,BYC,Emperor Red,yes,A
+byd,Sealion 5,LC0C74,,2026-01,,BLACK,,AAP,Obsidian Black,yes,A
+byd,Sealion 5,LC0C74,,2026-01,,BLUE,GREY,HB5,Atlantis Blue,yes,A
+byd,Sealion 5,LC0C74,,2026-01,,GREY,,HA4,Time Grey,yes,A
+byd,Sealion 5,LC0C74,,2026-01,,WHITE,,WA2,Polar White,yes,A
+byd,Sealion 7,LGXCH4|LGXCF4,,2025-01,,BLACK,,AA1,Space Black,yes,A
+byd,Sealion 7,LGXCH4|LGXCF4,,2025-01,,GREY,,HB4,Indigo Grey,yes,A
+byd,Sealion 7,LGXCH4|LGXCF4,,2025-01,,GREY,BLUE,HB5,Atlantis Grey,yes,A
+byd,Sealion 7,LGXCH4|LGXCF4,,2025-01,,PURPLE,,CA8,Sky Purple,no,A
+byd,Sealion 7,LGXCH4|LGXCF4,,2025-01,,WHITE,,WA2,Polar White,yes,A
+byd,Sealion 7,LGXCH4|LGXCF4,,2025-10,,BLACK,,AAP,Obsidian Black,yes,D
+byd,Tang,,,,,BLACK,,A3,Silver Sand Black,no,D
+byd,Tang,,,,,BLUE,,FM,Stony Blue,no,D
+byd,Tang,,,,,GREY,,BYM,Mountain Grey,no,D
+byd,Tang,,,,,GREY,,HDT,Starry Grey,no,D
+byd,Tang,,,,,RED,,BYC,Emperor Red,no,D
+changan,Deepal S05,,,2026-03,,BLACK,,,Deep Space Black,yes,A
+changan,Deepal S05,,,2026-03,,BLUE,,Y82,Andromeda Blue,yes,D
+changan,Deepal S05,,,2026-03,,GREY,,C17,Ganymede Grey,yes,B
+changan,Deepal S05,,,2026-03,,SILVER,GREY,,Mercury Silver,yes,A
+changan,Deepal S05,,,2026-03,,WHITE,,,Moonlight White,yes,A
+changan,Deepal S05 Ultra PHEV,,,2026-10,,BLACK,,,Deep Space Black,yes,A
+changan,Deepal S05 Ultra PHEV,,,2026-10,,BLUE,,Y82,Andromeda Blue,yes,D
+changan,Deepal S05 Ultra PHEV,,,2026-10,,GREY,,C17,Ganymede Grey,yes,B
+changan,Deepal S05 Ultra PHEV,,,2026-10,,SILVER,GREY,,Mercury Silver,yes,A
+changan,Deepal S05 Ultra PHEV,,,2026-10,,WHITE,,,Moonlight White,yes,A
+changan,Deepal S07,,,2025-01,,GREY,,Y25,Lunar Grey,yes,B
+changan,Deepal S07,,,2025-07,,BLACK,,LC2,Eclipse Black,yes,B
+changan,Deepal S07,,,2025-07,,GREEN,,Y67,Nebula Green,yes,D
+changan,Deepal S07,,,2025-07,,ORANGE,,RH3,Sunset Orange,yes,B
+changan,Deepal S07,,,2025-07,,WHITE,,WA1,Comet White,yes,C
+chery,Tiggo 4,,,2025-01,,BLACK,,CL,Midnight Black,yes,A
+chery,Tiggo 4,,,2025-01,,GREY,,GV,Storm Grey,yes,A
+chery,Tiggo 4,,,2025-01,,GREY,,GX,Slate Grey,yes,A
+chery,Tiggo 4,,,2025-01,,RED,,NL,Solar Flare Red,yes,A
+chery,Tiggo 4,,,2025-01,,SILVER,GREY,KU,Orbit Silver,yes,A
+chery,Tiggo 4,,,2025-01,,WHITE,,BW,Arctic White,yes,B
+chery,Tiggo 7,,,2025-01,,BLACK,,CL,Midnight Black,yes,A
+chery,Tiggo 7,,,2025-01,,BLUE,,WE,Ocean Blue,yes,B
+chery,Tiggo 7,,,2025-01,,GREY,,GV,Storm Grey,yes,B
+chery,Tiggo 7,,,2025-01,,RED,,NL,Chery Red,yes,B
+chery,Tiggo 7,,,2025-01,,WHITE,,BW,Arctic White,yes,A
+chery,Tiggo 7,,,2025-09,,GREY,,GX,Slate Grey,yes,B
+chery,Tiggo 7,,,2025-09,,RED,,NL,Chery Red with Black Roof,yes,B
+chery,Tiggo 7,,,2025-09,,SILVER,GREY,KH,Lunar Silver,yes,B
+chery,Tiggo 8,LVTDB21B|LNNBBDEE,,2025-01,,BLACK,,CL,Midnight Black,yes,A
+chery,Tiggo 8,LVTDB21B|LNNBBDEE,,2025-01,,GREEN,,SJ,Forest Green,yes,A
+chery,Tiggo 8,LVTDB21B|LNNBBDEE,,2025-01,,GREY,,UM,Fossil Grey,yes,A
+chery,Tiggo 8,LVTDB21B|LNNBBDEE,,2025-01,,WHITE,,BW,Arctic White,yes,A
+chery,Tiggo 8,LVTDB21B|LNNBBDEE,,2025-09,,BLUE,,LM,Reef Blue,yes,B
+chery,Tiggo 9,LNNBDDEH,,2026-05,,BLACK,,CM,Eclipse Black,yes,B
+chery,Tiggo 9,LNNBDDEH,,2026-05,,GREEN,,SJ,Forest Green,yes,A
+chery,Tiggo 9,LNNBDDEH,,2026-05,,GREY,,GX,Slate Grey,yes,A
+chery,Tiggo 9,LNNBDDEH,,2026-05,,GREY,,UE,Nightfall Ice Grey,yes,C
+chery,Tiggo 9,LNNBDDEH,,2026-05,,WHITE,,BX,Arctic White Mist,yes,C
+geely,EX5,,,2025-03,,GREY,,284,Frost Grey,yes,B
+geely,EX5,,,2025-10,,BLACK,,CE,Obsidian Black,yes,D
+geely,EX5,,,2025-10,,GREEN,,I52,Jade Green,yes,C
+geely,EX5,,,2025-10,,SILVER,GREY,JYH2,Moonlight Silver,yes,B
+geely,EX5,,,2025-10,,WHITE,,BH,Arctic White,yes,D
+geely,Starray EM-i,LB3P11,,2026-01,,WHITE,,BH,Arctic White,yes,D
+geely,Starray EM-i,LB3P11,,2026-02,,BLACK,,026,Obsidian Black,yes,D
+geely,Starray EM-i,LB3P11,,2026-02,,BLUE,,232,Glacier Blue,yes,C
+geely,Starray EM-i,LB3P11,,2026-02,,GREEN,,114,Rainforest Green,yes,D
+geely,Starray EM-i,LB3P11,,2026-02,,GREY,,284,Volcanic Grey,yes,C
+geely,Starray EM-i,LB3P11,,2026-02,,SILVER,GREY,061,Lunar Silver,yes,D
+haval,Jolion Pro,,,2025-10,,BLACK,,8T,Golden Black,yes,C
+haval,Jolion Pro,,,2025-10,,BLUE,,HD,Arctic Blue,yes,D
+haval,Jolion Pro,,,2025-10,,GREY,,F3,Ayres Grey,yes,B
+haval,Jolion Pro,,,2025-10,,WHITE,,9C,Hamilton White,yes,B
+jaecoo,Jaecoo 5,LVUGTBAD,,2026-01,,BLACK,,CL,Basalt Black,yes,A
+jaecoo,Jaecoo 5,LVUGTBAD,,2026-01,,BLUE,,WS,Lazuli Blue,yes,B
+jaecoo,Jaecoo 5,LVUGTBAD,,2026-01,,GREEN,,LQ,Copper Green,yes,A
+jaecoo,Jaecoo 5,LVUGTBAD,,2026-01,,GREY,,UR,Zircon Grey,yes,A
+jaecoo,Jaecoo 5,LVUGTBAD,,2026-01,,WHITE,,BW,Granite White,yes,A
+jaecoo,Jaecoo 7,LVVDB21B|LNNBBDEE,,2025-01,2025-06,BLACK,,CG,Carbon Crystal Black,yes,C
+jaecoo,Jaecoo 7,LVVDB21B|LNNBBDEE,,2025-01,,BLACK,,CL,Basalt Black,yes,A
+jaecoo,Jaecoo 7,LVVDB21B|LNNBBDEE,,2025-01,,BLUE,GREY,UD,Amazonite Blue,yes,A
+jaecoo,Jaecoo 7,LVVDB21B|LNNBBDEE,,2025-01,,GREEN,,SP,Greenstone,yes,A
+jaecoo,Jaecoo 7,LVVDB21B|LNNBBDEE,,2025-01,,RED,,NL,Chery Red / Blood Red with Black Roof,no,A
+jaecoo,Jaecoo 7,LVVDB21B|LNNBBDEE,,2025-01,,SILVER,GREY,KU,Pearl Silver,yes,A
+jaecoo,Jaecoo 7,LVVDB21B|LNNBBDEE,,2025-01,,WHITE,,BW,Granite White,yes,A
+jaecoo,Jaecoo 8,,,2026-06,,BLACK,,CL,Basalt Black,yes,B
+jaecoo,Jaecoo 8,,,2026-06,,BLUE,,UD,Amazonite Blue,yes,A
+jaecoo,Jaecoo 8,,,2026-06,,BLUE,,UD,Amazonite Blue with Black Roof,yes,D
+jaecoo,Jaecoo 8,,,2026-06,,GREY,,UE,Iced Slate Grey,yes,D
+jaecoo,Jaecoo 8,,,2026-06,,GREY,,UF,Iced Slate Grey,yes,C
+jaecoo,Jaecoo 8,,,2026-06,,SILVER,GREY,KV,Anthracite Silver,yes,B
+jaecoo,Jaecoo 8,,,2026-06,,SILVER,GREY,KV,Anthracite Silver with Black Roof,yes,C
+jaecoo,Jaecoo 8,,,2026-06,,WHITE,,BW,Granite White,yes,B
+jaecoo,Jaecoo 8,,,2026-06,,WHITE,,BW,Granite White with Black Roof,yes,D
+jaecoo,Jaecoo E5,,,2025-10,,BLACK,,CL,Basalt Black,yes,B
+jaecoo,Jaecoo E5,,,2025-10,,BLUE,,WS,Lazuli Blue,yes,B
+jaecoo,Jaecoo E5,,,2025-10,,GREEN,,LQ,Copper Green,yes,A
+jaecoo,Jaecoo E5,,,2025-10,,GREY,,UR,Zircon Grey,yes,B
+jaecoo,Jaecoo E5,,,2025-10,,WHITE,,BW,Granite White,yes,B
+leapmotor,B10,,,2025-10,,BLACK,,KL,Metallic Black,yes,C
+leapmotor,B10,,,2025-10,,BLUE,,XC,Starry Night Blue,yes,C
+leapmotor,B10,,,2025-10,,GREY,,GD,Tundra Grey,yes,B
+leapmotor,B10,,,2025-10,,PURPLE,,UB,Dawn Purple,yes,C
+leapmotor,B10,,,2025-10,,SILVER,GREY,UTT,Galaxy Silver,yes,B
+leapmotor,B10,,,2025-10,,WHITE,,3U5,Light White,yes,B
+leapmotor,C10,,,2025-03,,BLACK,,KL,Metallic Black,yes,C
+leapmotor,C10,,,2025-03,,GREEN,,YF,Glazed Green,yes,B
+leapmotor,C10,,,2025-03,,GREY,,GD,Tundra Grey,yes,B
+leapmotor,C10,,,2025-03,,GREY,,GM,Canopy Grey,yes,C
+leapmotor,C10,,,2025-03,,WHITE,,3U5,Light White,yes,B
+leapmotor,T03,,,2025-03,,BLUE,,XA,Glacier Blue,yes,B
+leapmotor,T03,,,2025-03,,BLUE,,XD,Caribbean Blue,yes,B
+leapmotor,T03,,,2025-03,,GREEN,,YE,Mint Green,yes,B
+leapmotor,T03,,,2025-03,,GREY,,GM,Canopy Grey,yes,C
+leapmotor,T03,,,2025-03,,ORANGE,,LP8044,Sunstone Orange,yes,D
+leapmotor,T03,,,2025-03,,SILVER,GREY,DL,Starry Silver,yes,D
+leapmotor,T03,,,2025-03,,SILVER,GREY,LPC11,Starry Silver,yes,C
+leapmotor,T03,,,2025-03,,WHITE,,3U5,Light White,yes,B
+maxus,Deliver 9,LSH14,,2020-01,,WHITE,,M001,Blanc White,yes,C
+maxus,Mifa 9,,,2023-01,,WHITE,,M001,Blanc White,yes,D
+maxus,T90EV,LSFAM,,2022-01,,BLACK,,F081,Metal Black,yes,B
+maxus,T90EV,LSFAM,,2022-01,,BLUE,,B002,Sapphire Blue,yes,B
+maxus,T90EV,LSFAM,,2022-01,,GREY,,A001,Lava Grey,yes,B
+maxus,T90EV,LSFAM,,2022-01,,ORANGE,,N002,Competitive Orange,yes,B
+maxus,T90EV,LSFAM,,2022-01,,RED,,500S,Chinese Red,yes,B
+maxus,T90EV,LSFAM,,2022-01,,WHITE,,M001,Blanc White,yes,B
+maxus,eDeliver 5,,,2025-01,,WHITE,,M001,Warm White,yes,D
+maxus,eDeliver 7,,,2024-01,,WHITE,,M001,Warm White,yes,D
+maxus,eDeliver 9,,,2020-01,,WHITE,,M001,Blanc White,yes,D
+maxus,eTerron 9,,,2025-06,,WHITE,,5A2D,Pearl Lustre White,yes,C
+mg,Cyberster,,,2024-08,,GREY,,PAG,Camden Grey,yes,A
+mg,Cyberster,,,2024-08,,RED,,RSJ,Dynamic Red,yes,A
+mg,Cyberster,,,2024-08,,SILVER,GREY,SSA,Cosmic Silver,yes,A
+mg,Cyberster,,,2024-08,,WHITE,BEIGE|CREAM,CMG,New English White,yes,D
+mg,Cyberster,,,2024-08,,YELLOW,,YSD,Inca Yellow,yes,B
+mg,Cyberster,,,2026-01,,GREEN,,GWQ,Ealing Green,yes,C
+mg,GS,SDPA2C,,2016-06,2019-12,BLACK,,PBB,Jet Black,yes,B
+mg,GS,SDPA2C,,2016-06,2019-12,BROWN,,DSF,Mocha Brown,yes,B
+mg,GS,SDPA2C,,2016-06,2019-12,GOLD,BEIGE,DSA,Sahara Gold,yes,B
+mg,GS,SDPA2C,,2016-06,2019-12,ORANGE,,NSB,Sunset Orange,yes,C
+mg,GS,SDPA2C,,2016-06,2019-12,ORANGE,,NSC,Spiced Orange,yes,B
+mg,GS,SDPA2C,,2016-06,2019-12,SILVER,GREY,MBB,Aspen Silver,yes,B
+mg,GS,SDPA2C,,2016-06,2019-12,WHITE,,WSB,Arctic White,yes,B
+mg,GS,SDPA2C,,2018-01,2018-12,GREY,,LMF,Granite Grey,yes,B
+mg,HS gen 1,LSJA24,,2019-01,2022-12,BLACK,,PBC,Black Pearl,yes,B
+mg,HS gen 1,LSJA24,phev,2019-01,2022-12,BLUE,,GCY,Pimlico Blue,yes,A
+mg,HS gen 1,LSJA24,petrol,2019-01,2022-06,BLUE,,JSM,Brixton Blue,yes,A
+mg,HS gen 1,LSJA24,,2019-01,2022-06,RED,,RSL,Farringdon Red,yes,A
+mg,HS gen 1,LSJA24,,2019-01,2022-12,SILVER,GREY,MBB,Silver,no,C
+mg,HS gen 1,LSJA24,,2019-01,2024-08,WHITE,,WSB,Arctic White,yes,A
+mg,HS gen 1,LSJA24,,2019-01,2022-12,WHITE,,WSD,Pearl White,yes,B
+mg,HS gen 1,LSJA24,any,2022-01,2022-06,BLUE,,JAY,Holborn Blue,yes,C
+mg,HS gen 1,LSJA24,,2022-01,2022-06,RED,,RSJ,Dynamic Red,yes,C
+mg,HS gen 1,LSJA24,any,2022-07,2024-08,BLUE,,JAY,Holborn Blue,yes,A
+mg,HS gen 1,LSJA24,,2022-07,2024-08,RED,,RSJ,Dynamic Red,yes,A
+mg,HS gen 1,LSJA24,,2023-01,2024-08,BLACK,,PBC,Black Pearl,yes,A
+mg,HS gen 1,LSJA24,,2023-01,2024-08,GREY,,LME,Urban Grey,yes,A
+mg,HS gen 1,LSJA24,,2023-01,2024-08,SILVER,GREY,SSA,Cosmic Silver,yes,A
+mg,HS gen 1,LSJA24,,2023-01,2024-08,WHITE,,WSD,White Pearl,yes,A
+mg,HS gen 2,LSJW94,,2024-09,,BLACK,,PBC,Pebble Black,yes,A
+mg,HS gen 2,LSJW94,,2024-09,,BLUE,,JAB,Arctic Blue,yes,B
+mg,HS gen 2,LSJW94,,2024-09,,GREY,,LRL,Hampstead Grey,yes,A
+mg,HS gen 2,LSJW94,,2024-09,,RED,,RSJ,Dynamic Red,yes,A
+mg,HS gen 2,LSJW94,,2024-09,,SILVER,GREY,DCM,Sterling Silver,yes,A
+mg,HS gen 2,LSJW94,,2024-09,,WHITE,,WSD,White Pearl,yes,A
+mg,HS gen 2,LSJW94,,2026-01,,GREY,,PAG,Camden Grey,yes,D
+mg,IM5,LSJWT4,,2025-09,,BLACK,,PBC,Black Pearl,yes,B
+mg,IM5,LSJWT4,,2025-09,,BLUE,,JRE,Nevis Blue,yes,B
+mg,IM5,LSJWT4,,2025-09,,GREY,SILVER,LRB,Rembrandt Grey,yes,A
+mg,IM5,LSJWT4,,2025-09,,WHITE,,WSB,Arctic White,yes,B
+mg,IM6,LSJWT4,,2025-09,,BLACK,,PBC,Black Pearl,yes,B
+mg,IM6,LSJWT4,,2025-09,,BLUE,,JRE,Nevis Blue,yes,B
+mg,IM6,LSJWT4,,2025-09,,GREY,SILVER,LRB,Rembrandt Grey,yes,B
+mg,IM6,LSJWT4,,2025-09,,WHITE,,WSB,Arctic White,yes,B
+mg,MG3 Hybrid+,LSJWP4,,2024-05,,BLACK,,PBC,Black Pearl,yes,A
+mg,MG3 Hybrid+,LSJWP4,,2024-05,,BLUE,,JSO,Battersea Blue,yes,A
+mg,MG3 Hybrid+,LSJWP4,,2024-05,,GREY,,LRL,Hampstead Grey,yes,A
+mg,MG3 Hybrid+,LSJWP4,,2024-05,,RED,,RSJ,Dynamic Red,yes,A
+mg,MG3 Hybrid+,LSJWP4,,2024-05,,SILVER,GREY,MBC,Monument Silver,yes,A
+mg,MG3 Hybrid+,LSJWP4,,2024-05,,WHITE,,WSB,Arctic White,yes,A
+mg,MG3 Hybrid+,LSJWP4,,2026-01,,GREY,,PAG,Camden Grey,yes,D
+mg,MG3 Hybrid+,LSJWP4,,2026-01,,SILVER,GREY,SSA,Cosmic Silver,unconfirmed,D
+mg,MG3 Mk1,SDPZ,,2013-10,2018-12,BLACK,,PBB,Newton Black,yes,B
+mg,MG3 Mk1,SDPZ,,2013-10,2018-12,BLUE,,BSB,Thames Blue,yes,B
+mg,MG3 Mk1,SDPZ,,2013-10,2018-12,GOLD,BEIGE,DSB,White Gold,yes,B
+mg,MG3 Mk1,SDPZ,,2013-10,2018-12,GREY,,LMF,Lady Grey,yes,D
+mg,MG3 Mk1,SDPZ,,2013-10,2018-12,ORANGE,,NSB,Orange Marmalade,yes,C
+mg,MG3 Mk1,SDPZ,,2013-10,2018-12,RED,,RSB,Red Rose,yes,B
+mg,MG3 Mk1,SDPZ,,2013-10,2015-12,WHITE,,NDW,White on the Tiles,yes,B
+mg,MG3 Mk1,SDPZ,,2013-10,2018-12,YELLOW,,YSA,Hello Yellow,yes,A
+mg,MG3 Mk1,SDPZ,,2015-07,2019-12,WHITE,,WSB,White on the Tiles,yes,C
+mg,MG3 Mk1,SDPZ,,2016-01,2018-12,BLUE,,JFS,Smokey Blues,yes,B
+mg,MG3 Mk1,SDPZ,,2016-01,2018-12,RED,,RSH,Cherry Bomb,yes,B
+mg,MG3 Mk1,SDPZ,,2016-01,2021-09,RED,,RSK,Ruby Red,yes,B
+mg,MG3 Mk1,SDPZ,,2016-01,2019-12,RED,,RSK,Ruby Red with Black Roof,yes,A
+mg,MG3 Mk1,SDPZ,,2016-01,2019-12,SILVER,GREY,MBB,Silver Fox,yes,C
+mg,MG3 Mk1,SDPZ,,2018-02,2023-12,BLACK,,PBC,Black Pearl,yes,B
+mg,MG3 Mk1,SDPZ,,2018-02,2019-12,WHITE,,NDW,Whiter Than White,yes,B
+mg,MG3 Mk1,SDPZ,,2020-01,2021-09,BLUE,,JSJ,Laser Blue,yes,B
+mg,MG3 Mk1,SDPZ,,2020-01,2021-09,SILVER,GREY,MBB,Aspen Silver,yes,B
+mg,MG3 Mk1,SDPZ,,2020-01,2023-12,WHITE,,WSB,Arctic White,yes,B
+mg,MG3 Mk1,SDPZ,,2020-01,2023-12,YELLOW,,YSA,Hello Yellow,yes,A
+mg,MG3 Mk1,SDPZ,,2021-10,2023-12,SILVER,GREY,LMD,Southwark Silver,yes,B
+mg,MG4,LSJWH40,,2022-09,,BLACK,,PBC,Black Pearl,yes,A
+mg,MG4,LSJWH40,,2022-09,,BLUE,,JAY,Holborn Blue,yes,A
+mg,MG4,LSJWH40,,2022-09,,GREEN,,GWH,Racing Green,yes,A
+mg,MG4,LSJWH40,,2022-09,,GREY,,PAG,Camden Grey,yes,A
+mg,MG4,LSJWH40,,2022-09,,ORANGE,,NFZ,Volcano Orange,yes,A
+mg,MG4,LSJWH40,,2022-09,,PINK,,KHI,Hillier Pink,yes,B
+mg,MG4,LSJWH40,,2022-09,2026-01,RED,,RSJ,Dynamic Red,yes,A
+mg,MG4,LSJWH40,,2022-09,,SILVER,GREY,,Silver,no,D
+mg,MG4,LSJWH40,,2022-09,,WHITE,,WSB,Arctic White,yes,A
+mg,MG4,LSJWH40,,2024-01,,SILVER,GREY,SSA,Sterling Silver,no,C
+mg,MG4,LSJWH40,,2026-02,,BLUE,,JSH,Piccadilly Blue,yes,C
+mg,MG4,LSJWH40,,2026-02,,GREEN,,GWQ,Ealing Green,yes,C
+mg,MG4,LSJWH40,,2026-02,,RED,,RSJ,Dynamic Red,yes,B
+mg,MG4,LSJWH40,,2026-02,,SILVER,GREY,SSA,Cosmic Silver,yes,D
+mg,MG4 EV Urban,,,2026-02,,BLACK,,PBC,Black Pearl,yes,B
+mg,MG4 EV Urban,,,2026-02,,BLUE,,,Holborn Blue,yes,D
+mg,MG4 EV Urban,,,2026-02,,GREEN,,GCL,Stone Green,yes,B
+mg,MG4 EV Urban,,,2026-02,,GREY,,PAG,Camden Grey,yes,B
+mg,MG4 EV Urban,,,2026-02,,RED,,RSJ,Dynamic Red,yes,B
+mg,MG4 EV Urban,,,2026-02,,SILVER,GREY,SSA,Cosmic Silver,yes,C
+mg,MG4 EV Urban,,,2026-02,,WHITE,,WSB,Arctic White,yes,B
+mg,MG5 EV,LSJE24,,2020-10,2022-09,BLACK,,PBC,Black Pearl,yes,A
+mg,MG5 EV,LSJE24,,2020-10,2022-09,BLUE,,JSH,Piccadilly Blue,yes,A
+mg,MG5 EV,LSJE24,,2020-10,2022-09,RED,,RSJ,Dynamic Red,yes,A
+mg,MG5 EV,LSJE24,,2020-10,2022-09,SILVER,GREY,LMB,Westminster Silver,yes,A
+mg,MG5 EV,LSJE24,,2020-10,2022-09,WHITE,,WSB,Arctic White,yes,A
+mg,MG5 EV,LSJE24,,2022-10,2024-12,BLACK,,PBC,Black Pearl,yes,A
+mg,MG5 EV,LSJE24,,2022-10,2024-12,BLUE,,JSH,Piccadilly Blue,yes,C
+mg,MG5 EV,LSJE24,,2022-10,2024-12,GREY,,LRL,Hampstead Grey,yes,A
+mg,MG5 EV,LSJE24,,2022-10,2024-12,RED,,RSJ,Dynamic Red,yes,C
+mg,MG5 EV,LSJE24,,2022-10,2024-12,SILVER,GREY,SSA,Cosmic Silver,yes,A
+mg,MG5 EV,LSJE24,,2022-10,2024-12,WHITE,,WSB,Arctic White,yes,A
+mg,MG6,,,2011-05,2016-09,BLACK,,PBB,Pitch Black,yes,B
+mg,MG6,,petrol,2011-05,2016-09,BLUE,,,Union Blue,yes,D
+mg,MG6,,,2011-05,2016-09,GREY,,ASC,Granite Grey,yes,C
+mg,MG6,,,2011-05,2016-09,ORANGE,,NSB,Burnt Orange,yes,B
+mg,MG6,,,2011-05,2016-09,RED,,RSB,Regal Red,yes,B
+mg,MG6,,,2011-05,2016-09,SILVER,GREY,CAF,Platinum Silver,yes,C
+mg,MG6,,,2011-05,2016-09,WHITE,,NDW,Arctic White,yes,C
+mg,MG6,,,2012-01,2016-09,GOLD,,,Champagne Gold,yes,D
+mg,MG6,,,2014-01,2016-09,GREY,,LMF,Granite Grey,yes,C
+mg,MGS5,,,2025-04,,BLACK,,PBC,Black Pearl,yes,A
+mg,MGS5,,,2025-04,,BLUE,,JSH,Piccadilly Blue,yes,B
+mg,MGS5,,,2025-04,,GREY,,PAG,Camden Grey,yes,B
+mg,MGS5,,,2025-04,,RED,,RSJ,Dynamic Red,yes,A
+mg,MGS5,,,2025-04,,SILVER,GREY,SSA,Cosmic Silver,yes,B
+mg,MGS5,,,2025-04,,WHITE,,WSB,Arctic White,yes,A
+mg,MGS9,LSJWC43,,2026-01,,BLACK,,PBC,Black Pearl,yes,B
+mg,MGS9,LSJWC43,,2026-01,,GREEN,,GDG,Gloucester Green,yes,C
+mg,MGS9,LSJWC43,,2026-01,,GREY,,PAG,Camden Grey,yes,C
+mg,MGS9,LSJWC43,,2026-01,,SILVER,GREY,DCM,Sterling Silver,yes,B
+mg,MGS9,LSJWC43,,2026-01,,WHITE,,,Oxford White,yes,B
+mg,ZS,LSJW74U,,2017-11,2024-09,BLACK,,PBC,Black Pearl,yes,A
+mg,ZS,LSJW74U,,2017-11,2020-06,BLUE,,JSJ,Laser Blue,yes,B
+mg,ZS,LSJW74U,,2017-11,2020-06,ORANGE,,NSC,Spiced Orange,yes,B
+mg,ZS,LSJW74U,,2017-11,2024-09,RED,,RSJ,Dynamic Red,yes,A
+mg,ZS,LSJW74U,,2017-11,2020-06,SILVER,GREY,SSA,Cosmic Silver,yes,C
+mg,ZS,LSJW74U,,2017-11,2020-06,WHITE,,WSB,Arctic White,yes,A
+mg,ZS,LSJW74U,,2020-07,2024-09,BLUE,,JSO,Battersea Blue,yes,A
+mg,ZS,LSJW74U,,2020-07,2024-09,ORANGE,,NSD,Hoxton Orange,yes,A
+mg,ZS,LSJW74U,,2020-07,2024-09,SILVER,GREY,MBC,Monument Silver,yes,A
+mg,ZS,LSJW74U,,2020-07,2024-09,WHITE,,WSB,Arctic White,yes,A
+mg,ZS EV,LSJW740,,2019-09,2021-10,BLACK,,PBC,Black Pearl,yes,A
+mg,ZS EV,LSJW740,,2019-09,2021-10,BLUE,,GCY,Pimlico Blue,yes,B
+mg,ZS EV,LSJW740,,2019-09,2021-10,RED,,RSJ,Dynamic Red,yes,A
+mg,ZS EV,LSJW740,,2019-09,2021-10,WHITE,,WSB,Arctic White,yes,A
+mg,ZS EV,LSJW740,,2021-11,2024-09,BLACK,,PBC,Black Pearl,yes,A
+mg,ZS EV,LSJW740,,2021-11,2022-03,BLUE,,GCY,Prism Blue,yes,D
+mg,ZS EV,LSJW740,,2021-11,2024-09,BLUE,,JSO,Battersea Blue,yes,A
+mg,ZS EV,LSJW740,,2021-11,2024-09,RED,,RSJ,Dynamic Red,yes,A
+mg,ZS EV,LSJW740,,2021-11,2024-09,SILVER,GREY,MBC,Monument Silver,yes,A
+mg,ZS EV,LSJW740,,2021-11,2024-09,WHITE,,WSB,Arctic White,yes,A
+mg,ZS Hybrid+,LSJWS43,,2024-10,,BLACK,,PBC,Black Pearl,yes,A
+mg,ZS Hybrid+,LSJWS43,,2024-10,,BLUE,,JSO,Battersea Blue,yes,A
+mg,ZS Hybrid+,LSJWS43,,2024-10,,GREY,,LRL,Hampstead Grey,yes,A
+mg,ZS Hybrid+,LSJWS43,,2024-10,,RED,,RSJ,Dynamic Red,yes,A
+mg,ZS Hybrid+,LSJWS43,,2024-10,,SILVER,GREY,MBC,Monument Silver,yes,A
+mg,ZS Hybrid+,LSJWS43,,2024-10,,WHITE,,WSB,Arctic White,yes,A
+mg,ZS Hybrid+,LSJWS43,,2026-01,,GREEN,,GJY,Emerald Green,yes,C
+mg,ZS Hybrid+,LSJWS43,,2026-01,,GREY,,PAG,Camden Grey,yes,C
+mg,ZS Hybrid+,LSJWS43,,2026-01,,SILVER,GREY,SSA,Cosmic Silver,unconfirmed,D
+omoda,Omoda 5,LVVDB21B,,2024-01,,BLACK,,CL,Obsidian Black,yes,A
+omoda,Omoda 5,LVVDB21B,,2024-01,2025-07,BLUE,,,Ocean Blue,no,D
+omoda,Omoda 5,LVVDB21B,,2024-01,,BLUE,,WB,Cobalt Blue,yes,B
+omoda,Omoda 5,LVVDB21B,,2024-01,,GREEN,,SK,Jade Green,yes,A
+omoda,Omoda 5,LVVDB21B,,2024-01,,GREY,,GV,Tourmaline Grey,yes,B
+omoda,Omoda 5,LVVDB21B,,2024-01,,RED,,NL,Garnet Red,yes,B
+omoda,Omoda 5,LVVDB21B,,2024-01,,SILVER,GREY,KX,Galena Silver,yes,A
+omoda,Omoda 5,LVVDB21B,,2024-01,,WHITE,,BW,Selenite White,yes,A
+omoda,Omoda 7,,,2025-01,,GREY,,UE,Nightfall Ice Grey Matt,yes,D
+omoda,Omoda 7,,,2025-01,,GREY,,UK,Mercurial Grey Matt,yes,D
+omoda,Omoda 7,,,2026-03,,BLACK,,CL,Obsidian Black,yes,B
+omoda,Omoda 7,,,2026-03,,GREEN,,SY,Larimar Green,yes,B
+omoda,Omoda 7,,,2026-03,,GREY,,UK,Iced Moonstone,yes,B
+omoda,Omoda 7,,,2026-03,,SILVER,GREY,KU,Chromite Silver,yes,B
+omoda,Omoda 7,,,2026-03,,WHITE,,BW,Selenite White,yes,B
+omoda,Omoda 9,LNNBDDEH,,2025-01,,GREY,,UE,Hawk's Eye Grey,yes,B
+omoda,Omoda 9,LNNBDDEH,,2025-04,,BLACK,,CM,Onyx Black,yes,B
+omoda,Omoda 9,LNNBDDEH,,2025-04,,GREEN,,SM,Peridot Green,yes,C
+omoda,Omoda 9,LNNBDDEH,,2025-04,,GREY,,GX,Andesite Grey,yes,B
+omoda,Omoda 9,LNNBDDEH,,2025-04,,GREY,,GX,Andesite Grey with black roof,yes,C
+omoda,Omoda 9,LNNBDDEH,,2025-04,,WHITE,,BX,Quartz White,yes,B
+omoda,Omoda 9,LNNBDDEH,,2025-04,,WHITE,,BX,Quartz White with black roof,yes,C
+omoda,Omoda 9,LNNBDDEH,,2026-08,,BLACK,,CP,Iced Jasper Black,yes,B
+omoda,Omoda E5,LNNABD,,2024-01,,BLACK,,CL,Obsidian Black,yes,B
+omoda,Omoda E5,LNNABD,,2024-01,,BLUE,,WB,Cobalt Blue,yes,B
+omoda,Omoda E5,LNNABD,,2024-01,,GREY,,GV,Tourmaline Grey,yes,B
+omoda,Omoda E5,LNNABD,,2024-01,,RED,,NL,Garnet Red,yes,B
+omoda,Omoda E5,LNNABD,,2024-01,,SILVER,GREY,KX,Galena Silver,yes,A
+omoda,Omoda E5,LNNABD,,2024-01,,WHITE,,BW,Selenite White,yes,A
+omoda,Omoda E5,LNNABD,,2024-04,,GREEN,,SK,Jade Green,yes,B
+omoda,Omoda E5,LNNABD,,2024-04,,GREEN,,SK,Jade Green with Obsidian Black roof,yes,A
+ora,Ora 03,,,2022-11,,BLACK,,8T,Starry Black,yes,B
+ora,Ora 03,,,2022-11,,GREEN,,,Nebula Green,yes,A
+ora,Ora 03,,,2022-11,,GREEN,,L5,Aurora Green,yes,B
+ora,Ora 03,,,2022-11,2026-04,GREEN,,L5,Aurora Green,yes,B
+ora,Ora 03,,,2022-11,,GREY,SILVER,,Meteorite Grey,yes,A
+ora,Ora 03,,,2022-11,2026-04,RED,,1Y,Mars Red,yes,B
+ora,Ora 03,,,2022-11,,WHITE,,,Moonlight White,yes,A
+ora,Ora 03,,,2022-11,2026-04,WHITE,,,Moonlight White with Starry Black roof,yes,A
+polestar,Polestar 2,,,2020-06,2022-12,BLACK,,019,Void,yes,C
+polestar,Polestar 2,,,2020-06,,BLUE,,723,Midnight,yes,C
+polestar,Polestar 2,,,2020-06,2022-06,GREY,,727,Moon,yes,C
+polestar,Polestar 2,,,2020-06,2024-06,GREY,,728,Thunder,yes,C
+polestar,Polestar 2,,,2020-06,2025-06,SILVER,GREY,729,Magnesium,yes,C
+polestar,Polestar 2,,,2020-06,,WHITE,,707,Snow,yes,C
+polestar,Polestar 2,,,2021-09,2024-06,GREY,,736,Jupiter,yes,C
+polestar,Polestar 2,,,2022-06,2023-06,GOLD,,888,Polestar Gold,yes,C
+polestar,Polestar 2,,,2023-01,,BLACK,,717,Space,yes,C
+polestar,Polestar 2,,,2024-06,,GREY,,747,Storm,yes,C
+polestar,Polestar 2,,,2025-06,,BEIGE,,743,Dune,yes,D
+polestar,Polestar 2,,,2025-06,,GREY,,740,Vapour,yes,B
+polestar,Polestar 3,,,2024-01,,BLACK,,717,Space,yes,C
+polestar,Polestar 3,,,2024-01,,BLUE,,723,Midnight,yes,C
+polestar,Polestar 3,,,2024-01,2025-06,GREY,,728,Thunder,yes,D
+polestar,Polestar 3,,,2024-01,2025-06,GREY,,736,Jupiter,yes,D
+polestar,Polestar 3,,,2024-01,,SILVER,GREY,729,Magnesium,yes,C
+polestar,Polestar 3,,,2024-01,,WHITE,,707,Snow,yes,C
+polestar,Polestar 3,,,2025-01,,GREY,,747,Storm,yes,C
+polestar,Polestar 3,,,2025-06,,GREEN,,749,Krypton,yes,C
+polestar,Polestar 4,,,2024-01,,GREY,,368,Storm,yes,B
+polestar,Polestar 4,,,2024-08,,BLACK,,717,Space,yes,C
+polestar,Polestar 4,,,2024-08,,BLUE,,369,Electron,yes,C
+polestar,Polestar 4,,,2024-08,,SILVER,GREY,729,Magnesium,yes,C
+polestar,Polestar 4,,,2024-08,,WHITE,,707,Snow,yes,C
+skywell,BE11,,,2023-01,,BLACK,,SW9401,Polar Night Black,yes,D
+skywell,BE11,,,2023-01,,BLUE,,SW9500,Midnight Blue,yes,D
+skywell,BE11,,,2023-01,,GREY,,SW9700,Galaxy Grey,yes,D
+skywell,BE11,,,2023-01,,WHITE,,W8,Aurora White,yes,D
+smart,#1,HES,,2022-09,,BLACK,,B07,Meta Black,yes,B
+smart,#1,HES,,2022-09,,BLACK,,B13,Eclipse Black,yes,B
+smart,#1,HES,,2022-09,,BLUE,,G68,Quantum Blue,yes,B
+smart,#1,HES,,2022-09,,BLUE,,G69,Future Blue,yes,B
+smart,#1,HES,,2022-09,,GOLD,BEIGE,K32,Platinum Gold,yes,B
+smart,#1,HES,,2022-09,,GREEN,,I26,Future Green,yes,B
+smart,#1,HES,,2022-09,,GREY,SILVER,C40,Atom Grey Matt,yes,B
+smart,#1,HES,,2022-09,,PINK,,E46,Sonic Pink,yes,B
+smart,#1,HES,,2022-09,,RED,,E34,Laser Red,yes,B
+smart,#1,HES,,2022-09,,RED,,E45,Radiant Red,yes,B
+smart,#1,HES,,2022-09,,SILVER,GREY,D18,Cyber Silver,yes,B
+smart,#1,HES,,2022-09,,SILVER,GREY,D19,Solar Silver,yes,B
+smart,#1,HES,,2022-09,,WHITE,,A21,Digital White,yes,B
+smart,#1,HES,,2022-09,,YELLOW,,F42,Lumen Yellow,yes,B
+smart,#3,,,2023-10,,BEIGE,,K33,Ceramic Cream,yes,B
+smart,#3,,,2023-10,,BLACK,,B07,Meta Black,yes,B
+smart,#3,,,2023-10,,BLUE,,G68,Quantum Blue,yes,C
+smart,#3,,,2023-10,,BLUE,,G73,Electron Blue,yes,B
+smart,#3,,,2023-10,,GREEN,,I26,Future Green,yes,B
+smart,#3,,,2023-10,,GREY,,C40,Atom Grey,yes,B
+smart,#3,,,2023-10,,ORANGE,,H12,Photon Orange,yes,C
+smart,#3,,,2023-10,,RED,,E34,Laser Red,yes,C
+smart,#3,,,2023-10,,SILVER,GREY,D18,Cyber Silver,yes,B
+smart,#3,,,2023-10,,WHITE,,A21,Digital White,yes,B
+smart,#3,,,2023-10,,YELLOW,,F42,Lumen Yellow,yes,B
+smart,#5,,,2025-09,,BEIGE,,K39,Saturn Beige,yes,C
+smart,#5,,,2025-09,,BLACK,,B07,Meta Black,yes,B
+smart,#5,,,2025-09,,BLUE,,G88,Deepest Indigo Blue,yes,D
+smart,#5,,,2025-09,,GREY,,,Morning Dew Grey,yes,A
+smart,#5,,,2025-09,,GREY,,C40,Atom Grey,yes,B
+smart,#5,,,2025-09,,RED,,E54,Pulsar Ruby,yes,C
+smart,#5,,,2025-09,,SILVER,GREY,D18,Cyber Silver,yes,B
+smart,#5,,,2025-09,,WHITE,,A21,Digital White,yes,B
+xpeng,G6,,,2025-09,,BLACK,,0A,Midnight Black,yes,C
+xpeng,G6,,,2025-09,,GREY,,5B,Graphite Grey,yes,D
+xpeng,G6,,,2025-09,,PURPLE,,WZ,Stellar Purple,yes,C
+xpeng,G6,,,2025-09,,SILVER,GREY,4B,Silver Frost,yes,B
+xpeng,G6,,,2025-09,,WHITE,,1B,Arctic White,yes,D

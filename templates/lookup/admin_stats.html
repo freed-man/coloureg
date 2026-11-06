@@ -1868,6 +1868,16 @@
                         {% if s.catalogue_others or s.catalogue_others_more %}<div class="val" style="word-break: normal; color: #666;">Not listed for {{ s.catalogue_year }}: {% for p in s.catalogue_others %}{% if p.hex %}<span style="display: inline-block; width: 10px; height: 10px; border-radius: 2px; border: 1px solid #ccc; vertical-align: middle; background: {{ p.hex }};"></span> {% endif %}<b>{{ p.code }}</b> {{ p.name }}{% if not forloop.last %} &middot; {% endif %}{% endfor %}{% if s.catalogue_others_more %}{% if s.catalogue_others %} and {{ s.catalogue_others_more }} more{% else %}{{ s.catalogue_others_more }} paint{{ s.catalogue_others_more|pluralize }}{% endif %}{% endif %}</div>{% endif %}
                     </div>
                     {% endif %}
+                    {% comment %} paint398: the Chinese makes palette (the paint_finder chat's), for the operator only:
+                       its one answer with its grade (A to D; a D answer is a best guess), or its candidates. It is not
+                       100 percent, so it is never shown to a customer. A car registered in two colours was read by
+                       the body's alone, so the line says so (the answer is the two tone's own code). {% endcomment %}
+                    {% if s.palette_hint %}
+                    <div style="grid-column: 1 / -1;">
+                        <div class="lbl">Palette{% if s.palette_hint.two_tone %} (body only: registered in two colours){% endif %}</div>
+                        <div class="val" style="word-break: normal; color: #666;">{% for p in s.palette_hint.paints %}{% if p.code %}<b>{{ p.code }}</b> {% endif %}{{ p.name }}{% if not p.code %} (no code){% endif %}{% if not forloop.last %} &middot; {% endif %}{% endfor %} ({% if s.palette_hint.status == 'single' %}grade {{ s.palette_hint.grade }}{% if s.palette_hint.grade == 'D' %}, a best guess{% endif %}{% else %}{{ s.palette_hint.paints|length }} candidates{% endif %})</div>
+                    </div>
+                    {% endif %}
                     {% comment %} paint299: a request left on a SPECIAL ORDER CODE (999, a BMW's 490) is in this
                        queue too, and it is the only kind of row here that has a code. The card says
                        so, or it would look like a car nothing was found for. {% endcomment %}

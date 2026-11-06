@@ -33,6 +33,7 @@ from django_ratelimit.core import is_ratelimited
 from lookup.services import vehicle_checks
 from lookup.services import remembered          # paint288
 from lookup.services import plate_suggest       # paint372
+from lookup.services import palette             # paint398
 from .models import (Search, PaintLookup, SiteConfig, VrmCache,
                      OperatorPaintCode, PaintCodeReport)
 from .services.vdg import (
@@ -5676,6 +5677,9 @@ def admin_stats(request):
         _queued.catalogue_paints, _queued.catalogue_more = _hints['paints'], _hints['more']
         _queued.catalogue_others, _queued.catalogue_others_more = _hints['others'], _hints['others_more']
         _queued.catalogue_year = _hints['year']
+        # paint398: and the Chinese makes palette's answer, or its candidates, for the operator to confirm (his word
+        # of 6 Nov: the queue card only; no customer sees it). queue_hint never raises.
+        _queued.palette_hint = palette.queue_hint(_queued)
 
     # Provider breakdown — where did the paint code come from? Single aggregate.
     provider_breakdown = real_lookups.aggregate(
