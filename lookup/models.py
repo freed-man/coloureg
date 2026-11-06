@@ -1126,6 +1126,15 @@ class PaintLookup(models.Model):
     color_group = models.CharField(max_length=20, blank=True, default='', db_index=True)
     models_list = models.JSONField(default=list)   # models the colour appears on (colorndrive); may be []
     sources = models.JSONField(default=list)       # ["chipex"], ["colorndrive"], or both — trust signal
+    # paint396: THE YEARS THE PAINT SITES LIST THIS PAINT FOR, for the manual
+    # queue's paint hints (queue_hints) and nothing else: a year is no answer
+    # (trap 323). [first, last] pairs, merged and in order, None at an open end
+    # (colorndrive's "from 2004 to"); empty when no site gives years. Written
+    # only by `paint_years` from chipex and colorndrive, which replaces it whole
+    # (services/catalogue_years.py). Nullable, as Search.details is, so the
+    # release before, still serving while Railway runs the migration, can save
+    # a row that does not name it: so it is read with `or []`.
+    years = models.JSONField(default=list, null=True, blank=True)
 
     # paint160: FIELDS THE CATALOGUE LOAD MUST NOT TOUCH.
     #

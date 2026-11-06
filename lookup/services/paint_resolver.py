@@ -2576,7 +2576,11 @@ QUEUE_HINTS = 8
 _HEX6 = re.compile(r'^#[0-9A-Fa-f]{6}$')
 
 
-def queue_hints(make, model, colour, limit=QUEUE_HINTS):
+def _no_queue_hints():
+    return {'paints': [], 'more': 0, 'others': [], 'others_more': 0, 'year': None}
+
+
+def queue_hints(make, model, colour, year=None, limit=QUEUE_HINTS):
     """paint329: the catalogue's paints for this model in the car's registered colour, for the manual
     queue card: what the choice is before a dealer is asked (a grey BYD Seal U is HA4 or HAZ, KC of the
     paint327 handoff; a grey Suzuki Celerio one of six). The rows of the make tagged with the model, read
@@ -2586,18 +2590,26 @@ def queue_hints(make, model, colour, limit=QUEUE_HINTS):
     because a make's greys run to hundreds (measured 16 Oct on the 525 lookups that ended without a code:
     173 would list nothing, 84 one to five paints, 77 six to ten, 191 more than ten). By code, the first
     `limit` and how many more. A swatch only when the row's hex is a proper one, since it goes into the
-    page's style. {'paints': [{'code', 'name', 'hex'}], 'more': n}, empty when there is nothing to say.
-    Never raises."""
-    out = {'paints': [], 'more': 0}
+    page's style. Never raises.
+
+    paint396: AND THE CAR'S YEAR, when it has one. The paints the sites list for that year (the row's
+    `years`, see services/catalogue_years.py), and those they give no years for, are 'paints', as before;
+    the paints listed only for other years follow as 'others', NEVER LEFT OUT: the sites' years have gaps,
+    and leaving them out would have hidden the right code on 15 of the 3,836 cars measured. `limit` counts
+    both, the year's first. {'paints': [{'code', 'name', 'hex'}], 'more': n, 'others': [...],
+    'others_more': n, 'year': the year when some paint was put among the others, else None}; empty when
+    there is nothing to say."""
+    out = _no_queue_hints()
     try:
         from lookup.models import PaintLookup
+        from lookup.services.catalogue_years import years_cover
         mk = PaintLookup.normalize_manufacturer(make or '')
         if not mk or not str(model or '').strip():
             return out
         wanted = _colour_families(colour)
-        found = []
+        found, others = [], []
         rows = (PaintLookup.objects.filter(manufacturer=mk)
-                .only('code', 'name', 'hex', 'models_list', 'color_group', 'all_names').order_by('code', 'id'))
+                .only('code', 'name', 'hex', 'models_list', 'color_group', 'all_names', 'years').order_by('code', 'id'))
         for row in rows:
             if not PaintLookup._model_matches(model, row.models_list):
                 continue
@@ -2607,12 +2619,16 @@ def queue_hints(make, model, colour, limit=QUEUE_HINTS):
                 if not (wanted & stated):
                     continue
             hex_val = (row.hex or '').strip()
-            found.append({'code': row.code, 'name': row.name or '', 'hex': hex_val if _HEX6.match(hex_val) else ''})
+            paint = {'code': row.code, 'name': row.name or '', 'hex': hex_val if _HEX6.match(hex_val) else ''}
+            (others if years_cover(row.years, year) is False else found).append(paint)
         out['paints'] = found[:limit]
         out['more'] = max(0, len(found) - limit)
+        out['others'] = others[:max(0, limit - len(out['paints']))]
+        out['others_more'] = len(others) - len(out['others'])
+        out['year'] = int(year) if others else None
     except Exception:
         logger.warning('queue hints not read', exc_info=True)
-        return {'paints': [], 'more': 0}
+        return _no_queue_hints()
     return out
 
 

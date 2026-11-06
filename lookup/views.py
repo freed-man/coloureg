@@ -5670,9 +5670,12 @@ def admin_stats(request):
     # paint329: on each card, the catalogue's paints for the car's model in its registered colour, so the
     # operator sees what the choice is before asking a dealer (a grey BYD Seal U is HA4 or HAZ). Read here,
     # once a page, for the few cards in the queue; queue_hints never raises.
+    # paint396: and the car's year, so the paints the sites list for it come first and the rest follow, named.
     for _queued in recent_failures_with_email:
-        _hints = queue_hints(_queued.make, _queued.model, _queued.colour)
+        _hints = queue_hints(_queued.make, _queued.model, _queued.colour, year=_queued.year)
         _queued.catalogue_paints, _queued.catalogue_more = _hints['paints'], _hints['more']
+        _queued.catalogue_others, _queued.catalogue_others_more = _hints['others'], _hints['others_more']
+        _queued.catalogue_year = _hints['year']
 
     # Provider breakdown — where did the paint code come from? Single aggregate.
     provider_breakdown = real_lookups.aggregate(
