@@ -12,7 +12,9 @@ paint391: THE SITES PAINTSCRAPER SCRAPES, READ TOGETHER from its data folder
 the newest file of each): every file is checked first, a new code goes in only
 where two of the sites give it the same paint, and an empty swatch is filled
 only where the swatch is the colour the name states. The backup lists what was
-written, so --restore can take it out again.
+written, so --restore can take it out again. paint395: and autocolor7 (a paint
+shop in Kyiv), a sixth site read the same way; it and peinturevoiture count as
+one voice.
 
     python manage.py topup_catalogue scraped "C:\\path\\to\\paintscraper\\data"             preview
     python manage.py topup_catalogue scraped "C:\\path\\to\\paintscraper\\data" --apply     write, backup in etc\\
@@ -101,8 +103,9 @@ class Command(BaseCommand):
             out, held, agree = plan.checks[src.name]
             base = ct.SCRAPED_BASELINE[src.name]
             w(f'\n{src.name}: {", ".join(os.path.basename(p) for p in src.files)}, {src.rows_read:,} rows read')
-            w(f'  checked: {out:.0%} of its codes left out (28 Oct 2026: {base["left_out"]:.0%}); '
-              f'of the {held:,} codes we hold, {agree:.0%} the same colour as ours (28 Oct 2026: {base["agree"]:.0%})')
+            when = ct._file_date(src.name)          # paint395: autocolor7's file is of 3 Nov
+            w(f'  checked: {out:.0%} of its codes left out ({when}: {base["left_out"]:.0%}); '
+              f'of the {held:,} codes we hold, {agree:.0%} the same colour as ours ({when}: {base["agree"]:.0%})')
             for why, n in src.left_out.most_common(4):
                 w(f'  {n:>8,}  left out: {why}')
         if len(sources) < 2:

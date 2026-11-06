@@ -1431,9 +1431,10 @@ class PaintLookup(models.Model):
     # paint391: and the marks of the scraped sites' top up (catalogue_topup's
     # TOPUP_MARK). chipex, colorndrive and peinturevoiture built the catalogue
     # under their own names, which stay established; what they add now is
-    # marked apart, so it ranks as bsp's does.
+    # marked apart, so it ranks as bsp's does. paint395: and autocolor7, a
+    # sixth site, whose name the catalogue was never built under.
     TOPUP_SOURCES = frozenset({'bsp', 'chipex_topup', 'colorndrive_topup', 'peinturevoiture_topup',
-                               'atu', 'paintscratch'})
+                               'atu', 'paintscratch', 'autocolor7'})
 
     @classmethod
     def is_topup_only(cls, row):

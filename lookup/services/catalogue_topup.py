@@ -222,18 +222,22 @@ def read_bsp(path):
 # Everything a site adds is marked with its TOPUP_MARK, every one of them in
 # PaintLookup.TOPUP_SOURCES: a new row answers only when no established row
 # would (paint236), and a fill leaves an established row established.
+# paint395: and autocolor7, a sixth site (its notes are above read_autocolor7).
 
 class SourceChanged(Exception):
     """A scraped file that no longer looks like the file its reader was written for."""
 
 
-SCRAPED_SITES = ('chipex', 'colorndrive', 'peinturevoiture', 'atu', 'paintscratch')
+SCRAPED_SITES = ('chipex', 'colorndrive', 'peinturevoiture', 'atu', 'paintscratch', 'autocolor7')
 TOPUP_MARK = {'chipex': 'chipex_topup', 'colorndrive': 'colorndrive_topup',
-              'peinturevoiture': 'peinturevoiture_topup', 'atu': 'atu', 'paintscratch': 'paintscratch'}
+              'peinturevoiture': 'peinturevoiture_topup', 'atu': 'atu', 'paintscratch': 'paintscratch',
+              'autocolor7': 'autocolor7'}
 # Whose name a new row shows, first to last: colorndrive flags the UK name,
 # chipex is a UK shop, PaintScratch and AutomotiveTouchup write US English,
-# peinturevoiture the maker's own language.
-NAME_ORDER = ('colorndrive', 'chipex', 'paintscratch', 'atu', 'peinturevoiture')
+# peinturevoiture the maker's own language. paint395: autocolor7 last, as it
+# writes its names in capitals and in the maker's own language too: a new code
+# needs another site that agrees, so the name shown is always that site's.
+NAME_ORDER = ('colorndrive', 'chipex', 'paintscratch', 'atu', 'peinturevoiture', 'autocolor7')
 # The sites whose swatches are the paint's own (the others have none).
 SWATCH_SITES = ('chipex', 'colorndrive')
 # AutomotiveTouchup and PaintScratch draw on one upstream list. Of the 10,997
@@ -241,7 +245,13 @@ SWATCH_SITES = ('chipex', 'colorndrive')
 # ("Casablance Beige Metallic", "Pommegranate Red Metallic"), against 11 to 15
 # per cent between any other two of these sites. When they agree that is one
 # voice, not two: a new code needs another site with them.
-VOICE = {'atu': 'us lists', 'paintscratch': 'us lists'}
+# paint395: peinturevoiture and autocolor7 both write the maker's own names
+# (Delftweiss, Garmish, Autriche), and of the codes both list, 35 in 1,000
+# share a word no other site uses, against 15 at most for any other two of the
+# six (measured 6 Nov 2026). Not shown to be one list, but counted as one voice
+# to be safe: a new code needs a third site with them.
+VOICE = {'atu': 'us lists', 'paintscratch': 'us lists',
+         'peinturevoiture': 'maker language lists', 'autocolor7': 'maker language lists'}
 # colorndrive's ten colour family stand ins (its notes of 28 Oct 2026): one
 # value per family on thousands of different paints, never a measured colour.
 # Read as no swatch, and paint237's upgrade treats them as guesses.
@@ -254,6 +264,7 @@ SCRAPED_FIELDS = {
     'peinturevoiture': ('manufacturer', 'color_codes', 'color_name', 'details'),
     'atu': ('manufacturer', 'model', 'color_name', 'color_codes'),
     'paintscratch': ('manufacturer', 'color_name', 'color_codes'),
+    'autocolor7': ('manufacturer', 'color_codes', 'color_name', 'vehicle_type', 'title'),   # its file of 3 Nov 2026
 }
 # What each file looked like on 5 Nov 2026 against the live catalogue: the
 # share of the codes its reader tried that were left out, and the share of the
@@ -266,7 +277,11 @@ SCRAPED_BASELINE = {
     'peinturevoiture': {'left_out': 0.176, 'agree': 0.948},   # 56,918 codes, 42,770 held
     'atu': {'left_out': 0.050, 'agree': 0.879},               # 301,497 codes, 21,876 held
     'paintscratch': {'left_out': 0.085, 'agree': 0.810},      # 39,073 codes, 13,763 held
+    'autocolor7': {'left_out': 0.161, 'agree': 0.890},        # 127,987 codes, 29,163 held (its file of 3 Nov)
 }
+# paint395: the date of the file each reader and its baseline were made for,
+# as the checks and the top up's preview name it.
+SCRAPED_FILE_DATE = {'autocolor7': '3 Nov 2026'}
 LEFT_OUT_MARGIN = 0.15
 AGREE_MARGIN = 0.10
 AGREE_MIN_HELD = 20           # fewer codes in common than this, and the file cannot be judged
@@ -299,6 +314,10 @@ def _compact(code):
     return re.sub(r'[^A-Z0-9]', '', (code or '').upper())
 
 
+def _file_date(site):
+    return SCRAPED_FILE_DATE.get(site, '28 Oct 2026')
+
+
 def _scraped_make(site, raw):
     if raw in SCRAPED_SKIPPED_MAKES.get(site, ()):
         return None
@@ -319,7 +338,8 @@ def _scraped_rows(site, path):
             if missing:
                 raise SourceChanged(
                     f'{site}: line {n} of {name} has no field "{missing[0]}", which its reader needs. The file\'s '
-                    f'layout has changed since 28 Oct 2026: check paintscraper\'s notes for it. Nothing was planned.')
+                    f'layout has changed since {_file_date(site)}: check paintscraper\'s notes for it. '
+                    f'Nothing was planned.')
             yield row
 
 
@@ -452,9 +472,103 @@ def read_paintscratch(path):
     return src
 
 
+# -- paint395: autocolor7 ----------------------------------------------------
+#
+# autocolor7.com, a paint shop in Kyiv, has a page for every colour it mixes:
+# the code, the name (in capitals, in the maker's own language, "-MET." for
+# metallic), years, a colour group, the vehicle type and the market; no
+# swatches. paintscraper's file of 3 Nov 2026 holds 143,465 pages (its notes
+# beside it). Measured on 6 Nov 2026 against the live catalogue: of the codes
+# it shares with us it names 89 in 100 the same colour (its colour group field
+# far less often, so only its names are read), and with the five sites above it
+# adds 329 codes two sites name the same paint (301 of them with
+# AutomotiveTouchup), none of them a code a customer was given to 26 Oct.
+# Read as its notes describe it:
+#   * the make of each list as the site writes it; the lists written another way
+#     than ours are in AUTOCOLOR7_MAKES, three of them two makes at once. Its
+#     truck lists of car makers (MERCEDES TRUCKS, VOLVO TRUCKS), the Chinese
+#     joint ventures (VW SHANGHAI) and the lists with no make are not ours;
+#   * cars and vans only: fleet paints, motorcycles, buses and colour standards
+#     are left out;
+#   * a code only where it is the code in the page's title: the site's own
+#     table lost the zeros of a few hundred codes (Toyota "41" for 041) and wrote
+#     some as spreadsheet numbers ("1,00E+00" for 1E0). A "." in place of a code
+#     is left out, and a Honda style bracket letter dropped ("B504P (A)");
+#   * "-MET." read as Metallic and "-MAT" as Matt, "(2C)" and "-AC" dropped;
+#   * every name a code is given is kept, so a code it sells under several names
+#     (another market's, another era's) is no voice, as on the other sites.
+AUTOCOLOR7_MAKES = {
+    'FORD EUROPE': ('ford',), 'FORD USA': ('fordamerica',), 'GENERAL MOTORS-GM': ('generalmotors',),
+    'VOLKSWAGEN-VW': ('volkswagen',), 'FIAT - LANCIA': ('fiat', 'lancia'), 'SEAT-CUPRA': ('seat', 'cupra'),
+    'SSANGYONG - KG MOBILITY': ('ssangyong', 'kgmobility'), 'LADA - VAZ': ('lada',), 'DAF TRUCKS': ('daf',),
+    'SCANIA TRUCKS': ('scania',), 'CHEVROLET EUROPE': ('chevrolet',), 'VAUXHALL VANS': ('vauxhall',),
+    'GREATWALL AUTO': ('greatwall',), 'BYD AUTO': ('byd',), 'FAW CAR CO LTD': ('faw',), 'JAC MOTORS': ('jac',),
+    'SAIC MAXUS': ('maxus',), 'XPENG MOTORS': ('xpeng',), 'FOTON MOTORS': ('foton',), 'XIAOMI AUTO': ('xiaomi',),
+    'DONGFENG AUTO': ('dongfeng',), 'BRILLIANCE AUTO': ('brilliance',), 'GAC AION': ('gacmotor',),
+    'LYNK & CO': ('lynkandco',), 'TESLA MOTORS': ('tesla',), 'MCLAREN AUTOMOTIVE': ('mclaren',),
+    'CATERHAM CARS': ('caterham',), 'KARMA AUTOMOTIVE': ('karma',), 'INEOS AUTOMOTIVE': ('ineos',),
+    'HUMMER - AM GENERAL': ('hummer',), 'MAHINDRA AND MAHINDRA': ('mahindra',),
+    'MAHINDRA & MAHINDRA': ('mahindra',), 'ZAPOROZEC-ZAZ': ('zaz',), 'HANOMAG-HENSCHEL TRUCKS': ('hanomag',),
+    'MACK TRUCK': ('mack',), 'ASIA': ('asiamotors',),
+}
+# The vehicle types kept, as the site writes them (Ukrainian, or Russian on a
+# few pages): passenger cars, and goods vehicles (vans, and the lorry makes the
+# catalogue holds, DAF and Scania).
+AUTOCOLOR7_VEHICLES = frozenset({'легкові автомобілі', 'легковые автомобили', 'вантажний транспорт',
+                                 'грузовой транспорт'})
+_AC7_SUFFIX = re.compile(r'\s*(-MET\.?|-MAT|\(2C\)|-AC)\s*$', re.I)
+_AC7_FINISH = {'-met': 'Metallic', '-met.': 'Metallic', '-mat': 'Matt'}
+
+
+def _autocolor7_name(name):
+    """ "PHANTOM BLACK-MET." as "Phantom Black Metallic", "DIGITAL GREEN-MET. -MAT" as
+    "Digital Green Metallic Matt"; "(2C)" and "-AC" dropped."""
+    n = re.sub(r'\s+', ' ', (name or '').strip())
+    finish = []
+    while True:
+        m = _AC7_SUFFIX.search(n)
+        if not m:
+            break
+        word = _AC7_FINISH.get(m.group(1).lower())
+        if word and word not in finish:
+            finish.insert(0, word)
+        n = n[:m.start()].rstrip(' -')
+    return ' '.join([titlecase_if_upper(n)] + finish).strip()
+
+
+def read_autocolor7(path):
+    """autocolor7 (paint395): codes and names, cars and vans only, each code
+    only as its page's title shows it (see the notes above). No swatches."""
+    src = Source('autocolor7', mark=TOPUP_MARK['autocolor7'], files=[path])
+    for row in _scraped_rows('autocolor7', path):
+        src.rows_read += 1
+        raw_make = (row['manufacturer'] or '').strip()
+        if not raw_make:
+            src.left_out['a list with no make (mobicodes, mobifleet, xpeng)'] += 1
+            continue
+        if (row['vehicle_type'] or '').strip() not in AUTOCOLOR7_VEHICLES:
+            src.left_out['not a car or a van (fleet paints, motorcycles, buses, colour standards)'] += 1
+            continue
+        raw = ' '.join((row['color_codes'] or '').upper().split())
+        if raw in ('', '.'):
+            src.left_out['no code, or a "." in its place'] += 1
+            continue
+        if f' {raw} ' not in f" {' '.join((row['title'] or '').upper().split())} ":
+            src.left_out["a code that is not the one in its page's title (zeros lost, a spreadsheet's number)"] += 1
+            continue
+        makes = AUTOCOLOR7_MAKES.get(raw_make.upper()) or (_scraped_make('autocolor7', raw_make),)
+        name = _autocolor7_name(row['color_name'])
+        for part in re.split(r'[;,]', raw):
+            code = re.sub(r'\s*\([^)]*\)\s*$', '', part).strip()
+            if code:
+                for mk in makes:
+                    _add_code(src, mk, code, name)
+    return src
+
+
 SCRAPED_READERS = {'chipex': read_chipex, 'colorndrive': read_colorndrive,
                    'peinturevoiture': read_peinturevoiture, 'atu': read_atu,
-                   'paintscratch': read_paintscratch}
+                   'paintscratch': read_paintscratch, 'autocolor7': read_autocolor7}
 
 
 def find_scraped(folder):
@@ -485,7 +599,7 @@ def check_scraped(src, existing=None):
     out = sum(src.left_out.values()) / max(src.attempts, 1)
     if out > base['left_out'] + LEFT_OUT_MARGIN:
         raise SourceChanged(
-            f'{src.name}: {files} leaves out {out:.0%} of the codes it holds (the file of 28 Oct 2026: '
+            f'{src.name}: {files} leaves out {out:.0%} of the codes it holds (the file of {_file_date(src.name)}: '
             f'{base["left_out"]:.0%}). Its codes may be written another way now: check paintscraper\'s notes '
             f'for it. Nothing was planned.')
     held = same = 0
@@ -502,7 +616,7 @@ def check_scraped(src, existing=None):
     if agree < base['agree'] - AGREE_MARGIN:
         raise SourceChanged(
             f'{src.name}: of the {held:,} codes in {files} that our catalogue holds, it gives only {agree:.0%} '
-            f'the same colour (the file of 28 Oct 2026: {base["agree"]:.0%}). Its codes may mean something '
+            f'the same colour (the file of {_file_date(src.name)}: {base["agree"]:.0%}). Its codes may mean something '
             f'else now: check paintscraper\'s notes for it. Nothing was planned.')
     return out, held, agree
 
@@ -779,6 +893,8 @@ def plan_scraped(sources):
             plan.tally['left alone: on one site only' if len(votes) == 1 else
                        'left alone: only AutomotiveTouchup and PaintScratch give it' if
                        {VOICE.get(n, n) for n in votes} == {'us lists'} else
+                       'left alone: only peinturevoiture and autocolor7 give it' if
+                       {VOICE.get(n, n) for n in votes} == {'maker language lists'} else
                        'left alone: the sites give it different colours'] += 1
             continue
         if mfr in TWO_CHARACTER_MAKES and _two_character_pair(name):
@@ -802,6 +918,17 @@ def plan_scraped(sources):
             'sources': sorted({by_site[n].mark for n in agreeing}),
         })
         plan.new_by_make[mfr] += 1
+    # paint395: TWO NEW CODES WITH ONE NAME are both kept out of the name search
+    # too. They are two codes for one paint (Land Rover 364, 524 and MCH, all
+    # Astral Silver), and a customer's colour name must not land on one of them
+    # by chance: each answers its own code, as a code whose name the catalogue
+    # already carries does. Measured with autocolor7: 23 of the 329 new codes.
+    shared = Counter((r['manufacturer'], r['normalized_names'][0].replace('gray', 'grey'))
+                     for r in plan.new_rows if r['normalized_names'])
+    for r in plan.new_rows:
+        if r['normalized_names'] and shared[(r['manufacturer'], r['normalized_names'][0].replace('gray', 'grey'))] > 1:
+            r['normalized_names'] = []
+            plan.tally['new code kept out of the name search: another new code has its name'] += 1
     return plan
 
 
