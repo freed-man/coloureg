@@ -310,6 +310,41 @@ def tidy_supplier_tags(name, make, code='', model=None):
         return name
 
 
+#: paint394: A FINISH WORD IN BRACKETS AT THE END OF A NAME IS WRITTEN PLAIN. Ford's own style, as partslink24
+#: and Ezyvin send it ("Panther Black (Metallic)", "Shadow Black (Mica)", "Highlight Silver (Met)"), reached the
+#: page, the email and the PDF in brackets: 78 answers to 26 Oct (Ford 67, Mini 8, Fiat, Saab and Geely one each),
+#: and the catalogue shows one such name (Hyundai MPE "Makalu Gray (Matte)"). The operator's word of 5 Nov: shown
+#: as "Panther Black Metallic". One finish word only, only at the end; any other bracket stays as it is (a code,
+#: "special order paint", "two tone", a market, Ford's paint system letter, which tidy_supplier_tags reads).
+_BRACKET_FINISH = re.compile(r'\s*\(\s*(metallic|met\.?|mica|pearl|solid|matte?)\s*\)\s*$', re.I)
+_FINISH_WORD = {'metallic': 'Metallic', 'met': 'Metallic', 'mica': 'Mica', 'pearl': 'Pearl', 'solid': 'Solid',
+                'matt': 'Matt', 'matte': 'Matte'}
+
+
+def plain_finish(name):
+    """paint394: "Panther Black (Metallic)" as "Panther Black Metallic", "Highlight Silver (Met)" as "Highlight
+    Silver Metallic". A name already ending in that word only loses the bracket. A bracket with no name before it
+    and every other name come back as they came (_display_tidy leaves a "Two-tone" name alone before this). Never
+    raises."""
+    if not isinstance(name, str):
+        return name
+    try:
+        m = _BRACKET_FINISH.search(name)
+        if not m:
+            return name
+        head = name[:m.start()].rstrip()
+        if not re.search(r'[A-Za-z]{2}', head):
+            return name
+        sent = m.group(1).lower().rstrip('.')
+        word = _FINISH_WORD[sent]
+        if head.split()[-1].lower().rstrip('.') in (sent, word.lower()):
+            return head
+        return f'{head} {word}'
+    except Exception:
+        logger.warning('finish word not written plain', exc_info=True)
+        return name
+
+
 def _display_tidy(result, make, model=None):
     """paint284: the name as it leaves for the page. Capitals for a name given all
     in lower case or all in capitals ("bright blue", "BRIGHT BLUE"), and the code's
@@ -376,6 +411,10 @@ def _display_tidy(result, make, model=None):
             english = [n for n in english if _colour & _stated_colours(n, _EN_COLOUR)]
             if english:
                 name = max(english, key=lambda n: len(words & set(re.findall(r'[a-z]+', n.lower()))))
+        # paint394: a finish word in brackets at the end written plain ("Panther Black (Metallic)" as
+        # "Panther Black Metallic"), whatever supplied the name, last, so the row, the page, the email
+        # and the PDF agree. The code was worked out before this, and the matcher reads both forms alike.
+        name = plain_finish(name)
         if name != result.get('paint_description'):
             result = dict(result, paint_description=name)
     except Exception:
