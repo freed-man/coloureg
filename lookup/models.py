@@ -3344,6 +3344,12 @@ class PaintLookup(models.Model):
     #: these a pack holds is its accent, which settles all three.
     _BMW_I_ACCENTS = ('B94', 'U83', 'C1S')
 
+    #: paint397: the colour groups a paint can be filed under that are certainly
+    #: not silver, for telling a silver car's body from its roof: every group
+    #: but grey (where the catalogue files silver), "other" and none.
+    _NOT_SILVER_GROUPS = frozenset({'white', 'black', 'blue', 'red', 'green', 'yellow', 'orange', 'brown',
+                                    'purple', 'beige', 'gold'})
+
     @classmethod
     def is_combination_name(cls, name):
         """True when a name is two or more codes joined rather than a colour.
@@ -3380,6 +3386,10 @@ class PaintLookup(models.Model):
         (_BMW_I_ACCENTS), so its partner is the body when the colour cannot
         say, and the accent half carries is_accent: True (the key is there
         only then, so every other two-tone's parts are as they were).
+
+        paint397: a car registered "Silver" (the catalogue files silver as
+        grey) has its grey half as the body when the other half is certainly
+        not silver; anything less certain stays untagged.
         """
         if not cls.is_combination_name(name):
             return None
@@ -3455,6 +3465,27 @@ class PaintLookup(models.Model):
                     for item in out:
                         if not item['is_body']:
                             item['is_accent'] = True
+        # paint397: A CAR REGISTERED SILVER. The catalogue files every
+        # silver paint under grey (catalogue_topup.COLOR_KEYWORDS), so DVLA's
+        # "Silver" never matched a half and no silver two tone was ever
+        # labelled (the Toyota C-HR 2RD, Kia HA5). The grey half is the body
+        # ONLY when the other half is certainly not silver: its group a
+        # plain other colour, and its name with no grey or silver word in
+        # it, since a name is filed by its first colour word ("Silver White
+        # Pearl" is white, "Black Silver" black). Anything less certain, a
+        # half of group "other" or none, two greys, is left untagged, as
+        # before. DVLA's two colour words ("Blue And Black") are not read:
+        # its guide does not say which colour comes first, and lookups
+        # disagree (Minis "Blue And Black" given a black, BYD Dolphins
+        # "Blue And Grey" given a grey). After the BMW i packs, whose accent paint
+        # (Frozen Grey among them) is known by its code and is never the body.
+        if want == 'silver' and not any(i['is_body'] for i in out):
+            from lookup.services.paint_resolver import _colour_families
+            greys = [i for i in out if i['_group'] == 'grey']
+            rest = [i for i in out if i['_group'] != 'grey']
+            if (len(greys) == 1 and len(rest) == 1 and rest[0]['_group'] in cls._NOT_SILVER_GROUPS
+                    and 'grey' not in _colour_families(rest[0]['name'])):
+                greys[0]['is_body'] = True
         if any(i['is_body'] for i in out):
             out.sort(key=lambda i: not i['is_body'])
         for item in out:
